@@ -1,4 +1,7 @@
+//! Ganymede is a next generation of Web framework for Rust.
+
 extern crate bytes;
+#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate futures;
@@ -13,20 +16,16 @@ pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
 
 pub mod context;
 pub mod error;
-pub mod handler;
 pub mod request;
 pub mod response;
+pub mod router;
 pub mod server;
 pub mod service;
 
-use handler::Handler;
+use router::Router;
 use std::net::SocketAddr;
 
-pub fn launch<H>(handler: H, addr: &SocketAddr) -> Result<()>
-where
-    H: Handler + Send + Sync + 'static,
-    H::Future: Send,
-{
-    let new_service = service::new_service(handler);
+pub fn launch(router: Router, addr: &SocketAddr) -> Result<()> {
+    let new_service = service::NewMyService::new(router);
     server::serve(new_service, addr)
 }

@@ -6,14 +6,9 @@ use std::sync::Arc;
 use tokio;
 use tokio::net::TcpListener;
 
-use handler::Handler;
 use service::NewMyService;
 
-pub fn serve<H>(new_service: NewMyService<H>, addr: &SocketAddr) -> ::Result<()>
-where
-    H: Handler + Send + Sync + 'static,
-    H::Future: Send,
-{
+pub fn serve(new_service: NewMyService, addr: &SocketAddr) -> ::Result<()> {
     let protocol = Arc::new(Http::new());
 
     let server = TcpListener::bind(&addr)?

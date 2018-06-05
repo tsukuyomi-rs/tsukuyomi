@@ -3,32 +3,33 @@ use http::{Request, Response};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::cell::RefCell;
+use std::fmt;
 use std::sync::Arc;
 
 use context::Context;
 use error::{CritError, Error};
-use handler::Handler;
 use request::RequestBody;
 use response::ResponseBody;
+use router::Router;
 
 #[derive(Debug)]
-pub struct MyService<H: Handler> {
-    handler: Arc<H>,
+pub struct MyService {
+    router: Arc<Router>,
 }
 
-impl<H: Handler> Service for MyService<H> {
+impl Service for MyService {
     type ReqBody = Body;
     type ResBody = ResponseBody;
     type Error = CritError;
-    type Future = MyServiceFuture<H::Future>;
+    type Future = MyServiceFuture;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
         let (parts, payload) = request.into_parts();
-        let cx = Context {
+        let mut cx = Context {
             request: Request::from_parts(parts, ()),
             payload: RefCell::new(Some(RequestBody::from_hyp(payload))),
         };
-        let in_flight = self.handler.handle_async(&cx);
+        let in_flight = self.router.handle(&mut cx);
         MyServiceFuture {
             in_flight: in_flight,
             context: cx,
@@ -36,16 +37,21 @@ impl<H: Handler> Service for MyService<H> {
     }
 }
 
-#[derive(Debug)]
-pub struct MyServiceFuture<T> {
-    in_flight: T,
+pub struct MyServiceFuture {
+    in_flight: Box<Future<Item = Response<ResponseBody>, Error = Error> + Send>,
     context: Context,
 }
 
-impl<T> Future for MyServiceFuture<T>
-where
-    T: Future<Item = Response<ResponseBody>, Error = Error>,
-{
+impl fmt::Debug for MyServiceFuture {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("MyServiceFuture")
+            .field("in_flight", &"<a boxed future>")
+            .field("context", &self.context)
+            .finish()
+    }
+}
+
+impl Future for MyServiceFuture {
     type Item = Response<ResponseBody>;
     type Error = CritError;
 
@@ -59,27 +65,29 @@ where
 }
 
 #[derive(Debug)]
-pub struct NewMyService<H: Handler> {
-    handler: Arc<H>,
+pub struct NewMyService {
+    router: Arc<Router>,
 }
 
-impl<H: Handler> NewService for NewMyService<H> {
+impl NewMyService {
+    pub fn new(router: Router) -> NewMyService {
+        NewMyService {
+            router: Arc::new(router),
+        }
+    }
+}
+
+impl NewService for NewMyService {
     type ReqBody = Body;
     type ResBody = ResponseBody;
     type Error = CritError;
-    type Service = MyService<H>;
+    type Service = MyService;
     type InitError = CritError;
     type Future = future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
         future::ok(MyService {
-            handler: self.handler.clone(),
+            router: self.router.clone(),
         })
-    }
-}
-
-pub fn new_service<H: Handler>(handler: H) -> NewMyService<H> {
-    NewMyService {
-        handler: Arc::new(handler),
     }
 }
