@@ -52,6 +52,7 @@ matrix:
         - cargo fmt -- --write-mode=diff
 
     - rust: stable
+      env: DEPLOY_DOC
       script:
         - cargo clean
         - cargo doc --no-deps
