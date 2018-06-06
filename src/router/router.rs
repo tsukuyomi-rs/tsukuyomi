@@ -1,9 +1,11 @@
 use futures::{future, Future};
 use http::{Response, StatusCode};
+use std::mem;
 
 use context::Context;
 use error::Error;
 use response::ResponseBody;
+use rt;
 
 use super::context::RouterContext;
 use super::recognizer::{self, Recognizer};
@@ -60,7 +62,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn mount<I>(mut self, routes: I) -> Builder
+    pub fn mount<I>(&mut self, routes: I) -> &mut Builder
     where
         I: IntoIterator<Item = Route>,
     {
@@ -72,10 +74,10 @@ impl Builder {
         self
     }
 
-    pub fn finish(mut self) -> ::rt::Result<Router> {
+    pub fn finish(&mut self) -> rt::Result<Router> {
         Ok(Router {
             recognizer: self.builder.finish()?,
-            routes: self.routes,
+            routes: mem::replace(&mut self.routes, vec![]),
         })
     }
 }
