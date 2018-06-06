@@ -1,7 +1,7 @@
 use http::Request;
 use std::cell::RefCell;
 
-use request::RequestBody;
+use input::RequestBody;
 
 scoped_thread_local!(static CONTEXT: Context);
 

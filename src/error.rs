@@ -2,7 +2,7 @@ use failure;
 use http::{header, Response, StatusCode};
 use std::error::Error as StdError;
 
-use response::ResponseBody;
+use output::ResponseBody;
 
 pub type CritError = Box<StdError + Send + Sync + 'static>;
 

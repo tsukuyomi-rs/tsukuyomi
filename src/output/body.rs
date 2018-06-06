@@ -4,7 +4,7 @@ use hyper::body::{Body, Chunk};
 use std::borrow::Cow;
 use std::error::Error as StdError;
 
-use request::RequestBody;
+use input::RequestBody;
 
 #[derive(Debug, Default)]
 pub struct ResponseBody(Body);

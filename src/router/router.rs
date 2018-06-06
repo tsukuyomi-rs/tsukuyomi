@@ -4,7 +4,7 @@ use std::mem;
 
 use context::Context;
 use error::Error;
-use response::Output;
+use output::Output;
 use rt;
 
 use super::context::RouterContext;

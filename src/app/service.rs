@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use context::Context;
 use error::{CritError, Error};
-use request::RequestBody;
-use response::{Output, ResponseBody};
+use input::RequestBody;
+use output::{Output, ResponseBody};
 use router::Router;
 
 use super::App;
