@@ -1,10 +1,10 @@
-use futures::{Future, IntoFuture};
+use futures::{future, Future, IntoFuture};
 use http::Method;
 use std::fmt;
 
 use context::Context;
 use error::Error;
-use response::Output;
+use response::{Output, Responder};
 
 use super::context::RouterContext;
 
@@ -67,14 +67,17 @@ pub trait Handler {
     fn handle(&self, cx: &Context, rcx: &mut RouterContext) -> Self::Future;
 }
 
-impl<F, R> Handler for F
+impl<F, R, T> Handler for F
 where
     F: Fn(&Context, &mut RouterContext) -> R,
-    R: IntoFuture<Item = Output, Error = Error>,
+    R: IntoFuture<Item = T, Error = Error>,
+    T: Responder,
 {
-    type Future = R::Future;
+    type Future = future::AndThen<R::Future, Result<Output, Error>, fn(T) -> Result<Output, Error>>;
 
     fn handle(&self, cx: &Context, rcx: &mut RouterContext) -> Self::Future {
-        (*self)(cx, rcx).into_future()
+        (*self)(cx, rcx)
+            .into_future()
+            .and_then(|x| Context::with(|cx| x.respond_to(cx)))
     }
 }
