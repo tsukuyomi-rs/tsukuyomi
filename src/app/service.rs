@@ -9,7 +9,7 @@ use std::sync::Arc;
 use context::Context;
 use error::{CritError, Error};
 use request::RequestBody;
-use response::ResponseBody;
+use response::Output;
 use router::Router;
 
 use super::App;
@@ -59,13 +59,13 @@ impl Service for AppService {
 }
 
 pub struct AppServiceFuture {
-    in_flight: Box<Future<Item = Response<ResponseBody>, Error = Error> + Send>,
+    in_flight: Box<Future<Item = Output, Error = Error> + Send>,
     context: Context,
 }
 
 impl fmt::Debug for AppServiceFuture {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("MyServiceFuture")
+        f.debug_struct("AppServiceFuture")
             .field("in_flight", &"<a boxed future>")
             .field("context", &self.context)
             .finish()
@@ -79,7 +79,7 @@ impl Future for AppServiceFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let in_flight = &mut self.in_flight;
         match self.context.set(|| in_flight.poll()) {
-            Ok(x) => Ok(x),
+            Ok(x) => Ok(x.map(|x| x.into_response())),
             Err(e) => e.into_response().map(Into::into),
         }
     }

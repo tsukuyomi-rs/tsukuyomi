@@ -1,10 +1,10 @@
 use futures::{Future, IntoFuture};
-use http::{Method, Response};
+use http::Method;
 use std::fmt;
 
 use context::Context;
 use error::Error;
-use response::ResponseBody;
+use response::Output;
 
 use super::context::RouterContext;
 
@@ -12,8 +12,7 @@ pub struct Route {
     path: String,
     method: Method,
     handler: Box<
-        Fn(&Context, &mut RouterContext)
-                -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send>
+        Fn(&Context, &mut RouterContext) -> Box<Future<Item = Output, Error = Error> + Send>
             + Send
             + Sync
             + 'static,
@@ -57,13 +56,13 @@ impl Route {
         &self,
         cx: &Context,
         rcx: &mut RouterContext,
-    ) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+    ) -> Box<Future<Item = Output, Error = Error> + Send> {
         (*self.handler)(cx, rcx)
     }
 }
 
 pub trait Handler {
-    type Future: Future<Item = Response<ResponseBody>, Error = Error>;
+    type Future: Future<Item = Output, Error = Error>;
 
     fn handle(&self, cx: &Context, rcx: &mut RouterContext) -> Self::Future;
 }
@@ -71,7 +70,7 @@ pub trait Handler {
 impl<F, R> Handler for F
 where
     F: Fn(&Context, &mut RouterContext) -> R,
-    R: IntoFuture<Item = Response<ResponseBody>, Error = Error>,
+    R: IntoFuture<Item = Output, Error = Error>,
 {
     type Future = R::Future;
 
