@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use futures::{future, Future, Poll};
 use http::{Request, Response};
 use hyper::body::Body;
@@ -11,6 +12,7 @@ use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
 use router::Router;
+use rt::ServiceExt;
 
 use super::App;
 
@@ -55,6 +57,19 @@ impl Service for AppService {
             in_flight: in_flight,
             context: cx,
         }
+    }
+}
+
+impl<I> ServiceExt<I> for AppService {
+    type Upgrade = future::FutureResult<(), ()>;
+    type UpgradeError = ::failure::Error;
+
+    fn poll_ready_upgrade(&mut self) -> Poll<(), Self::UpgradeError> {
+        Ok(().into())
+    }
+
+    fn upgrade(self, _io: I, _read_buf: Bytes) -> Self::Upgrade {
+        future::ok(())
     }
 }
 
