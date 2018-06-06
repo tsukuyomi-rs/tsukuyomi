@@ -7,6 +7,7 @@ extern crate failure;
 extern crate futures;
 extern crate http;
 extern crate hyper;
+#[macro_use]
 extern crate log;
 extern crate tokio;
 #[macro_use]
@@ -20,3 +21,5 @@ pub mod input;
 pub mod output;
 pub mod router;
 pub mod rt;
+pub mod transport;
+pub mod upgrade;

@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use router::{self, Route, Router};
-use rt;
+use {rt, transport};
 
 use self::service::NewAppService;
 
@@ -22,8 +22,8 @@ impl App {
     }
 
     pub fn serve(self) -> rt::Result<()> {
-        let addr = self.addr;
-        rt::serve(self.lift_new_service(), &addr)
+        let incoming = transport::Incoming::new(&self.addr)?;
+        rt::serve(self.lift_new_service(), incoming)
     }
 
     fn lift_new_service(self) -> NewAppService {

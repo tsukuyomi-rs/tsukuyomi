@@ -5,12 +5,10 @@ use futures::Poll;
 use hyper::body::Body;
 use hyper::server::conn::{self, Http, Parts};
 use hyper::service::{NewService, Service};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::{fmt, mem};
 use tokio;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::{TcpListener, TcpStream};
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
@@ -23,18 +21,19 @@ pub trait ServiceExt<T>: Service + Sized {
     fn upgrade(self, io: T, read_buf: Bytes) -> Self::Upgrade;
 }
 
-pub fn serve<S>(new_service: S, addr: &SocketAddr) -> Result<()>
+pub fn serve<S, I>(new_service: S, incoming: I) -> Result<()>
 where
     S: NewService<ReqBody = Body, ResBody = Body> + Send + Sync + 'static,
     S::Future: Send,
-    S::Service: ServiceExt<TcpStream> + Send,
+    S::Service: ServiceExt<I::Item> + Send,
     <S::Service as Service>::Future: Send,
-    <S::Service as ServiceExt<TcpStream>>::Upgrade: Send,
+    <S::Service as ServiceExt<I::Item>>::Upgrade: Send,
+    I: Stream + Send + 'static,
+    I::Item: AsyncRead + AsyncWrite + Send + 'static,
 {
     let protocol = Arc::new(Http::new());
 
-    let incoming = TcpListener::bind(&addr)?.incoming().map_err(|_e| ());
-    tokio::run(incoming.for_each(move |stream| {
+    let server = incoming.map_err(|_| ()).for_each(move |stream| {
         let protocol = protocol.clone();
         new_service
             .new_service()
@@ -42,18 +41,18 @@ where
             .and_then(move |service| {
                 tokio::spawn(Connection::Http(protocol.serve_connection(stream, service)))
             })
-    }));
+    });
+
+    tokio::run(server);
 
     Ok(())
 }
 
-#[allow(dead_code)]
 enum Connection<I, S>
 where
     S: Service<ReqBody = Body, ResBody = Body> + ServiceExt<I>,
 {
     Http(conn::Connection<I, S>),
-    Shutdown(I),
     Upgrading(Parts<I, S>),
     Upgrade(S::Upgrade),
     Done,
@@ -68,7 +67,6 @@ where
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Connection::Http(ref conn) => f.debug_tuple("Http").field(conn).finish(),
-            Connection::Shutdown(ref io) => f.debug_tuple("Shutdown").field(io).finish(),
             Connection::Upgrading(ref parts) => f.debug_tuple("Upgrading").field(parts).finish(),
             Connection::Upgrade(ref fut) => f.debug_tuple("Upgrade").field(fut).finish(),
             Connection::Done => f.debug_tuple("Done").finish(),
@@ -88,9 +86,10 @@ where
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_inner() {
             Ok(x) => Ok(x),
-            Err(_e) => {
-                *self = Connection::Done;
+            Err(e) => {
                 // TODO: reporting errors
+                trace!("error during serving a connection: {}", e);
+                *self = Connection::Done;
                 Err(())
             }
         }
@@ -108,7 +107,6 @@ where
         loop {
             match *self {
                 Http(ref mut conn) => try_ready!(conn.poll_without_shutdown()),
-                Shutdown(ref mut io) => try_ready!(io.shutdown()),
                 Upgrading(ref mut parts) => try_ready!(
                     parts
                         .service
@@ -127,19 +125,26 @@ where
             // transit to the next state
             match mem::replace(self, Done) {
                 Http(conn) => match conn.try_into_parts() {
-                    Some(parts) => *self = Upgrading(parts),
-                    None => return Ok(().into()),
+                    Some(parts) => {
+                        trace!("transit to Upgrading");
+                        *self = Upgrading(parts);
+                    }
+                    None => {
+                        trace!("the connection is h2");
+                        return Ok(().into());
+                    }
                 },
                 Upgrading(parts) => {
+                    trace!("construct a future and transit to Upgrade");
                     let Parts {
                         service,
                         io,
                         read_buf,
                         ..
                     } = parts;
-                    *self = Upgrade(service.upgrade(io, read_buf))
+                    *self = Upgrade(service.upgrade(io, read_buf));
                 }
-                Shutdown(..) | Upgrade(..) => return Ok(().into()),
+                Upgrade(..) => return Ok(().into()),
                 Done => unreachable!(),
             }
         }

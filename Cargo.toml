@@ -17,3 +17,4 @@ scoped-tls = "*"
 
 [dev-dependencies]
 pretty_env_logger = "*"
+tokio-io = "*"
