@@ -15,6 +15,10 @@ impl RequestBody {
         RequestBody(body)
     }
 
+    pub(crate) fn into_hyp(self) -> Body {
+        self.0
+    }
+
     pub fn poll_data(&mut self) -> Poll<Option<Chunk>, CritError> {
         self.0
             .poll_data()
