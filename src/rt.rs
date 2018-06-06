@@ -8,7 +8,13 @@ use tokio::net::TcpListener;
 
 use service::NewMyService;
 
-pub fn serve(new_service: NewMyService, addr: &SocketAddr) -> ::Result<()> {
+pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
+
+pub fn launch(new_service: NewMyService, addr: &SocketAddr) -> Result<()> {
+    serve(new_service, addr)
+}
+
+fn serve(new_service: NewMyService, addr: &SocketAddr) -> Result<()> {
     let protocol = Arc::new(Http::new());
 
     let server = TcpListener::bind(&addr)?

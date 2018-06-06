@@ -72,7 +72,7 @@ impl Builder {
         self
     }
 
-    pub fn finish(mut self) -> ::Result<Router> {
+    pub fn finish(mut self) -> ::rt::Result<Router> {
         Ok(Router {
             recognizer: self.builder.finish()?,
             routes: self.routes,
