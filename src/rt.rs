@@ -1,20 +1,21 @@
 use futures::prelude::*;
+use hyper::body::Body;
 use hyper::server::conn::Http;
-use hyper::service::NewService;
+use hyper::service::{NewService, Service};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio;
 use tokio::net::TcpListener;
 
-use service::NewMyService;
-
 pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
 
-pub fn launch(new_service: NewMyService, addr: &SocketAddr) -> Result<()> {
-    serve(new_service, addr)
-}
-
-fn serve(new_service: NewMyService, addr: &SocketAddr) -> Result<()> {
+pub fn serve<S>(new_service: S, addr: &SocketAddr) -> Result<()>
+where
+    S: NewService<ReqBody = Body, ResBody = Body> + Send + Sync + 'static,
+    S::Future: Send,
+    S::Service: Send,
+    <S::Service as Service>::Future: Send,
+{
     let protocol = Arc::new(Http::new());
 
     let server = TcpListener::bind(&addr)?

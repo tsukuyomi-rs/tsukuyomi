@@ -12,10 +12,10 @@ extern crate tokio;
 #[macro_use]
 extern crate scoped_tls;
 
+pub mod app;
 pub mod context;
 pub mod error;
 pub mod request;
 pub mod response;
 pub mod router;
 pub mod rt;
-pub mod service;
