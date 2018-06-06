@@ -1,7 +1,7 @@
-use futures::{Future, Poll};
+use futures::{future, Future, Poll};
 use http::{Request, Response};
 use hyper::body::Body;
-use hyper::service::Service;
+use hyper::service::{NewService, Service};
 use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
@@ -12,9 +12,30 @@ use request::RequestBody;
 use response::ResponseBody;
 use router::Router;
 
+use super::App;
+
+pub struct NewAppService {
+    pub(super) app: App,
+}
+
+impl NewService for NewAppService {
+    type ReqBody = Body;
+    type ResBody = Body;
+    type Error = CritError;
+    type Service = AppService;
+    type InitError = CritError;
+    type Future = future::FutureResult<Self::Service, Self::InitError>;
+
+    fn new_service(&self) -> Self::Future {
+        future::ok(AppService {
+            router: self.app.router.clone(),
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct AppService {
-    pub(super) router: Arc<Router>,
+    router: Arc<Router>,
 }
 
 impl Service for AppService {
