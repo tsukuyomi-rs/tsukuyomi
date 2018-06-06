@@ -1,10 +1,10 @@
 use futures::{future, Future};
-use http::{Response, StatusCode};
+use http::StatusCode;
 use std::mem;
 
 use context::Context;
 use error::Error;
-use response::ResponseBody;
+use response::Output;
 use rt;
 
 use super::context::RouterContext;
@@ -25,10 +25,7 @@ impl Router {
         }
     }
 
-    pub fn handle(
-        &self,
-        cx: &Context,
-    ) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+    pub fn handle(&self, cx: &Context) -> Box<Future<Item = Output, Error = Error> + Send> {
         // TODO: fallback HEAD
         // TODO: fallback OPTIONS
         match self.recognizer.recognize(cx.request().uri().path()) {

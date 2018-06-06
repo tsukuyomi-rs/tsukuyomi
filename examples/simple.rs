@@ -5,12 +5,11 @@ extern crate pretty_env_logger;
 use ganymede::app::App;
 use ganymede::context::Context;
 use ganymede::error::Error;
-use ganymede::response::ResponseBody;
 use ganymede::router::{Route, RouterContext};
-use http::{Method, Response};
+use http::Method;
 
-fn welcome(_cx: &Context, _rcx: &mut RouterContext) -> Result<Response<ResponseBody>, Error> {
-    Ok(Response::builder().body(Default::default()).unwrap())
+fn welcome(_cx: &Context, _rcx: &mut RouterContext) -> Result<&'static str, Error> {
+    Ok("Hello")
 }
 
 fn main() -> ganymede::rt::Result<()> {
