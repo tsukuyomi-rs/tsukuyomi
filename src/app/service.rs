@@ -1,7 +1,5 @@
 use bytes::Bytes;
-use futures::future::poll_fn;
-use futures::sync::mpsc;
-use futures::{future, Async, Future, Poll, Stream};
+use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
@@ -15,8 +13,8 @@ use input::RequestBody;
 use output::{Output, ResponseBody};
 use router::Router;
 use rt::ServiceExt;
-use transport;
-use upgrade::UpgradeFn;
+use transport::Io;
+use upgrade::service as upgrade;
 
 use super::App;
 
@@ -33,12 +31,9 @@ impl NewService for NewAppService {
     type Future = future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
-        let (tx, rx) = mpsc::unbounded();
         future::ok(AppService {
             router: self.app.router.clone(),
-            tx: Some(tx),
-            rx: rx,
-            upgrade: None,
+            rx: upgrade::new(),
         })
     }
 }
@@ -46,9 +41,7 @@ impl NewService for NewAppService {
 #[derive(Debug)]
 pub struct AppService {
     router: Arc<Router>,
-    tx: Option<mpsc::UnboundedSender<(UpgradeFn, Context)>>,
-    rx: mpsc::UnboundedReceiver<(UpgradeFn, Context)>,
-    upgrade: Option<(UpgradeFn, Context)>,
+    rx: upgrade::Receiver,
 }
 
 impl Service for AppService {
@@ -67,43 +60,28 @@ impl Service for AppService {
         AppServiceFuture {
             in_flight: in_flight,
             context: Some(cx),
-            tx: self.tx.as_ref().unwrap().clone(),
+            tx: self.rx.sender(),
         }
     }
 }
 
-impl ServiceExt<transport::Io> for AppService {
+impl ServiceExt<Io> for AppService {
     type Upgrade = Box<Future<Item = (), Error = ()> + Send>;
     type UpgradeError = ::failure::Error;
 
     fn poll_ready_upgrade(&mut self) -> Poll<(), Self::UpgradeError> {
-        let _ = self.tx.take();
-
-        match try_ready!(self.rx.poll().map_err(|_| format_err!("during rx.poll()"))) {
-            Some(upgrade) => {
-                self.upgrade = Some(upgrade);
-                Ok(().into())
-            }
-            None => Err(format_err!("rx is empty")),
-        }
+        self.rx.poll_ready()
     }
 
-    fn upgrade(mut self, io: transport::Io, read_buf: Bytes) -> Self::Upgrade {
-        trace!("AppService::upgrade");
-
-        debug_assert!(self.upgrade.is_some());
-        let (mut upgrade, cx) = self.upgrade.take().unwrap();
-
-        let mut upgraded = upgrade.upgrade(io, read_buf, &cx);
-
-        Box::new(poll_fn(move || cx.set(|| upgraded.poll())))
+    fn upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
+        self.rx.upgrade(io, read_buf)
     }
 }
 
 pub struct AppServiceFuture {
     in_flight: Box<Future<Item = Output, Error = Error> + Send>,
     context: Option<Context>,
-    tx: mpsc::UnboundedSender<(UpgradeFn, Context)>,
+    tx: upgrade::Sender,
 }
 
 impl fmt::Debug for AppServiceFuture {
@@ -135,7 +113,7 @@ impl Future for AppServiceFuture {
                     let cx = self.context
                         .take()
                         .expect("AppServiceFuture has already resolved/rejected");
-                    let _ = self.tx.unbounded_send((upgrade, cx));
+                    self.tx.send((upgrade, cx));
                 }
                 Ok(Async::Ready(response))
             }

@@ -16,7 +16,7 @@ pub trait ServiceExt<T>: Service + Sized {
 
     fn poll_ready_upgrade(&mut self) -> Poll<(), Self::UpgradeError>;
 
-    fn upgrade(self, io: T, read_buf: Bytes) -> Self::Upgrade;
+    fn upgrade(self, io: T, read_buf: Bytes) -> Result<Self::Upgrade, (T, Bytes)>;
 }
 
 pub fn serve<S, I>(new_service: S, incoming: I) -> Result<(), Error>
@@ -56,6 +56,7 @@ where
     S: Service<ReqBody = Body, ResBody = Body> + ServiceExt<I>,
 {
     Http(conn::Connection<I, S>),
+    Shutdown(I),
     Upgrading(Parts<I, S>),
     Upgrade(S::Upgrade),
     Done,
@@ -70,6 +71,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Connection::Http(ref conn) => f.debug_tuple("Http").field(conn).finish(),
+            Connection::Shutdown(ref io) => f.debug_tuple("Shutdown").field(io).finish(),
             Connection::Upgrading(ref parts) => f.debug_tuple("Upgrading").field(parts).finish(),
             Connection::Upgrade(ref fut) => f.debug_tuple("Upgrade").field(fut).finish(),
             Connection::Done => f.debug_tuple("Done").finish(),
@@ -110,6 +112,7 @@ where
         loop {
             match *self {
                 Http(ref mut conn) => try_ready!(conn.poll_without_shutdown()),
+                Shutdown(ref mut io) => try_ready!(io.shutdown().map_err(Into::<Error>::into)),
                 Upgrading(ref mut parts) => try_ready!(
                     parts
                         .service
@@ -145,9 +148,12 @@ where
                         read_buf,
                         ..
                     } = parts;
-                    *self = Upgrade(service.upgrade(io, read_buf));
+                    match service.upgrade(io, read_buf) {
+                        Ok(fut) => *self = Upgrade(fut),
+                        Err((io, _)) => *self = Shutdown(io),
+                    }
                 }
-                Upgrade(..) => return Ok(().into()),
+                Shutdown(..) | Upgrade(..) => return Ok(().into()),
                 Done => unreachable!(),
             }
         }

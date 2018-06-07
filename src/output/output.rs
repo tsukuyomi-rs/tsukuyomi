@@ -2,7 +2,7 @@ use http::Response;
 use hyper::body::Body;
 use std::fmt;
 
-use upgrade::UpgradeFn;
+use upgrade::service::UpgradeFn;
 
 use super::body::ResponseBody;
 
