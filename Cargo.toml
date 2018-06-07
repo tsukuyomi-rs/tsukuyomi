@@ -15,6 +15,8 @@ futures = "0.1"
 failure = { version = "0.1", features = ["derive"] }
 log = "*"
 scoped-tls = "*"
+rustls = { version = "0.11", optional = true }
+tokio-rustls = { version = "0.4", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 tokio-uds = "0.2"
@@ -22,3 +24,7 @@ tokio-uds = "0.2"
 [dev-dependencies]
 pretty_env_logger = "*"
 tokio-io = "*"
+
+[features]
+default = ["tls"]
+tls = ["rustls", "tokio-rustls"]

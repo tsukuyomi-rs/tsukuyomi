@@ -2,9 +2,9 @@ pub(crate) mod service;
 
 use failure::Error;
 use std::net::SocketAddr;
-use std::sync::Arc;
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use router::{self, Route, Router};
 use {rt, transport};

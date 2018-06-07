@@ -23,22 +23,27 @@ pub fn serve<S, I>(new_service: S, incoming: I) -> Result<(), Error>
 where
     S: NewService<ReqBody = Body, ResBody = Body> + Send + Sync + 'static,
     S::Future: Send,
-    S::Service: ServiceExt<I::Item> + Send,
+    S::Service: ServiceExt<<I::Item as Future>::Item> + Send,
     <S::Service as Service>::Future: Send,
-    <S::Service as ServiceExt<I::Item>>::Upgrade: Send,
+    <S::Service as ServiceExt<<I::Item as Future>::Item>>::Upgrade: Send,
     I: Stream + Send + 'static,
-    I::Item: AsyncRead + AsyncWrite + Send + 'static,
+    I::Item: Future + Send + 'static,
+    <I::Item as Future>::Item: AsyncRead + AsyncWrite + Send + 'static,
 {
     let protocol = Arc::new(Http::new());
+    let new_service = Arc::new(new_service);
 
-    let server = incoming.map_err(|_| ()).for_each(move |stream| {
+    let server = incoming.map_err(|_| ()).for_each(move |handshake| {
         let protocol = protocol.clone();
-        new_service
-            .new_service()
-            .map_err(|_e| ())
-            .and_then(move |service| {
-                tokio::spawn(Connection::Http(protocol.serve_connection(stream, service)))
-            })
+        let new_service = new_service.clone();
+        handshake.map_err(|_| ()).and_then(move |stream| {
+            new_service
+                .new_service()
+                .map_err(|_e| ())
+                .and_then(move |service| {
+                    tokio::spawn(Connection::Http(protocol.serve_connection(stream, service)))
+                })
+        })
     });
 
     tokio::run(server);

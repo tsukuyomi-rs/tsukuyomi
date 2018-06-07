@@ -15,6 +15,10 @@ extern crate tokio_tcp;
 extern crate tokio_uds;
 #[macro_use]
 extern crate scoped_tls;
+#[cfg(feature = "tls")]
+extern crate rustls;
+#[cfg(feature = "tls")]
+extern crate tokio_rustls;
 
 pub mod app;
 pub mod error;
