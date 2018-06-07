@@ -1,57 +1,38 @@
 pub(crate) mod service;
 
 use failure::Error;
+use std::mem;
 use std::net::SocketAddr;
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use router::{self, Route, Router};
-use {rt, transport};
+use rt;
+#[cfg(feature = "tls")]
+use transport::TlsConfig;
+use transport::{self, Incoming, TransportConfig};
 
 use self::service::NewAppService;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Debug)]
-pub enum TransportConfig {
-    Tcp {
-        addr: SocketAddr,
-    },
-    #[cfg(unix)]
-    Uds {
-        path: PathBuf,
-    },
-}
-
-impl Default for TransportConfig {
-    fn default() -> Self {
-        TransportConfig::Tcp {
-            addr: ([127, 0, 0, 1], 4000).into(),
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct App {
     router: Arc<Router>,
-    transport: TransportConfig,
+    transport: transport::Builder,
 }
 
 impl App {
     pub fn builder() -> AppBuilder {
         AppBuilder {
             router: Router::builder(),
-            transport: None,
+            transport: Incoming::builder(),
         }
     }
 
-    pub fn serve(self) -> Result<()> {
-        let incoming = match self.transport {
-            TransportConfig::Tcp { ref addr } => transport::Incoming::tcp(addr)?,
-            #[cfg(unix)]
-            TransportConfig::Uds { ref path } => transport::Incoming::uds(path)?,
-        };
+    pub fn serve(mut self) -> Result<()> {
+        let incoming = self.transport.finish()?;
         rt::serve(NewAppService { app: self }, incoming)
     }
 }
@@ -59,7 +40,7 @@ impl App {
 #[derive(Debug)]
 pub struct AppBuilder {
     router: router::Builder,
-    transport: Option<TransportConfig>,
+    transport: transport::Builder,
 }
 
 impl AppBuilder {
@@ -72,7 +53,8 @@ impl AppBuilder {
     }
 
     pub fn bind_tcp(&mut self, addr: SocketAddr) -> &mut Self {
-        self.transport = Some(TransportConfig::Tcp { addr });
+        self.transport
+            .set_transport(TransportConfig::Tcp { addr: addr });
         self
     }
 
@@ -81,16 +63,22 @@ impl AppBuilder {
     where
         P: AsRef<Path>,
     {
-        self.transport = Some(TransportConfig::Uds {
+        self.transport.set_transport(TransportConfig::Uds {
             path: path.as_ref().to_owned(),
         });
+        self
+    }
+
+    #[cfg(feature = "tls")]
+    pub fn use_tls(&mut self, config: TlsConfig) -> &mut Self {
+        self.transport.set_tls(config);
         self
     }
 
     pub fn finish(&mut self) -> Result<App> {
         Ok(App {
             router: self.router.finish().map(Arc::new)?,
-            transport: self.transport.take().unwrap_or_default(),
+            transport: mem::replace(&mut self.transport, Default::default()),
         })
     }
 

@@ -53,7 +53,7 @@ impl Route {
         &self.method
     }
 
-    pub fn handle(
+    pub(crate) fn handle(
         &self,
         cx: &Context,
         rcx: &mut RouterContext,
