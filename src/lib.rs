@@ -14,12 +14,20 @@ extern crate tokio;
 extern crate scoped_tls;
 
 pub mod app;
-pub mod context;
 pub mod error;
 pub mod handler;
 pub mod input;
 pub mod output;
 pub mod router;
-pub mod rt;
 pub mod transport;
 pub mod upgrade;
+
+mod context;
+mod rt;
+
+pub use app::App;
+pub use context::Context;
+pub use error::Error;
+pub use output::{Output, Responder};
+
+pub type Result<T> = ::std::result::Result<T, error::Error>;

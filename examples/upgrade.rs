@@ -5,12 +5,10 @@ extern crate http;
 extern crate pretty_env_logger;
 extern crate tokio_io;
 
-use ganymede::app::App;
-use ganymede::context::Context;
-use ganymede::error::Error;
 use ganymede::router::{Route, RouterContext};
 use ganymede::transport::Io;
 use ganymede::upgrade::UpgradeContext;
+use ganymede::{App, Context, Error};
 
 use bytes::Bytes;
 use futures::prelude::*;
@@ -38,10 +36,9 @@ fn upgrade(_cx: &Context, _rcx: &mut RouterContext) -> Result<UpgradeContext, Er
     )
 }
 
-fn main() -> ganymede::rt::Result<()> {
+fn main() -> ganymede::app::Result<()> {
     pretty_env_logger::init();
     App::builder()
         .mount(vec![Route::new("/", Method::GET, upgrade)])
-        .finish()?
         .serve()
 }

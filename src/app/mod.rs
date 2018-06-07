@@ -1,5 +1,6 @@
-pub mod service;
+pub(crate) mod service;
 
+use failure::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -7,6 +8,8 @@ use router::{self, Route, Router};
 use {rt, transport};
 
 use self::service::NewAppService;
+
+pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct App {
@@ -21,7 +24,7 @@ impl App {
         }
     }
 
-    pub fn serve(self) -> rt::Result<()> {
+    pub fn serve(self) -> Result<()> {
         let incoming = transport::Incoming::new(&self.addr)?;
         rt::serve(self.lift_new_service(), incoming)
     }
@@ -45,10 +48,14 @@ impl AppBuilder {
         self
     }
 
-    pub fn finish(&mut self) -> rt::Result<App> {
+    pub fn finish(&mut self) -> Result<App> {
         Ok(App {
             router: self.router.finish().map(Arc::new)?,
             addr: ([127, 0, 0, 1], 4000).into(),
         })
+    }
+
+    pub fn serve(&mut self) -> Result<()> {
+        self.finish()?.serve()
     }
 }

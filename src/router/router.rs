@@ -1,3 +1,4 @@
+use failure;
 use futures::{future, Future};
 use http::StatusCode;
 use std::mem;
@@ -5,7 +6,6 @@ use std::mem;
 use context::Context;
 use error::Error;
 use output::Output;
-use rt;
 
 use super::context::RouterContext;
 use super::recognizer::{self, Recognizer};
@@ -71,7 +71,7 @@ impl Builder {
         self
     }
 
-    pub fn finish(&mut self) -> rt::Result<Router> {
+    pub fn finish(&mut self) -> Result<Router, failure::Error> {
         Ok(Router {
             recognizer: self.builder.finish()?,
             routes: mem::replace(&mut self.routes, vec![]),
