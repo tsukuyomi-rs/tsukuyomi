@@ -7,16 +7,11 @@ use error::Error;
 use handler::Handler;
 use output::Output;
 
-use super::context::RouterContext;
-
 pub struct Route {
     path: String,
     method: Method,
     handler: Box<
-        Fn(&Context, &mut RouterContext) -> Box<Future<Item = Output, Error = Error> + Send>
-            + Send
-            + Sync
-            + 'static,
+        Fn(&Context) -> Box<Future<Item = Output, Error = Error> + Send> + Send + Sync + 'static,
     >,
 }
 
@@ -38,9 +33,9 @@ impl Route {
         Route {
             path: path.to_owned(),
             method: method,
-            handler: Box::new(move |cx, rcx| {
+            handler: Box::new(move |cx| {
                 // TODO: specialization for Result<T, E>
-                Box::new(handler.handle(cx, rcx))
+                Box::new(handler.handle(cx))
             }),
         }
     }
@@ -53,11 +48,7 @@ impl Route {
         &self.method
     }
 
-    pub(crate) fn handle(
-        &self,
-        cx: &Context,
-        rcx: &mut RouterContext,
-    ) -> Box<Future<Item = Output, Error = Error> + Send> {
-        (*self.handler)(cx, rcx)
+    pub(crate) fn handle(&self, cx: &Context) -> Box<Future<Item = Output, Error = Error> + Send> {
+        (*self.handler)(cx)
     }
 }

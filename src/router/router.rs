@@ -7,9 +7,15 @@ use context::Context;
 use error::Error;
 use output::Output;
 
-use super::context::RouterContext;
 use super::recognizer::{self, Recognizer};
 use super::route::Route;
+
+#[derive(Debug)]
+pub(crate) enum RouterState {
+    Uninitialized,
+    Matched(usize, Vec<(usize, usize)>),
+    NotMatched, // TODO: more informational
+}
 
 #[derive(Debug)]
 pub struct Router {
@@ -25,29 +31,26 @@ impl Router {
         }
     }
 
-    pub fn handle(&self, cx: &Context) -> Box<Future<Item = Output, Error = Error> + Send> {
+    pub fn get_route(&self, i: usize) -> Option<&Route> {
+        self.routes.get(i)
+    }
+
+    pub fn handle(&self, cx: &mut Context) -> Box<Future<Item = Output, Error = Error> + Send> {
         // TODO: fallback HEAD
         // TODO: fallback OPTIONS
+        cx.route = RouterState::NotMatched;
+
         match self.recognizer.recognize(cx.request().uri().path()) {
-            Some((&i, params)) => {
-                let route = &self.routes[i];
-                if cx.request().method() != route.method() {
-                    return Box::new(future::err(Error::new(
-                        format_err!("Invalid Method"),
-                        StatusCode::METHOD_NOT_ALLOWED,
-                    )));
-                }
-                let mut rcx = RouterContext {
-                    cx: cx,
-                    route: route,
-                    params: params,
-                };
-                route.handle(cx, &mut rcx)
+            Some((&i, ..)) if cx.request().method() != self.routes[i].method() => {
+                Box::new(future::err(method_not_allowed()))
             }
-            None => Box::new(future::err(Error::new(
-                format_err!("No Route"),
-                StatusCode::NOT_FOUND,
-            ))),
+
+            Some((&i, params)) => {
+                cx.route = RouterState::Matched(i, params);
+                self.routes[i].handle(cx)
+            }
+
+            None => Box::new(future::err(not_found())),
         }
     }
 }
@@ -77,4 +80,15 @@ impl Builder {
             routes: mem::replace(&mut self.routes, vec![]),
         })
     }
+}
+
+fn method_not_allowed() -> Error {
+    Error::new(
+        format_err!("Invalid Method"),
+        StatusCode::METHOD_NOT_ALLOWED,
+    )
+}
+
+fn not_found() -> Error {
+    Error::new(format_err!("No Route"), StatusCode::NOT_FOUND)
 }
