@@ -14,6 +14,7 @@ pub struct Io(IoKind);
 #[derive(Debug)]
 enum IoKind {
     RawTcp(TcpStream),
+    #[cfg(unix)]
     RawUds(UnixStream),
 }
 
@@ -87,6 +88,7 @@ impl Incoming {
         )))
     }
 
+    #[cfg(unix)]
     pub fn uds<P>(path: P) -> io::Result<Incoming>
     where
         P: AsRef<Path>,
