@@ -3,10 +3,14 @@ use failure::Error;
 use futures::future::poll_fn;
 use futures::sync::mpsc;
 use futures::{Async, Future, Poll, Stream};
+use std::fmt;
 
 use context::Context;
 use transport::Io;
-use upgrade::UpgradeFn;
+
+use super::UpgradeHandler;
+
+// TODO: optimize
 
 pub fn new() -> Receiver {
     let (tx, rx) = mpsc::unbounded();
@@ -25,6 +29,11 @@ pub struct Receiver {
 }
 
 impl Receiver {
+    pub fn sender(&self) -> Sender {
+        let tx = self.tx.as_ref().unwrap().clone();
+        Sender { tx: tx }
+    }
+
     pub fn poll_ready(&mut self) -> Poll<(), Error> {
         self.tx.take().map(|tx| drop(tx));
 
@@ -50,11 +59,6 @@ impl Receiver {
             None => Err((io, read_buf)),
         }
     }
-
-    pub fn sender(&self) -> Sender {
-        let tx = self.tx.as_ref().unwrap().clone();
-        Sender { tx: tx }
-    }
 }
 
 #[derive(Debug)]
@@ -63,7 +67,48 @@ pub struct Sender {
 }
 
 impl Sender {
-    pub(crate) fn send(&self, val: (UpgradeFn, Context)) {
+    pub fn send(&self, val: (UpgradeFn, Context)) {
         let _ = self.tx.unbounded_send(val);
+    }
+}
+
+// ==== UpgradeFn
+
+pub struct UpgradeFn {
+    inner: Box<
+        FnMut(Io, Bytes, &Context) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static,
+    >,
+}
+
+impl fmt::Debug for UpgradeFn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("UpgradeFn").finish()
+    }
+}
+
+impl<H> From<H> for UpgradeFn
+where
+    H: UpgradeHandler + Send + 'static,
+    H::Future: Send + 'static,
+{
+    fn from(handler: H) -> Self {
+        let mut handler = Some(handler);
+        UpgradeFn {
+            inner: Box::new(move |io, read_buf, cx| {
+                let handler = handler.take().expect("cannot upgrade twice");
+                Box::new(handler.upgrade(io, read_buf, cx))
+            }),
+        }
+    }
+}
+
+impl UpgradeFn {
+    pub fn upgrade(
+        &mut self,
+        io: Io,
+        read_buf: Bytes,
+        cx: &Context,
+    ) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
+        (self.inner)(io, read_buf, cx)
     }
 }

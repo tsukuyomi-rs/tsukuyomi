@@ -1,15 +1,17 @@
+pub(crate) mod service;
+
 use bytes::Bytes;
 use futures::{Future, IntoFuture};
 use http::header::{HeaderName, HeaderValue};
 use http::{header, response, HttpTryFrom, Response, StatusCode};
-use std::{fmt, mem};
+use std::mem;
 
 use context::Context;
 use error::Error;
 use output::{Output, Responder, ResponseBody};
 use transport::Io;
 
-// TODO: validate
+use self::service::UpgradeFn;
 
 pub struct UpgradeContext {
     handler: UpgradeFn,
@@ -80,44 +82,5 @@ where
 
     fn upgrade(self, io: Io, read_buf: Bytes, cx: &Context) -> Self::Future {
         (self)(io, read_buf, cx).into_future()
-    }
-}
-
-pub(crate) struct UpgradeFn {
-    inner: Box<
-        FnMut(Io, Bytes, &Context) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static,
-    >,
-}
-
-impl fmt::Debug for UpgradeFn {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("UpgradeFn").finish()
-    }
-}
-
-impl<H> From<H> for UpgradeFn
-where
-    H: UpgradeHandler + Send + 'static,
-    H::Future: Send + 'static,
-{
-    fn from(handler: H) -> Self {
-        let mut handler = Some(handler);
-        UpgradeFn {
-            inner: Box::new(move |io, read_buf, cx| {
-                let handler = handler.take().expect("cannot upgrade twice");
-                Box::new(handler.upgrade(io, read_buf, cx))
-            }),
-        }
-    }
-}
-
-impl UpgradeFn {
-    pub fn upgrade(
-        &mut self,
-        io: Io,
-        read_buf: Bytes,
-        cx: &Context,
-    ) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
-        (self.inner)(io, read_buf, cx)
     }
 }

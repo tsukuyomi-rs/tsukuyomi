@@ -1,5 +1,3 @@
-mod upgrade;
-
 use bytes::Bytes;
 use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
@@ -16,6 +14,7 @@ use output::{Output, ResponseBody};
 use router::Router;
 use rt::ServiceExt;
 use transport::Io;
+use upgrade::service as upgrade;
 
 use super::App;
 
