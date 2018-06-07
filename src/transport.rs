@@ -241,6 +241,7 @@ impl Builder {
             TransportConfig::Tcp { addr } => {
                 IncomingKind::Tcp(TcpListener::bind(&addr)?.incoming())
             }
+            #[cfg(unix)]
             TransportConfig::Uds { path } => {
                 IncomingKind::Uds(UnixListener::bind(path)?.incoming())
             }
