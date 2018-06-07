@@ -74,7 +74,7 @@ impl ServiceExt<Io> for AppService {
         self.rx.poll_ready()
     }
 
-    fn upgrade(self, io: Io, read_buf: Bytes) -> Self::Upgrade {
+    fn upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
         self.rx.upgrade(io, read_buf)
     }
 }

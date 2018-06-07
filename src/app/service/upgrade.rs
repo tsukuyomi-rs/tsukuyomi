@@ -2,7 +2,7 @@ use bytes::Bytes;
 use failure::Error;
 use futures::future::poll_fn;
 use futures::sync::mpsc;
-use futures::{Future, Poll, Stream};
+use futures::{Async, Future, Poll, Stream};
 
 use context::Context;
 use transport::Io;
@@ -26,26 +26,29 @@ pub struct Receiver {
 
 impl Receiver {
     pub fn poll_ready(&mut self) -> Poll<(), Error> {
-        let _ = self.tx.take();
+        self.tx.take().map(|tx| drop(tx));
 
-        match try_ready!(self.rx.poll().map_err(|_| format_err!("during rx.poll()"))) {
-            Some(upgrade) => {
-                self.upgrade = Some(upgrade);
-                Ok(().into())
-            }
-            None => Err(format_err!("rx is empty")),
+        if let Some(upgrade) =
+            try_ready!(self.rx.poll().map_err(|_| format_err!("during rx.poll()")))
+        {
+            self.upgrade = Some(upgrade);
         }
+
+        Ok(Async::Ready(()))
     }
 
-    pub fn upgrade(mut self, io: Io, read_buf: Bytes) -> Box<Future<Item = (), Error = ()> + Send> {
-        trace!("AppService::upgrade");
-
-        debug_assert!(self.upgrade.is_some());
-        let (mut upgrade, cx) = self.upgrade.take().unwrap();
-
-        let mut upgraded = upgrade.upgrade(io, read_buf, &cx);
-
-        Box::new(poll_fn(move || cx.set(|| upgraded.poll())))
+    pub fn upgrade(
+        mut self,
+        io: Io,
+        read_buf: Bytes,
+    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, (Io, Bytes)> {
+        match self.upgrade.take() {
+            Some((mut upgrade, cx)) => {
+                let mut upgraded = upgrade.upgrade(io, read_buf, &cx);
+                Ok(Box::new(poll_fn(move || cx.set(|| upgraded.poll()))))
+            }
+            None => Err((io, read_buf)),
+        }
     }
 
     pub fn sender(&self) -> Sender {
