@@ -11,7 +11,7 @@ use context::Context;
 use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
-use router::Router;
+use router::{Router, RouterState};
 use rt::ServiceExt;
 use transport::Io;
 use upgrade::service as upgrade;
@@ -55,6 +55,8 @@ impl Service for AppService {
         let mut cx = Context {
             request: Request::from_parts(parts, ()),
             payload: RefCell::new(Some(RequestBody::from_hyp(payload))),
+            route: RouterState::Uninitialized,
+            router: self.router.clone(),
         };
         let in_flight = self.router.handle(&mut cx);
         AppServiceFuture {
