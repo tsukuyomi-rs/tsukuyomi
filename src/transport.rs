@@ -238,13 +238,9 @@ impl Builder {
     pub fn finish(&mut self) -> Result<Incoming, Error> {
         let builder = mem::replace(self, Default::default());
         let kind = match builder.config {
-            TransportConfig::Tcp { addr } => {
-                IncomingKind::Tcp(TcpListener::bind(&addr)?.incoming())
-            }
+            TransportConfig::Tcp { addr } => IncomingKind::Tcp(TcpListener::bind(&addr)?.incoming()),
             #[cfg(unix)]
-            TransportConfig::Uds { path } => {
-                IncomingKind::Uds(UnixListener::bind(path)?.incoming())
-            }
+            TransportConfig::Uds { path } => IncomingKind::Uds(UnixListener::bind(path)?.incoming()),
         };
         #[cfg(feature = "tls")]
         let tls = match builder.tls {
@@ -267,9 +263,7 @@ pub struct Incoming {
 
 impl fmt::Debug for Incoming {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Incoming")
-            .field("kind", &self.kind)
-            .finish()
+        f.debug_struct("Incoming").field("kind", &self.kind).finish()
     }
 }
 
@@ -314,29 +308,18 @@ impl Stream for Incoming {
 fn poll_raw(kind: &mut IncomingKind) -> Poll<Option<Handshake>, io::Error> {
     match *kind {
         IncomingKind::Tcp(ref mut i) => i.poll().map(|i| {
-            i.map(|stream| {
-                stream.map(|stream| {
-                    Handshake(HandshakeKind::Tcp(MaybeTlsHandshake::Raw(Some(stream))))
-                })
-            })
+            i.map(|stream| stream.map(|stream| Handshake(HandshakeKind::Tcp(MaybeTlsHandshake::Raw(Some(stream))))))
         }),
 
         #[cfg(unix)]
         IncomingKind::Uds(ref mut i) => i.poll().map(|i| {
-            i.map(|stream| {
-                stream.map(|stream| {
-                    Handshake(HandshakeKind::Uds(MaybeTlsHandshake::Raw(Some(stream))))
-                })
-            })
+            i.map(|stream| stream.map(|stream| Handshake(HandshakeKind::Uds(MaybeTlsHandshake::Raw(Some(stream))))))
         }),
     }
 }
 
 #[cfg(feature = "tls")]
-fn poll_tls(
-    kind: &mut IncomingKind,
-    config: &Arc<ServerConfig>,
-) -> Poll<Option<Handshake>, io::Error> {
+fn poll_tls(kind: &mut IncomingKind, config: &Arc<ServerConfig>) -> Poll<Option<Handshake>, io::Error> {
     let session = ServerSession::new(config);
     match *kind {
         IncomingKind::Tcp(ref mut i) => i.poll().map(|i| {
@@ -431,16 +414,14 @@ mod tls {
     fn load_certs(path: &PathBuf) -> Result<Vec<Certificate>, Error> {
         let certfile = fs::File::open(path)?;
         let mut reader = io::BufReader::new(certfile);
-        let certs =
-            pemfile::certs(&mut reader).map_err(|_| format_err!("failed to read certificates"))?;
+        let certs = pemfile::certs(&mut reader).map_err(|_| format_err!("failed to read certificates"))?;
         Ok(certs)
     }
 
     fn load_key(path: &PathBuf) -> Result<PrivateKey, Error> {
         let keyfile = fs::File::open(path)?;
         let mut reader = io::BufReader::new(keyfile);
-        let keys = pemfile::pkcs8_private_keys(&mut reader)
-            .map_err(|_| format_err!("failed to read private key"))?;
+        let keys = pemfile::pkcs8_private_keys(&mut reader).map_err(|_| format_err!("failed to read private key"))?;
         if keys.is_empty() {
             bail!("empty private key");
         }

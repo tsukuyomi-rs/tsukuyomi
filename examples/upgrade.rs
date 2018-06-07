@@ -15,11 +15,7 @@ use futures::stream;
 use http::Method;
 use tokio_io::codec::{Framed, FramedParts, LinesCodec};
 
-fn handler(
-    io: Io,
-    read_buf: Bytes,
-    _cx: &Context,
-) -> impl Future<Item = (), Error = ()> + Send + 'static {
+fn handler(io: Io, read_buf: Bytes, _cx: &Context) -> impl Future<Item = (), Error = ()> + Send + 'static {
     let parts = FramedParts {
         inner: io,
         readbuf: read_buf.into(),

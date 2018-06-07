@@ -10,9 +10,7 @@ use output::Output;
 pub struct Route {
     path: String,
     method: Method,
-    handler: Box<
-        Fn(&Context) -> Box<Future<Item = Output, Error = Error> + Send> + Send + Sync + 'static,
-    >,
+    handler: Box<Fn(&Context) -> Box<Future<Item = Output, Error = Error> + Send> + Send + Sync + 'static>,
 }
 
 impl fmt::Debug for Route {

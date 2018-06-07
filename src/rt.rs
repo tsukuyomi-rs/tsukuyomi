@@ -40,9 +40,7 @@ where
             new_service
                 .new_service()
                 .map_err(|_e| ())
-                .and_then(move |service| {
-                    tokio::spawn(Connection::Http(protocol.serve_connection(stream, service)))
-                })
+                .and_then(move |service| tokio::spawn(Connection::Http(protocol.serve_connection(stream, service))))
         })
     });
 
@@ -113,15 +111,8 @@ where
             match *self {
                 Http(ref mut conn) => try_ready!(conn.poll_without_shutdown()),
                 Shutdown(ref mut io) => try_ready!(io.shutdown().map_err(Into::<Error>::into)),
-                Upgrading(ref mut parts) => try_ready!(
-                    parts
-                        .service
-                        .poll_ready_upgrade()
-                        .map_err(Into::<Error>::into)
-                ),
-                Upgrade(ref mut fut) => {
-                    try_ready!(fut.poll().map_err(|_| format_err!("during upgrade")))
-                }
+                Upgrading(ref mut parts) => try_ready!(parts.service.poll_ready_upgrade().map_err(Into::<Error>::into)),
+                Upgrade(ref mut fut) => try_ready!(fut.poll().map_err(|_| format_err!("during upgrade"))),
                 Done => panic!("Connection has already been resolved or rejected"),
             }
 
@@ -143,10 +134,7 @@ where
                 Upgrading(parts) => {
                     trace!("construct a future and transit to Upgrade");
                     let Parts {
-                        service,
-                        io,
-                        read_buf,
-                        ..
+                        service, io, read_buf, ..
                     } = parts;
                     match service.upgrade(io, read_buf) {
                         Ok(fut) => *self = Upgrade(fut),

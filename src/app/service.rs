@@ -120,8 +120,7 @@ impl Future for AppServiceFuture {
                 Ok(Async::Ready(response))
             }
             Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(e) => e.into_response()
-                .map(|res| res.map(ResponseBody::into_hyp).into()),
+            Err(e) => e.into_response().map(|res| res.map(ResponseBody::into_hyp).into()),
         }
     }
 }

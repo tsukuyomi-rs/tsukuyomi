@@ -83,10 +83,7 @@ impl Builder {
 }
 
 fn method_not_allowed() -> Error {
-    Error::new(
-        format_err!("Invalid Method"),
-        StatusCode::METHOD_NOT_ALLOWED,
-    )
+    Error::new(format_err!("Invalid Method"), StatusCode::METHOD_NOT_ALLOWED)
 }
 
 fn not_found() -> Error {

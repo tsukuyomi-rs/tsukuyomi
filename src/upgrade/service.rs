@@ -37,9 +37,7 @@ impl Receiver {
     pub fn poll_ready(&mut self) -> Poll<(), Error> {
         self.tx.take().map(|tx| drop(tx));
 
-        if let Some(upgrade) =
-            try_ready!(self.rx.poll().map_err(|_| format_err!("during rx.poll()")))
-        {
+        if let Some(upgrade) = try_ready!(self.rx.poll().map_err(|_| format_err!("during rx.poll()"))) {
             self.upgrade = Some(upgrade);
         }
 
@@ -75,9 +73,7 @@ impl Sender {
 // ==== UpgradeFn
 
 pub struct UpgradeFn {
-    inner: Box<
-        FnMut(Io, Bytes, &Context) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static,
-    >,
+    inner: Box<FnMut(Io, Bytes, &Context) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
 }
 
 impl fmt::Debug for UpgradeFn {

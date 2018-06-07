@@ -53,8 +53,7 @@ impl AppBuilder {
     }
 
     pub fn bind_tcp(&mut self, addr: SocketAddr) -> &mut Self {
-        self.transport
-            .set_transport(TransportConfig::Tcp { addr: addr });
+        self.transport.set_transport(TransportConfig::Tcp { addr: addr });
         self
     }
 
