@@ -1,14 +1,15 @@
 use failure;
+use fnv::FnvHashMap;
 use futures::{future, Future};
-use http::StatusCode;
+use http::{Method, StatusCode};
 use std::mem;
 
 use context::Context;
 use error::Error;
 use output::Output;
 
-use super::recognizer::{self, Recognizer};
-use super::route::Route;
+use super::recognizer::Recognizer;
+use super::route::{normalize_uri, Route};
 
 #[derive(Debug)]
 pub(crate) enum RouterState {
@@ -19,15 +20,15 @@ pub(crate) enum RouterState {
 
 #[derive(Debug)]
 pub struct Router {
-    recognizer: Recognizer<usize>,
+    recognizer: Recognizer<FnvHashMap<Method, usize>>,
     routes: Vec<Route>,
 }
 
 impl Router {
     pub fn builder() -> Builder {
         Builder {
-            builder: Recognizer::builder(),
             routes: vec![],
+            result: Ok(()),
         }
     }
 
@@ -41,15 +42,13 @@ impl Router {
         cx.route = RouterState::NotMatched;
 
         match self.recognizer.recognize(cx.request().uri().path()) {
-            Some((&i, ..)) if cx.request().method() != self.routes[i].method() => {
-                Box::new(future::err(method_not_allowed()))
-            }
-
-            Some((&i, params)) => {
-                cx.route = RouterState::Matched(i, params);
-                self.routes[i].handle(cx)
-            }
-
+            Some((matched, params)) => match matched.get(cx.request.method()) {
+                Some(&i) => {
+                    cx.route = RouterState::Matched(i, params);
+                    self.routes[i].handle(cx)
+                }
+                None => Box::new(future::err(method_not_allowed())),
+            },
             None => Box::new(future::err(not_found())),
         }
     }
@@ -57,27 +56,48 @@ impl Router {
 
 #[derive(Debug)]
 pub struct Builder {
-    builder: recognizer::Builder<usize>,
     routes: Vec<Route>,
+    result: Result<(), failure::Error>,
 }
 
 impl Builder {
-    pub fn mount<I>(&mut self, routes: I) -> &mut Builder
-    where
-        I: IntoIterator<Item = Route>,
-    {
-        let orig_routes_len = self.routes.len();
-        for (i, route) in routes.into_iter().enumerate() {
-            self.builder.insert(route.path(), i + orig_routes_len);
-            self.routes.push(route);
+    pub fn add_route(&mut self, base: &str, route: Route) -> &mut Self {
+        if self.result.is_ok() {
+            self.result = self.add_route_inner(base, route);
         }
         self
     }
 
+    fn add_route_inner(&mut self, base: &str, mut route: Route) -> Result<(), failure::Error> {
+        route.base = normalize_uri(base)?;
+        route.path = normalize_uri(&route.path)?;
+        self.routes.push(route);
+        Ok(())
+    }
+
     pub fn finish(&mut self) -> Result<Router, failure::Error> {
+        let Builder { routes, result } = mem::replace(self, Router::builder());
+        result?;
+
+        let mut res: FnvHashMap<String, FnvHashMap<Method, usize>> = FnvHashMap::with_hasher(Default::default());
+        for (i, route) in routes.iter().enumerate() {
+            let full_path = route.full_path();
+            res.entry(full_path)
+                .or_insert_with(Default::default)
+                .insert(route.method().clone(), i);
+        }
+
+        let recognizer = {
+            let mut builder = Recognizer::builder();
+            for (path, methods) in res {
+                builder.insert(&path, methods);
+            }
+            builder.finish()?
+        };
+
         Ok(Router {
-            recognizer: self.builder.finish()?,
-            routes: mem::replace(&mut self.routes, vec![]),
+            recognizer: recognizer,
+            routes: routes,
         })
     }
 }
