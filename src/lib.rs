@@ -10,6 +10,9 @@ extern crate hyper;
 #[macro_use]
 extern crate log;
 extern crate tokio;
+extern crate tokio_tcp;
+#[cfg(unix)]
+extern crate tokio_uds;
 #[macro_use]
 extern crate scoped_tls;
 

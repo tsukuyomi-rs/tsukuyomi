@@ -10,10 +10,14 @@ http = "0.1.5"
 mime = "0.3"
 bytes = "0.4"
 tokio = "0.1"
+tokio-tcp = "0.1"
 futures = "0.1"
 failure = { version = "0.1", features = ["derive"] }
 log = "*"
 scoped-tls = "*"
+
+[target.'cfg(unix)'.dependencies]
+tokio-uds = "0.2"
 
 [dev-dependencies]
 pretty_env_logger = "*"
