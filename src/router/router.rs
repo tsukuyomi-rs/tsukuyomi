@@ -39,12 +39,12 @@ impl Router {
     pub fn handle(&self, cx: &mut Context) -> Box<Future<Item = Output, Error = Error> + Send> {
         // TODO: fallback HEAD
         // TODO: fallback OPTIONS
-        cx.route = RouterState::NotMatched;
+        cx.set_route(RouterState::NotMatched);
 
         match self.recognizer.recognize(cx.request().uri().path()) {
-            Some((matched, params)) => match matched.get(cx.request.method()) {
+            Some((matched, params)) => match matched.get(cx.request().method()) {
                 Some(&i) => {
-                    cx.route = RouterState::Matched(i, params);
+                    cx.set_route(RouterState::Matched(i, params));
                     self.routes[i].handle(cx)
                 }
                 None => Box::new(future::err(method_not_allowed())),

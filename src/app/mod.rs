@@ -2,17 +2,33 @@ pub mod service;
 
 use failure::Error;
 use std::sync::Arc;
+use std::{fmt, mem};
+
+#[cfg(feature = "session")]
+use cookie::Key;
 
 use router::{self, Route, Router};
 
-#[derive(Debug)]
 pub struct AppState {
     router: Router,
+    #[cfg(feature = "session")]
+    secret_key: Key,
+}
+
+impl fmt::Debug for AppState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("AppState").field("router", &self.router).finish()
+    }
 }
 
 impl AppState {
     pub fn router(&self) -> &Router {
         &self.router
+    }
+
+    #[cfg(feature = "session")]
+    pub fn secret_key(&self) -> &Key {
+        &self.secret_key
     }
 }
 
@@ -25,13 +41,26 @@ impl App {
     pub fn builder() -> AppBuilder {
         AppBuilder {
             router: Router::builder(),
+            #[cfg(feature = "session")]
+            secret_key: None,
         }
+    }
+
+    pub fn state(&self) -> &AppState {
+        &*self.state
     }
 }
 
-#[derive(Debug)]
 pub struct AppBuilder {
     router: router::Builder,
+    #[cfg(feature = "session")]
+    secret_key: Option<Key>,
+}
+
+impl fmt::Debug for AppBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("AppBuilder").field("router", &self.router).finish()
+    }
 }
 
 impl AppBuilder {
@@ -45,9 +74,22 @@ impl AppBuilder {
         self
     }
 
+    #[cfg(feature = "session")]
+    pub fn secret_key<K>(&mut self, master_key: K) -> &mut Self
+    where
+        K: AsRef<[u8]>,
+    {
+        self.secret_key = Some(Key::from_master(master_key.as_ref()));
+        self
+    }
+
     pub fn finish(&mut self) -> Result<App, Error> {
+        let mut builder = mem::replace(self, App::builder());
+
         let state = AppState {
-            router: self.router.finish()?,
+            router: builder.router.finish()?,
+            #[cfg(feature = "session")]
+            secret_key: builder.secret_key.unwrap_or_else(Key::generate),
         };
 
         Ok(App { state: Arc::new(state) })

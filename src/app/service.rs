@@ -3,14 +3,13 @@ use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
-use std::fmt;
 use std::sync::Arc;
+use std::{fmt, mem};
 
 use context::Context;
 use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
-use router::RouterState;
 use server::{Io, ServiceUpgradeExt};
 use upgrade::service as upgrade;
 
@@ -51,11 +50,7 @@ impl Service for AppService {
     type Future = AppServiceFuture;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        let mut cx = Context {
-            request: request.map(RequestBody::from_hyp),
-            route: RouterState::Uninitialized,
-            state: self.state.clone(),
-        };
+        let mut cx = Context::new(request.map(RequestBody::from_hyp), self.state.clone());
         let in_flight = self.state.router().handle(&mut cx);
         AppServiceFuture {
             in_flight: in_flight,
@@ -106,18 +101,23 @@ impl Future for AppServiceFuture {
                 .expect("AppServiceFuture has already resolved/rejected");
             cx.set(|| in_flight.poll())
         } {
+            Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(out)) => {
-                let (response, handler) = out.deconstruct();
+                let (mut response, handler) = out.deconstruct();
+                let cx = self.context
+                    .take()
+                    .expect("AppServiceFuture has already resolved/rejected");
+
                 if let Some(handler) = handler {
                     debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
-                    let cx = self.context
-                        .take()
-                        .expect("AppServiceFuture has already resolved/rejected");
-                    self.tx.send(handler, cx.request.map(|bd| drop(bd)));
+                    self.tx.send(handler, cx.request.map(mem::drop));
                 }
+
+                #[cfg(feature = "session")]
+                cx.cookies.append_to(response.headers_mut());
+
                 Ok(Async::Ready(response))
             }
-            Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(e) => e.into_response().map(|res| res.map(ResponseBody::into_hyp).into()),
         }
     }

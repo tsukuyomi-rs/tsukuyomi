@@ -15,6 +15,8 @@ extern crate tokio_tcp;
 extern crate tokio_uds;
 #[macro_use]
 extern crate scoped_tls;
+#[cfg(feature = "session")]
+extern crate cookie;
 extern crate fnv;
 extern crate hyperx;
 #[cfg(feature = "tls")]
@@ -32,6 +34,8 @@ pub mod upgrade;
 
 mod handler;
 mod router;
+#[cfg(feature = "session")]
+mod session;
 
 #[doc(inline)]
 pub use app::App;
