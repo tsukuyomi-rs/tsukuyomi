@@ -2,7 +2,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::mem;
 use std::ops::Deref;
 
@@ -10,36 +10,58 @@ use error::CritError;
 
 // ==== RequestBody ====
 
+/// A type representing a message body in the incoming HTTP request.
+///
+/// NOTE: This type has the internal mutability in order to extract the instance of raw message body
+/// without a mutable borrow.
 #[derive(Debug)]
-pub struct RequestBody(RefCell<Option<Body>>);
+pub struct RequestBody(UnsafeCell<Option<Body>>);
 
 impl RequestBody {
     pub(crate) fn from_hyp(body: Body) -> RequestBody {
-        RequestBody(RefCell::new(Some(body)))
+        RequestBody(UnsafeCell::new(Some(body)))
     }
 
-    pub(crate) fn into_hyp(self) -> Body {
-        self.0.borrow_mut().take().unwrap_or_default()
+    fn take_body(&self) -> Option<Body> {
+        // safety: this type does not shared between threads and the following
+        // mutable reference is used only this block.
+        unsafe {
+            let body = &mut *self.0.get();
+            body.take()
+        }
     }
 
+    /// Takes away the instance of raw message body if exists.
+    pub fn forget(&self) {
+        self.take_body().map(mem::drop);
+    }
+
+    /// Returns 'true' if the instance of raw message body has already taken away.
     pub fn is_gone(&self) -> bool {
-        self.0.borrow().is_none()
+        // safety: this type does not shared between threads and the following
+        // shared reference is used only this block.
+        unsafe {
+            let body = &*self.0.get();
+            body.is_none()
+        }
     }
 
+    /// Creates an instance of "Payload" from the raw message body.
     pub fn payload(&self) -> Option<Payload> {
-        self.0.borrow_mut().take().map(Payload)
+        self.take_body().map(Payload)
     }
 
+    /// Creates an instance of "ReadAll" from the raw message body.
     pub fn read_all(&self) -> ReadAll {
-        let body = self.0.borrow_mut().take();
         ReadAll {
-            state: ReadAllState::Init(body),
+            state: ReadAllState::Init(self.take_body()),
         }
     }
 }
 
 // ==== Payload ====
 
+/// Raw streaming body of incoming HTTP requests.
 #[derive(Debug)]
 #[must_use = "futures do nothing unless polled"]
 pub struct Payload(Body);
@@ -100,12 +122,24 @@ impl Stream for Payload {
     }
 }
 
+/// A buffer of bytes which will be returned from `Payload`.
 #[derive(Debug)]
-pub struct Chunk(body::Chunk);
+pub struct Chunk(pub(crate) body::Chunk);
 
 impl Chunk {
     fn from_hyp(chunk: body::Chunk) -> Chunk {
         Chunk(chunk)
+    }
+
+    /// Converts itself into a `Byte`.
+    pub fn into_bytes(self) -> Bytes {
+        self.0.into_bytes()
+    }
+}
+
+impl Into<Bytes> for Chunk {
+    fn into(self) -> Bytes {
+        self.into_bytes()
     }
 }
 
