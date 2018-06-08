@@ -106,13 +106,13 @@ impl Future for AppServiceFuture {
             cx.set(|| in_flight.poll())
         } {
             Ok(Async::Ready(out)) => {
-                let (response, upgrade) = out.deconstruct();
-                if let Some(upgrade) = upgrade {
+                let (response, handler) = out.deconstruct();
+                if let Some(handler) = handler {
                     debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
                     let cx = self.context
                         .take()
                         .expect("AppServiceFuture has already resolved/rejected");
-                    self.tx.send((upgrade, cx));
+                    self.tx.send(handler, cx.request.map(|bd| drop(bd)));
                 }
                 Ok(Async::Ready(response))
             }
