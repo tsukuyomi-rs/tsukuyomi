@@ -10,16 +10,16 @@ use context::Context;
 use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
-use router::{Router, RouterState};
+use router::RouterState;
 use server::{Io, ServiceUpgradeExt};
 use upgrade::service as upgrade;
 
-use super::App;
+use super::{App, AppState};
 
 impl App {
     pub fn new_service(&self) -> AppService {
         AppService {
-            router: self.router.clone(),
+            state: self.state.clone(),
             rx: upgrade::new(),
         }
     }
@@ -40,7 +40,7 @@ impl NewService for App {
 
 #[derive(Debug)]
 pub struct AppService {
-    router: Arc<Router>,
+    state: Arc<AppState>,
     rx: upgrade::Receiver,
 }
 
@@ -54,9 +54,9 @@ impl Service for AppService {
         let mut cx = Context {
             request: request.map(RequestBody::from_hyp),
             route: RouterState::Uninitialized,
-            router: self.router.clone(),
+            state: self.state.clone(),
         };
-        let in_flight = self.router.handle(&mut cx);
+        let in_flight = self.state.router().handle(&mut cx);
         AppServiceFuture {
             in_flight: in_flight,
             context: Some(cx),

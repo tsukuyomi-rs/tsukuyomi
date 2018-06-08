@@ -6,8 +6,19 @@ use std::sync::Arc;
 use router::{self, Route, Router};
 
 #[derive(Debug)]
+pub struct AppState {
+    router: Router,
+}
+
+impl AppState {
+    pub fn router(&self) -> &Router {
+        &self.router
+    }
+}
+
+#[derive(Debug)]
 pub struct App {
-    router: Arc<Router>,
+    state: Arc<AppState>,
 }
 
 impl App {
@@ -35,8 +46,10 @@ impl AppBuilder {
     }
 
     pub fn finish(&mut self) -> Result<App, Error> {
-        Ok(App {
-            router: self.router.finish().map(Arc::new)?,
-        })
+        let state = AppState {
+            router: self.router.finish()?,
+        };
+
+        Ok(App { state: Arc::new(state) })
     }
 }
