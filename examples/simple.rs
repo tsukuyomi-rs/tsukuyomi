@@ -11,7 +11,11 @@ fn welcome(_cx: &Context) -> Result<&'static str, Error> {
 
 fn main() -> ganymede::app::Result<()> {
     pretty_env_logger::init();
-    App::builder()
+
+    let app = App::builder()
         .mount("/", vec![Route::new("/", Method::GET, welcome)])
-        .serve()
+        .finish()?;
+
+    ganymede::server::run(app)?;
+    Ok(())
 }

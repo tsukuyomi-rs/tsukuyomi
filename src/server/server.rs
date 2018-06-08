@@ -13,6 +13,21 @@ use super::transport::{Incoming, Io};
 // TODO: impl Future
 // TODO: configure for transports
 
+pub fn run<S>(new_service: S) -> Result<(), ::failure::Error>
+where
+    S: NewService<ReqBody = Body, ResBody = Body> + Send + Sync + 'static,
+    S::Future: Send,
+    S::Service: ServiceUpgradeExt<Io> + Send,
+    <S::Service as Service>::Future: Send,
+    <S::Service as ServiceUpgradeExt<Io>>::Upgrade: Send,
+{
+    let server = Server::new(new_service)?;
+    ::tokio::run(server.serve());
+    Ok(())
+}
+
+// ==== Server ====
+
 #[derive(Debug)]
 pub struct Server<S> {
     incoming: Incoming,

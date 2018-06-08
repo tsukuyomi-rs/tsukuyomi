@@ -2,12 +2,8 @@ pub(crate) mod service;
 
 use failure::Error;
 use std::sync::Arc;
-use tokio;
 
 use router::{self, Route, Router};
-use server::Server;
-
-use self::service::NewAppService;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
@@ -21,12 +17,6 @@ impl App {
         AppBuilder {
             router: Router::builder(),
         }
-    }
-
-    pub fn serve(self) -> Result<()> {
-        let new_service = NewAppService { app: self };
-        tokio::run(Server::new(new_service)?.serve());
-        Ok(())
     }
 }
 
@@ -50,9 +40,5 @@ impl AppBuilder {
         Ok(App {
             router: self.router.finish().map(Arc::new)?,
         })
-    }
-
-    pub fn serve(&mut self) -> Result<()> {
-        self.finish()?.serve()
     }
 }
