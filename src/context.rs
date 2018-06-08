@@ -1,5 +1,5 @@
 use http::Request;
-use std::cell::RefCell;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use input::RequestBody;
@@ -9,8 +9,7 @@ scoped_thread_local!(static CONTEXT: Context);
 
 #[derive(Debug)]
 pub struct Context {
-    pub(crate) request: Request<()>,
-    pub(crate) payload: RefCell<Option<RequestBody>>,
+    pub(crate) request: Request<RequestBody>,
     pub(crate) route: RouterState,
     pub(crate) router: Arc<Router>,
 }
@@ -24,12 +23,8 @@ impl Context {
         CONTEXT.with(f)
     }
 
-    pub fn request(&self) -> &Request<()> {
+    pub fn request(&self) -> &Request<RequestBody> {
         &self.request
-    }
-
-    pub fn body(&self) -> Option<RequestBody> {
-        self.payload.borrow_mut().take()
     }
 
     pub fn route(&self) -> Option<&Route> {
@@ -47,6 +42,14 @@ impl Context {
             }),
             _ => None,
         }
+    }
+}
+
+impl Deref for Context {
+    type Target = Request<RequestBody>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.request
     }
 }
 

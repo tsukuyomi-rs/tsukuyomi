@@ -3,7 +3,6 @@ use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
-use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
 
@@ -51,10 +50,8 @@ impl Service for AppService {
     type Future = AppServiceFuture;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        let (parts, payload) = request.into_parts();
         let mut cx = Context {
-            request: Request::from_parts(parts, ()),
-            payload: RefCell::new(Some(RequestBody::from_hyp(payload))),
+            request: request.map(RequestBody::from_hyp),
             route: RouterState::Uninitialized,
             router: self.router.clone(),
         };
