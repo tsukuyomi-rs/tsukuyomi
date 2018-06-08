@@ -39,6 +39,6 @@ fn handshake(_cx: &Context) -> Result<UpgradeContext, Error> {
 fn main() -> ganymede::app::Result<()> {
     pretty_env_logger::init();
     App::builder()
-        .mount(vec![Route::new("/", Method::GET, handshake)])
+        .mount("/", vec![Route::new("/", Method::GET, handshake)])
         .serve()
 }

@@ -44,11 +44,13 @@ pub struct AppBuilder {
 }
 
 impl AppBuilder {
-    pub fn mount<I>(&mut self, routes: I) -> &mut Self
+    pub fn mount<I>(&mut self, base: &str, routes: I) -> &mut Self
     where
         I: IntoIterator<Item = Route>,
     {
-        self.router.mount(routes);
+        for route in routes {
+            self.router.add_route(base, route);
+        }
         self
     }
 
