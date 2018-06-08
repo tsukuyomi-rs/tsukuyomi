@@ -1,14 +1,13 @@
 use bytes::Bytes;
 use failure::Error;
-use futures::future::poll_fn;
 use futures::sync::mpsc;
 use futures::{Async, Future, Poll, Stream};
+use http::Request;
 use std::fmt;
 
-use context::Context;
 use transport::Io;
 
-use super::UpgradeHandler;
+use super::{UpgradeContext, UpgradeHandler};
 
 // TODO: optimize
 
@@ -23,9 +22,9 @@ pub fn new() -> Receiver {
 
 #[derive(Debug)]
 pub struct Receiver {
-    tx: Option<mpsc::UnboundedSender<(UpgradeFn, Context)>>,
-    rx: mpsc::UnboundedReceiver<(UpgradeFn, Context)>,
-    upgrade: Option<(UpgradeFn, Context)>,
+    tx: Option<mpsc::UnboundedSender<(UpgradeFn, Request<()>)>>,
+    rx: mpsc::UnboundedReceiver<(UpgradeFn, Request<()>)>,
+    upgrade: Option<(UpgradeFn, Request<()>)>,
 }
 
 impl Receiver {
@@ -50,9 +49,15 @@ impl Receiver {
         read_buf: Bytes,
     ) -> Result<Box<Future<Item = (), Error = ()> + Send>, (Io, Bytes)> {
         match self.upgrade.take() {
-            Some((mut upgrade, cx)) => {
-                let mut upgraded = upgrade.upgrade(io, read_buf, &cx);
-                Ok(Box::new(poll_fn(move || cx.set(|| upgraded.poll()))))
+            Some((mut upgrade, request)) => {
+                let cx = UpgradeContext {
+                    io: io,
+                    read_buf: read_buf,
+                    request: request,
+                    _priv: (),
+                };
+                let mut upgraded = upgrade.upgrade(cx);
+                Ok(Box::new(upgraded))
             }
             None => Err((io, read_buf)),
         }
@@ -61,19 +66,19 @@ impl Receiver {
 
 #[derive(Debug)]
 pub struct Sender {
-    tx: mpsc::UnboundedSender<(UpgradeFn, Context)>,
+    tx: mpsc::UnboundedSender<(UpgradeFn, Request<()>)>,
 }
 
 impl Sender {
-    pub fn send(&self, val: (UpgradeFn, Context)) {
-        let _ = self.tx.unbounded_send(val);
+    pub fn send(&self, handler: UpgradeFn, req: Request<()>) {
+        let _ = self.tx.unbounded_send((handler, req));
     }
 }
 
 // ==== UpgradeFn
 
 pub struct UpgradeFn {
-    inner: Box<FnMut(Io, Bytes, &Context) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
+    inner: Box<FnMut(UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
 }
 
 impl fmt::Debug for UpgradeFn {
@@ -90,21 +95,16 @@ where
     fn from(handler: H) -> Self {
         let mut handler = Some(handler);
         UpgradeFn {
-            inner: Box::new(move |io, read_buf, cx| {
+            inner: Box::new(move |cx| {
                 let handler = handler.take().expect("cannot upgrade twice");
-                Box::new(handler.upgrade(io, read_buf, cx))
+                Box::new(handler.upgrade(cx))
             }),
         }
     }
 }
 
 impl UpgradeFn {
-    pub fn upgrade(
-        &mut self,
-        io: Io,
-        read_buf: Bytes,
-        cx: &Context,
-    ) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
-        (self.inner)(io, read_buf, cx)
+    pub fn upgrade(&mut self, cx: UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
+        (self.inner)(cx)
     }
 }
