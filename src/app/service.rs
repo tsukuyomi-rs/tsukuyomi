@@ -11,17 +11,21 @@ use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
 use router::{Router, RouterState};
-use rt::ServiceExt;
-use transport::Io;
+use server::{Io, ServiceUpgradeExt};
 use upgrade::service as upgrade;
 
 use super::App;
 
-pub struct NewAppService {
-    pub(super) app: App,
+impl App {
+    pub fn new_service(&self) -> AppService {
+        AppService {
+            router: self.router.clone(),
+            rx: upgrade::new(),
+        }
+    }
 }
 
-impl NewService for NewAppService {
+impl NewService for App {
     type ReqBody = Body;
     type ResBody = Body;
     type Error = CritError;
@@ -30,10 +34,7 @@ impl NewService for NewAppService {
     type Future = future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
-        future::ok(AppService {
-            router: self.app.router.clone(),
-            rx: upgrade::new(),
-        })
+        future::ok(self.new_service())
     }
 }
 
@@ -64,15 +65,15 @@ impl Service for AppService {
     }
 }
 
-impl ServiceExt<Io> for AppService {
+impl ServiceUpgradeExt<Io> for AppService {
     type Upgrade = Box<Future<Item = (), Error = ()> + Send>;
     type UpgradeError = ::failure::Error;
 
-    fn poll_ready_upgrade(&mut self) -> Poll<(), Self::UpgradeError> {
+    fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
         self.rx.poll_ready()
     }
 
-    fn upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
+    fn try_into_upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
         self.rx.upgrade(io, read_buf)
     }
 }

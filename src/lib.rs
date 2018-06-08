@@ -27,12 +27,11 @@ pub mod context;
 pub mod error;
 pub mod input;
 pub mod output;
-pub mod router;
-pub mod transport;
+pub mod server;
 pub mod upgrade;
 
 mod handler;
-mod rt;
+mod router;
 
 #[doc(inline)]
 pub use app::App;
@@ -48,3 +47,11 @@ pub use output::{Output, Responder};
 pub use router::Route;
 
 pub type Result<T> = ::std::result::Result<T, error::Error>;
+
+pub type AppResult<T> = ::std::result::Result<T, ::failure::Error>;
+
+pub fn run(app: App) -> AppResult<()> {
+    let server = ::server::Server::builder().finish(app)?;
+    server.serve();
+    Ok(())
+}
