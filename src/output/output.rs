@@ -2,13 +2,13 @@ use http::Response;
 use hyper::body::Body;
 use std::fmt;
 
-use upgrade::service::UpgradeFn;
+use upgrade::BoxedUpgradeHandler;
 
 use super::body::ResponseBody;
 
 pub struct Output {
     pub(crate) response: Response<Body>,
-    pub(crate) upgrade: Option<UpgradeFn>,
+    pub(crate) upgrade: Option<BoxedUpgradeHandler>,
 }
 
 impl fmt::Debug for Output {
@@ -30,7 +30,7 @@ where
 }
 
 impl Output {
-    pub(crate) fn deconstruct(self) -> (Response<Body>, Option<UpgradeFn>) {
+    pub(crate) fn deconstruct(self) -> (Response<Body>, Option<BoxedUpgradeHandler>) {
         (self.response, self.upgrade)
     }
 }

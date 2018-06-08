@@ -7,19 +7,17 @@ use bytes::Bytes;
 use futures::{Future, IntoFuture};
 use http::header::{HeaderName, HeaderValue};
 use http::{header, response, HttpTryFrom, Request, Response, StatusCode, Version};
-use std::mem;
+use std::{fmt, mem};
 
 use context::Context;
 use error::Error;
 use output::{Output, Responder, ResponseBody};
 use transport::Io;
 
-use self::service::UpgradeFn;
-
 /// A "Responder" for constructing an upgrade response.
 pub struct Upgrade {
     response: response::Builder,
-    handler: UpgradeFn,
+    handler: BoxedUpgradeHandler,
 }
 
 impl Upgrade {
@@ -117,5 +115,38 @@ where
 
     fn upgrade(self, cx: UpgradeContext) -> Self::Future {
         (self)(cx).into_future()
+    }
+}
+
+#[doc(hidden)]
+pub struct BoxedUpgradeHandler {
+    inner: Box<FnMut(UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
+}
+
+impl fmt::Debug for BoxedUpgradeHandler {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("BoxedUpgradeHandler").finish()
+    }
+}
+
+impl<H> From<H> for BoxedUpgradeHandler
+where
+    H: UpgradeHandler + Send + 'static,
+    H::Future: Send + 'static,
+{
+    fn from(handler: H) -> Self {
+        let mut handler = Some(handler);
+        BoxedUpgradeHandler {
+            inner: Box::new(move |cx| {
+                let handler = handler.take().expect("cannot upgrade twice");
+                Box::new(handler.upgrade(cx))
+            }),
+        }
+    }
+}
+
+impl BoxedUpgradeHandler {
+    pub fn upgrade(mut self, cx: UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
+        (self.inner)(cx)
     }
 }
