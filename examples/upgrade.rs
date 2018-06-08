@@ -33,13 +33,12 @@ fn handshake(_cx: &Context) -> Result<Upgrade, Error> {
     Ok(Upgrade::builder("lines").finish(handler))
 }
 
-fn main() -> ganymede::app::Result<()> {
+fn main() -> ganymede::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
         .mount("/", vec![Route::new("/", Method::GET, handshake)])
         .finish()?;
-    ganymede::server::run(app)?;
 
-    Ok(())
+    ganymede::run(app)
 }

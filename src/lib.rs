@@ -47,3 +47,11 @@ pub use output::{Output, Responder};
 pub use router::Route;
 
 pub type Result<T> = ::std::result::Result<T, error::Error>;
+
+pub type AppResult<T> = ::std::result::Result<T, ::failure::Error>;
+
+pub fn run(app: App) -> AppResult<()> {
+    let server = ::server::Server::builder().finish(app)?;
+    server.serve();
+    Ok(())
+}

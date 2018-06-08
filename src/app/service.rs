@@ -16,6 +16,15 @@ use upgrade::service as upgrade;
 
 use super::App;
 
+impl App {
+    pub fn new_service(&self) -> AppService {
+        AppService {
+            router: self.router.clone(),
+            rx: upgrade::new(),
+        }
+    }
+}
+
 impl NewService for App {
     type ReqBody = Body;
     type ResBody = Body;
@@ -25,10 +34,7 @@ impl NewService for App {
     type Future = future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
-        future::ok(AppService {
-            router: self.router.clone(),
-            rx: upgrade::new(),
-        })
+        future::ok(self.new_service())
     }
 }
 
