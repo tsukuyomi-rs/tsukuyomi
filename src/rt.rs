@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use failure::Error;
 use futures::prelude::*;
-use futures::Poll;
+use futures::{Async, Poll};
 use hyper::body::Body;
 use hyper::server::conn::{self, Http, Parts};
 use hyper::service::{NewService, Service};
@@ -87,13 +87,27 @@ where
     type Error = ();
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.poll_inner() {
-            Ok(x) => Ok(x),
-            Err(e) => {
-                // TODO: reporting errors
-                trace!("error during serving a connection: {}", e);
-                *self = Connection::Done;
-                Err(())
+        loop {
+            match self.poll_ready() {
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Ok(Async::Ready(())) => {}
+                Err(e) => {
+                    trace!("error during serving a connection: {}", e);
+
+                    // TODO: reporting errors
+                    *self = Connection::Done;
+
+                    //
+                    return Ok(Async::Ready(()));
+                }
+            }
+
+            // assertion: all Futures has been already resolved or rejected at this point.
+            // It means that there is no incomplete and immovable Futures.
+
+            let terminated = self.next_state();
+            if terminated {
+                break Ok(Async::Ready(()));
             }
         }
     }
@@ -105,45 +119,47 @@ where
     S: Service<ReqBody = Body, ResBody = Body> + ServiceExt<I> + 'static,
     S::Future: Send,
 {
-    fn poll_inner(&mut self) -> Poll<(), Error> {
+    fn poll_ready(&mut self) -> Poll<(), Error> {
         use self::Connection::*;
-        loop {
-            match *self {
-                Http(ref mut conn) => try_ready!(conn.poll_without_shutdown()),
-                Shutdown(ref mut io) => try_ready!(io.shutdown().map_err(Into::<Error>::into)),
-                Upgrading(ref mut parts) => try_ready!(parts.service.poll_ready_upgrade().map_err(Into::<Error>::into)),
-                Upgrade(ref mut fut) => try_ready!(fut.poll().map_err(|_| format_err!("during upgrade"))),
-                Done => panic!("Connection has already been resolved or rejected"),
-            }
+        match *self {
+            Http(ref mut conn) => conn.poll_without_shutdown().map_err(Into::into),
+            Shutdown(ref mut io) => io.shutdown().map_err(Into::into),
+            Upgrading(ref mut parts) => parts.service.poll_ready_upgrade().map_err(Into::into),
+            Upgrade(ref mut fut) => fut.poll().map_err(|_| format_err!("during upgrade")),
+            Done => panic!("Connection has already been resolved or rejected"),
+        }
+    }
 
-            // assert: all of Futures has been already resolved or rejected.
-            // It means that there is no incomplete and immovable Future at this point.
-
-            // transit to the next state
-            match mem::replace(self, Done) {
-                Http(conn) => match conn.try_into_parts() {
-                    Some(parts) => {
-                        trace!("transit to Upgrading");
-                        *self = Upgrading(parts);
-                    }
-                    None => {
-                        trace!("the connection is h2");
-                        return Ok(().into());
-                    }
-                },
-                Upgrading(parts) => {
-                    trace!("construct a future and transit to Upgrade");
-                    let Parts {
-                        service, io, read_buf, ..
-                    } = parts;
-                    match service.upgrade(io, read_buf) {
-                        Ok(fut) => *self = Upgrade(fut),
-                        Err((io, _)) => *self = Shutdown(io),
-                    }
+    fn next_state(&mut self) -> bool {
+        use self::Connection::*;
+        match mem::replace(self, Done) {
+            Http(conn) => match conn.try_into_parts() {
+                Some(parts) => {
+                    trace!("transit to Upgrading");
+                    *self = Upgrading(parts);
+                    false
                 }
-                Shutdown(..) | Upgrade(..) => return Ok(().into()),
-                Done => unreachable!(),
+                None => {
+                    trace!("the connection is h2");
+                    true
+                }
+            },
+            Upgrading(parts) => {
+                trace!("construct a future and transit to Upgrade");
+
+                let Parts {
+                    service, io, read_buf, ..
+                } = parts;
+
+                *self = match service.upgrade(io, read_buf) {
+                    Ok(fut) => Upgrade(fut),
+                    Err((io, _)) => Shutdown(io),
+                };
+
+                false
             }
+            Shutdown(..) | Upgrade(..) => true,
+            Done => unreachable!(),
         }
     }
 }
