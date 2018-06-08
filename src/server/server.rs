@@ -10,7 +10,7 @@ use tokio::runtime::{self, Runtime};
 
 use super::conn::Connection;
 use super::service::ServiceUpgradeExt;
-use super::transport::{self, Incoming, Io};
+use super::transport::{self, Io, Listener};
 
 // TODO: impl Future
 // TODO: configure for transports
@@ -28,7 +28,7 @@ pub struct Builder {
 impl Builder {
     fn new() -> Builder {
         Builder {
-            transport: Incoming::builder(),
+            transport: Listener::builder(),
             protocol: Http::new(),
             runtime: runtime::Builder::new(),
         }
@@ -40,14 +40,11 @@ impl Builder {
     ///
     /// ```
     /// # use ganymede::server::Server;
-    /// # use ganymede::server::transport::TransportConfig;
     /// # use ganymede::App;
     /// # let app = App::builder().finish().unwrap();
     /// let server = Server::builder()
     ///     .transport(|t| {
-    ///         t.set_transport(TransportConfig::Tcp {
-    ///             addr: ([0, 0, 0, 0], 8888).into(),
-    ///         });
+    ///         t.bind_tcp(([0, 0, 0, 0], 8888));
     ///     })
     ///     .finish(app).unwrap();
     /// ```
@@ -109,7 +106,7 @@ impl Builder {
     {
         let mut builder = mem::replace(self, Builder::new());
         Ok(Server {
-            incoming: builder.transport.finish()?,
+            listener: builder.transport.finish()?,
             new_service: Arc::new(new_service),
             protocol: Arc::new(builder.protocol),
             runtime: builder.runtime.build()?,
@@ -119,7 +116,7 @@ impl Builder {
 
 #[derive(Debug)]
 pub struct Server<S = ()> {
-    incoming: Incoming,
+    listener: Listener,
     new_service: Arc<S>,
     protocol: Arc<Http>,
     runtime: Runtime,
@@ -143,12 +140,12 @@ where
     pub fn serve(self) {
         let Server {
             new_service,
+            listener,
             protocol,
-            incoming,
             mut runtime,
         } = self;
 
-        let server = incoming.map_err(|_| ()).for_each(move |handshake| {
+        let server = listener.incoming().map_err(|_| ()).for_each(move |handshake| {
             let protocol = protocol.clone();
             let new_service = new_service.clone();
             handshake.map_err(|_| ()).and_then(move |stream| {
