@@ -1,17 +1,17 @@
-use http::{header, Response};
+use http::header::HeaderValue;
+use http::{header, Request, Response};
 
-use context::Context;
 use error::Error;
 
 use super::body::ResponseBody;
 use super::output::Output;
 
 pub trait Responder {
-    fn respond_to(self, cx: &Context) -> Result<Output, Error>;
+    fn respond_to<T>(self, request: &Request<T>) -> Result<Output, Error>;
 }
 
 impl Responder for Output {
-    fn respond_to(self, _cx: &Context) -> Result<Output, Error> {
+    fn respond_to<T>(self, _: &Request<T>) -> Result<Output, Error> {
         Ok(self)
     }
 }
@@ -20,27 +20,31 @@ impl<T> Responder for Response<T>
 where
     T: Into<ResponseBody>,
 {
-    fn respond_to(self, _cx: &Context) -> Result<Output, Error> {
+    #[inline]
+    fn respond_to<U>(self, _: &Request<U>) -> Result<Output, Error> {
         Ok(self.into())
     }
 }
 
 impl Responder for &'static str {
-    fn respond_to(self, _cx: &Context) -> Result<Output, Error> {
-        Response::builder()
-            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(self)
-            .map(Into::into)
-            .map_err(Into::into)
+    #[inline]
+    fn respond_to<T>(self, _: &Request<T>) -> Result<Output, Error> {
+        Ok(text_response(self))
     }
 }
 
 impl Responder for String {
-    fn respond_to(self, _cx: &Context) -> Result<Output, Error> {
-        Response::builder()
-            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(self)
-            .map(Into::into)
-            .map_err(Into::into)
+    #[inline]
+    fn respond_to<T>(self, _: &Request<T>) -> Result<Output, Error> {
+        Ok(text_response(self))
     }
+}
+
+fn text_response<T: Into<ResponseBody>>(body: T) -> Output {
+    let mut response = Response::new(body.into());
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    response.into()
 }
