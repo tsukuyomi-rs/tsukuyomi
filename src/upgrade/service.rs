@@ -4,7 +4,7 @@ use futures::sync::mpsc;
 use futures::{Async, Future, Poll, Stream};
 use http::Request;
 
-use transport::Io;
+use server::Io;
 
 use super::{BoxedUpgradeHandler, UpgradeContext};
 

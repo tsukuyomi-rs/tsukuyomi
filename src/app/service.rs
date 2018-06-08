@@ -11,8 +11,7 @@ use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
 use router::{Router, RouterState};
-use rt::ServiceExt;
-use transport::Io;
+use server::{Io, ServiceUpgradeExt};
 use upgrade::service as upgrade;
 
 use super::App;
@@ -64,15 +63,15 @@ impl Service for AppService {
     }
 }
 
-impl ServiceExt<Io> for AppService {
+impl ServiceUpgradeExt<Io> for AppService {
     type Upgrade = Box<Future<Item = (), Error = ()> + Send>;
     type UpgradeError = ::failure::Error;
 
-    fn poll_ready_upgrade(&mut self) -> Poll<(), Self::UpgradeError> {
+    fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
         self.rx.poll_ready()
     }
 
-    fn upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
+    fn try_into_upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
         self.rx.upgrade(io, read_buf)
     }
 }
