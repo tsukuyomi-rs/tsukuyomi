@@ -16,6 +16,7 @@ extern crate tokio_uds;
 #[macro_use]
 extern crate scoped_tls;
 extern crate fnv;
+extern crate hyperx;
 #[cfg(feature = "tls")]
 extern crate rustls;
 #[cfg(feature = "tls")]

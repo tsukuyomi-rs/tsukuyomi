@@ -1,7 +1,9 @@
-use http::Request;
+use http::{Request, StatusCode};
+use hyperx::header::Header;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use error::Error;
 use input::RequestBody;
 use router::{Route, Router, RouterState};
 
@@ -25,6 +27,18 @@ impl Context {
 
     pub fn request(&self) -> &Request<RequestBody> {
         &self.request
+    }
+
+    // FIXME: cache parsed value
+    pub fn header<H>(&self) -> Result<Option<H>, Error>
+    where
+        H: Header,
+    {
+        self.request.headers().get(H::header_name()).map_or_else(|| Ok(None), |h| {
+            H::parse_header(&h.as_bytes().into())
+                .map(Some)
+                .map_err(|e| Error::new(e, StatusCode::BAD_REQUEST))
+        })
     }
 
     pub fn route(&self) -> Option<&Route> {
