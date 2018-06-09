@@ -35,44 +35,44 @@ where
     E: HttpError,
 {
     fn from(err: E) -> Error {
-        Error::new(err)
+        Error {
+            kind: ErrorKind::Boxed(Box::new(err)),
+        }
     }
 }
 
 impl Error {
     /// Constructs an HTTP error from components.
-    pub fn new<E>(err: E) -> Error
+    pub fn from_failure<E>(cause: E, status: StatusCode) -> Error
     where
-        E: HttpError,
+        E: Into<failure::Error>,
     {
-        Error {
-            kind: ErrorKind::Boxed(Box::new(err)),
-        }
+        Error::from(ConcreteHttpError::new(cause, status))
     }
 
     pub fn not_found() -> Error {
-        Error::new(ConcreteHttpError::new(format_err!("Not Found"), StatusCode::NOT_FOUND))
+        Error::from_failure(format_err!("Not Found"), StatusCode::NOT_FOUND)
     }
 
     pub fn method_not_allowed() -> Error {
-        Error::new(ConcreteHttpError::new(
+        Error::from_failure(
             format_err!("Invalid Method"),
             StatusCode::METHOD_NOT_ALLOWED,
-        ))
+        )
     }
 
     pub fn bad_request<E>(e: E) -> Error
     where
         E: Into<failure::Error>,
     {
-        Error::new(ConcreteHttpError::new(e, StatusCode::BAD_REQUEST))
+        Error::from_failure(e, StatusCode::BAD_REQUEST)
     }
 
     pub fn internal_server_error<E>(e: E) -> Error
     where
         E: Into<failure::Error>,
     {
-        Error::new(ConcreteHttpError::new(e, StatusCode::INTERNAL_SERVER_ERROR))
+        Error::from_failure(e, StatusCode::INTERNAL_SERVER_ERROR)
     }
 
     /// Constructs a *critical* error from a value.
