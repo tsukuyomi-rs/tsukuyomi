@@ -12,9 +12,6 @@ use super::conn::Connection;
 use super::service::ServiceUpgradeExt;
 use super::transport::{self, Io, Listener};
 
-// TODO: impl Future
-// TODO: configure for transports
-
 // ==== Server ====
 
 /// A builder for constructing a `Server`.
@@ -114,6 +111,7 @@ impl Builder {
     }
 }
 
+/// An HTTP server.
 #[derive(Debug)]
 pub struct Server<S = ()> {
     listener: Listener,
@@ -123,6 +121,7 @@ pub struct Server<S = ()> {
 }
 
 impl Server<()> {
+    /// Creates a builder object for constructing a value of this type.
     pub fn builder() -> Builder {
         Builder::new()
     }
@@ -136,7 +135,7 @@ where
     <S::Service as Service>::Future: Send,
     <S::Service as ServiceUpgradeExt<Io>>::Upgrade: Send,
 {
-    /// Start a server using the supplied components.
+    /// Starts a HTTP server using a configured runtime.
     pub fn serve(self) {
         let Server {
             new_service,

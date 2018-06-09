@@ -1,20 +1,23 @@
 use failure::Error;
 use rustls::internal::pemfile;
-use rustls::{Certificate, PrivateKey};
+use rustls::{Certificate, PrivateKey, ServerConfig};
 use std::path::PathBuf;
 use std::{fs, io};
 
-pub use rustls::{ServerConfig, ServerSession};
-pub use tokio_rustls::{AcceptAsync, TlsStream};
-
+/// A set of values for setting the TLS encryption.
 #[derive(Debug)]
 pub struct TlsConfig {
+    /// The path of certificates.
     pub certs_path: PathBuf,
+
+    /// The path of private key.
     pub key_path: PathBuf,
+
+    /// A list of protocols used by the ALPN negotiation.
     pub alpn_protocols: Vec<String>,
 }
 
-pub fn load_config(config: &TlsConfig) -> Result<ServerConfig, Error> {
+pub(super) fn load_config(config: &TlsConfig) -> Result<ServerConfig, Error> {
     let certs = load_certs(&config.certs_path)?;
     let key = load_key(&config.key_path)?;
 

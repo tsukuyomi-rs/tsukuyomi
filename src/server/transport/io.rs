@@ -11,7 +11,7 @@ use tokio_tcp::TcpStream;
 use tokio_uds::UnixStream;
 
 #[derive(Debug)]
-pub enum MaybeTls<S> {
+pub(super) enum MaybeTls<S> {
     Raw(S),
     #[cfg(feature = "tls")]
     Tls(TlsStream<S, ServerSession>),
@@ -36,7 +36,7 @@ macro_rules! impl_tls {
 
 #[cfg(feature = "tls")]
 impl<S> MaybeTls<S> {
-    pub fn session(&self) -> Option<&ServerSession> {
+    fn session(&self) -> Option<&ServerSession> {
         match *self {
             #[cfg(feature = "tls")]
             MaybeTls::Tls(ref s) => Some(s.get_ref().1),
@@ -44,7 +44,7 @@ impl<S> MaybeTls<S> {
         }
     }
 
-    pub fn session_mut(&mut self) -> Option<&mut ServerSession> {
+    fn session_mut(&mut self) -> Option<&mut ServerSession> {
         match *self {
             #[cfg(feature = "tls")]
             MaybeTls::Tls(ref mut s) => Some(s.get_mut().1),
@@ -89,6 +89,9 @@ impl<S: AsyncRead + AsyncWrite> AsyncWrite for MaybeTls<S> {
     }
 }
 
+/// An asynchronous IO which represents a TCP/UDS stream connected to peer.
+///
+/// The value of this type will be used by the implementor of `UpgradeHandler`.
 #[derive(Debug)]
 pub struct Io(IoKind);
 
@@ -117,12 +120,12 @@ macro_rules! impl_io {
 }
 
 impl Io {
-    pub(crate) fn tcp(stream: MaybeTls<TcpStream>) -> Io {
+    pub(super) fn tcp(stream: MaybeTls<TcpStream>) -> Io {
         Io(IoKind::Tcp(stream))
     }
 
     #[cfg(unix)]
-    pub(crate) fn uds(stream: MaybeTls<UnixStream>) -> Io {
+    pub(super) fn uds(stream: MaybeTls<UnixStream>) -> Io {
         Io(IoKind::Uds(stream))
     }
 
@@ -133,10 +136,16 @@ impl Io {
 
 #[cfg(feature = "tls")]
 impl Io {
+    /// Returns a reference to the inner value of `ServerSession`.
+    ///
+    /// This method will return a `None` if this stream does not encrypt by using TLS.
     pub fn session(&self) -> Option<&ServerSession> {
         impl_io!(self, s => s.session())
     }
 
+    /// Returns a mutable reference to the inner value of `ServerSession`.
+    ///
+    /// This method will return a `None` if this stream does not encrypt by using TLS.
     pub fn session_mut(&mut self) -> Option<&mut ServerSession> {
         impl_io!(@mut self, s => s.session_mut())
     }

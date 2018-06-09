@@ -1,3 +1,5 @@
+//! The implementation of I/O components.
+
 mod io;
 mod listener;
 #[cfg(feature = "tls")]
