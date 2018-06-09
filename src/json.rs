@@ -7,7 +7,8 @@ use serde::ser::Serialize;
 use serde_json;
 use std::ops::Deref;
 
-use error::Error;
+use error::handler::ErrorHandler;
+use error::{CritError, Error, HttpError};
 use input::body::FromData;
 use output::{Output, Responder, ResponseBody};
 
@@ -73,6 +74,35 @@ impl Responder for JsonValue {
         Ok(json_response(self.0.to_string()))
     }
 }
+
+#[derive(Debug, Default)]
+pub struct JsonErrorHandler {
+    _priv: (),
+}
+
+impl JsonErrorHandler {
+    pub fn new() -> JsonErrorHandler {
+        Default::default()
+    }
+}
+
+impl ErrorHandler for JsonErrorHandler {
+    fn handle_error(&self, e: &HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
+        let body = json!({
+            "code": e.status_code().as_u16(),
+            "description": e.to_string(),
+        }).to_string();
+
+        Response::builder()
+            .status(e.status_code())
+            .header(header::CONNECTION, "close")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(body.into())
+            .map_err(Into::into)
+    }
+}
+
+// ====
 
 fn json_response<T: Into<ResponseBody>>(body: T) -> Output {
     let mut response = Response::new(body.into());

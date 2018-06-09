@@ -10,7 +10,7 @@ extern crate pretty_env_logger;
 extern crate log;
 
 use futures::prelude::*;
-use ganymede::json::Json;
+use ganymede::json::{Json, JsonErrorHandler};
 use ganymede::{App, Context, Error, Route};
 use http::Method;
 
@@ -45,6 +45,7 @@ fn main() -> ganymede::AppResult<()> {
             Route::new("/", Method::GET, get_json),
             Route::new("/", Method::POST, read_json_payload),
         ])
+        .error_handler(JsonErrorHandler::new())
         .finish()?;
 
     ganymede::run(app)
