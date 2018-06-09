@@ -20,7 +20,7 @@ scoped_thread_local!(static CONTEXT: Context);
 pub struct Context {
     pub(crate) request: Request<RequestBody>,
     route: RouterState,
-    state: Arc<AppState>,
+    pub(crate) state: Arc<AppState>,
     #[cfg(feature = "session")]
     pub(crate) cookies: CookieManager,
 }

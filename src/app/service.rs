@@ -33,6 +33,8 @@ impl NewService for App {
     type Future = future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
+        // TODO: apply middleware
+
         future::ok(self.new_service())
     }
 }
@@ -51,6 +53,9 @@ impl Service for AppService {
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
         let mut cx = Context::new(request.map(RequestBody::from_hyp), self.state.clone());
+
+        // TODO: apply middleware
+
         let in_flight = self.state.router().handle(&mut cx);
         AppServiceFuture {
             in_flight: in_flight,
@@ -73,6 +78,7 @@ impl ServiceUpgradeExt<Io> for AppService {
     }
 }
 
+#[must_use = "futures do nothing unless polled"]
 pub struct AppServiceFuture {
     in_flight: Box<Future<Item = Output, Error = Error> + Send>,
     context: Option<Context>,
@@ -94,31 +100,50 @@ impl Future for AppServiceFuture {
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let in_flight = &mut self.in_flight;
-        match {
-            let cx = self.context
-                .as_ref()
-                .expect("AppServiceFuture has already resolved/rejected");
-            cx.set(|| in_flight.poll())
-        } {
+        match self.poll_in_flight() {
             Ok(Async::NotReady) => Ok(Async::NotReady),
-            Ok(Async::Ready(out)) => {
-                let (mut response, handler) = out.deconstruct();
-                let cx = self.context
-                    .take()
-                    .expect("AppServiceFuture has already resolved/rejected");
-
-                if let Some(handler) = handler {
-                    debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
-                    self.tx.send(handler, cx.request.map(mem::drop));
-                }
-
-                #[cfg(feature = "session")]
-                cx.cookies.append_to(response.headers_mut());
-
-                Ok(Async::Ready(response))
-            }
-            Err(e) => e.into_response().map(|res| res.map(ResponseBody::into_hyp).into()),
+            Ok(Async::Ready(out)) => Ok(Async::Ready(self.handle_response(out))),
+            Err(err) => self.handle_error(err).map(Into::into),
         }
+    }
+}
+
+impl AppServiceFuture {
+    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
+        let in_flight = &mut self.in_flight;
+        let cx = self.context
+            .as_ref()
+            .expect("AppServiceFuture has already resolved/rejected");
+        cx.set(|| in_flight.poll())
+    }
+
+    fn pop_context(&mut self) -> Context {
+        self.context
+            .take()
+            .expect("AppServiceFuture has already resolved/rejected")
+    }
+
+    fn handle_response(&mut self, output: Output) -> Response<Body> {
+        let (mut response, handler) = output.deconstruct();
+        let cx = self.pop_context();
+
+        // TODO: apply middlewares
+
+        #[cfg(feature = "session")]
+        cx.cookies.append_to(response.headers_mut());
+
+        if let Some(handler) = handler {
+            debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+            self.tx.send(handler, cx.request.map(mem::drop));
+        }
+
+        response
+    }
+
+    fn handle_error(&mut self, err: Error) -> Result<Response<Body>, CritError> {
+        let cx = self.pop_context();
+        let request = cx.request.map(mem::drop);
+        let response = cx.state.error_handler().handle_error(err, &request)?;
+        Ok(response.map(ResponseBody::into_hyp))
     }
 }

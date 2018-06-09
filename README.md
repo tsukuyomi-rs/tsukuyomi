@@ -20,10 +20,11 @@ and fast Web services, with the help of ecosystem of Rust for asynchronous netwo
 * Basic support for HTTP/1.1 protocol upgrade
 * TLS support by using `rustls`
 * Support for both TCP and Unix domain socket
+* Custom error handling
+* Cookies
 
 The following features will be supported:
 
-* Custom error handler
 * Middlewares
 * High-level API for WebSocket handling
 
