@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use failure;
 use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
@@ -66,15 +67,17 @@ impl Service for AppService {
 }
 
 impl ServiceUpgradeExt<Io> for AppService {
-    type Upgrade = Box<Future<Item = (), Error = ()> + Send>;
-    type UpgradeError = ::failure::Error;
+    type Upgrade = AppServiceUpgrade;
+    type UpgradeError = failure::Error;
 
     fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
         self.rx.poll_ready()
     }
 
-    fn try_into_upgrade(self, io: Io, read_buf: Bytes) -> Result<Self::Upgrade, (Io, Bytes)> {
-        self.rx.upgrade(io, read_buf)
+    fn upgrade(self, io: Io, read_buf: Bytes) -> Self::Upgrade {
+        AppServiceUpgrade {
+            inner: self.rx.try_upgrade(io, read_buf),
+        }
     }
 }
 
@@ -146,5 +149,28 @@ impl AppServiceFuture {
         let err = err.deconstruct()?;
         let response = cx.state.error_handler().handle_error(&*err, &request)?;
         Ok(response.map(ResponseBody::into_hyp))
+    }
+}
+
+#[must_use = "futures do nothing unless polled"]
+pub struct AppServiceUpgrade {
+    inner: Result<Box<Future<Item = (), Error = ()> + Send>, Io>,
+}
+
+impl fmt::Debug for AppServiceUpgrade {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("AppServiceUpgrade").finish()
+    }
+}
+
+impl Future for AppServiceUpgrade {
+    type Item = ();
+    type Error = ();
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self.inner {
+            Ok(ref mut f) => f.poll(),
+            Err(ref mut io) => io.shutdown().map_err(mem::drop),
+        }
     }
 }

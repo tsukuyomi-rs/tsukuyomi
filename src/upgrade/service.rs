@@ -42,11 +42,7 @@ impl Receiver {
         Ok(Async::Ready(()))
     }
 
-    pub fn upgrade(
-        mut self,
-        io: Io,
-        read_buf: Bytes,
-    ) -> Result<Box<Future<Item = (), Error = ()> + Send>, (Io, Bytes)> {
+    pub fn try_upgrade(mut self, io: Io, read_buf: Bytes) -> Result<Box<Future<Item = (), Error = ()> + Send>, Io> {
         match self.upgrade.take() {
             Some((upgrade, request)) => {
                 let cx = UpgradeContext {
@@ -58,7 +54,7 @@ impl Receiver {
                 let mut upgraded = upgrade.upgrade(cx);
                 Ok(Box::new(upgraded))
             }
-            None => Err((io, read_buf)),
+            None => Err(io),
         }
     }
 }

@@ -125,6 +125,10 @@ impl Io {
     pub(crate) fn uds(stream: MaybeTls<UnixStream>) -> Io {
         Io(IoKind::Uds(stream))
     }
+
+    pub fn shutdown(&mut self) -> Poll<(), io::Error> {
+        impl_io!(@mut self, s => s.shutdown())
+    }
 }
 
 #[cfg(feature = "tls")]
@@ -165,8 +169,9 @@ impl AsyncRead for Io {
 }
 
 impl AsyncWrite for Io {
+    #[inline]
     fn shutdown(&mut self) -> Poll<(), io::Error> {
-        impl_io!(@mut self, s => s.shutdown())
+        self.shutdown()
     }
 
     fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
