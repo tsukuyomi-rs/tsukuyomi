@@ -1,3 +1,5 @@
+pub mod handler;
+
 use failure;
 use http::{header, Response, StatusCode};
 use std::error::Error as StdError;

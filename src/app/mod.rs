@@ -7,10 +7,12 @@ use std::{fmt, mem};
 #[cfg(feature = "session")]
 use cookie::Key;
 
+use error::handler::{DefaultErrorHandler, ErrorHandler};
 use router::{self, Route, Router};
 
 pub struct AppState {
     router: Router,
+    error_handler: Box<ErrorHandler + Send + Sync + 'static>,
     #[cfg(feature = "session")]
     secret_key: Key,
 }
@@ -24,6 +26,10 @@ impl fmt::Debug for AppState {
 impl AppState {
     pub fn router(&self) -> &Router {
         &self.router
+    }
+
+    pub fn error_handler(&self) -> &ErrorHandler {
+        &*self.error_handler
     }
 
     #[cfg(feature = "session")]
@@ -41,6 +47,7 @@ impl App {
     pub fn builder() -> AppBuilder {
         AppBuilder {
             router: Router::builder(),
+            error_handler: None,
             #[cfg(feature = "session")]
             secret_key: None,
         }
@@ -53,6 +60,7 @@ impl App {
 
 pub struct AppBuilder {
     router: router::Builder,
+    error_handler: Option<Box<ErrorHandler + Send + Sync + 'static>>,
     #[cfg(feature = "session")]
     secret_key: Option<Key>,
 }
@@ -74,6 +82,14 @@ impl AppBuilder {
         self
     }
 
+    pub fn error_handler<H>(&mut self, error_handler: H) -> &mut Self
+    where
+        H: ErrorHandler + Send + Sync + 'static,
+    {
+        self.error_handler = Some(Box::new(error_handler));
+        self
+    }
+
     #[cfg(feature = "session")]
     pub fn secret_key<K>(&mut self, master_key: K) -> &mut Self
     where
@@ -88,6 +104,9 @@ impl AppBuilder {
 
         let state = AppState {
             router: builder.router.finish()?,
+            error_handler: builder
+                .error_handler
+                .unwrap_or_else(|| Box::new(DefaultErrorHandler::new())),
             #[cfg(feature = "session")]
             secret_key: builder.secret_key.unwrap_or_else(Key::generate),
         };
