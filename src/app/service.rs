@@ -143,7 +143,8 @@ impl AppServiceFuture {
     fn handle_error(&mut self, err: Error) -> Result<Response<Body>, CritError> {
         let cx = self.pop_context();
         let request = cx.request.map(mem::drop);
-        let response = cx.state.error_handler().handle_error(err, &request)?;
+        let err = err.deconstruct()?;
+        let response = cx.state.error_handler().handle_error(&*err, &request)?;
         Ok(response.map(ResponseBody::into_hyp))
     }
 }

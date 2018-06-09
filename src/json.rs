@@ -1,13 +1,14 @@
 use bytes::Bytes;
 use http::header::HeaderValue;
-use http::{header, Request, Response, StatusCode};
+use http::{header, Request, Response};
 use mime::{self, Mime};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json;
 use std::ops::Deref;
 
-use error::Error;
+use error::handler::ErrorHandler;
+use error::{CritError, Error, HttpError};
 use input::body::FromData;
 use output::{Output, Responder, ResponseBody};
 
@@ -37,17 +38,18 @@ impl<T> Deref for Json<T> {
 impl<T: DeserializeOwned + 'static> FromData for Json<T> {
     fn from_data<U>(data: Bytes, request: &Request<U>) -> Result<Json<T>, Error> {
         if let Some(h) = request.headers().get(header::CONTENT_TYPE) {
-            let mime: Mime = h.to_str().map_err(bad_request)?.parse().map_err(bad_request)?;
+            let mime: Mime = h.to_str()
+                .map_err(Error::bad_request)?
+                .parse()
+                .map_err(Error::bad_request)?;
             if mime != mime::APPLICATION_JSON {
-                return Err(bad_request(format_err!(
+                return Err(Error::bad_request(format_err!(
                     "The value of Content-type is not equal to application/json"
                 )));
             }
         }
 
-        serde_json::from_slice(&*data)
-            .map_err(|e| Error::new(e, StatusCode::BAD_REQUEST))
-            .map(Json)
+        serde_json::from_slice(&*data).map_err(Error::bad_request).map(Json)
     }
 }
 
@@ -73,17 +75,39 @@ impl Responder for JsonValue {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct JsonErrorHandler {
+    _priv: (),
+}
+
+impl JsonErrorHandler {
+    pub fn new() -> JsonErrorHandler {
+        Default::default()
+    }
+}
+
+impl ErrorHandler for JsonErrorHandler {
+    fn handle_error(&self, e: &HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
+        let body = json!({
+            "code": e.status_code().as_u16(),
+            "description": e.to_string(),
+        }).to_string();
+
+        Response::builder()
+            .status(e.status_code())
+            .header(header::CONNECTION, "close")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(body.into())
+            .map_err(Into::into)
+    }
+}
+
+// ====
+
 fn json_response<T: Into<ResponseBody>>(body: T) -> Output {
     let mut response = Response::new(body.into());
     response
         .headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
     response.into()
-}
-
-fn bad_request<E>(err: E) -> Error
-where
-    E: Into<::failure::Error>,
-{
-    Error::new(err, StatusCode::BAD_REQUEST)
 }

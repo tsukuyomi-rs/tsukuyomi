@@ -1,4 +1,4 @@
-use http::{Request, StatusCode};
+use http::Request;
 use hyperx::header::Header;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -58,7 +58,7 @@ impl Context {
             |h| {
                 H::parse_header(&h.as_bytes().into())
                     .map(Some)
-                    .map_err(|e| Error::new(e, StatusCode::BAD_REQUEST))
+                    .map_err(Error::bad_request)
             },
         )
     }
@@ -87,7 +87,9 @@ impl Context {
     #[cfg(feature = "session")]
     pub fn cookies(&self) -> Result<Cookies, Error> {
         if self.cookies.is_init() {
-            self.cookies.init(self.request.headers())?;
+            self.cookies
+                .init(self.request.headers())
+                .map_err(Error::internal_server_error)?;
         }
         Ok(self.cookies.cookies(self.state.secret_key()))
     }

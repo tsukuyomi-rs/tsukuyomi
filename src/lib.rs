@@ -26,6 +26,7 @@ extern crate rustls;
 extern crate tokio_rustls;
 
 extern crate serde;
+#[macro_use]
 extern crate serde_json;
 
 pub mod app;

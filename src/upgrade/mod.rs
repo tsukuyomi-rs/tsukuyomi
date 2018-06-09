@@ -34,10 +34,9 @@ impl Responder for Upgrade {
     fn respond_to<T>(mut self, request: &Request<T>) -> Result<Output, Error> {
         if request.version() != Version::HTTP_11 {
             // FIXME: choose appropriate status code
-            return Err(Error::new(
-                format_err!("Protocol upgrade is available only on HTTP/1.1"),
-                StatusCode::BAD_REQUEST,
-            ));
+            return Err(Error::bad_request(format_err!(
+                "Protocol upgrade is available only on HTTP/1.1"
+            )));
         }
 
         let response = self.response.body(ResponseBody::empty().into_hyp())?;
