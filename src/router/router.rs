@@ -1,7 +1,7 @@
 use failure;
 use fnv::FnvHashMap;
 use futures::{future, Future};
-use http::{Method, StatusCode};
+use http::Method;
 use std::mem;
 
 use context::Context;
@@ -47,9 +47,9 @@ impl Router {
                     cx.set_route(RouterState::Matched(i, params));
                     self.routes[i].handle(cx)
                 }
-                None => Box::new(future::err(method_not_allowed())),
+                None => Box::new(future::err(Error::method_not_allowed())),
             },
-            None => Box::new(future::err(not_found())),
+            None => Box::new(future::err(Error::not_found())),
         }
     }
 }
@@ -100,12 +100,4 @@ impl Builder {
             routes: routes,
         })
     }
-}
-
-fn method_not_allowed() -> Error {
-    Error::new(format_err!("Invalid Method"), StatusCode::METHOD_NOT_ALLOWED)
-}
-
-fn not_found() -> Error {
-    Error::new(format_err!("No Route"), StatusCode::NOT_FOUND)
 }

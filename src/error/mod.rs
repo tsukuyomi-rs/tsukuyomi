@@ -1,12 +1,23 @@
 pub mod handler;
 
-use failure;
-use http::{header, Response, StatusCode};
-use std::error::Error as StdError;
+use failure::{self, Fail};
+use http::StatusCode;
+use std::{error, fmt};
 
-use output::ResponseBody;
+pub type CritError = Box<error::Error + Send + Sync + 'static>;
 
-pub type CritError = Box<StdError + Send + Sync + 'static>;
+pub trait HttpError: fmt::Debug + fmt::Display + Send + Sync + 'static {
+    fn status_code(&self) -> StatusCode;
+}
+
+impl<E> HttpError for E
+where
+    E: Fail,
+{
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 #[derive(Debug)]
 pub struct Error {
@@ -15,28 +26,53 @@ pub struct Error {
 
 #[derive(Debug)]
 enum ErrorKind {
-    Failed(failure::Error, StatusCode),
+    Boxed(Box<HttpError>),
     Crit(CritError),
 }
 
 impl<E> From<E> for Error
 where
-    E: Into<failure::Error>,
+    E: HttpError,
 {
     fn from(err: E) -> Error {
-        Error::new(err, StatusCode::INTERNAL_SERVER_ERROR)
+        Error::new(err)
     }
 }
 
 impl Error {
     /// Constructs an HTTP error from components.
-    pub fn new<E>(err: E, status: StatusCode) -> Error
+    pub fn new<E>(err: E) -> Error
+    where
+        E: HttpError,
+    {
+        Error {
+            kind: ErrorKind::Boxed(Box::new(err)),
+        }
+    }
+
+    pub fn not_found() -> Error {
+        Error::new(ConcreteHttpError::new(format_err!("Not Found"), StatusCode::NOT_FOUND))
+    }
+
+    pub fn method_not_allowed() -> Error {
+        Error::new(ConcreteHttpError::new(
+            format_err!("Invalid Method"),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ))
+    }
+
+    pub fn bad_request<E>(e: E) -> Error
     where
         E: Into<failure::Error>,
     {
-        Error {
-            kind: ErrorKind::Failed(err.into(), status),
-        }
+        Error::new(ConcreteHttpError::new(e, StatusCode::BAD_REQUEST))
+    }
+
+    pub fn internal_server_error<E>(e: E) -> Error
+    where
+        E: Into<failure::Error>,
+    {
+        Error::new(ConcreteHttpError::new(e, StatusCode::INTERNAL_SERVER_ERROR))
     }
 
     /// Constructs a *critical* error from a value.
@@ -45,38 +81,41 @@ impl Error {
     /// passed directly to the lower-level HTTP service.
     pub fn critical<E>(err: E) -> Error
     where
-        E: Into<Box<StdError + Send + Sync + 'static>>,
+        E: Into<Box<error::Error + Send + Sync + 'static>>,
     {
         Error {
             kind: ErrorKind::Crit(err.into()),
         }
     }
 
-    /// Returns `true` if this error is a *critical* error.
-    pub fn is_critical(&self) -> bool {
+    pub(crate) fn deconstruct(self) -> Result<Box<HttpError>, CritError> {
         match self.kind {
-            ErrorKind::Crit(..) => true,
-            _ => false,
-        }
-    }
-
-    /// Constructs an HTTP response from this error value.
-    ///
-    /// If this error is a critical error, it does not be converted to an HTTP response and
-    /// immediately returns an `Err`.
-    pub fn into_response(self) -> Result<Response<ResponseBody>, CritError> {
-        match self.kind {
-            ErrorKind::Failed(e, status) => Response::builder()
-                .status(status)
-                .header(header::CONNECTION, "close")
-                .header(header::CACHE_CONTROL, "no-cache")
-                .body(e.to_string().into())
-                .map_err(|e| {
-                    format_err!("failed to construct an HTTP error response: {}", e)
-                        .compat()
-                        .into()
-                }),
+            ErrorKind::Boxed(e) => Ok(e),
             ErrorKind::Crit(e) => Err(e),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ConcreteHttpError(failure::Error, StatusCode);
+
+impl ConcreteHttpError {
+    pub fn new<E>(err: E, status: StatusCode) -> ConcreteHttpError
+    where
+        E: Into<failure::Error>,
+    {
+        ConcreteHttpError(err.into(), status)
+    }
+}
+
+impl fmt::Display for ConcreteHttpError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl HttpError for ConcreteHttpError {
+    fn status_code(&self) -> StatusCode {
+        self.1
     }
 }

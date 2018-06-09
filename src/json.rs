@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use http::header::HeaderValue;
-use http::{header, Request, Response, StatusCode};
+use http::{header, Request, Response};
 use mime::{self, Mime};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -37,17 +37,18 @@ impl<T> Deref for Json<T> {
 impl<T: DeserializeOwned + 'static> FromData for Json<T> {
     fn from_data<U>(data: Bytes, request: &Request<U>) -> Result<Json<T>, Error> {
         if let Some(h) = request.headers().get(header::CONTENT_TYPE) {
-            let mime: Mime = h.to_str().map_err(bad_request)?.parse().map_err(bad_request)?;
+            let mime: Mime = h.to_str()
+                .map_err(Error::bad_request)?
+                .parse()
+                .map_err(Error::bad_request)?;
             if mime != mime::APPLICATION_JSON {
-                return Err(bad_request(format_err!(
+                return Err(Error::bad_request(format_err!(
                     "The value of Content-type is not equal to application/json"
                 )));
             }
         }
 
-        serde_json::from_slice(&*data)
-            .map_err(|e| Error::new(e, StatusCode::BAD_REQUEST))
-            .map(Json)
+        serde_json::from_slice(&*data).map_err(Error::bad_request).map(Json)
     }
 }
 
@@ -79,11 +80,4 @@ fn json_response<T: Into<ResponseBody>>(body: T) -> Output {
         .headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
     response.into()
-}
-
-fn bad_request<E>(err: E) -> Error
-where
-    E: Into<::failure::Error>,
-{
-    Error::new(err, StatusCode::BAD_REQUEST)
 }
