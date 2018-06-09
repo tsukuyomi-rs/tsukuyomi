@@ -3,20 +3,39 @@ use hyperx::header::Header;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use app::AppState;
 use error::Error;
 use input::RequestBody;
-use router::{Route, Router, RouterState};
+use router::{Route, RouterState};
+
+#[cfg(feature = "session")]
+use session::CookieManager;
+
+#[cfg(feature = "session")]
+pub use session::Cookies;
 
 scoped_thread_local!(static CONTEXT: Context);
 
 #[derive(Debug)]
 pub struct Context {
     pub(crate) request: Request<RequestBody>,
-    pub(crate) route: RouterState,
-    pub(crate) router: Arc<Router>,
+    route: RouterState,
+    state: Arc<AppState>,
+    #[cfg(feature = "session")]
+    pub(crate) cookies: CookieManager,
 }
 
 impl Context {
+    pub(crate) fn new(request: Request<RequestBody>, state: Arc<AppState>) -> Context {
+        Context {
+            request: request,
+            route: RouterState::Uninitialized,
+            state: state,
+            #[cfg(feature = "session")]
+            cookies: Default::default(),
+        }
+    }
+
     pub(crate) fn set<R>(&self, f: impl FnOnce() -> R) -> R {
         CONTEXT.set(self, f)
     }
@@ -46,9 +65,13 @@ impl Context {
 
     pub fn route(&self) -> Option<&Route> {
         match self.route {
-            RouterState::Matched(i, ..) => self.router.get_route(i),
+            RouterState::Matched(i, ..) => self.state.router().get_route(i),
             _ => None,
         }
+    }
+
+    pub(crate) fn set_route(&mut self, state: RouterState) {
+        self.route = state;
     }
 
     pub fn params(&self) -> Option<Params> {
@@ -59,6 +82,14 @@ impl Context {
             }),
             _ => None,
         }
+    }
+
+    #[cfg(feature = "session")]
+    pub fn cookies(&self) -> Result<Cookies, Error> {
+        if self.cookies.is_init() {
+            self.cookies.init(self.request.headers())?;
+        }
+        Ok(self.cookies.cookies(self.state.secret_key()))
     }
 }
 
