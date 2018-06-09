@@ -24,10 +24,14 @@ extern crate rustls;
 #[cfg(feature = "tls")]
 extern crate tokio_rustls;
 
+extern crate serde;
+extern crate serde_json;
+
 pub mod app;
 pub mod context;
 pub mod error;
 pub mod input;
+pub mod json;
 pub mod output;
 pub mod server;
 pub mod upgrade;
