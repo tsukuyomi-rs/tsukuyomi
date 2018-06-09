@@ -1,12 +1,14 @@
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{Future, Poll, Stream};
 use http::header::HeaderMap;
+use http::Request;
 use hyper::body::{self, Body, Payload as _Payload};
 use std::cell::UnsafeCell;
 use std::mem;
 use std::ops::Deref;
 
-use error::CritError;
+use context::Context;
+use error::{CritError, Error};
 
 // ==== RequestBody ====
 
@@ -188,6 +190,16 @@ pub struct ReadAll {
     state: ReadAllState,
 }
 
+impl ReadAll {
+    pub fn convert_to<T>(self) -> impl Future<Item = T, Error = Error> + Send + 'static
+    where
+        T: FromData + Send,
+    {
+        self.map_err(Error::critical)
+            .and_then(|body| Context::with(|cx| T::from_data(body, cx.request())))
+    }
+}
+
 #[derive(Debug)]
 enum ReadAllState {
     Init(Option<Body>),
@@ -218,12 +230,16 @@ impl Future for ReadAll {
                     self.state = Receiving(body, BytesMut::new());
                     continue;
                 }
-                Receiving(body, buf) => {
-                    debug_assert!(body.is_end_stream());
+                Receiving(_body, buf) => {
+                    // debug_assert!(body.is_end_stream());
                     return Ok(buf.freeze().into());
                 }
                 Done => unreachable!(),
             }
         }
     }
+}
+
+pub trait FromData: Sized + 'static {
+    fn from_data<T>(data: Bytes, request: &Request<T>) -> Result<Self, Error>;
 }

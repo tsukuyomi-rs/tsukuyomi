@@ -45,10 +45,10 @@ impl Error {
     /// passed directly to the lower-level HTTP service.
     pub fn critical<E>(err: E) -> Error
     where
-        E: StdError + Send + Sync + 'static,
+        E: Into<Box<StdError + Send + Sync + 'static>>,
     {
         Error {
-            kind: ErrorKind::Crit(Box::new(err)),
+            kind: ErrorKind::Crit(err.into()),
         }
     }
 

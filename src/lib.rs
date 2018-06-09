@@ -1,6 +1,7 @@
 //! Ganymede is a next generation of Web framework for Rust.
 
 extern crate bytes;
+extern crate mime;
 #[macro_use]
 extern crate failure;
 #[macro_use]
