@@ -10,5 +10,5 @@ pub trait ServiceUpgradeExt<I: AsyncRead + AsyncWrite>: Service + Sized {
 
     fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError>;
 
-    fn try_into_upgrade(self, io: I, read_buf: Bytes) -> Result<Self::Upgrade, (I, Bytes)>;
+    fn upgrade(self, io: I, read_buf: Bytes) -> Self::Upgrade;
 }

@@ -14,7 +14,6 @@ where
     I: AsyncRead + AsyncWrite,
 {
     Http(conn::Connection<I, S>),
-    Shutdown(I),
     Upgrading(Parts<I, S>),
     Upgrade(S::Upgrade),
     Done,
@@ -27,12 +26,12 @@ where
     S::Upgrade: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Connection::*;
         match *self {
-            Connection::Http(ref conn) => f.debug_tuple("Http").field(conn).finish(),
-            Connection::Shutdown(ref io) => f.debug_tuple("Shutdown").field(io).finish(),
-            Connection::Upgrading(ref parts) => f.debug_tuple("Upgrading").field(parts).finish(),
-            Connection::Upgrade(ref fut) => f.debug_tuple("Upgrade").field(fut).finish(),
-            Connection::Done => f.debug_tuple("Done").finish(),
+            Http(ref conn) => f.debug_tuple("Http").field(conn).finish(),
+            Upgrading(ref parts) => f.debug_tuple("Upgrading").field(parts).finish(),
+            Upgrade(ref fut) => f.debug_tuple("Upgrade").field(fut).finish(),
+            Done => f.debug_tuple("Done").finish(),
         }
     }
 }
@@ -83,7 +82,6 @@ where
         use self::Connection::*;
         match *self {
             Http(ref mut conn) => conn.poll_without_shutdown().map_err(Into::into),
-            Shutdown(ref mut io) => io.shutdown().map_err(Into::into),
             Upgrading(ref mut parts) => parts.service.poll_ready_upgradable().map_err(Into::into),
             Upgrade(ref mut fut) => fut.poll().map_err(|_| format_err!("during upgrade")),
             Done => panic!("Connection has already been resolved or rejected"),
@@ -111,14 +109,11 @@ where
                     service, io, read_buf, ..
                 } = parts;
 
-                *self = match service.try_into_upgrade(io, read_buf) {
-                    Ok(fut) => Upgrade(fut),
-                    Err((io, _)) => Shutdown(io),
-                };
+                *self = Upgrade(service.upgrade(io, read_buf));
 
                 false
             }
-            Shutdown(..) | Upgrade(..) => true,
+            Upgrade(..) => true,
             Done => unreachable!(),
         }
     }

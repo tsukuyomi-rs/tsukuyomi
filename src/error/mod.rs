@@ -55,10 +55,7 @@ impl Error {
     }
 
     pub fn method_not_allowed() -> Error {
-        Error::from_failure(
-            format_err!("Invalid Method"),
-            StatusCode::METHOD_NOT_ALLOWED,
-        )
+        Error::from_failure(format_err!("Invalid Method"), StatusCode::METHOD_NOT_ALLOWED)
     }
 
     pub fn bad_request<E>(e: E) -> Error
