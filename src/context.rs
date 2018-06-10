@@ -29,7 +29,10 @@ pub struct ContextParts {
     _priv: (),
 }
 
-/// All of contextural information per a request handling, used by the framework.
+/// Contextural values used by handlers during processing an incoming HTTP request.
+///
+/// The values of this type are created at calling `AppService::call`, and used until the future
+/// created at its time is completed.
 #[derive(Debug)]
 pub struct Context {
     parts: ContextParts,

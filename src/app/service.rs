@@ -53,22 +53,10 @@ impl Service for AppService {
     type Future = AppServiceFuture;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        let mut cx = Context::new(request.map(RequestBody::from_hyp), self.state.clone());
-
         // TODO: apply middleware
-
-        let in_flight = match self.state.router().recognize(cx.uri().path(), cx.method()) {
-            Ok((i, params)) => {
-                cx.set_route(i, params);
-                let route = self.state.router().get_route(i).unwrap();
-                route.handle(&cx)
-            }
-            Err(err) => Box::new(future::err(err)),
-        };
-
         AppServiceFuture {
-            in_flight: in_flight,
-            context: Some(cx),
+            in_flight: None,
+            context: Some(Context::new(request.map(RequestBody::from_hyp), self.state.clone())),
             tx: self.rx.sender(),
         }
     }
@@ -91,7 +79,7 @@ impl ServiceUpgradeExt<Io> for AppService {
 
 #[must_use = "futures do nothing unless polled"]
 pub struct AppServiceFuture {
-    in_flight: Box<Future<Item = Output, Error = Error> + Send>,
+    in_flight: Option<Box<Future<Item = Output, Error = Error> + Send>>,
     context: Option<Context>,
     tx: upgrade::Sender,
 }
@@ -127,7 +115,15 @@ impl Future for AppServiceFuture {
 
 impl AppServiceFuture {
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
-        let in_flight = &mut self.in_flight;
+        if self.in_flight.is_none() {
+            let cx = self.context.as_mut().unwrap();
+            let (i, params) = cx.state().router().recognize(cx.uri().path(), cx.method())?;
+            cx.set_route(i, params);
+            let route = cx.state().router().get_route(i).unwrap();
+            self.in_flight = Some(route.handle(&cx));
+        }
+
+        let in_flight = self.in_flight.as_mut().unwrap();
         let cx = self.context
             .as_ref()
             .expect("AppServiceFuture has already resolved/rejected");
