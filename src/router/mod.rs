@@ -8,4 +8,4 @@ mod router;
 
 pub use self::handler::Handler;
 pub use self::route::Route;
-pub use self::router::{Builder, Router, RouterState};
+pub use self::router::{Builder, Router};

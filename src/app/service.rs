@@ -57,7 +57,15 @@ impl Service for AppService {
 
         // TODO: apply middleware
 
-        let in_flight = self.state.router().handle(&mut cx);
+        let in_flight = match self.state.router().recognize(cx.uri().path(), cx.method()) {
+            Ok((i, params)) => {
+                cx.set_route(i, params);
+                let route = self.state.router().get_route(i).unwrap();
+                route.handle(&cx)
+            }
+            Err(err) => Box::new(future::err(err)),
+        };
+
         AppServiceFuture {
             in_flight: in_flight,
             context: Some(cx),

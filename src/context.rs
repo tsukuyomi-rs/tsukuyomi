@@ -8,7 +8,7 @@ use std::sync::Arc;
 use app::AppState;
 use error::Error;
 use input::{RequestBody, RequestExt};
-use router::{Route, RouterState};
+use router::Route;
 
 #[cfg(feature = "session")]
 use session::CookieManager;
@@ -23,7 +23,7 @@ scoped_thread_local!(static CONTEXT: Context);
 pub struct ContextParts {
     pub request: Request<RequestBody>,
     pub state: Arc<AppState>,
-    pub(crate) route: Option<RouterState>,
+    pub(crate) route: Option<(usize, Vec<(usize, usize)>)>,
     #[cfg(feature = "session")]
     pub(crate) cookies: CookieManager,
     _priv: (),
@@ -88,19 +88,19 @@ impl Context {
     /// Returns the reference to a `Route` matched to the incoming request.
     pub fn route(&self) -> Option<&Route> {
         match self.parts.route {
-            Some(RouterState::Matched(i, ..)) => self.state().router().get_route(i),
+            Some((i, ..)) => self.state().router().get_route(i),
             _ => None,
         }
     }
 
-    pub(crate) fn set_route(&mut self, state: RouterState) {
-        self.parts.route = Some(state);
+    pub(crate) fn set_route(&mut self, i: usize, params: Vec<(usize, usize)>) {
+        self.parts.route = Some((i, params));
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Option<Params> {
         match self.parts.route {
-            Some(RouterState::Matched(_, ref params)) => Some(Params {
+            Some((_, ref params)) => Some(Params {
                 path: self.request().uri().path(),
                 params: &params[..],
             }),
