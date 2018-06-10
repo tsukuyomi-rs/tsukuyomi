@@ -7,7 +7,7 @@ use hyper::service::{NewService, Service};
 use std::sync::Arc;
 use std::{fmt, mem};
 
-use context::Context;
+use context::{Context, ContextParts};
 use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
@@ -107,11 +107,11 @@ impl Future for AppServiceFuture {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(out)) => {
                 let cx = self.pop_context();
-                Ok(Async::Ready(self.handle_response(out, cx)))
+                Ok(Async::Ready(self.handle_response(out, cx.into_parts())))
             }
             Err(err) => {
                 let cx = self.pop_context();
-                self.handle_error(err, cx).map(Into::into)
+                self.handle_error(err, cx.into_parts()).map(Into::into)
             }
         }
     }
@@ -132,7 +132,7 @@ impl AppServiceFuture {
             .expect("AppServiceFuture has already resolved/rejected")
     }
 
-    fn handle_response(&mut self, output: Output, cx: Context) -> Response<Body> {
+    fn handle_response(&mut self, output: Output, cx: ContextParts) -> Response<Body> {
         let (mut response, handler) = output.deconstruct();
 
         // TODO: apply middlewares
@@ -148,7 +148,7 @@ impl AppServiceFuture {
         response
     }
 
-    fn handle_error(&mut self, err: Error, cx: Context) -> Result<Response<Body>, CritError> {
+    fn handle_error(&mut self, err: Error, cx: ContextParts) -> Result<Response<Body>, CritError> {
         if let Some(err) = err.as_http_error() {
             let request = cx.request.map(mem::drop);
             let response = cx.state.error_handler().handle_error(err, &request)?;
