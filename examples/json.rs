@@ -11,9 +11,8 @@ extern crate log;
 
 use futures::prelude::*;
 use ganymede::json::{Json, JsonErrorHandler};
-use ganymede::{App, Context, Error, Route};
+use ganymede::{App, Context, Error};
 use ganymede::output::HttpResponse;
-use http::Method;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -44,10 +43,10 @@ fn main() -> ganymede::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
-        .mount("/", vec![
-            Route::new("/", Method::GET, get_json),
-            Route::new("/", Method::POST, read_json_payload),
-        ])
+        .mount("/", |r| {
+            r.get("/", get_json);
+            r.post("/", read_json_payload);
+        })
         .error_handler(JsonErrorHandler::new())
         .finish()?;
 

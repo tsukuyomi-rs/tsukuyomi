@@ -5,8 +5,9 @@ use std::mem;
 
 use error::Error;
 
+use super::handler::Handler;
 use super::recognizer::Recognizer;
-use super::route::{normalize_uri, Route};
+use super::route::{normalize_uri, Route, Verb};
 
 // TODO: treat trailing slashes
 // TODO: fallback options
@@ -24,17 +25,17 @@ impl Default for Config {
 
 #[derive(Debug)]
 struct RouterEntry {
-    methods: FnvHashMap<Method, usize>,
+    routes: FnvHashMap<Verb, usize>,
 }
 
 impl RouterEntry {
     fn recognize(&self, method: &Method, config: &Config) -> Option<usize> {
-        if let Some(&i) = self.methods.get(method) {
+        if let Some(&i) = self.routes.get(&Verb::Method(method.clone())) {
             return Some(i);
         }
 
         if config.fallback_head && *method == Method::GET {
-            if let Some(&i) = self.methods.get(&Method::GET) {
+            if let Some(&i) = self.routes.get(&Verb::Method(Method::GET)) {
                 return Some(i);
             }
         }
@@ -86,14 +87,24 @@ pub struct Builder {
 }
 
 impl Builder {
-    /// Adds a `Route` to this router with the provided `base` path.
-    pub fn add_route(&mut self, base: &str, mut route: Route) -> &mut Self {
+    fn add_route<H>(&mut self, base: &str, path: &str, verb: Verb, handler: H) -> &mut Self
+    where
+        H: Handler + Send + Sync + 'static,
+        H::Future: Send + 'static,
+    {
         self.modify(move |self_| {
-            route.base = normalize_uri(base)?;
-            route.path = normalize_uri(&route.path)?;
-            self_.routes.push(route);
+            let base = normalize_uri(base)?;
+            let path = normalize_uri(path)?;
+            self_.routes.push(Route::new(base, path, verb, handler));
             Ok(())
         })
+    }
+
+    pub fn mount<'a>(&'a mut self, base: &'a str) -> Mount<'a> {
+        Mount {
+            builder: self,
+            base: base,
+        }
     }
 
     /// Sets whether the fallback to GET if the handler for HEAD is not registered is enabled or not.
@@ -121,16 +132,16 @@ impl Builder {
 
         let config = config.unwrap_or_default();
 
-        let mut res: FnvHashMap<String, FnvHashMap<Method, usize>> = FnvHashMap::with_hasher(Default::default());
+        let mut res: FnvHashMap<String, FnvHashMap<Verb, usize>> = FnvHashMap::with_hasher(Default::default());
         for (i, route) in routes.iter().enumerate() {
             res.entry(route.full_path())
                 .or_insert_with(Default::default)
-                .insert(route.method().clone(), i);
+                .insert(route.verb().clone(), i);
         }
 
         let mut builder = Recognizer::builder();
-        for (path, methods) in res {
-            builder.insert(&path, RouterEntry { methods: methods });
+        for (path, routes) in res {
+            builder.insert(&path, RouterEntry { routes: routes });
         }
 
         let recognizer = builder.finish()?;
@@ -140,5 +151,53 @@ impl Builder {
             routes: routes,
             config: config,
         })
+    }
+}
+
+pub struct Mount<'a> {
+    builder: &'a mut Builder,
+    base: &'a str,
+}
+
+macro_rules! impl_methods_for_mount {
+    ($($name:ident => $METHOD:ident,)*) => {$(
+        #[inline]
+        pub fn $name<H>(&mut self, path: &str, handler: H) -> &mut Self
+        where
+            H: Handler + Send + Sync + 'static,
+            H::Future: Send + 'static,
+        {
+            self.route(path, Verb::Method(Method::$METHOD), handler)
+        }
+    )*};
+}
+
+impl<'a> Mount<'a> {
+    pub fn route<H>(&mut self, path: &str, verb: Verb, handler: H) -> &mut Self
+    where
+        H: Handler + Send + Sync + 'static,
+        H::Future: Send + 'static,
+    {
+        self.builder.add_route(self.base, path, verb, handler);
+        self
+    }
+
+    impl_methods_for_mount![
+        get => GET,
+        post => POST,
+        put => PUT,
+        delete => DELETE,
+        head => HEAD,
+        options => OPTIONS,
+        patch => PATCH,
+    ];
+
+    #[inline]
+    pub fn any<H>(&mut self, path: &str, handler: H) -> &mut Self
+    where
+        H: Handler + Send + Sync + 'static,
+        H::Future: Send + 'static,
+    {
+        self.route(path, Verb::Any, handler)
     }
 }

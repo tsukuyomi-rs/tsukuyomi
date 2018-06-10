@@ -11,10 +11,9 @@ extern crate log;
 mod lines;
 
 use ganymede::upgrade::Upgrade;
-use ganymede::{App, Context, Error, Route};
-use http::Method;
+use ganymede::{App, Context};
 
-fn index(cx: &Context) -> Result<Upgrade, Error> {
+fn index(cx: &Context) -> ganymede::Result<Upgrade> {
     lines::start(cx, |line| {
         if !line.is_empty() {
             Some(format!(">> {}", line))
@@ -29,7 +28,9 @@ fn main() -> ganymede::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
-        .mount("/", vec![Route::new("/", Method::GET, index)])
+        .mount("/", |r| {
+            r.get("/", index);
+        })
         .finish()?;
 
     ganymede::run(app)

@@ -8,7 +8,7 @@ use std::{fmt, mem};
 use cookie::Key;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
-use router::{self, Route, Router};
+use router::{self, Mount, Router};
 
 pub struct AppState {
     router: Router,
@@ -72,13 +72,8 @@ impl fmt::Debug for AppBuilder {
 }
 
 impl AppBuilder {
-    pub fn mount<I>(&mut self, base: &str, routes: I) -> &mut Self
-    where
-        I: IntoIterator<Item = Route>,
-    {
-        for route in routes {
-            self.router.add_route(base, route);
-        }
+    pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) -> &mut Self {
+        f(&mut self.router.mount(base));
         self
     }
 
