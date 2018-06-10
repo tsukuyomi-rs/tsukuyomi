@@ -27,6 +27,7 @@ pub struct Error {
 #[derive(Debug)]
 enum ErrorKind {
     Boxed(Box<HttpError>),
+    Concrete(ConcreteHttpError),
     Crit(CritError),
 }
 
@@ -35,19 +36,31 @@ where
     E: HttpError,
 {
     fn from(err: E) -> Error {
-        Error {
-            kind: ErrorKind::Boxed(Box::new(err)),
-        }
+        Error::new(err)
     }
 }
 
 impl Error {
+    pub fn new<E>(err: E) -> Error
+    where
+        E: HttpError,
+    {
+        Error {
+            kind: ErrorKind::Boxed(Box::new(err)),
+        }
+    }
+
     /// Constructs an HTTP error from components.
     pub fn from_failure<E>(cause: E, status: StatusCode) -> Error
     where
         E: Into<failure::Error>,
     {
-        Error::from(ConcreteHttpError::new(cause, status))
+        Error {
+            kind: ErrorKind::Concrete(ConcreteHttpError {
+                cause: cause.into(),
+                status: status,
+            }),
+        }
     }
 
     pub fn not_found() -> Error {
@@ -85,34 +98,36 @@ impl Error {
         }
     }
 
-    pub(crate) fn deconstruct(self) -> Result<Box<HttpError>, CritError> {
+    pub fn as_http_error(&self) -> Option<&HttpError> {
         match self.kind {
-            ErrorKind::Boxed(e) => Ok(e),
-            ErrorKind::Crit(e) => Err(e),
+            ErrorKind::Concrete(ref e) => Some(e),
+            ErrorKind::Boxed(ref e) => Some(&**e),
+            ErrorKind::Crit(..) => None,
+        }
+    }
+
+    pub(crate) fn into_critical(self) -> Option<CritError> {
+        match self.kind {
+            ErrorKind::Crit(e) => Some(e),
+            _ => None,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct ConcreteHttpError(failure::Error, StatusCode);
-
-impl ConcreteHttpError {
-    pub fn new<E>(err: E, status: StatusCode) -> ConcreteHttpError
-    where
-        E: Into<failure::Error>,
-    {
-        ConcreteHttpError(err.into(), status)
-    }
+struct ConcreteHttpError {
+    cause: failure::Error,
+    status: StatusCode,
 }
 
 impl fmt::Display for ConcreteHttpError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
+        fmt::Display::fmt(&self.cause, f)
     }
 }
 
 impl HttpError for ConcreteHttpError {
     fn status_code(&self) -> StatusCode {
-        self.1
+        self.status
     }
 }

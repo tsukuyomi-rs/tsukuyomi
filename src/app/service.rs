@@ -105,8 +105,14 @@ impl Future for AppServiceFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_in_flight() {
             Ok(Async::NotReady) => Ok(Async::NotReady),
-            Ok(Async::Ready(out)) => Ok(Async::Ready(self.handle_response(out))),
-            Err(err) => self.handle_error(err).map(Into::into),
+            Ok(Async::Ready(out)) => {
+                let cx = self.pop_context();
+                Ok(Async::Ready(self.handle_response(out, cx)))
+            }
+            Err(err) => {
+                let cx = self.pop_context();
+                self.handle_error(err, cx).map(Into::into)
+            }
         }
     }
 }
@@ -126,9 +132,8 @@ impl AppServiceFuture {
             .expect("AppServiceFuture has already resolved/rejected")
     }
 
-    fn handle_response(&mut self, output: Output) -> Response<Body> {
+    fn handle_response(&mut self, output: Output, cx: Context) -> Response<Body> {
         let (mut response, handler) = output.deconstruct();
-        let cx = self.pop_context();
 
         // TODO: apply middlewares
 
@@ -143,12 +148,14 @@ impl AppServiceFuture {
         response
     }
 
-    fn handle_error(&mut self, err: Error) -> Result<Response<Body>, CritError> {
-        let cx = self.pop_context();
-        let request = cx.request.map(mem::drop);
-        let err = err.deconstruct()?;
-        let response = cx.state.error_handler().handle_error(&*err, &request)?;
-        Ok(response.map(ResponseBody::into_hyp))
+    fn handle_error(&mut self, err: Error, cx: Context) -> Result<Response<Body>, CritError> {
+        if let Some(err) = err.as_http_error() {
+            let request = cx.request.map(mem::drop);
+            let response = cx.state.error_handler().handle_error(err, &request)?;
+            return Ok(response.map(ResponseBody::into_hyp));
+        }
+        Err(err.into_critical()
+            .expect("unexpected condition in AppServiceFuture::handle_error"))
     }
 }
 
