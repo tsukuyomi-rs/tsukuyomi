@@ -1,3 +1,5 @@
+//! The implementation of low level HTTP server.
+
 mod conn;
 mod server;
 mod service;

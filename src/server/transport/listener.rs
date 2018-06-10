@@ -44,6 +44,7 @@ impl Default for Config {
 
 // ==== Builder ====
 
+/// A builder for constructing a `Listener`.
 #[derive(Debug, Default)]
 pub struct Builder {
     config: Config,
@@ -52,6 +53,7 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Configures to use a TCP listener that will bind to the given listener address.
     pub fn bind_tcp<A>(&mut self, addr: A) -> &mut Builder
     where
         A: Into<SocketAddr>,
@@ -60,6 +62,9 @@ impl Builder {
         self
     }
 
+    /// Configures to use a Unix domain listener that will bind to the given path.
+    ///
+    /// NOTE: This method is enabled only on Unix platform.
     #[cfg(unix)]
     pub fn bind_uds<P>(&mut self, path: P) -> &mut Builder
     where
@@ -69,12 +74,17 @@ impl Builder {
         self
     }
 
+    /// Configures to use TLS encryption with given configuration.
+    ///
+    /// NOTE: This method is enabled only if the feature `tls` is enabled.
     #[cfg(feature = "tls")]
-    pub fn set_tls(&mut self, config: TlsConfig) -> &mut Builder {
+    pub fn use_tls(&mut self, config: TlsConfig) -> &mut Builder {
         self.tls = Some(config);
         self
     }
 
+    /// Finishes the current building session and constructs an instance of `Listener`
+    /// with its configuration.
     pub fn finish(&mut self) -> Result<Listener, Error> {
         let builder = mem::replace(self, Default::default());
 
@@ -94,12 +104,6 @@ impl Builder {
 }
 
 // ==== Listener ====
-
-pub struct Listener {
-    kind: ListenerKind,
-    #[cfg(feature = "tls")]
-    tls: Option<Arc<ServerConfig>>,
-}
 
 #[derive(Debug)]
 enum ListenerKind {
@@ -127,6 +131,16 @@ impl ListenerKind {
     }
 }
 
+/// A wrapped I/O object representing a listener for incoming connections.
+///
+/// This object supports for listening by using TCP or Unix domain socket,
+/// with encryption using TLS.
+pub struct Listener {
+    kind: ListenerKind,
+    #[cfg(feature = "tls")]
+    tls: Option<Arc<ServerConfig>>,
+}
+
 impl fmt::Debug for Listener {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut d = f.debug_struct("Listener");
@@ -138,17 +152,28 @@ impl fmt::Debug for Listener {
 }
 
 impl Listener {
+    /// Creates a builder object for constructing the value of a `Listener`.
     pub fn builder() -> Builder {
         Default::default()
     }
 
-    #[cfg(not(feature = "tls"))]
+    /// Attempts to accept a TCP or UDS connection in an asynchronous manner.
     pub fn poll_accept(&mut self) -> Poll<Handshake, io::Error> {
+        self.poll_accept_inner()
+    }
+
+    /// Creates an instance of `Incoming` from this value.
+    pub fn incoming(self) -> Incoming {
+        Incoming { listener: self }
+    }
+
+    #[cfg(not(feature = "tls"))]
+    fn poll_accept_inner(&mut self) -> Poll<Handshake, io::Error> {
         self.kind.poll_accept_raw()
     }
 
     #[cfg(feature = "tls")]
-    pub fn poll_accept(&mut self) -> Poll<Handshake, io::Error> {
+    fn poll_accept_inner(&mut self) -> Poll<Handshake, io::Error> {
         match self.tls {
             Some(ref config) => {
                 let session = ServerSession::new(config);
@@ -157,16 +182,15 @@ impl Listener {
             None => self.kind.poll_accept_raw(),
         }
     }
-
-    pub fn incoming(self) -> Incoming {
-        Incoming { listener: self }
-    }
 }
 
 // ==== Incoming ====
 
+/// A `Stream` representing the stream of connections accepted by the `Listener`.
+///
+/// The values returned from this stream may be in the progress of TLS handshake.
 #[derive(Debug)]
-#[must_use = "futures do nothing unless polled"]
+#[must_use = "streams do nothing unless polled"]
 pub struct Incoming {
     listener: Listener,
 }
@@ -183,6 +207,7 @@ impl Stream for Incoming {
 
 // ===== Handshake ====
 
+/// A `Future` representing a handshake process until the connection is established.
 #[derive(Debug)]
 #[must_use = "futures do nothing unless polled"]
 pub struct Handshake(HandshakeKind);

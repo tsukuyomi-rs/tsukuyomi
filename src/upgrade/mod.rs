@@ -1,5 +1,5 @@
 //! [unstable]
-//! Components for upgrading for HTTP/1.1 upgrade mechanism.
+//! Components for HTTP/1.1 upgrade mechanism.
 
 pub(crate) mod service;
 
