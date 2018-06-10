@@ -1,14 +1,20 @@
+//! Components for receiving incoming request bodies.
+
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{Future, Poll, Stream};
 use http::header::HeaderMap;
 use http::Request;
 use hyper::body::{self, Body, Payload as _Payload};
+use hyperx::header::ContentType;
+use mime;
 use std::cell::UnsafeCell;
 use std::mem;
 use std::ops::Deref;
 
 use context::Context;
 use error::{CritError, Error};
+
+use super::request::RequestExt;
 
 // ==== RequestBody ====
 
@@ -49,8 +55,8 @@ impl RequestBody {
     }
 
     /// Creates an instance of "Payload" from the raw message body.
-    pub fn payload(&self) -> Option<Payload> {
-        self.take_body().map(Payload)
+    pub fn payload(&self) -> Payload {
+        Payload(self.take_body())
     }
 
     /// Creates an instance of "ReadAll" from the raw message body.
@@ -63,29 +69,17 @@ impl RequestBody {
 
 // ==== Payload ====
 
-/// Raw streaming body of incoming HTTP requests.
+/// A `Payload` representing the raw streaming body in an incoming HTTP request.
 #[derive(Debug)]
-#[must_use = "futures do nothing unless polled"]
-pub struct Payload(Body);
+#[must_use = "streams do nothing unless polled"]
+pub struct Payload(Option<Body>);
 
 impl Payload {
-    pub fn poll_data(&mut self) -> Poll<Option<Chunk>, CritError> {
-        self.0
-            .poll_data()
-            .map(|x| x.map(|c| c.map(Chunk::from_hyp)))
-            .map_err(Into::into)
-    }
-
-    pub fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, CritError> {
-        self.0.poll_trailers().map_err(Into::into)
-    }
-
-    pub fn is_end_stream(&self) -> bool {
-        self.0.is_end_stream()
-    }
-
-    pub fn content_length(&self) -> Option<u64> {
-        self.0.content_length()
+    fn with_body<T>(&mut self, f: impl FnOnce(&mut Body) -> Result<T, CritError>) -> Result<T, CritError> {
+        match self.0 {
+            Some(ref mut bd) => f(bd),
+            None => Err(format_err!("").compat().into()),
+        }
     }
 }
 
@@ -93,24 +87,24 @@ impl body::Payload for Payload {
     type Data = Chunk;
     type Error = CritError;
 
-    #[inline]
-    fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
-        self.poll_data()
+    fn poll_data(&mut self) -> Poll<Option<Chunk>, CritError> {
+        self.with_body(|bd| {
+            bd.poll_data()
+                .map(|x| x.map(|c| c.map(Chunk::from_hyp)))
+                .map_err(Into::into)
+        })
     }
 
-    #[inline]
-    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
-        self.poll_trailers()
+    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, CritError> {
+        self.with_body(|bd| bd.poll_trailers().map_err(Into::into))
     }
 
-    #[inline]
     fn is_end_stream(&self) -> bool {
-        self.is_end_stream()
+        self.0.as_ref().map_or(true, |bd| bd.is_end_stream())
     }
 
-    #[inline]
     fn content_length(&self) -> Option<u64> {
-        self.content_length()
+        self.0.as_ref().map_or(None, |bd| bd.content_length())
     }
 }
 
@@ -184,6 +178,7 @@ impl Buf for Chunk {
 
 // ==== ReadAll ====
 
+/// A future to receive the entire of incoming message body.
 #[derive(Debug)]
 #[must_use = "futures do nothing unless polled"]
 pub struct ReadAll {
@@ -191,9 +186,10 @@ pub struct ReadAll {
 }
 
 impl ReadAll {
+    /// Creates a future from `self` that will convert the received data into a value of `T`.
     pub fn convert_to<T>(self) -> impl Future<Item = T, Error = Error> + Send + 'static
     where
-        T: FromData + Send,
+        T: FromData + Send + 'static,
     {
         self.map_err(Error::critical)
             .and_then(|body| Context::with(|cx| T::from_data(body, cx.request())))
@@ -240,6 +236,25 @@ impl Future for ReadAll {
     }
 }
 
-pub trait FromData: Sized + 'static {
+// ==== FromData ====
+
+/// A trait representing the conversion to certain type.
+pub trait FromData: Sized {
+    /// Perform conversion from a received buffer of bytes into a value of `Self`.
     fn from_data<T>(data: Bytes, request: &Request<T>) -> Result<Self, Error>;
+}
+
+impl FromData for String {
+    fn from_data<T>(data: Bytes, request: &Request<T>) -> Result<Self, Error> {
+        if let Some(ContentType(m)) = request.header()? {
+            if m != mime::TEXT_PLAIN {
+                return Err(Error::bad_request(format_err!("the content type must be text/plain")));
+            }
+            if m.get_param("charset").map_or(true, |charset| charset != "utf-8") {
+                return Err(Error::bad_request(format_err!("the charset must be utf-8")));
+            }
+        }
+
+        String::from_utf8(data.to_vec()).map_err(Error::bad_request)
+    }
 }
