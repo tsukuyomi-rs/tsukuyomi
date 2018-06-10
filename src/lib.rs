@@ -55,16 +55,13 @@ pub use app::App;
 #[doc(inline)]
 pub use context::Context;
 #[doc(inline)]
-pub use error::Error;
+pub use error::{Error, Result};
 #[doc(inline)]
 pub use handler::Handler;
 #[doc(inline)]
 pub use output::{Output, Responder};
 #[doc(inline)]
 pub use router::Route;
-
-/// A type alias of `Result<T, E>` with `error::Error` as error type.
-pub type Result<T> = ::std::result::Result<T, error::Error>;
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///

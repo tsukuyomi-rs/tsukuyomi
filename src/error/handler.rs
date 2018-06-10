@@ -1,10 +1,14 @@
+//! The definition of error handlers.
+
 use http::{header, Request, Response};
 
 use output::ResponseBody;
 
 use super::{CritError, HttpError};
 
+/// A trait representing error handlers.
 pub trait ErrorHandler {
+    /// Creates an HTTP response from the provided error value.
     fn handle_error(&self, err: &HttpError, request: &Request<()>) -> Result<Response<ResponseBody>, CritError>;
 }
 
@@ -18,14 +22,16 @@ where
     }
 }
 
-#[derive(Debug)]
+/// An implementor of `ErrorHandler` used in `App` by default.
+#[derive(Debug, Default)]
 pub struct DefaultErrorHandler {
     _priv: (),
 }
 
 impl DefaultErrorHandler {
+    /// Creates a new instance of `DefaultErrorHandler`.
     pub fn new() -> DefaultErrorHandler {
-        DefaultErrorHandler { _priv: () }
+        Default::default()
     }
 }
 
