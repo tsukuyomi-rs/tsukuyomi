@@ -38,7 +38,6 @@ extern crate tokio_rustls;
 pub mod app;
 pub mod context;
 pub mod error;
-pub mod handler;
 pub mod input;
 pub mod json;
 pub mod output;

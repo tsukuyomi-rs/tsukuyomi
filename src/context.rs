@@ -8,7 +8,7 @@ use std::sync::Arc;
 use app::AppState;
 use error::Error;
 use input::{RequestBody, RequestExt};
-use router::{Route, RouterState};
+use router::Route;
 
 #[cfg(feature = "session")]
 use session::CookieManager;
@@ -18,24 +18,38 @@ pub use session::Cookies;
 
 scoped_thread_local!(static CONTEXT: Context);
 
-/// All of contextural information per a request handling, used by the framework.
+/// The inner parts of `Context`.
 #[derive(Debug)]
-pub struct Context {
-    pub(crate) request: Request<RequestBody>,
-    route: Option<RouterState>,
-    pub(crate) state: Arc<AppState>,
+pub struct ContextParts {
+    pub request: Request<RequestBody>,
+    pub state: Arc<AppState>,
+    pub(crate) route: Option<(usize, Vec<(usize, usize)>)>,
     #[cfg(feature = "session")]
     pub(crate) cookies: CookieManager,
+    _priv: (),
+}
+
+/// Contextural values used by handlers during processing an incoming HTTP request.
+///
+/// The values of this type are created at calling `AppService::call`, and used until the future
+/// created at its time is completed.
+#[derive(Debug)]
+pub struct Context {
+    parts: ContextParts,
 }
 
 impl Context {
-    pub(crate) fn new(request: Request<RequestBody>, state: Arc<AppState>) -> Context {
+    /// Creates a new instance of `Context` from the provided components.
+    pub fn new(request: Request<RequestBody>, state: Arc<AppState>) -> Context {
         Context {
-            request: request,
-            route: None,
-            state: state,
-            #[cfg(feature = "session")]
-            cookies: Default::default(),
+            parts: ContextParts {
+                request: request,
+                route: None,
+                state: state,
+                #[cfg(feature = "session")]
+                cookies: Default::default(),
+                _priv: (),
+            },
         }
     }
 
@@ -62,7 +76,7 @@ impl Context {
 
     /// Returns a reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
-        &self.request
+        &self.parts.request
     }
 
     /// Parses a header field in the request to a value of `H`.
@@ -71,30 +85,35 @@ impl Context {
         H: Header,
     {
         // TODO: cache the parsed values
-        self.request.header()
+        self.request().header()
     }
 
     /// Returns the reference to a `Route` matched to the incoming request.
     pub fn route(&self) -> Option<&Route> {
-        match self.route {
-            Some(RouterState::Matched(i, ..)) => self.state.router().get_route(i),
+        match self.parts.route {
+            Some((i, ..)) => self.state().router().get_route(i),
             _ => None,
         }
     }
 
-    pub(crate) fn set_route(&mut self, state: RouterState) {
-        self.route = Some(state);
+    pub(crate) fn set_route(&mut self, i: usize, params: Vec<(usize, usize)>) {
+        self.parts.route = Some((i, params));
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Option<Params> {
-        match self.route {
-            Some(RouterState::Matched(_, ref params)) => Some(Params {
+        match self.parts.route {
+            Some((_, ref params)) => Some(Params {
                 path: self.request().uri().path(),
                 params: &params[..],
             }),
             _ => None,
         }
+    }
+
+    /// Returns the reference to `AppState`.
+    pub fn state(&self) -> &AppState {
+        &*self.parts.state
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
@@ -105,12 +124,18 @@ impl Context {
     /// This function is available only if the feature "session" is enabled.
     #[cfg(feature = "session")]
     pub fn cookies(&self) -> Result<Cookies, Error> {
-        if self.cookies.is_init() {
-            self.cookies
-                .init(self.request.headers())
+        if !self.parts.cookies.is_init() {
+            self.parts
+                .cookies
+                .init(self.request().headers())
                 .map_err(Error::internal_server_error)?;
         }
-        Ok(self.cookies.cookies(self.state.secret_key()))
+        Ok(self.parts.cookies.cookies(self.state().secret_key()))
+    }
+
+    /// Consumes itself and convert it into a `ContextParts`.
+    pub fn into_parts(self) -> ContextParts {
+        self.parts
     }
 }
 
@@ -118,7 +143,7 @@ impl Deref for Context {
     type Target = Request<RequestBody>;
 
     fn deref(&self) -> &Self::Target {
-        &self.request
+        self.request()
     }
 }
 

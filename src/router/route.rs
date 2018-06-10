@@ -5,8 +5,8 @@ use std::fmt;
 
 use context::Context;
 use error::Error;
-use handler::Handler;
 use output::Output;
+use router::Handler;
 
 pub struct Route {
     pub(super) base: String,

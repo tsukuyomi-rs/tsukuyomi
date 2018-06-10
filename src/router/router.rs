@@ -1,21 +1,12 @@
 use failure;
 use fnv::FnvHashMap;
-use futures::{future, Future};
 use http::Method;
 use std::mem;
 
-use context::Context;
 use error::Error;
-use output::Output;
 
 use super::recognizer::Recognizer;
 use super::route::{normalize_uri, Route};
-
-#[derive(Debug)]
-pub enum RouterState {
-    Matched(usize, Vec<(usize, usize)>),
-    NotMatched, // TODO: more informational
-}
 
 #[derive(Debug)]
 pub struct Router {
@@ -35,20 +26,16 @@ impl Router {
         self.routes.get(i)
     }
 
-    pub fn handle(&self, cx: &mut Context) -> Box<Future<Item = Output, Error = Error> + Send> {
+    pub fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
         // TODO: fallback HEAD
         // TODO: fallback OPTIONS
-        cx.set_route(RouterState::NotMatched);
 
-        match self.recognizer.recognize(cx.request().uri().path()) {
-            Some((matched, params)) => match matched.get(cx.request().method()) {
-                Some(&i) => {
-                    cx.set_route(RouterState::Matched(i, params));
-                    self.routes[i].handle(cx)
-                }
-                None => Box::new(future::err(Error::method_not_allowed())),
+        match self.recognizer.recognize(path) {
+            Some((matched, params)) => match matched.get(method) {
+                Some(&i) => Ok((i, params)),
+                None => Err(Error::method_not_allowed()),
             },
-            None => Box::new(future::err(Error::not_found())),
+            None => Err(Error::not_found()),
         }
     }
 }

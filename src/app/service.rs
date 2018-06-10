@@ -7,7 +7,7 @@ use hyper::service::{NewService, Service};
 use std::sync::Arc;
 use std::{fmt, mem};
 
-use context::Context;
+use context::{Context, ContextParts};
 use error::{CritError, Error};
 use input::RequestBody;
 use output::{Output, ResponseBody};
@@ -53,14 +53,10 @@ impl Service for AppService {
     type Future = AppServiceFuture;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        let mut cx = Context::new(request.map(RequestBody::from_hyp), self.state.clone());
-
         // TODO: apply middleware
-
-        let in_flight = self.state.router().handle(&mut cx);
         AppServiceFuture {
-            in_flight: in_flight,
-            context: Some(cx),
+            in_flight: None,
+            context: Some(Context::new(request.map(RequestBody::from_hyp), self.state.clone())),
             tx: self.rx.sender(),
         }
     }
@@ -83,7 +79,7 @@ impl ServiceUpgradeExt<Io> for AppService {
 
 #[must_use = "futures do nothing unless polled"]
 pub struct AppServiceFuture {
-    in_flight: Box<Future<Item = Output, Error = Error> + Send>,
+    in_flight: Option<Box<Future<Item = Output, Error = Error> + Send>>,
     context: Option<Context>,
     tx: upgrade::Sender,
 }
@@ -107,11 +103,11 @@ impl Future for AppServiceFuture {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Ok(Async::Ready(out)) => {
                 let cx = self.pop_context();
-                Ok(Async::Ready(self.handle_response(out, cx)))
+                Ok(Async::Ready(self.handle_response(out, cx.into_parts())))
             }
             Err(err) => {
                 let cx = self.pop_context();
-                self.handle_error(err, cx).map(Into::into)
+                self.handle_error(err, cx.into_parts()).map(Into::into)
             }
         }
     }
@@ -119,7 +115,15 @@ impl Future for AppServiceFuture {
 
 impl AppServiceFuture {
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
-        let in_flight = &mut self.in_flight;
+        if self.in_flight.is_none() {
+            let cx = self.context.as_mut().unwrap();
+            let (i, params) = cx.state().router().recognize(cx.uri().path(), cx.method())?;
+            cx.set_route(i, params);
+            let route = cx.state().router().get_route(i).unwrap();
+            self.in_flight = Some(route.handle(&cx));
+        }
+
+        let in_flight = self.in_flight.as_mut().unwrap();
         let cx = self.context
             .as_ref()
             .expect("AppServiceFuture has already resolved/rejected");
@@ -132,7 +136,7 @@ impl AppServiceFuture {
             .expect("AppServiceFuture has already resolved/rejected")
     }
 
-    fn handle_response(&mut self, output: Output, cx: Context) -> Response<Body> {
+    fn handle_response(&mut self, output: Output, cx: ContextParts) -> Response<Body> {
         let (mut response, handler) = output.deconstruct();
 
         // TODO: apply middlewares
@@ -148,7 +152,7 @@ impl AppServiceFuture {
         response
     }
 
-    fn handle_error(&mut self, err: Error, cx: Context) -> Result<Response<Body>, CritError> {
+    fn handle_error(&mut self, err: Error, cx: ContextParts) -> Result<Response<Body>, CritError> {
         if let Some(err) = err.as_http_error() {
             let request = cx.request.map(mem::drop);
             let response = cx.state.error_handler().handle_error(err, &request)?;
