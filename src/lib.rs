@@ -38,6 +38,7 @@ extern crate tokio_rustls;
 pub mod app;
 pub mod context;
 pub mod error;
+pub mod handler;
 pub mod input;
 pub mod json;
 pub mod output;
@@ -68,7 +69,6 @@ pub mod mime {
     pub use self::mime::{Mime, Name, Params};
 }
 
-mod handler;
 #[cfg(feature = "session")]
 mod session;
 
@@ -78,10 +78,6 @@ pub use app::App;
 pub use context::Context;
 #[doc(inline)]
 pub use error::{Error, Result};
-#[doc(inline)]
-pub use handler::Handler;
-#[doc(inline)]
-pub use output::{Output, Responder};
 #[doc(inline)]
 pub use router::Route;
 

@@ -12,6 +12,7 @@ extern crate log;
 use futures::prelude::*;
 use ganymede::json::{Json, JsonErrorHandler};
 use ganymede::{App, Context, Error, Route};
+use ganymede::output::HttpResponse;
 use http::Method;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,6 +20,8 @@ struct User {
     name: String,
     age: u32,
 }
+
+impl HttpResponse for User {}
 
 fn get_json(_: &Context) -> ganymede::Result<Json<User>> {
     Ok(Json(User {
