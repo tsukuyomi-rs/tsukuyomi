@@ -6,7 +6,7 @@ use ganymede::{App, Context, Error, Route};
 use http::Method;
 
 fn welcome(_cx: &Context) -> Result<&'static str, Error> {
-    Ok("Hello")
+    Ok("Hello, world!\n")
 }
 
 fn main() -> ganymede::AppResult<()> {

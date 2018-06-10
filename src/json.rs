@@ -1,3 +1,5 @@
+//! Components for parsing JSON values and creating JSON responses.
+
 use bytes::Bytes;
 use http::header::HeaderValue;
 use http::{header, Request, Response};
@@ -14,10 +16,12 @@ use input::body::FromData;
 use input::RequestExt;
 use output::{HttpResponse, Output, Responder, ResponseBody};
 
+/// A wraper struct representing a statically typed JSON value.
 #[derive(Debug)]
 pub struct Json<T>(pub T);
 
 impl<T> Json<T> {
+    #[allow(missing_docs)]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -61,6 +65,7 @@ impl<T: Serialize + HttpResponse> Responder for Json<T> {
     }
 }
 
+/// A general JSON value.
 #[derive(Debug)]
 pub struct JsonValue(serde_json::Value);
 
@@ -76,12 +81,14 @@ impl Responder for JsonValue {
     }
 }
 
+/// An error handler for creating JSON error responses.
 #[derive(Debug, Default)]
 pub struct JsonErrorHandler {
     _priv: (),
 }
 
 impl JsonErrorHandler {
+    #[allow(missing_docs)]
     pub fn new() -> JsonErrorHandler {
         Default::default()
     }

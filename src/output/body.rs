@@ -6,6 +6,7 @@ use std::error::Error as StdError;
 
 use input;
 
+/// A type representing the message body in HTTP response.
 #[derive(Debug, Default)]
 pub struct ResponseBody(Body);
 
@@ -49,10 +50,12 @@ impl_conversions![
 ];
 
 impl ResponseBody {
+    /// Creates an empty `ResponseBody`.
     pub fn empty() -> ResponseBody {
         Default::default()
     }
 
+    /// Wraps a stream of buffers of bytes and creates a chunked `ResponseBody`.
     pub fn wrap_stream<S>(stream: S) -> ResponseBody
     where
         S: Stream + Send + 'static,

@@ -46,11 +46,13 @@ impl CookieManager {
     }
 }
 
+#[allow(missing_docs)]
 pub struct Cookies<'a> {
     jar: &'a RefCell<CookieJar>,
     secret_key: &'a Key,
 }
 
+#[allow(missing_docs)]
 impl<'a> Cookies<'a> {
     pub fn get(&self, name: &str) -> Option<Cookie<'static>> {
         self.jar.borrow().get(name).map(ToOwned::to_owned)

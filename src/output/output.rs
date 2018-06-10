@@ -6,6 +6,10 @@ use upgrade::BoxedUpgradeHandler;
 
 use super::body::ResponseBody;
 
+/// The type representing outputs returned from handlers.
+///
+/// The values of this type are constructed indirectly by `Responder`, or by converting from the
+/// value of `Response<T>`.
 pub struct Output {
     pub(crate) response: Response<Body>,
     pub(crate) upgrade: Option<BoxedUpgradeHandler>,

@@ -1,8 +1,9 @@
-mod recognizer;
+//! The implementation of router used by the framework.
+
+pub mod recognizer;
+
 mod route;
 mod router;
 
 pub use self::route::Route;
-pub use self::router::{Builder, Router};
-
-pub(crate) use self::router::RouterState;
+pub use self::router::{Builder, Router, RouterState};

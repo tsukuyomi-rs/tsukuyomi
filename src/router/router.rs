@@ -12,8 +12,7 @@ use super::recognizer::Recognizer;
 use super::route::{normalize_uri, Route};
 
 #[derive(Debug)]
-pub(crate) enum RouterState {
-    Uninitialized,
+pub enum RouterState {
     Matched(usize, Vec<(usize, usize)>),
     NotMatched, // TODO: more informational
 }

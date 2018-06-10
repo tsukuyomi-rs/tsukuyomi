@@ -1,3 +1,5 @@
+//! Components for constructing HTTP responses.
+
 mod body;
 mod output;
 mod responder;

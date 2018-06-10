@@ -1,11 +1,13 @@
+//! Components for managing the contextural information throughout the handling.
+
 use http::Request;
 use hyperx::header::Header;
-use std::ops::Deref;
+use std::ops::{Deref, Index};
 use std::sync::Arc;
 
 use app::AppState;
 use error::Error;
-use input::RequestBody;
+use input::{RequestBody, RequestExt};
 use router::{Route, RouterState};
 
 #[cfg(feature = "session")]
@@ -16,10 +18,11 @@ pub use session::Cookies;
 
 scoped_thread_local!(static CONTEXT: Context);
 
+/// All of contextural information per a request handling, used by the framework.
 #[derive(Debug)]
 pub struct Context {
     pub(crate) request: Request<RequestBody>,
-    route: RouterState,
+    route: Option<RouterState>,
     pub(crate) state: Arc<AppState>,
     #[cfg(feature = "session")]
     pub(crate) cookies: CookieManager,
@@ -29,7 +32,7 @@ impl Context {
     pub(crate) fn new(request: Request<RequestBody>, state: Arc<AppState>) -> Context {
         Context {
             request: request,
-            route: RouterState::Uninitialized,
+            route: None,
             state: state,
             #[cfg(feature = "session")]
             cookies: Default::default(),
@@ -40,43 +43,53 @@ impl Context {
         CONTEXT.set(self, f)
     }
 
+    /// Returns 'true' if the reference to a `Context` is set to the scoped TLS.
+    ///
+    /// If this function returns 'false', the function `Context::with` will panic.
+    pub fn is_set() -> bool {
+        CONTEXT.is_set()
+    }
+
+    /// Executes a closure by using a reference to a `Context` from the scoped TLS and returns its
+    /// result.
+    ///
+    /// # Panics
+    /// This function will panic if any reference to `Context` is set to the scoped TLS.
+    /// Do not call this function outside the manage of the framework.
     pub fn with<R>(f: impl FnOnce(&Context) -> R) -> R {
         CONTEXT.with(f)
     }
 
+    /// Returns a reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
         &self.request
     }
 
-    // FIXME: cache parsed value
+    /// Parses a header field in the request to a value of `H`.
     pub fn header<H>(&self) -> Result<Option<H>, Error>
     where
         H: Header,
     {
-        self.request.headers().get(H::header_name()).map_or_else(
-            || Ok(None),
-            |h| {
-                H::parse_header(&h.as_bytes().into())
-                    .map(Some)
-                    .map_err(Error::bad_request)
-            },
-        )
+        // TODO: cache the parsed values
+        self.request.header()
     }
 
+    /// Returns the reference to a `Route` matched to the incoming request.
     pub fn route(&self) -> Option<&Route> {
         match self.route {
-            RouterState::Matched(i, ..) => self.state.router().get_route(i),
+            Some(RouterState::Matched(i, ..)) => self.state.router().get_route(i),
             _ => None,
         }
     }
 
     pub(crate) fn set_route(&mut self, state: RouterState) {
-        self.route = state;
+        self.route = Some(state);
     }
 
+    /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Option<Params> {
         match self.route {
-            RouterState::Matched(_, ref params) => Some(Params {
+            Some(RouterState::Matched(_, ref params)) => Some(Params {
                 path: self.request().uri().path(),
                 params: &params[..],
             }),
@@ -84,6 +97,12 @@ impl Context {
         }
     }
 
+    /// Returns a proxy object for managing the value of Cookie entries.
+    ///
+    /// This function will perform parsing when called at first, and returns an `Err` if
+    /// the value of header field is invalid.
+    ///
+    /// This function is available only if the feature "session" is enabled.
     #[cfg(feature = "session")]
     pub fn cookies(&self) -> Result<Cookies, Error> {
         if self.cookies.is_init() {
@@ -103,12 +122,14 @@ impl Deref for Context {
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Debug)]
 pub struct Params<'a> {
     path: &'a str,
     params: &'a [(usize, usize)],
 }
 
+#[allow(missing_docs)]
 impl<'a> Params<'a> {
     pub fn is_empty(&self) -> bool {
         self.params.is_empty()
@@ -125,5 +146,13 @@ impl<'a> Params<'a> {
     pub fn iter(&self) -> impl Iterator<Item = &'a str> + 'a {
         let path = self.path;
         self.params.into_iter().map(move |&(s, e)| &path[s..e])
+    }
+}
+
+impl<'a> Index<usize> for Params<'a> {
+    type Output = str;
+
+    fn index(&self, i: usize) -> &Self::Output {
+        self.get(i).expect("Out of range")
     }
 }

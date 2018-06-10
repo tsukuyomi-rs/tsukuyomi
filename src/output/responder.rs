@@ -6,7 +6,9 @@ use error::Error;
 use super::body::ResponseBody;
 use super::output::Output;
 
+/// A trait representing the conversion to an HTTP response.
 pub trait Responder {
+    /// Converts `self` to an HTTP response.
     fn respond_to<T>(self, request: &Request<T>) -> Result<Output, Error>;
 }
 

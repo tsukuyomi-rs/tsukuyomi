@@ -7,8 +7,6 @@
 Ganymede is a next generation Web framework for Rust.  
 This project is the successor of Susanoo.
 
-**WARNING: This project is now actively development.**
-
 ## The Goal of This Project
 
 The ultimate goal of this project is to provide a Web framework for developing the asynchronous
@@ -21,12 +19,15 @@ and fast Web services, with the help of ecosystem of Rust for asynchronous netwo
 * TLS support by using `rustls`
 * Support for both TCP and Unix domain socket
 * Custom error handling
-* Cookies
+* Basic support for Cookie management
 
-The following features will be supported:
+The following features does not currently implemented but will be supported in the future version:
 
 * Middlewares
-* High-level API for WebSocket handling
+* High-level APIs
+  - Authentication
+  - Session
+  - WebSocket
 
 ## Documentation
 
