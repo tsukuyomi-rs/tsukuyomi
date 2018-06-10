@@ -17,7 +17,6 @@ extern crate hyper;
 extern crate hyperx;
 #[macro_use]
 extern crate log;
-extern crate mime;
 #[macro_use]
 extern crate scoped_tls;
 extern crate serde;
@@ -45,6 +44,29 @@ pub mod output;
 pub mod router;
 pub mod server;
 pub mod upgrade;
+
+/// The definition of statically typed headers.
+///
+/// The items in this module are simply re-exports from `hyperx` crate.
+/// See [the crate level documentation of hyperx][hyperx] for details.
+///
+/// [hyperx]: https://docs.rs/hyperx/0.12.*/
+pub mod header {
+    pub use hyperx::header::Header;
+    pub use hyperx::header::*;
+}
+
+/// The definition of media types.
+///
+/// The items in this module are simply re-exports from `mime` crate.
+/// See [the crate level documentation of mime][mime] for details.
+///
+/// [mime]: https://docs.rs/mime/0.3.*/
+pub mod mime {
+    extern crate mime;
+    pub use self::mime::*;
+    pub use self::mime::{Mime, Name, Params};
+}
 
 mod handler;
 #[cfg(feature = "session")]

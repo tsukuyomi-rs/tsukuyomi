@@ -1,7 +1,8 @@
 use bytes::Bytes;
 use http::header::HeaderValue;
 use http::{header, Request, Response};
-use mime::{self, Mime};
+use hyperx::header::ContentType;
+use mime;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json;
@@ -10,6 +11,7 @@ use std::ops::Deref;
 use error::handler::ErrorHandler;
 use error::{CritError, Error, HttpError};
 use input::body::FromData;
+use input::RequestExt;
 use output::{Output, Responder, ResponseBody};
 
 #[derive(Debug)]
@@ -37,11 +39,7 @@ impl<T> Deref for Json<T> {
 
 impl<T: DeserializeOwned + 'static> FromData for Json<T> {
     fn from_data<U>(data: Bytes, request: &Request<U>) -> Result<Json<T>, Error> {
-        if let Some(h) = request.headers().get(header::CONTENT_TYPE) {
-            let mime: Mime = h.to_str()
-                .map_err(Error::bad_request)?
-                .parse()
-                .map_err(Error::bad_request)?;
+        if let Some(ContentType(mime)) = request.header()? {
             if mime != mime::APPLICATION_JSON {
                 return Err(Error::bad_request(format_err!(
                     "The value of Content-type is not equal to application/json"
