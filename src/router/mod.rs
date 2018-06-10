@@ -1,3 +1,4 @@
+//! [unstable]
 //! The implementation of router used by the framework.
 
 pub mod recognizer;
