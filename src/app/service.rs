@@ -1,5 +1,4 @@
 use bytes::Bytes;
-use failure;
 use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
@@ -64,7 +63,7 @@ impl Service for AppService {
 
 impl ServiceUpgradeExt<Io> for AppService {
     type Upgrade = AppServiceUpgrade;
-    type UpgradeError = failure::Error;
+    type UpgradeError = CritError;
 
     fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
         self.rx.poll_ready()
