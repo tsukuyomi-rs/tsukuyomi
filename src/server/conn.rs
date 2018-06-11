@@ -9,7 +9,29 @@ use error::CritError;
 
 use super::ServiceUpgradeExt;
 
-pub enum Connection<I, S>
+pub struct Connection<I, S>
+where
+    S: Service<ReqBody = Body> + ServiceUpgradeExt<I>,
+    S::ResBody: Payload,
+    I: AsyncRead + AsyncWrite,
+{
+    kind: ConnectionKind<I, S>,
+}
+
+impl<I, S> Connection<I, S>
+where
+    S: Service<ReqBody = Body> + ServiceUpgradeExt<I>,
+    S::ResBody: Payload,
+    I: AsyncRead + AsyncWrite,
+{
+    pub fn new(conn: conn::Connection<I, S>) -> Connection<I, S> {
+        Connection {
+            kind: ConnectionKind::Http(conn),
+        }
+    }
+}
+
+enum ConnectionKind<I, S>
 where
     S: Service<ReqBody = Body> + ServiceUpgradeExt<I>,
     S::ResBody: Payload,
@@ -29,8 +51,8 @@ where
     S::Upgrade: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Connection::*;
-        match *self {
+        use self::ConnectionKind::*;
+        match self.kind {
             Http(ref conn) => f.debug_tuple("Http").field(conn).finish(),
             Upgrading(ref parts) => f.debug_tuple("Upgrading").field(parts).finish(),
             Upgrade(ref fut) => f.debug_tuple("Upgrade").field(fut).finish(),
@@ -55,12 +77,9 @@ where
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Ok(Async::Ready(())) => {}
                 Err(e) => {
-                    trace!("error during serving a connection: {}", e);
+                    error!("during serving a connection: {}", e);
+                    self.kind = ConnectionKind::Done;
 
-                    // TODO: reporting errors
-                    *self = Connection::Done;
-
-                    //
                     return Ok(Async::Ready(()));
                 }
             }
@@ -84,8 +103,8 @@ where
     S::Future: Send,
 {
     fn poll_ready(&mut self) -> Poll<(), CritError> {
-        use self::Connection::*;
-        match *self {
+        use self::ConnectionKind::*;
+        match self.kind {
             Http(ref mut conn) => conn.poll_without_shutdown().map_err(Into::into),
             Upgrading(ref mut parts) => parts.service.poll_ready_upgradable().map_err(Into::into),
             Upgrade(ref mut fut) => fut.poll().map_err(|_| format_err!("during upgrade").compat().into()),
@@ -94,12 +113,12 @@ where
     }
 
     fn next_state(&mut self) -> bool {
-        use self::Connection::*;
-        match mem::replace(self, Done) {
+        use self::ConnectionKind::*;
+        match mem::replace(&mut self.kind, Done) {
             Http(conn) => match conn.try_into_parts() {
                 Some(parts) => {
                     trace!("transit to Upgrading");
-                    *self = Upgrading(parts);
+                    self.kind = Upgrading(parts);
                     false
                 }
                 None => {
@@ -108,17 +127,18 @@ where
                 }
             },
             Upgrading(parts) => {
-                trace!("construct a future and transit to Upgrade");
-
                 let Parts {
                     service, io, read_buf, ..
                 } = parts;
 
-                *self = Upgrade(service.upgrade(io, read_buf));
-
+                trace!("transit to Upgrade");
+                self.kind = Upgrade(service.upgrade(io, read_buf));
                 false
             }
-            Upgrade(..) => true,
+            Upgrade(..) => {
+                trace!("finished the upgraded task");
+                true
+            }
             Done => unreachable!(),
         }
     }

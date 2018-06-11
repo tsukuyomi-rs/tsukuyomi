@@ -5,6 +5,7 @@ use http::Request;
 use hyper::body::{Body, Payload};
 use hyper::server::conn::Http;
 use hyper::service::{NewService, Service};
+use std::error;
 use std::mem;
 use std::sync::Arc;
 use tokio;
@@ -109,7 +110,7 @@ impl Builder {
         let mut builder = mem::replace(self, Builder::new());
         Ok(Server {
             listener: builder.transport.finish()?,
-            new_service: Arc::new(new_service),
+            new_service: new_service,
             protocol: Arc::new(builder.protocol),
             runtime: builder.runtime.build()?,
         })
@@ -120,7 +121,7 @@ impl Builder {
 #[derive(Debug)]
 pub struct Server<S = ()> {
     listener: Listener,
-    new_service: Arc<S>,
+    new_service: S,
     protocol: Arc<Http>,
     runtime: Runtime,
 }
@@ -138,6 +139,7 @@ where
     S::ReqBody: From<Body>,
     S::ResBody: Payload,
     S::Future: Send,
+    S::InitError: Into<Box<error::Error + Send + Sync + 'static>>,
     S::Service: ServiceUpgradeExt<Io> + Send,
     <S::Service as Service>::Future: Send,
     <S::Service as ServiceUpgradeExt<Io>>::Upgrade: Send,
@@ -151,17 +153,32 @@ where
             mut runtime,
         } = self;
 
-        let server = listener.incoming().map_err(|_| ()).for_each(move |handshake| {
-            let protocol = protocol.clone();
-            let new_service = new_service.clone();
-            handshake.map_err(|_| ()).and_then(move |stream| {
-                new_service.new_service().map_err(|_e| ()).and_then(move |service| {
-                    let conn = Connection::Http(protocol.serve_connection(stream, WrapService(service)));
-                    tokio::spawn(conn)
-                })
-            })
-        });
+        let server = listener
+            .incoming()
+            .map_err(|e| error!("during accepting the connection: {}", e))
+            .for_each(move |handshake| {
+                let handshake = handshake
+                    .inspect(|_| trace!("handshake has done"))
+                    .map_err(|e| error!("during processing the handshake: {}", e));
 
+                let service = new_service
+                    .new_service()
+                    .inspect(|_| trace!("creating a new service"))
+                    .map_err(|e| error!("at creating an instance of Service: {}", e.into()));
+
+                let dispatch = handshake.join(service).and_then({
+                    let protocol = protocol.clone();
+                    move |(stream, service)| {
+                        let conn = protocol.serve_connection(stream, WrapService(service));
+                        Connection::new(conn)
+                    }
+                });
+
+                trace!("spawn a task which manages a connection");
+                tokio::spawn(dispatch)
+            });
+
+        trace!("spawn a server");
         runtime.spawn(server);
         runtime.shutdown_on_idle().wait().unwrap();
     }
