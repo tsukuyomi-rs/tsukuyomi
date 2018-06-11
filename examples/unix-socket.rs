@@ -1,11 +1,9 @@
 extern crate ganymede;
-extern crate http;
 
 #[cfg(unix)]
 fn main() -> ganymede::AppResult<()> {
     use ganymede::server::Server;
-    use ganymede::{App, Route};
-    use http::Method;
+    use ganymede::App;
 
     let sock_path: std::path::PathBuf = std::env::args()
         .nth(1)
@@ -13,7 +11,9 @@ fn main() -> ganymede::AppResult<()> {
         .unwrap_or_else(|| "/tmp/ganymede-uds.sock".into());
 
     let app = App::builder()
-        .mount("/", vec![Route::new("/", Method::GET, |_: &_| Ok("Hello"))])
+        .mount("/", |r| {
+            r.get("/", |_: &_| Ok("Hello"));
+        })
         .finish()?;
 
     let server = Server::builder()
