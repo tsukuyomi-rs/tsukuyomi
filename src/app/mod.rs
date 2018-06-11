@@ -10,6 +10,8 @@ use cookie::Key;
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use router::{self, Mount, Router};
 
+scoped_thread_local!(static STATE: AppState);
+
 pub struct AppState {
     router: Router,
     error_handler: Box<ErrorHandler + Send + Sync + 'static>,
@@ -24,6 +26,18 @@ impl fmt::Debug for AppState {
 }
 
 impl AppState {
+    pub(crate) fn set<R>(&self, f: impl FnOnce() -> R) -> R {
+        STATE.set(self, f)
+    }
+
+    pub fn is_set() -> bool {
+        STATE.is_set()
+    }
+
+    pub fn with<R>(f: impl FnOnce(&AppState) -> R) -> R {
+        STATE.with(f)
+    }
+
     pub fn router(&self) -> &Router {
         &self.router
     }
