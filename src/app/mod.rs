@@ -102,13 +102,29 @@ impl AppBuilder {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// App::builder()
-    ///     .mount("/", |r| { ... })
-    ///     .mount("/api/v1/", |r| { ... });
+    /// ```
+    /// # use ganymede::{App, Context};
+    /// # let index = |_: &Context| Ok("a");
+    /// # let find_post = |_: &Context| Ok("a");
+    /// # let all_posts = |_: &Context| Ok("a");
+    /// # let add_post = |_: &Context| Ok("a");
+    /// let app = App::builder()
+    ///     .mount("/", |r| { r.get("/", index); })
+    ///     .mount("/api/v1/", |r| {
+    ///         r.get("/posts/:id", find_post);
+    ///         r.get("/posts", all_posts);
+    ///         r.post("/posts", add_post);
+    ///     })
+    ///     .finish();
     /// ```
     pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) -> &mut Self {
         f(&mut self.router.mount(base));
+        self
+    }
+
+    /// Modifies the router level configurations.
+    pub fn router(&mut self, f: impl FnOnce(&mut router::Builder)) -> &mut Self {
+        f(&mut self.router);
         self
     }
 
