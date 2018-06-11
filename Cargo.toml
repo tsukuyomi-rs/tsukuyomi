@@ -1,34 +1,50 @@
 [package]
 name = "ganymede"
-version = "0.1.0-dev"
+description = """
+A next generation Web framework for Rust
+"""
+version = "0.1.0-pre.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
-publish = false
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ubnt-intrepid/ganymede.git"
+documentation = "https://docs.rs/ganymede/"
+readme = "README.md"
+keywords = ["web", "framework", "futures", "hyper", "tokio"]
+categories = ["web-programming::http-server"]
+
+[package.metadata.docs.rs]
+features = ["tls", "session"]
+
+[badges]
+appveyor = { repository = "ubnt-intrepid/ganymede" }
+travis-ci = { repository = "ubnt-intrepid/ganymede" }
+maintenance = { status = "actively-development" }
 
 [dependencies]
 hyper = { version = "0.12.1", features = ["runtime"], default-features = false }
 http = "0.1.5"
-mime = "0.3"
-bytes = "0.4"
-tokio = "0.1"
-tokio-tcp = "0.1"
-futures = "0.1"
-failure = { version = "0.1", features = ["derive"] }
-log = "*"
-scoped-tls = "*"
-rustls = { version = "0.11", optional = true }
-tokio-rustls = { version = "0.4", optional = true }
-fnv = "*"
-hyperx = "0.12"
+mime = "0.3.7"
+bytes = "0.4.8"
+tokio = "0.1.7"
+tokio-tcp = "0.1.0"
+futures = "0.1.21"
+failure = { version = "0.1.1", features = ["derive"] }
+log = "0.4.2"
+scoped-tls = "0.1.2"
+rustls = { version = "0.11.0", optional = true }
+tokio-rustls = { version = "0.4.0", optional = true }
+fnv = "1.0.6"
+hyperx = "0.12.0"
 cookie = { version = "0.10.1", features = ["secure", "percent-encode"], optional = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { version = "1.0.66", features = ["derive"] }
+serde_json = "1.0.20"
 
 [target.'cfg(unix)'.dependencies]
-tokio-uds = "0.2"
+tokio-uds = "0.2.0"
 
 [dev-dependencies]
-pretty_env_logger = "*"
-tokio-io = "*"
+pretty_env_logger = "0.2.3"
+tokio-io = "0.1.6"
 
 [features]
 default = ["tls", "session"]
