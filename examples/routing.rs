@@ -11,8 +11,7 @@ fn main() -> ganymede::AppResult<()> {
             r.get("/", |_: &Context| Ok("Hello, world\n"));
 
             r.get("/:name", |cx: &Context| {
-                let params = cx.params().expect("cx.params() is empty");
-                let message = format!("Hello, {}\n", &params[0]);
+                let message = format!("Hello, {}\n", &cx.params()[0]);
                 Ok(message)
             });
         })

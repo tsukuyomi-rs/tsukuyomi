@@ -35,6 +35,9 @@ extern crate rustls;
 #[cfg(feature = "tls")]
 extern crate tokio_rustls;
 
+#[macro_use]
+mod macros;
+
 pub mod app;
 pub mod context;
 pub mod error;
