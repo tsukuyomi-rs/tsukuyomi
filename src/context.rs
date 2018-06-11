@@ -3,7 +3,6 @@
 use http::Request;
 use hyperx::header::Header;
 use std::ops::{Deref, Index};
-use std::sync::Arc;
 
 use app::AppState;
 use error::Error;
@@ -22,8 +21,8 @@ scoped_thread_local!(static CONTEXT: Context);
 #[derive(Debug)]
 pub struct ContextParts {
     pub request: Request<RequestBody>,
-    pub state: Arc<AppState>,
-    pub(crate) route: Option<(usize, Vec<(usize, usize)>)>,
+    pub(crate) route: usize,
+    pub(crate) params: Vec<(usize, usize)>,
     #[cfg(feature = "session")]
     pub(crate) cookies: CookieManager,
     _priv: (),
@@ -40,12 +39,12 @@ pub struct Context {
 
 impl Context {
     /// Creates a new instance of `Context` from the provided components.
-    pub fn new(request: Request<RequestBody>, state: Arc<AppState>) -> Context {
+    pub fn new(request: Request<RequestBody>, route: usize, params: Vec<(usize, usize)>) -> Context {
         Context {
             parts: ContextParts {
                 request: request,
-                route: None,
-                state: state,
+                route: route,
+                params: params,
                 #[cfg(feature = "session")]
                 cookies: Default::default(),
                 _priv: (),
@@ -88,32 +87,20 @@ impl Context {
         self.request().header()
     }
 
-    /// Returns the reference to a `Route` matched to the incoming request.
-    pub fn route(&self) -> Option<&Route> {
-        match self.parts.route {
-            Some((i, ..)) => self.state().router().get_route(i),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn set_route(&mut self, i: usize, params: Vec<(usize, usize)>) {
-        self.parts.route = Some((i, params));
+    /// Runs a closure using the reference to a `Route` matched to the incoming request.
+    pub fn with_route<R>(&self, f: impl FnOnce(&Route) -> R) -> R {
+        AppState::with(|state| {
+            let route = state.router().get_route(self.parts.route).unwrap();
+            f(route)
+        })
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
-    pub fn params(&self) -> Option<Params> {
-        match self.parts.route {
-            Some((_, ref params)) => Some(Params {
-                path: self.request().uri().path(),
-                params: &params[..],
-            }),
-            _ => None,
+    pub fn params(&self) -> Params {
+        Params {
+            path: self.request().uri().path(),
+            params: &self.parts.params[..],
         }
-    }
-
-    /// Returns the reference to `AppState`.
-    pub fn state(&self) -> &AppState {
-        &*self.parts.state
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
@@ -130,7 +117,7 @@ impl Context {
                 .init(self.request().headers())
                 .map_err(Error::internal_server_error)?;
         }
-        Ok(self.parts.cookies.cookies(self.state().secret_key()))
+        Ok(self.parts.cookies.cookies())
     }
 
     /// Consumes itself and convert it into a `ContextParts`.

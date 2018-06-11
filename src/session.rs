@@ -1,8 +1,10 @@
-use cookie::{Cookie, CookieJar, Key};
+use cookie::{Cookie, CookieJar};
 use failure::Error;
 use http::header;
 use http::header::HeaderMap;
 use std::cell::{Cell, RefCell};
+
+use app::AppState;
 
 #[derive(Debug, Default)]
 pub(crate) struct CookieManager {
@@ -28,11 +30,8 @@ impl CookieManager {
         Ok(())
     }
 
-    pub fn cookies<'a>(&'a self, secret_key: &'a Key) -> Cookies<'a> {
-        Cookies {
-            jar: &self.jar,
-            secret_key: secret_key,
-        }
+    pub fn cookies<'a>(&'a self) -> Cookies<'a> {
+        Cookies { jar: &self.jar }
     }
 
     pub fn append_to(&self, h: &mut HeaderMap) {
@@ -49,7 +48,6 @@ impl CookieManager {
 #[allow(missing_docs)]
 pub struct Cookies<'a> {
     jar: &'a RefCell<CookieJar>,
-    secret_key: &'a Key,
 }
 
 #[allow(missing_docs)]
@@ -59,7 +57,7 @@ impl<'a> Cookies<'a> {
     }
 
     pub fn get_private(&self, name: &str) -> Option<Cookie<'static>> {
-        self.jar.borrow_mut().private(self.secret_key).get(name)
+        AppState::with(|state| self.jar.borrow_mut().private(state.secret_key()).get(name))
     }
 
     pub fn add(&self, cookie: Cookie<'static>) {
@@ -67,7 +65,7 @@ impl<'a> Cookies<'a> {
     }
 
     pub fn add_private(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().private(self.secret_key).add(cookie)
+        AppState::with(|state| self.jar.borrow_mut().private(state.secret_key()).add(cookie))
     }
 
     pub fn remove(&self, cookie: Cookie<'static>) {
@@ -75,6 +73,6 @@ impl<'a> Cookies<'a> {
     }
 
     pub fn remove_private(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().private(self.secret_key).remove(cookie)
+        AppState::with(|state| self.jar.borrow_mut().private(state.secret_key()).remove(cookie))
     }
 }
