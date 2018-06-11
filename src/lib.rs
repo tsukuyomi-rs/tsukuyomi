@@ -81,8 +81,6 @@ pub use app::App;
 pub use context::Context;
 #[doc(inline)]
 pub use error::{Error, Result};
-#[doc(inline)]
-pub use router::Route;
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///
