@@ -1,7 +1,7 @@
 use bytes::Bytes;
-use failure::Error;
 use futures::{Future, Poll};
 use hyper::service::Service;
+use std::error::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 /// A trait for extending `Service` by adding some methods and associated types required by
@@ -12,7 +12,7 @@ pub trait ServiceUpgradeExt<I: AsyncRead + AsyncWrite>: Service + Sized {
     type Upgrade: Future<Item = (), Error = ()>;
 
     /// The type of error which will be returned from `poll_ready_upgradable`.
-    type UpgradeError: Into<Error>;
+    type UpgradeError: Into<Box<Error + Send + Sync + 'static>>;
 
     /// Polls if this service is upgradable.
     fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError>;

@@ -1,16 +1,18 @@
-use failure::Error;
 use futures::{Async, Future, Poll};
-use hyper::body::Body;
+use hyper::body::{Body, Payload};
 use hyper::server::conn::{self, Parts};
 use hyper::service::Service;
 use std::{fmt, mem};
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use error::CritError;
+
 use super::ServiceUpgradeExt;
 
 pub enum Connection<I, S>
 where
-    S: Service<ReqBody = Body, ResBody = Body> + ServiceUpgradeExt<I>,
+    S: Service<ReqBody = Body> + ServiceUpgradeExt<I>,
+    S::ResBody: Payload,
     I: AsyncRead + AsyncWrite,
 {
     Http(conn::Connection<I, S>),
@@ -21,7 +23,8 @@ where
 
 impl<I, S> fmt::Debug for Connection<I, S>
 where
-    S: Service<ReqBody = Body, ResBody = Body> + ServiceUpgradeExt<I> + fmt::Debug,
+    S: Service<ReqBody = Body> + ServiceUpgradeExt<I> + fmt::Debug,
+    S::ResBody: Payload,
     I: AsyncRead + AsyncWrite + fmt::Debug,
     S::Upgrade: fmt::Debug,
 {
@@ -39,7 +42,8 @@ where
 impl<I, S> Future for Connection<I, S>
 where
     I: AsyncRead + AsyncWrite + 'static,
-    S: Service<ReqBody = Body, ResBody = Body> + ServiceUpgradeExt<I> + 'static,
+    S: Service<ReqBody = Body> + ServiceUpgradeExt<I> + 'static,
+    S::ResBody: Payload,
     S::Future: Send,
 {
     type Item = ();
@@ -75,15 +79,16 @@ where
 impl<I, S> Connection<I, S>
 where
     I: AsyncRead + AsyncWrite + 'static,
-    S: Service<ReqBody = Body, ResBody = Body> + ServiceUpgradeExt<I> + 'static,
+    S: Service<ReqBody = Body> + ServiceUpgradeExt<I> + 'static,
+    S::ResBody: Payload,
     S::Future: Send,
 {
-    fn poll_ready(&mut self) -> Poll<(), Error> {
+    fn poll_ready(&mut self) -> Poll<(), CritError> {
         use self::Connection::*;
         match *self {
             Http(ref mut conn) => conn.poll_without_shutdown().map_err(Into::into),
             Upgrading(ref mut parts) => parts.service.poll_ready_upgradable().map_err(Into::into),
-            Upgrade(ref mut fut) => fut.poll().map_err(|_| format_err!("during upgrade")),
+            Upgrade(ref mut fut) => fut.poll().map_err(|_| format_err!("during upgrade").compat().into()),
             Done => panic!("Connection has already been resolved or rejected"),
         }
     }

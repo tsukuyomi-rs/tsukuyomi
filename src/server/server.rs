@@ -1,11 +1,14 @@
+use bytes::Bytes;
 use failure::Error;
 use futures::prelude::*;
-use hyper::body::Body;
+use http::Request;
+use hyper::body::{Body, Payload};
 use hyper::server::conn::Http;
 use hyper::service::{NewService, Service};
 use std::mem;
 use std::sync::Arc;
 use tokio;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::runtime::{self, Runtime};
 
 use super::conn::Connection;
@@ -95,7 +98,9 @@ impl Builder {
     /// Create an instance of configured `Server` with given `NewService`.
     pub fn finish<S>(&mut self, new_service: S) -> Result<Server<S>, Error>
     where
-        S: NewService<ReqBody = Body, ResBody = Body> + Send + Sync + 'static,
+        S: NewService + Send + Sync + 'static,
+        S::ReqBody: From<Body>,
+        S::ResBody: Payload,
         S::Future: Send,
         S::Service: ServiceUpgradeExt<Io> + Send,
         <S::Service as Service>::Future: Send,
@@ -129,7 +134,9 @@ impl Server<()> {
 
 impl<S> Server<S>
 where
-    S: NewService<ReqBody = Body, ResBody = Body> + Send + Sync + 'static,
+    S: NewService + Send + Sync + 'static,
+    S::ReqBody: From<Body>,
+    S::ResBody: Payload,
     S::Future: Send,
     S::Service: ServiceUpgradeExt<Io> + Send,
     <S::Service as Service>::Future: Send,
@@ -149,7 +156,7 @@ where
             let new_service = new_service.clone();
             handshake.map_err(|_| ()).and_then(move |stream| {
                 new_service.new_service().map_err(|_e| ()).and_then(move |service| {
-                    let conn = Connection::Http(protocol.serve_connection(stream, service));
+                    let conn = Connection::Http(protocol.serve_connection(stream, WrapService(service)));
                     tokio::spawn(conn)
                 })
             })
@@ -157,5 +164,39 @@ where
 
         runtime.spawn(server);
         runtime.shutdown_on_idle().wait().unwrap();
+    }
+}
+
+struct WrapService<S>(S);
+
+impl<S: Service> Service for WrapService<S>
+where
+    S: Service,
+    S::ReqBody: From<Body>,
+{
+    type ReqBody = Body;
+    type ResBody = S::ResBody;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
+        self.0.call(request.map(From::from))
+    }
+}
+
+impl<S: Service, I: AsyncRead + AsyncWrite> ServiceUpgradeExt<I> for WrapService<S>
+where
+    S: Service + ServiceUpgradeExt<I>,
+    S::ReqBody: From<Body>,
+{
+    type Upgrade = S::Upgrade;
+    type UpgradeError = S::UpgradeError;
+
+    fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
+        self.0.poll_ready_upgradable()
+    }
+
+    fn upgrade(self, io: I, read_buf: Bytes) -> Self::Upgrade {
+        self.0.upgrade(io, read_buf)
     }
 }
