@@ -13,13 +13,16 @@ use error::Error;
 use output::{Output, Responder, ResponseBody};
 use server::Io;
 
+/// [unstable]
 /// A "Responder" for constructing an upgrade response.
+#[derive(Debug)]
 pub struct Upgrade {
     response: response::Builder,
     handler: BoxedUpgradeHandler,
 }
 
 impl Upgrade {
+    /// Creates a builder object for constructing an instance of this type.
     pub fn builder(name: &str) -> UpgradeBuilder {
         let mut response = Response::builder();
         response
@@ -118,8 +121,7 @@ where
     }
 }
 
-#[doc(hidden)]
-pub struct BoxedUpgradeHandler {
+pub(crate) struct BoxedUpgradeHandler {
     inner: Box<FnMut(UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
 }
 
@@ -146,7 +148,7 @@ where
 }
 
 impl BoxedUpgradeHandler {
-    pub fn upgrade(mut self, cx: UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
+    pub(crate) fn upgrade(mut self, cx: UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
         (self.inner)(cx)
     }
 }

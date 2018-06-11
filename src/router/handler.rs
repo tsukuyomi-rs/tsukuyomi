@@ -4,9 +4,13 @@ use context::Context;
 use error::Error;
 use output::{Output, Responder};
 
+/// [unstable]
+/// A trait representing an HTTP handler associated with the certain endpoint.
 pub trait Handler {
+    /// The type of future which will be returned from `handle`.
     type Future: Future<Item = Output, Error = Error>;
 
+    /// Applies an incoming request to this handler and returns a future.
     fn handle(&self, cx: &Context) -> Self::Future;
 }
 

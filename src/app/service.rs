@@ -1,3 +1,5 @@
+//! The definition of components for serving an HTTP application by using `App`.
+
 use bytes::Bytes;
 use futures::{future, Async, Future, Poll};
 use http::{Request, Response, StatusCode};
@@ -16,6 +18,7 @@ use upgrade::service as upgrade;
 use super::{App, AppState};
 
 impl App {
+    /// Creates a new `AppService` to manage a session.
     pub fn new_service(&self) -> AppService {
         AppService {
             state: self.state.clone(),
@@ -37,6 +40,7 @@ impl NewService for App {
     }
 }
 
+/// A `Service` representation of the application, created by `App`.
 #[derive(Debug)]
 pub struct AppService {
     state: Arc<AppState>,
@@ -75,6 +79,7 @@ impl ServiceUpgradeExt<Io> for AppService {
     }
 }
 
+/// A future for managing an incoming HTTP request, created by `AppService`.
 #[must_use = "futures do nothing unless polled"]
 #[derive(Debug)]
 pub struct AppServiceFuture {
@@ -141,6 +146,7 @@ impl AppServiceFuture {
         }
     }
 
+    #[allow(unused_mut)]
     fn handle_response(&mut self, output: Output, cx: ContextParts) -> Response<Body> {
         let (mut response, handler) = output.deconstruct();
 
@@ -165,6 +171,8 @@ impl AppServiceFuture {
     }
 }
 
+/// A future representing an asynchronous computation after upgrading the protocol
+/// from HTTP to another one.
 #[must_use = "futures do nothing unless polled"]
 pub struct AppServiceUpgrade {
     inner: Result<Box<Future<Item = (), Error = ()> + Send>, Io>,

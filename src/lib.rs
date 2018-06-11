@@ -1,8 +1,9 @@
-// #![warn(missing_docs)]
-// #![warn(missing_debug_implementations)]
-// #![warn(bare_trait_object)]
-// #![warn(unreachable_pub)]
-// #![warn(unused_extern_crates)]
+#![deny(missing_docs)]
+#![deny(missing_debug_implementations)]
+#![deny(bare_trait_object)]
+#![deny(unreachable_pub)]
+#![deny(unused_extern_crates)]
+#![deny(warnings)]
 
 //! Ganymede is a next generation Web framework for Rust.
 

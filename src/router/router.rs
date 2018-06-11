@@ -13,8 +13,8 @@ use super::route::{normalize_uri, Route, Verb};
 // TODO: fallback options
 
 #[derive(Debug)]
-pub struct Config {
-    pub fallback_head: bool,
+struct Config {
+    fallback_head: bool,
 }
 
 impl Default for Config {
@@ -100,6 +100,7 @@ impl Builder {
         })
     }
 
+    /// Creates a proxy object to add some routes mounted to the provided prefix.
     pub fn mount<'a>(&'a mut self, base: &'a str) -> Mount<'a> {
         Mount {
             builder: self,
@@ -154,13 +155,19 @@ impl Builder {
     }
 }
 
+/// A proxy object for adding routes with the certain prefix.
+#[derive(Debug)]
 pub struct Mount<'a> {
     builder: &'a mut Builder,
     base: &'a str,
 }
 
 macro_rules! impl_methods_for_mount {
-    ($($name:ident => $METHOD:ident,)*) => {$(
+    ($(
+        $(#[$doc:meta])*
+        $name:ident => $METHOD:ident,
+    )*) => {$(
+        $(#[$doc])*
         #[inline]
         pub fn $name<H>(&mut self, path: &str, handler: H) -> &mut Self
         where
@@ -173,6 +180,7 @@ macro_rules! impl_methods_for_mount {
 }
 
 impl<'a> Mount<'a> {
+    /// Adds a route with the provided path, verb and handler.
     pub fn route<H>(&mut self, path: &str, verb: Verb, handler: H) -> &mut Self
     where
         H: Handler + Send + Sync + 'static,
@@ -183,15 +191,29 @@ impl<'a> Mount<'a> {
     }
 
     impl_methods_for_mount![
+        /// Equivalent to `mount.route(path, Verb::Method(Method::GET), handler)`.
         get => GET,
+
+        /// Equivalent to `mount.route(path, Verb::Method(Method::POST), handler)`.
         post => POST,
+
+        /// Equivalent to `mount.route(path, Verb::Method(Method::PUT), handler)`.
         put => PUT,
+
+        /// Equivalent to `mount.route(path, Verb::Method(Method::DELETE), handler)`.
         delete => DELETE,
+
+        /// Equivalent to `mount.route(path, Verb::Method(Method::HEAD), handler)`.
         head => HEAD,
+
+        /// Equivalent to `mount.route(path, Verb::Method(Method::OPTIONS), handler)`.
         options => OPTIONS,
+
+        /// Equivalent to `mount.route(path, Verb::Method(Method::PATCH), handler)`.
         patch => PATCH,
     ];
 
+    /// Equivalent to `mount.route(path, Verb::Any, handler)`.
     #[inline]
     pub fn any<H>(&mut self, path: &str, handler: H) -> &mut Self
     where

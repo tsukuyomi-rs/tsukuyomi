@@ -13,11 +13,11 @@ pub(crate) struct CookieManager {
 }
 
 impl CookieManager {
-    pub fn is_init(&self) -> bool {
+    pub(crate) fn is_init(&self) -> bool {
         self.init.get()
     }
 
-    pub fn init(&self, h: &HeaderMap) -> Result<(), Error> {
+    pub(crate) fn init(&self, h: &HeaderMap) -> Result<(), Error> {
         let mut jar = self.jar.borrow_mut();
         for raw in h.get_all(header::COOKIE) {
             let raw_s = raw.to_str()?;
@@ -30,11 +30,11 @@ impl CookieManager {
         Ok(())
     }
 
-    pub fn cookies<'a>(&'a self) -> Cookies<'a> {
+    pub(crate) fn cookies<'a>(&'a self) -> Cookies<'a> {
         Cookies { jar: &self.jar }
     }
 
-    pub fn append_to(&self, h: &mut HeaderMap) {
+    pub(crate) fn append_to(&self, h: &mut HeaderMap) {
         if !self.is_init() {
             return;
         }
@@ -45,7 +45,9 @@ impl CookieManager {
     }
 }
 
-#[allow(missing_docs)]
+/// [unstable]
+/// A proxy object for managing Cookie values.
+#[derive(Debug)]
 pub struct Cookies<'a> {
     jar: &'a RefCell<CookieJar>,
 }

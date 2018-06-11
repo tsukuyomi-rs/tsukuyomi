@@ -1,6 +1,7 @@
-/// The implementation of route recognizer based on radix tree.
-///
-/// The original implementation is located at https://github.com/ubnt-intrepid/susanoo
+//! The implementation of route recognizer based on radix tree.
+
+// The original implementation is located at https://github.com/ubnt-intrepid/susanoo
+
 use failure::Error;
 use std::{cmp, mem, str};
 

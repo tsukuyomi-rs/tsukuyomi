@@ -8,12 +8,20 @@ use error::Error;
 use output::Output;
 use router::Handler;
 
+/// The kinds of HTTP methods which a `Route` accepts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Verb {
+    /// Accepts a certain HTTP method.
     Method(Method),
+
+    /// Accepts any HTTP methods.
     Any,
 }
 
+/// A type representing an endpoint.
+///
+/// The value of this type contains a `Handler` to handle the accepted HTTP request,
+/// and some information for constructing a `Router`.
 pub struct Route {
     base: String,
     path: String,
@@ -48,18 +56,22 @@ impl Route {
         }
     }
 
+    /// Returns the prefix of HTTP path associated with this endpoint.
     pub fn base(&self) -> &str {
         &self.base
     }
 
+    /// Returns the suffix of HTTP path associated with this endpoint.
     pub fn path(&self) -> &str {
         &self.path
     }
 
+    /// Returns the full HTTP path of this endpoint.
     pub fn full_path(&self) -> String {
         join_uri(&self.base, &self.path)
     }
 
+    /// Returns the reference to `Verb` which this route allows.
     pub fn verb(&self) -> &Verb {
         &self.verb
     }

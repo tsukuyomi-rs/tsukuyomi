@@ -9,7 +9,7 @@ use error::CritError;
 
 use super::ServiceUpgradeExt;
 
-pub struct Connection<I, S>
+pub(super) struct Connection<I, S>
 where
     S: Service<ReqBody = Body> + ServiceUpgradeExt<I>,
     S::ResBody: Payload,
@@ -24,7 +24,7 @@ where
     S::ResBody: Payload,
     I: AsyncRead + AsyncWrite,
 {
-    pub fn new(conn: conn::Connection<I, S>) -> Connection<I, S> {
+    pub(super) fn new(conn: conn::Connection<I, S>) -> Connection<I, S> {
         Connection {
             kind: ConnectionKind::Http(conn),
         }

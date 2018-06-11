@@ -129,6 +129,7 @@ impl Io {
         Io(IoKind::Uds(stream))
     }
 
+    #[allow(missing_docs)]
     pub fn shutdown(&mut self) -> Poll<(), io::Error> {
         impl_io!(@mut self, s => s.shutdown())
     }

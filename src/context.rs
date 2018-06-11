@@ -19,8 +19,8 @@ scoped_thread_local!(static CONTEXT: Context);
 
 /// The inner parts of `Context`.
 #[derive(Debug)]
-pub struct ContextParts {
-    pub request: Request<RequestBody>,
+pub(crate) struct ContextParts {
+    pub(crate) request: Request<RequestBody>,
     pub(crate) route: usize,
     pub(crate) params: Vec<(usize, usize)>,
     #[cfg(feature = "session")]
@@ -38,8 +38,7 @@ pub struct Context {
 }
 
 impl Context {
-    /// Creates a new instance of `Context` from the provided components.
-    pub fn new(request: Request<RequestBody>, route: usize, params: Vec<(usize, usize)>) -> Context {
+    pub(crate) fn new(request: Request<RequestBody>, route: usize, params: Vec<(usize, usize)>) -> Context {
         Context {
             parts: ContextParts {
                 request: request,
@@ -120,8 +119,7 @@ impl Context {
         Ok(self.parts.cookies.cookies())
     }
 
-    /// Consumes itself and convert it into a `ContextParts`.
-    pub fn into_parts(self) -> ContextParts {
+    pub(crate) fn into_parts(self) -> ContextParts {
         self.parts
     }
 }
