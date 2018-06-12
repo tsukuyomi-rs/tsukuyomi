@@ -1,5 +1,5 @@
-extern crate tsukuyomi;
 extern crate pretty_env_logger;
+extern crate tsukuyomi;
 
 use tsukuyomi::{App, Context};
 

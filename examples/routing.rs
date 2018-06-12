@@ -1,5 +1,5 @@
-extern crate tsukuyomi;
 extern crate pretty_env_logger;
+extern crate tsukuyomi;
 
 use tsukuyomi::{App, Context};
 
@@ -19,8 +19,6 @@ fn main() -> tsukuyomi::AppResult<()> {
                 let message = format!("path = {}\n", &cx.params()[0]);
                 Ok(message)
             });
-
-            r.any("/http", |cx: &Context| Ok(format!("Method = {}", cx.method())));
         })
         .finish()?;
 

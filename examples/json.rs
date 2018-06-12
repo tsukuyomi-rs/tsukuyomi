@@ -1,5 +1,5 @@
-extern crate tsukuyomi;
 extern crate http;
+extern crate tsukuyomi;
 #[macro_use]
 extern crate serde;
 extern crate futures;
@@ -10,8 +10,8 @@ extern crate log;
 use futures::prelude::*;
 
 use tsukuyomi::json::{Json, JsonErrorHandler};
-use tsukuyomi::{App, Context, Error};
 use tsukuyomi::output::HttpResponse;
+use tsukuyomi::{App, Context, Error};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -29,13 +29,10 @@ fn get_json(_: &Context) -> tsukuyomi::Result<Json<User>> {
 }
 
 fn read_json_payload(ctxt: &Context) -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
-    ctxt.body()
-        .read_all()
-        .convert_to::<Json<User>>()
-        .map(|user| {
-            info!("Received: {:?}", user);
-            user
-        })
+    ctxt.body().read_all().convert_to::<Json<User>>().map(|user| {
+        info!("Received: {:?}", user);
+        user
+    })
 }
 
 fn main() -> tsukuyomi::AppResult<()> {

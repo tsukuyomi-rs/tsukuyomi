@@ -8,16 +8,6 @@ use error::Error;
 use output::Output;
 use router::Handler;
 
-/// The kinds of HTTP methods which a `Route` accepts.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Verb {
-    /// Accepts a certain HTTP method.
-    Method(Method),
-
-    /// Accepts any HTTP methods.
-    Any,
-}
-
 /// A type representing an endpoint.
 ///
 /// The value of this type contains a `Handler` to handle the accepted HTTP request,
@@ -25,7 +15,7 @@ pub enum Verb {
 pub struct Route {
     base: String,
     path: String,
-    verb: Verb,
+    method: Method,
     handler: Box<Fn(&Context) -> Box<Future<Item = Output, Error = Error> + Send> + Send + Sync + 'static>,
 }
 
@@ -34,13 +24,13 @@ impl fmt::Debug for Route {
         f.debug_struct("Route")
             .field("base", &self.base)
             .field("path", &self.path)
-            .field("verb", &self.verb)
+            .field("method", &self.method)
             .finish()
     }
 }
 
 impl Route {
-    pub(super) fn new<H>(base: String, path: String, verb: Verb, handler: H) -> Route
+    pub(super) fn new<H>(base: String, path: String, method: Method, handler: H) -> Route
     where
         H: Handler + Send + Sync + 'static,
         H::Future: Send + 'static,
@@ -48,7 +38,7 @@ impl Route {
         Route {
             base: base,
             path: path,
-            verb: verb,
+            method: method,
             handler: Box::new(move |cx| {
                 // TODO: specialization for Result<T, E>
                 Box::new(handler.handle(cx))
@@ -71,9 +61,9 @@ impl Route {
         join_uri(&self.base, &self.path)
     }
 
-    /// Returns the reference to `Verb` which this route allows.
-    pub fn verb(&self) -> &Verb {
-        &self.verb
+    /// Returns the reference to `Method` which this route allows.
+    pub fn method(&self) -> &Method {
+        &self.method
     }
 
     pub(crate) fn handle(&self, cx: &Context) -> Box<Future<Item = Output, Error = Error> + Send> {

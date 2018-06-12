@@ -7,7 +7,7 @@ use error::Error;
 
 use super::handler::Handler;
 use super::recognizer::Recognizer;
-use super::route::{normalize_uri, Route, Verb};
+use super::route::{normalize_uri, Route};
 
 // TODO: treat trailing slashes
 // TODO: fallback options
@@ -25,17 +25,17 @@ impl Default for Config {
 
 #[derive(Debug)]
 struct RouterEntry {
-    routes: FnvHashMap<Verb, usize>,
+    routes: FnvHashMap<Method, usize>,
 }
 
 impl RouterEntry {
     fn recognize(&self, method: &Method, config: &Config) -> Option<usize> {
-        if let Some(&i) = self.routes.get(&Verb::Method(method.clone())) {
+        if let Some(&i) = self.routes.get(method) {
             return Some(i);
         }
 
         if config.fallback_head && *method == Method::GET {
-            if let Some(&i) = self.routes.get(&Verb::Method(Method::GET)) {
+            if let Some(&i) = self.routes.get(&Method::GET) {
                 return Some(i);
             }
         }
@@ -87,7 +87,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    fn add_route<H>(&mut self, base: &str, path: &str, verb: Verb, handler: H) -> &mut Self
+    fn add_route<H>(&mut self, base: &str, path: &str, method: Method, handler: H) -> &mut Self
     where
         H: Handler + Send + Sync + 'static,
         H::Future: Send + 'static,
@@ -95,7 +95,7 @@ impl Builder {
         self.modify(move |self_| {
             let base = normalize_uri(base)?;
             let path = normalize_uri(path)?;
-            self_.routes.push(Route::new(base, path, verb, handler));
+            self_.routes.push(Route::new(base, path, method, handler));
             Ok(())
         })
     }
@@ -133,11 +133,11 @@ impl Builder {
 
         let config = config.unwrap_or_default();
 
-        let mut res: FnvHashMap<String, FnvHashMap<Verb, usize>> = FnvHashMap::with_hasher(Default::default());
+        let mut res: FnvHashMap<String, FnvHashMap<Method, usize>> = FnvHashMap::with_hasher(Default::default());
         for (i, route) in routes.iter().enumerate() {
             res.entry(route.full_path())
                 .or_insert_with(Default::default)
-                .insert(route.verb().clone(), i);
+                .insert(route.method().clone(), i);
         }
 
         let mut builder = Recognizer::builder();
@@ -174,52 +174,42 @@ macro_rules! impl_methods_for_mount {
             H: Handler + Send + Sync + 'static,
             H::Future: Send + 'static,
         {
-            self.route(path, Verb::Method(Method::$METHOD), handler)
+            self.route(path, Method::$METHOD, handler)
         }
     )*};
 }
 
 impl<'a> Mount<'a> {
-    /// Adds a route with the provided path, verb and handler.
-    pub fn route<H>(&mut self, path: &str, verb: Verb, handler: H) -> &mut Self
+    /// Adds a route with the provided path, method and handler.
+    pub fn route<H>(&mut self, path: &str, method: Method, handler: H) -> &mut Self
     where
         H: Handler + Send + Sync + 'static,
         H::Future: Send + 'static,
     {
-        self.builder.add_route(self.base, path, verb, handler);
+        self.builder.add_route(self.base, path, method, handler);
         self
     }
 
     impl_methods_for_mount![
-        /// Equivalent to `mount.route(path, Verb::Method(Method::GET), handler)`.
+        /// Equivalent to `mount.route(path, Method::GET, handler)`.
         get => GET,
 
-        /// Equivalent to `mount.route(path, Verb::Method(Method::POST), handler)`.
+        /// Equivalent to `mount.route(path, Method::POST, handler)`.
         post => POST,
 
-        /// Equivalent to `mount.route(path, Verb::Method(Method::PUT), handler)`.
+        /// Equivalent to `mount.route(path, Method::PUT, handler)`.
         put => PUT,
 
-        /// Equivalent to `mount.route(path, Verb::Method(Method::DELETE), handler)`.
+        /// Equivalent to `mount.route(path, Method::DELETE, handler)`.
         delete => DELETE,
 
-        /// Equivalent to `mount.route(path, Verb::Method(Method::HEAD), handler)`.
+        /// Equivalent to `mount.route(path, Method::HEAD, handler)`.
         head => HEAD,
 
-        /// Equivalent to `mount.route(path, Verb::Method(Method::OPTIONS), handler)`.
+        /// Equivalent to `mount.route(path, Method::OPTIONS, handler)`.
         options => OPTIONS,
 
-        /// Equivalent to `mount.route(path, Verb::Method(Method::PATCH), handler)`.
+        /// Equivalent to `mount.route(path, Method::PATCH, handler)`.
         patch => PATCH,
     ];
-
-    /// Equivalent to `mount.route(path, Verb::Any, handler)`.
-    #[inline]
-    pub fn any<H>(&mut self, path: &str, handler: H) -> &mut Self
-    where
-        H: Handler + Send + Sync + 'static,
-        H::Future: Send + 'static,
-    {
-        self.route(path, Verb::Any, handler)
-    }
 }

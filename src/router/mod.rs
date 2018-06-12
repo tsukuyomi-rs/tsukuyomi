@@ -8,5 +8,5 @@ mod route;
 mod router;
 
 pub use self::handler::Handler;
-pub use self::route::{Route, Verb};
+pub use self::route::Route;
 pub use self::router::{Builder, Mount, Router};
