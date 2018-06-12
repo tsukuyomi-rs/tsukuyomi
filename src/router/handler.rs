@@ -1,14 +1,13 @@
-use futures::{future, Future, IntoFuture};
-
 use context::Context;
 use error::Error;
+use future::{Future, Poll};
 use output::{Output, Responder};
 
 /// [unstable]
 /// A trait representing an HTTP handler associated with the certain endpoint.
 pub trait Handler {
     /// The type of future which will be returned from `handle`.
-    type Future: Future<Item = Output, Error = Error>;
+    type Future: Future<Output = Result<Output, Error>>;
 
     /// Applies an incoming request to this handler and returns a future.
     fn handle(&self, cx: &Context) -> Self::Future;
@@ -17,14 +16,29 @@ pub trait Handler {
 impl<F, R, T> Handler for F
 where
     F: Fn(&Context) -> R,
-    R: IntoFuture<Item = T, Error = Error>,
+    R: Future<Output = T>,
     T: Responder,
 {
-    type Future = future::AndThen<R::Future, Result<Output, Error>, fn(T) -> Result<Output, Error>>;
+    type Future = HandlerFuture<R>;
 
     fn handle(&self, cx: &Context) -> Self::Future {
-        (*self)(cx)
-            .into_future()
-            .and_then(|x| Context::with(|cx| x.respond_to(cx)))
+        HandlerFuture((*self)(cx))
+    }
+}
+
+#[derive(Debug)]
+#[must_use = "futures do nothing unless polled."]
+pub struct HandlerFuture<F>(F);
+
+impl<F, T> Future for HandlerFuture<F>
+where
+    F: Future<Output = T>,
+    T: Responder,
+{
+    type Output = Result<Output, Error>;
+
+    fn poll(&mut self) -> Poll<Self::Output> {
+        let item = ready!(self.0.poll());
+        Context::with(|cx| Poll::Ready(item.respond_to(cx.request())))
     }
 }

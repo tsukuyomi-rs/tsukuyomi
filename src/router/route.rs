@@ -1,10 +1,10 @@
 use failure;
-use futures::Future;
 use http::Method;
 use std::fmt;
 
 use context::Context;
 use error::Error;
+use future::Future;
 use output::Output;
 use router::Handler;
 
@@ -16,7 +16,7 @@ pub struct Route {
     base: String,
     path: String,
     method: Method,
-    handler: Box<Fn(&Context) -> Box<Future<Item = Output, Error = Error> + Send> + Send + Sync + 'static>,
+    handler: Box<Fn(&Context) -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync + 'static>,
 }
 
 impl fmt::Debug for Route {
@@ -66,7 +66,7 @@ impl Route {
         &self.method
     }
 
-    pub(crate) fn handle(&self, cx: &Context) -> Box<Future<Item = Output, Error = Error> + Send> {
+    pub(crate) fn handle(&self, cx: &Context) -> Box<Future<Output = Result<Output, Error>> + Send> {
         (*self.handler)(cx)
     }
 }

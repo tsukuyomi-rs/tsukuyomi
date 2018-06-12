@@ -31,3 +31,6 @@ test_script:
   - cargo clean
   - cargo test
   - cargo test --no-default-features
+  - if [%TOOLCHAIN%]==[nightly] (
+      cargo test --features nightly
+    )

@@ -7,6 +7,8 @@
 
 //! Tsukuyomi is a next generation Web framework for Rust.
 
+#![cfg_attr(feature = "nightly", feature(futures_api))]
+
 extern crate bytes;
 #[macro_use]
 extern crate failure;
@@ -37,7 +39,7 @@ extern crate rustls;
 extern crate tokio_rustls;
 
 #[macro_use]
-mod macros;
+pub mod future;
 
 pub mod app;
 pub mod context;

@@ -1,7 +1,7 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
 use bytes::Bytes;
-use futures::{future, Async, Future, Poll};
+use futures::{self, Async, Future};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
@@ -10,6 +10,7 @@ use std::{fmt, mem};
 
 use context::{Context, ContextParts};
 use error::{CritError, Error};
+use future::{self as future_compat, Poll};
 use input::RequestBody;
 use output::{Output, ResponseBody};
 use server::{Io, ServiceUpgradeExt};
@@ -33,10 +34,10 @@ impl NewService for App {
     type Error = CritError;
     type Service = AppService;
     type InitError = CritError;
-    type Future = future::FutureResult<Self::Service, Self::InitError>;
+    type Future = futures::future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
-        future::ok(self.new_service())
+        futures::future::ok(self.new_service())
     }
 }
 
@@ -67,7 +68,7 @@ impl ServiceUpgradeExt<Io> for AppService {
     type Upgrade = AppServiceUpgrade;
     type UpgradeError = CritError;
 
-    fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
+    fn poll_ready_upgradable(&mut self) -> futures::Poll<(), Self::UpgradeError> {
         self.rx.poll_ready()
     }
 
@@ -89,7 +90,10 @@ pub struct AppServiceFuture {
 
 enum AppServiceFutureKind {
     Initial(Request<RequestBody>),
-    InFlight(Context, Box<Future<Item = Output, Error = Error> + Send>),
+    InFlight(
+        Context,
+        Box<future_compat::Future<Output = Result<Output, Error>> + Send>,
+    ),
     Done,
 }
 
@@ -103,36 +107,34 @@ impl fmt::Debug for AppServiceFutureKind {
     }
 }
 
-impl Future for AppServiceFuture {
+impl futures::Future for AppServiceFuture {
     type Item = Response<Body>;
     type Error = CritError;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match ready!(self.poll_in_flight()) {
-            Ok((out, cx)) => self.handle_response(out, cx).map(Async::Ready),
-            Err((err, request)) => self.handle_error(err, request).map(Async::Ready),
+    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
+        match self.poll_in_flight() {
+            Poll::Pending => Ok(futures::Async::NotReady),
+            Poll::Ready(Ok((out, cx))) => self.handle_response(out, cx).map(Async::Ready),
+            Poll::Ready(Err((err, request))) => self.handle_error(err, request).map(Async::Ready),
         }
     }
 }
 
 impl AppServiceFuture {
-    fn poll_in_flight(&mut self) -> Poll<(Output, ContextParts), (Error, Request<()>)> {
+    fn poll_in_flight(&mut self) -> future_compat::Poll<Result<(Output, ContextParts), (Error, Request<()>)>> {
         use self::AppServiceFutureKind::*;
         loop {
-            let mut in_flight_result = None;
-            match self.kind {
-                Initial(..) => {}
-                InFlight(ref cx, ref mut f) => {
-                    in_flight_result = Some(ready!(self.state.set(|| cx.set(|| f.poll()))));
-                }
+            let in_flight_result = match self.kind {
+                Initial(..) => None,
+                InFlight(ref cx, ref mut f) => Some(ready!(self.state.set(|| cx.set(|| f.poll())))),
                 _ => panic!("unexpected state"),
-            }
+            };
 
             match (mem::replace(&mut self.kind, Done), in_flight_result) {
                 (Initial(request), None) => {
                     let (i, params) = match self.state.router().recognize(request.uri().path(), request.method()) {
                         Ok(v) => v,
-                        Err(e) => return Err((e, request.map(mem::drop))),
+                        Err(e) => return Poll::Ready(Err((e, request.map(mem::drop)))),
                     };
                     let cx = Context::new(request, i, params);
                     let in_flight = self.state.router().get_route(i).unwrap().handle(&cx);
@@ -140,10 +142,10 @@ impl AppServiceFuture {
                     self.kind = InFlight(cx, in_flight);
                 }
                 (InFlight(cx, _), Some(result)) => {
-                    return match result {
-                        Ok(out) => Ok(Async::Ready((out, cx.into_parts()))),
+                    return Poll::Ready(match result {
+                        Ok(out) => Ok((out, cx.into_parts())),
                         Err(err) => Err((err, cx.into_parts().request.map(mem::drop))),
-                    }
+                    })
                 }
                 _ => panic!("unexpected state"),
             }
@@ -188,11 +190,11 @@ impl fmt::Debug for AppServiceUpgrade {
     }
 }
 
-impl Future for AppServiceUpgrade {
+impl futures::Future for AppServiceUpgrade {
     type Item = ();
     type Error = ();
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
         match self.inner {
             Ok(ref mut f) => f.poll(),
             Err(ref mut io) => io.shutdown().map_err(mem::drop),

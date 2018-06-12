@@ -2,6 +2,7 @@ extern crate tsukuyomi;
 
 #[cfg(unix)]
 fn main() -> tsukuyomi::AppResult<()> {
+    use tsukuyomi::future::ready;
     use tsukuyomi::server::Server;
     use tsukuyomi::App;
 
@@ -12,7 +13,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", |_: &_| Ok("Hello"));
+            r.get("/", |_: &_| ready("Hello"));
         })
         .finish()?;
 

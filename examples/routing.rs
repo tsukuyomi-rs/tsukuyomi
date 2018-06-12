@@ -1,6 +1,7 @@
 extern crate pretty_env_logger;
 extern crate tsukuyomi;
 
+use tsukuyomi::future::ready;
 use tsukuyomi::{App, Context};
 
 fn main() -> tsukuyomi::AppResult<()> {
@@ -8,16 +9,15 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", |_: &Context| Ok("Hello, world\n"));
+            // r.get("/", async |_: &_| "Hello, world\n");
+            r.get("/", |_: &_| ready("Hello, world\n"));
 
             r.get("/api/:name", |cx: &Context| {
-                let message = format!("Hello, {}\n", &cx.params()[0]);
-                Ok(message)
+                ready(format!("Hello, {}\n", &cx.params()[0]))
             });
 
             r.get("/static/*path", |cx: &Context| {
-                let message = format!("path = {}\n", &cx.params()[0]);
-                Ok(message)
+                ready(format!("path = {}\n", &cx.params()[0]))
             });
         })
         .finish()?;
