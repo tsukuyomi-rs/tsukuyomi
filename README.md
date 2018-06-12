@@ -30,6 +30,7 @@ The following features does not currently implemented but will be supported in t
 
 ## Documentation
 
+* [API documentation (0.1.x)](https://docs.rs/tsukuyomi/0.1.*/tsukuyomi)
 * [API documentation (master)](https://ubnt-intrepid.github.io/tsukuyomi/tsukuyomi/index.html)
 
 ## License
