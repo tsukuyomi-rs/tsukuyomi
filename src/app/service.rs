@@ -57,7 +57,6 @@ impl Service for AppService {
         // TODO: apply middleware
         AppServiceFuture {
             kind: AppServiceFutureKind::Initial(request.map(RequestBody::from_hyp)),
-            context: None,
             state: self.state.clone(),
             tx: self.rx.sender(),
         }
@@ -84,14 +83,13 @@ impl ServiceUpgradeExt<Io> for AppService {
 #[derive(Debug)]
 pub struct AppServiceFuture {
     kind: AppServiceFutureKind,
-    context: Option<Context>,
     state: Arc<AppState>,
     tx: upgrade::Sender,
 }
 
 enum AppServiceFutureKind {
     Initial(Request<RequestBody>),
-    InFlight(Box<Future<Item = Output, Error = Error> + Send>),
+    InFlight(Context, Box<Future<Item = Output, Error = Error> + Send>),
     Done,
 }
 
@@ -110,44 +108,50 @@ impl Future for AppServiceFuture {
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let result = ready!(self.poll_in_flight());
-        let cx = self.context
-            .take()
-            .expect("AppServiceFuture has already resolved/rejected")
-            .into_parts();
-        match result {
-            Ok(out) => Ok(Async::Ready(self.handle_response(out, cx))),
-            Err(err) => {
-                let request = cx.request.map(mem::drop);
-                self.handle_error(err, request).map(Async::Ready)
-            }
+        match ready!(self.poll_in_flight()) {
+            Ok((out, cx)) => self.handle_response(out, cx).map(Async::Ready),
+            Err((err, request)) => self.handle_error(err, request).map(Async::Ready),
         }
     }
 }
 
 impl AppServiceFuture {
-    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
+    fn poll_in_flight(&mut self) -> Poll<(Output, ContextParts), (Error, Request<()>)> {
         use self::AppServiceFutureKind::*;
         loop {
-            match (&mut self.kind, &self.context) {
-                (Initial(..), ..) => {}
-                (InFlight(ref mut f), Some(ref cx)) => return self.state.set(|| cx.set(|| f.poll())),
+            let mut in_flight_result = None;
+            match self.kind {
+                Initial(..) => {}
+                InFlight(ref cx, ref mut f) => {
+                    in_flight_result = Some(ready!(self.state.set(|| cx.set(|| f.poll()))));
+                }
                 _ => panic!("unexpected state"),
             }
 
-            if let Initial(request) = mem::replace(&mut self.kind, Done) {
-                let (i, params) = self.state.router().recognize(request.uri().path(), request.method())?;
-                let cx = Context::new(request, i, params);
-                let in_flight = self.state.router().get_route(i).unwrap().handle(&cx);
+            match (mem::replace(&mut self.kind, Done), in_flight_result) {
+                (Initial(request), None) => {
+                    let (i, params) = match self.state.router().recognize(request.uri().path(), request.method()) {
+                        Ok(v) => v,
+                        Err(e) => return Err((e, request.map(mem::drop))),
+                    };
+                    let cx = Context::new(request, i, params);
+                    let in_flight = self.state.router().get_route(i).unwrap().handle(&cx);
 
-                self.kind = InFlight(in_flight);
-                self.context = Some(cx);
+                    self.kind = InFlight(cx, in_flight);
+                }
+                (InFlight(cx, _), Some(result)) => {
+                    return match result {
+                        Ok(out) => Ok(Async::Ready((out, cx.into_parts()))),
+                        Err(err) => Err((err, cx.into_parts().request.map(mem::drop))),
+                    }
+                }
+                _ => panic!("unexpected state"),
             }
         }
     }
 
     #[allow(unused_mut)]
-    fn handle_response(&mut self, output: Output, cx: ContextParts) -> Response<Body> {
+    fn handle_response(&mut self, output: Output, cx: ContextParts) -> Result<Response<Body>, CritError> {
         let (mut response, handler) = output.deconstruct();
 
         #[cfg(feature = "session")]
@@ -158,7 +162,7 @@ impl AppServiceFuture {
             self.tx.send(handler, cx.request.map(mem::drop));
         }
 
-        response
+        Ok(response)
     }
 
     fn handle_error(&mut self, err: Error, request: Request<()>) -> Result<Response<Body>, CritError> {
