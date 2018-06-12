@@ -13,7 +13,7 @@ keywords = ["web", "framework", "futures", "hyper", "tokio"]
 categories = ["web-programming::http-server"]
 
 [package.metadata.docs.rs]
-features = ["tls", "session"]
+features = ["default", "nightly"]
 
 [badges]
 appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
