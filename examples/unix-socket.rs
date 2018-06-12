@@ -13,7 +13,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", |_: &_| ready("Hello"));
+            r.get("/", |_| ready("Hello"));
         })
         .finish()?;
 

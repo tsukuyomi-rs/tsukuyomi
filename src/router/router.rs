@@ -3,9 +3,11 @@ use fnv::FnvHashMap;
 use http::Method;
 use std::mem;
 
+use context::Context;
 use error::Error;
+use future::Future;
+use output::Responder;
 
-use super::handler::Handler;
 use super::recognizer::Recognizer;
 use super::route::{normalize_uri, Route};
 
@@ -87,10 +89,11 @@ pub struct Builder {
 }
 
 impl Builder {
-    fn add_route<H>(&mut self, base: &str, path: &str, method: Method, handler: H) -> &mut Self
+    fn add_route<H, R>(&mut self, base: &str, path: &str, method: Method, handler: H) -> &mut Self
     where
-        H: Handler + Send + Sync + 'static,
-        H::Future: Send + 'static,
+        H: Fn(&Context) -> R + Send + Sync + 'static,
+        R: Future + Send + 'static,
+        R::Output: Responder,
     {
         self.modify(move |self_| {
             let base = normalize_uri(base)?;
@@ -169,10 +172,11 @@ macro_rules! impl_methods_for_mount {
     )*) => {$(
         $(#[$doc])*
         #[inline]
-        pub fn $name<H>(&mut self, path: &str, handler: H) -> &mut Self
+        pub fn $name<H, R>(&mut self, path: &str, handler: H) -> &mut Self
         where
-            H: Handler + Send + Sync + 'static,
-            H::Future: Send + 'static,
+            H: Fn(&Context) -> R + Send + Sync + 'static,
+            R: Future + Send + 'static,
+            R::Output: Responder,
         {
             self.route(path, Method::$METHOD, handler)
         }
@@ -181,10 +185,11 @@ macro_rules! impl_methods_for_mount {
 
 impl<'a> Mount<'a> {
     /// Adds a route with the provided path, method and handler.
-    pub fn route<H>(&mut self, path: &str, method: Method, handler: H) -> &mut Self
+    pub fn route<H, R>(&mut self, path: &str, method: Method, handler: H) -> &mut Self
     where
-        H: Handler + Send + Sync + 'static,
-        H::Future: Send + 'static,
+        H: Fn(&Context) -> R + Send + Sync + 'static,
+        R: Future + Send + 'static,
+        R::Output: Responder,
     {
         self.builder.add_route(self.base, path, method, handler);
         self

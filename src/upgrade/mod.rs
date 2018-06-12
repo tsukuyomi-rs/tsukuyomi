@@ -9,6 +9,7 @@ use http::header::{HeaderName, HeaderValue};
 use http::{header, response, HttpTryFrom, Request, Response, StatusCode, Version};
 use std::{fmt, mem};
 
+use context::Context;
 use error::Error;
 use output::{Output, Responder, ResponseBody};
 use server::Io;
@@ -34,8 +35,8 @@ impl Upgrade {
 }
 
 impl Responder for Upgrade {
-    fn respond_to<T>(mut self, request: &Request<T>) -> Result<Output, Error> {
-        if request.version() != Version::HTTP_11 {
+    fn respond_to(mut self, cx: &Context) -> Result<Output, Error> {
+        if cx.version() != Version::HTTP_11 {
             // FIXME: choose appropriate status code
             return Err(Error::bad_request(format_err!(
                 "Protocol upgrade is available only on HTTP/1.1"

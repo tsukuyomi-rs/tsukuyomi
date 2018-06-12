@@ -10,7 +10,7 @@ fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |r| {
             // r.get("/", async |_: &_| "Hello, world\n");
-            r.get("/", |_: &_| ready("Hello, world\n"));
+            r.get("/", |_| ready("Hello, world\n"));
 
             r.get("/api/:name", |cx: &Context| {
                 ready(format!("Hello, {}\n", &cx.params()[0]))
