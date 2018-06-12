@@ -3,8 +3,8 @@ use http::{header, StatusCode};
 use std::mem;
 use tokio_io::codec::{Framed, FramedParts, LinesCodec};
 
-use ganymede::upgrade::{Upgrade, UpgradeContext};
-use ganymede::{Context, Error};
+use tsukuyomi::upgrade::{Upgrade, UpgradeContext};
+use tsukuyomi::{Context, Error};
 
 fn missing_header(name: &str) -> Error {
     Error::from_failure(

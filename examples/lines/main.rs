@@ -1,8 +1,8 @@
 extern crate futures;
-extern crate ganymede;
 extern crate http;
 extern crate pretty_env_logger;
 extern crate tokio_io;
+extern crate tsukuyomi;
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -10,10 +10,10 @@ extern crate log;
 
 mod lines;
 
-use ganymede::upgrade::Upgrade;
-use ganymede::{App, Context};
+use tsukuyomi::upgrade::Upgrade;
+use tsukuyomi::{App, Context};
 
-fn index(cx: &Context) -> ganymede::Result<Upgrade> {
+fn index(cx: &Context) -> tsukuyomi::Result<Upgrade> {
     lines::start(cx, |line| {
         if !line.is_empty() {
             Some(format!(">> {}", line))
@@ -23,7 +23,7 @@ fn index(cx: &Context) -> ganymede::Result<Upgrade> {
     })
 }
 
-fn main() -> ganymede::AppResult<()> {
+fn main() -> tsukuyomi::AppResult<()> {
     ::std::env::set_var("RUST_LOG", "lines=info");
     pretty_env_logger::init();
 
@@ -33,5 +33,5 @@ fn main() -> ganymede::AppResult<()> {
         })
         .finish()?;
 
-    ganymede::run(app)
+    tsukuyomi::run(app)
 }

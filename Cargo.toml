@@ -1,13 +1,13 @@
 [package]
-name = "ganymede"
+name = "tsukuyomi"
 description = """
 A next generation Web framework for Rust
 """
 version = "0.1.0-pre.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ubnt-intrepid/ganymede.git"
-documentation = "https://docs.rs/ganymede/"
+repository = "https://github.com/ubnt-intrepid/tsukuyomi.git"
+documentation = "https://docs.rs/tsukuyomi/"
 readme = "README.md"
 keywords = ["web", "framework", "futures", "hyper", "tokio"]
 categories = ["web-programming::http-server"]
@@ -16,8 +16,8 @@ categories = ["web-programming::http-server"]
 features = ["tls", "session"]
 
 [badges]
-appveyor = { repository = "ubnt-intrepid/ganymede" }
-travis-ci = { repository = "ubnt-intrepid/ganymede" }
+appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
+travis-ci = { repository = "ubnt-intrepid/tsukuyomi" }
 maintenance = { status = "actively-development" }
 
 [dependencies]

@@ -1,20 +1,16 @@
-extern crate ganymede;
+extern crate tsukuyomi;
 extern crate pretty_env_logger;
 
-use ganymede::{App, Context};
+use tsukuyomi::{App, Context};
 
-fn welcome(_cx: &Context) -> ganymede::Result<&'static str> {
-    Ok("Hello, world!\n")
-}
-
-fn main() -> ganymede::AppResult<()> {
+fn main() -> tsukuyomi::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", welcome);
+            r.get("/", |_: &Context| Ok("Hello, world!\n"));
         })
         .finish()?;
 
-    ganymede::run(app)
+    tsukuyomi::run(app)
 }

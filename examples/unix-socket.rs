@@ -1,14 +1,14 @@
-extern crate ganymede;
+extern crate tsukuyomi;
 
 #[cfg(unix)]
-fn main() -> ganymede::AppResult<()> {
-    use ganymede::server::Server;
-    use ganymede::App;
+fn main() -> tsukuyomi::AppResult<()> {
+    use tsukuyomi::server::Server;
+    use tsukuyomi::App;
 
     let sock_path: std::path::PathBuf = std::env::args()
         .nth(1)
         .map(Into::into)
-        .unwrap_or_else(|| "/tmp/ganymede-uds.sock".into());
+        .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
     let app = App::builder()
         .mount("/", |r| {
@@ -26,7 +26,7 @@ fn main() -> ganymede::AppResult<()> {
     println!();
     println!("The test command is as follows:");
     println!();
-    println!("  $ curl --unix-socket /tmp/ganymede-uds.sock http://localhost/");
+    println!("  $ curl --unix-socket {} http://localhost/", sock_path.display());
     println!();
     server.serve();
 

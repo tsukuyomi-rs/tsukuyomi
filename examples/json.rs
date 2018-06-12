@@ -1,6 +1,4 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-
-extern crate ganymede;
+extern crate tsukuyomi;
 extern crate http;
 #[macro_use]
 extern crate serde;
@@ -10,9 +8,10 @@ extern crate pretty_env_logger;
 extern crate log;
 
 use futures::prelude::*;
-use ganymede::json::{Json, JsonErrorHandler};
-use ganymede::{App, Context, Error};
-use ganymede::output::HttpResponse;
+
+use tsukuyomi::json::{Json, JsonErrorHandler};
+use tsukuyomi::{App, Context, Error};
+use tsukuyomi::output::HttpResponse;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -22,7 +21,7 @@ struct User {
 
 impl HttpResponse for User {}
 
-fn get_json(_: &Context) -> ganymede::Result<Json<User>> {
+fn get_json(_: &Context) -> tsukuyomi::Result<Json<User>> {
     Ok(Json(User {
         name: "Sakura Kinomoto".into(),
         age: 13,
@@ -39,7 +38,7 @@ fn read_json_payload(ctxt: &Context) -> impl Future<Item = Json<User>, Error = E
         })
 }
 
-fn main() -> ganymede::AppResult<()> {
+fn main() -> tsukuyomi::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
@@ -50,5 +49,5 @@ fn main() -> ganymede::AppResult<()> {
         .error_handler(JsonErrorHandler::new())
         .finish()?;
 
-    ganymede::run(app)
+    tsukuyomi::run(app)
 }

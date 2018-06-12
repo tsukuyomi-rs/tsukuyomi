@@ -1,11 +1,10 @@
-# Ganymede
+# Tsukuyomi
 
-[![Build Status](https://travis-ci.org/ubnt-intrepid/ganymede.svg?branch=master)](https://travis-ci.org/ubnt-intrepid/ganymede)
-[![Build status](https://ci.appveyor.com/api/projects/status/uadxfu3y6jh768a0/branch/master?svg=true)](https://ci.appveyor.com/project/ubnt-intrepid/ganymede/branch/master)
-[![Coverage Status](https://coveralls.io/repos/github/ubnt-intrepid/ganymede/badge.svg?branch=master)](https://coveralls.io/github/ubnt-intrepid/ganymede?branch=master)
+[![Build Status](https://travis-ci.org/ubnt-intrepid/tsukuyomi.svg?branch=master)](https://travis-ci.org/ubnt-intrepid/tsukuyomi)
+[![Build status](https://ci.appveyor.com/api/projects/status/uadxfu3y6jh768a0/branch/master?svg=true)](https://ci.appveyor.com/project/ubnt-intrepid/tsukuyomi/branch/master)
+[![Coverage Status](https://coveralls.io/repos/github/ubnt-intrepid/tsukuyomi/badge.svg?branch=master)](https://coveralls.io/github/ubnt-intrepid/tsukuyomi?branch=master)
 
-Ganymede is a next generation Web framework for Rust.  
-This project is the successor of Susanoo.
+Tsukuyomi is a next generation Web framework for Rust.
 
 ## The Goal of This Project
 
@@ -31,7 +30,7 @@ The following features does not currently implemented but will be supported in t
 
 ## Documentation
 
-* [API documentation (master)](https://ubnt-intrepid.github.io/ganymede/ganymede/index.html)
+* [API documentation (master)](https://ubnt-intrepid.github.io/tsukuyomi/tsukuyomi/index.html)
 
 ## License
 MIT + Apache 2.0

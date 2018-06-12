@@ -103,7 +103,7 @@ impl AppBuilder {
     /// # Examples
     ///
     /// ```
-    /// # use ganymede::{App, Context};
+    /// # use tsukuyomi::{App, Context};
     /// # let index = |_: &Context| Ok("a");
     /// # let find_post = |_: &Context| Ok("a");
     /// # let all_posts = |_: &Context| Ok("a");

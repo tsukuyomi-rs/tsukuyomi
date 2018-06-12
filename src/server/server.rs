@@ -40,8 +40,8 @@ impl Builder {
     /// # Example
     ///
     /// ```
-    /// # use ganymede::server::Server;
-    /// # use ganymede::App;
+    /// # use tsukuyomi::server::Server;
+    /// # use tsukuyomi::App;
     /// # let app = App::builder().finish().unwrap();
     /// let server = Server::builder()
     ///     .transport(|t| {
@@ -59,8 +59,8 @@ impl Builder {
     /// # Example
     ///
     /// ```
-    /// # use ganymede::server::Server;
-    /// # use ganymede::App;
+    /// # use tsukuyomi::server::Server;
+    /// # use tsukuyomi::App;
     /// # let app = App::builder().finish().unwrap();
     /// let server = Server::builder()
     ///     .http(|http| {
@@ -80,9 +80,9 @@ impl Builder {
     ///
     /// ```
     /// # extern crate tokio;
-    /// # extern crate ganymede;
-    /// # use ganymede::server::Server;
-    /// # use ganymede::App;
+    /// # extern crate tsukuyomi;
+    /// # use tsukuyomi::server::Server;
+    /// # use tsukuyomi::App;
     /// # use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
     /// # let app = App::builder().finish().unwrap();
     /// let server = Server::builder()

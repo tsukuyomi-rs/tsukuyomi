@@ -5,7 +5,7 @@
 #![deny(unused_extern_crates)]
 #![deny(warnings)]
 
-//! Ganymede is a next generation Web framework for Rust.
+//! Tsukuyomi is a next generation Web framework for Rust.
 
 extern crate bytes;
 #[macro_use]
