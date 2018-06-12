@@ -1,14 +1,15 @@
 extern crate pretty_env_logger;
 extern crate tsukuyomi;
 
-use tsukuyomi::{App, Context};
+use tsukuyomi::future::ready;
+use tsukuyomi::App;
 
 fn main() -> tsukuyomi::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", |_: &Context| Ok("Hello, world!\n"));
+            r.get("/", |_: &_| ready("Hello, world!\n"));
         })
         .finish()?;
 

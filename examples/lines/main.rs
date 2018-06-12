@@ -10,17 +10,18 @@ extern crate log;
 
 mod lines;
 
+use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::upgrade::Upgrade;
 use tsukuyomi::{App, Context};
 
-fn index(cx: &Context) -> tsukuyomi::Result<Upgrade> {
-    lines::start(cx, |line| {
+fn index(cx: &Context) -> Ready<tsukuyomi::Result<Upgrade>> {
+    ready(lines::start(cx, |line| {
         if !line.is_empty() {
             Some(format!(">> {}", line))
         } else {
             None
         }
-    })
+    }))
 }
 
 fn main() -> tsukuyomi::AppResult<()> {

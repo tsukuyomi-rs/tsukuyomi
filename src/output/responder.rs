@@ -12,6 +12,15 @@ pub trait Responder {
     fn respond_to<T>(self, request: &Request<T>) -> Result<Output, Error>;
 }
 
+impl<T> Responder for Result<T, Error>
+where
+    T: Responder,
+{
+    fn respond_to<U>(self, request: &Request<U>) -> Result<Output, Error> {
+        self?.respond_to(request)
+    }
+}
+
 impl Responder for Output {
     fn respond_to<T>(self, _: &Request<T>) -> Result<Output, Error> {
         Ok(self)

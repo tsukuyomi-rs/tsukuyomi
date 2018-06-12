@@ -51,6 +51,7 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
+        - cargo test --features nightly
       after_success:
         - cargo fmt -- --write-mode=diff
 
