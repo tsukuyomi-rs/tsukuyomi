@@ -82,7 +82,7 @@ where
     type Output = Result<Output, Error>;
 
     fn poll(&mut self) -> Poll<Self::Output> {
-        Context::with(|cx| self.0.poll().map(|x| x.respond_to(cx.request())))
+        Context::with(|cx| self.0.poll().map(|x| x.respond_to(cx)))
     }
 }
 

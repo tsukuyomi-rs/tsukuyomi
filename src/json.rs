@@ -10,6 +10,7 @@ use serde::ser::Serialize;
 use serde_json;
 use std::ops::Deref;
 
+use context::Context;
 use error::handler::ErrorHandler;
 use error::{CritError, Error, HttpError};
 use input::body::FromData;
@@ -56,7 +57,7 @@ impl<T: DeserializeOwned> FromData for Json<T> {
 }
 
 impl<T: Serialize + HttpResponse> Responder for Json<T> {
-    fn respond_to<U>(self, _: &Request<U>) -> Result<Output, Error> {
+    fn respond_to(self, _: &Context) -> Result<Output, Error> {
         let body = serde_json::to_vec(&self.0).map_err(Error::internal_server_error)?;
         let mut response = json_response(body);
         *response.status_mut() = self.0.status_code();
@@ -76,7 +77,7 @@ impl From<serde_json::Value> for JsonValue {
 }
 
 impl Responder for JsonValue {
-    fn respond_to<T>(self, _: &Request<T>) -> Result<Output, Error> {
+    fn respond_to(self, _: &Context) -> Result<Output, Error> {
         Ok(json_response(self.0.to_string()).into())
     }
 }
