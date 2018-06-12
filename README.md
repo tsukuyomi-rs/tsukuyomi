@@ -1,7 +1,7 @@
 # Tsukuyomi
 
 [![Build Status](https://travis-ci.org/ubnt-intrepid/tsukuyomi.svg?branch=master)](https://travis-ci.org/ubnt-intrepid/tsukuyomi)
-[![Build status](https://ci.appveyor.com/api/projects/status/uadxfu3y6jh768a0/branch/master?svg=true)](https://ci.appveyor.com/project/ubnt-intrepid/tsukuyomi/branch/master)
+[![Build status](https://ci.appveyor.com/api/projects/status/kf8mx9k8iqfa08oj/branch/master?svg=true)](https://ci.appveyor.com/project/ubnt-intrepid/tsukuyomi/branch/master)
 [![Coverage Status](https://coveralls.io/repos/github/ubnt-intrepid/tsukuyomi/badge.svg?branch=master)](https://coveralls.io/github/ubnt-intrepid/tsukuyomi?branch=master)
 
 Tsukuyomi is a next generation Web framework for Rust.
