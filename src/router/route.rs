@@ -4,9 +4,8 @@ use std::fmt;
 
 use context::Context;
 use error::Error;
-use future::Future;
-use output::Output;
-use router::Handler;
+use future::{Future, Poll};
+use output::{Output, Responder};
 
 /// A type representing an endpoint.
 ///
@@ -30,10 +29,11 @@ impl fmt::Debug for Route {
 }
 
 impl Route {
-    pub(super) fn new<H>(base: String, path: String, method: Method, handler: H) -> Route
+    pub(super) fn new<H, R>(base: String, path: String, method: Method, handler: H) -> Route
     where
-        H: Handler + Send + Sync + 'static,
-        H::Future: Send + 'static,
+        H: Fn(&Context) -> R + Send + Sync + 'static,
+        R: Future + Send + 'static,
+        R::Output: Responder,
     {
         Route {
             base: base,
@@ -41,7 +41,7 @@ impl Route {
             method: method,
             handler: Box::new(move |cx| {
                 // TODO: specialization for Result<T, E>
-                Box::new(handler.handle(cx))
+                Box::new(HandlerFuture(handler(cx)))
             }),
         }
     }
@@ -68,6 +68,21 @@ impl Route {
 
     pub(crate) fn handle(&self, cx: &Context) -> Box<Future<Output = Result<Output, Error>> + Send> {
         (*self.handler)(cx)
+    }
+}
+
+#[derive(Debug)]
+struct HandlerFuture<F>(F);
+
+impl<F> Future for HandlerFuture<F>
+where
+    F: Future,
+    F::Output: Responder,
+{
+    type Output = Result<Output, Error>;
+
+    fn poll(&mut self) -> Poll<Self::Output> {
+        Context::with(|cx| self.0.poll().map(|x| x.respond_to(cx.request())))
     }
 }
 
