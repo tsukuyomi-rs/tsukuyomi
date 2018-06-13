@@ -13,55 +13,49 @@ extern crate tokio_io;
 
 mod git;
 
+use tsukuyomi::app::AppState;
 use tsukuyomi::error::HttpError;
 use tsukuyomi::output::ResponseBody;
 use tsukuyomi::{App, Context, Error};
 
-use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::{env, fs};
 
 use futures::{future, Future};
 use http::{header, Response, StatusCode};
 
 use git::{Repository, RpcMode};
 
+#[derive(Debug, Clone)]
+struct RepositoryPath(PathBuf);
+
 fn main() -> tsukuyomi::AppResult<()> {
     pretty_env_logger::init();
 
-    let repo_path = env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .ok_or_else(|| format_err!("empty repository path"))?;
+    let repo_path = env::args().nth(1).ok_or_else(|| format_err!("empty repository path"))?;
+    let repo_path = RepositoryPath(fs::canonicalize(repo_path)?);
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/info/refs", {
-                let repo_path = repo_path.clone();
-                move |cx| handle_info_refs(cx, &repo_path)
-            });
-            r.post("/git-receive-pack", {
-                let repo_path = repo_path.clone();
-                move |cx| handle_rpc(cx, &repo_path, RpcMode::Receive)
-            });
-            r.post("/git-upload-pack", move |cx| {
-                handle_rpc(cx, &repo_path, RpcMode::Upload)
-            });
+            r.get("/info/refs", handle_info_refs);
+            r.post("/git-receive-pack", |cx| handle_rpc(cx, RpcMode::Receive));
+            r.post("/git-upload-pack", |cx| handle_rpc(cx, RpcMode::Upload));
         })
+        .manage(repo_path)
         .finish()?;
 
     tsukuyomi::run(app)
 }
 
-fn handle_info_refs(
-    cx: &Context,
-    repo_path: &Path,
-) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+fn handle_info_refs(cx: &Context) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
     let mode = match validate_info_refs(cx) {
         Ok(service_name) => service_name,
         Err(err) => return Box::new(future::err(err.into())),
     };
 
-    let future = Repository::new(repo_path)
+    let repo_path = AppState::with(|s| s.state::<RepositoryPath>().cloned().unwrap());
+
+    let future = Repository::new(&repo_path.0)
         .stateless_rpc(mode)
         .advertise_refs()
         .and_then(move |output| {
@@ -94,18 +88,16 @@ fn validate_info_refs(cx: &Context) -> Result<RpcMode, HandleError> {
     }
 }
 
-fn handle_rpc(
-    cx: &Context,
-    repo_path: &Path,
-    mode: RpcMode,
-) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+fn handle_rpc(cx: &Context, mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
     if let Err(e) = validate_rpc(cx, mode) {
         return Box::new(future::err(e.into()));
     }
 
     let input = cx.body().read_all().map_err(Error::critical);
 
-    let future = Repository::new(repo_path)
+    let repo_path = AppState::with(|s| s.state::<RepositoryPath>().cloned().unwrap());
+
+    let future = Repository::new(&repo_path.0)
         .stateless_rpc(mode)
         .call(input)
         .and_then(move |output| {
