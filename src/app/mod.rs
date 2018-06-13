@@ -3,6 +3,7 @@
 pub mod service;
 
 use failure::Error;
+use state::Container;
 use std::sync::Arc;
 use std::{fmt, mem};
 
@@ -18,6 +19,7 @@ scoped_thread_local!(static STATE: AppState);
 pub struct AppState {
     router: Router,
     error_handler: Box<ErrorHandler + Send + Sync + 'static>,
+    states: Container,
     #[cfg(feature = "session")]
     secret_key: Key,
 }
@@ -54,6 +56,16 @@ impl AppState {
         &*self.error_handler
     }
 
+    /// Returns the reference to a value of `T` from the global storage.
+    ///
+    /// If the value is not registered, it returns a `None`.
+    pub fn state<T>(&self) -> Option<&T>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.states.try_get()
+    }
+
     /// Returns the reference to the secret key contained in this value.
     ///
     /// This method is available only if the feature `session` is enabled.
@@ -75,6 +87,7 @@ impl App {
         AppBuilder {
             router: Router::builder(),
             error_handler: None,
+            states: Container::new(),
             #[cfg(feature = "session")]
             secret_key: None,
         }
@@ -85,6 +98,7 @@ impl App {
 pub struct AppBuilder {
     router: router::Builder,
     error_handler: Option<Box<ErrorHandler + Send + Sync + 'static>>,
+    states: Container,
     #[cfg(feature = "session")]
     secret_key: Option<Key>,
 }
@@ -138,6 +152,18 @@ impl AppBuilder {
         self
     }
 
+    /// Sets a value of `T` to the global storage.
+    ///
+    /// If a value of provided type has already set, this method drops `state` immediately
+    /// and does not provide any affects to the global storage.
+    pub fn manage<T>(&mut self, state: T) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+    {
+        self.states.set(state);
+        self
+    }
+
     /// Generates a secret key for encrypting the Cookie values from the provided master key.
     ///
     /// This method is available only if the feature `session` is enabled.
@@ -153,12 +179,14 @@ impl AppBuilder {
     /// Creates a configured `App` from the current configuration.
     pub fn finish(&mut self) -> Result<App, Error> {
         let mut builder = mem::replace(self, App::builder());
+        builder.states.freeze();
 
         let state = AppState {
             router: builder.router.finish()?,
             error_handler: builder
                 .error_handler
                 .unwrap_or_else(|| Box::new(DefaultErrorHandler::new())),
+            states: builder.states,
             #[cfg(feature = "session")]
             secret_key: builder.secret_key.unwrap_or_else(Key::generate),
         };
