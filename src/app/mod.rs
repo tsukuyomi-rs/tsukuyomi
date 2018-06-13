@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::{fmt, mem};
 
 #[cfg(feature = "session")]
-use cookie::Key;
+use session::{self, SessionStorage};
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use router::{self, Mount, Router};
@@ -21,7 +21,7 @@ pub struct AppState {
     error_handler: Box<ErrorHandler + Send + Sync + 'static>,
     states: Container,
     #[cfg(feature = "session")]
-    secret_key: Key,
+    session: SessionStorage,
 }
 
 impl fmt::Debug for AppState {
@@ -66,12 +66,12 @@ impl AppState {
         self.states.try_get()
     }
 
-    /// Returns the reference to the secret key contained in this value.
+    /// Returns the reference to session manager.
     ///
     /// This method is available only if the feature `session` is enabled.
     #[cfg(feature = "session")]
-    pub fn secret_key(&self) -> &Key {
-        &self.secret_key
+    pub fn session(&self) -> &SessionStorage {
+        &self.session
     }
 }
 
@@ -89,7 +89,7 @@ impl App {
             error_handler: None,
             states: Container::new(),
             #[cfg(feature = "session")]
-            secret_key: None,
+            session: SessionStorage::builder(),
         }
     }
 }
@@ -100,7 +100,7 @@ pub struct AppBuilder {
     error_handler: Option<Box<ErrorHandler + Send + Sync + 'static>>,
     states: Container,
     #[cfg(feature = "session")]
-    secret_key: Option<Key>,
+    session: session::Builder,
 }
 
 impl fmt::Debug for AppBuilder {
@@ -164,15 +164,23 @@ impl AppBuilder {
         self
     }
 
-    /// Generates a secret key for encrypting the Cookie values from the provided master key.
+    /// Modifies the configuration of session manager.
     ///
     /// This method is available only if the feature `session` is enabled.
+    #[cfg(feature = "session")]
+    pub fn session(&mut self, f: impl FnOnce(&mut session::Builder)) -> &mut Self {
+        f(&mut self.session);
+        self
+    }
+
+    #[doc(hidden)]
+    #[deprecated(since = "0.1.2", note = "use `session::Builder::secret_key` instead")]
     #[cfg(feature = "session")]
     pub fn secret_key<K>(&mut self, master_key: K) -> &mut Self
     where
         K: AsRef<[u8]>,
     {
-        self.secret_key = Some(Key::from_master(master_key.as_ref()));
+        self.session.secret_key(master_key);
         self
     }
 
@@ -188,7 +196,7 @@ impl AppBuilder {
                 .unwrap_or_else(|| Box::new(DefaultErrorHandler::new())),
             states: builder.states,
             #[cfg(feature = "session")]
-            secret_key: builder.secret_key.unwrap_or_else(Key::generate),
+            session: builder.session.finish(),
         };
 
         Ok(App { state: Arc::new(state) })

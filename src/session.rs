@@ -1,80 +1,116 @@
-use cookie::{Cookie, CookieJar};
-use failure::Error;
-use http::header;
-use http::header::HeaderMap;
-use std::cell::{Cell, RefCell};
+//! [unstable]
+//! Components for managing the session variables and storage.
+
+use cookie::{Cookie, Key, PrivateJar};
+use serde::de::DeserializeOwned;
+use serde::ser::Serialize;
+use serde_json;
+use std::fmt;
 
 use app::AppState;
+use context::Context;
+use error::Error;
 
-#[derive(Debug, Default)]
-pub(crate) struct CookieManager {
-    jar: RefCell<CookieJar>,
-    init: Cell<bool>,
+/// A struct for managing the session variables.
+pub struct SessionStorage {
+    secret_key: Key,
 }
 
-impl CookieManager {
-    pub(crate) fn is_init(&self) -> bool {
-        self.init.get()
+impl fmt::Debug for SessionStorage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SessionStorage").finish()
+    }
+}
+
+impl SessionStorage {
+    /// Creates a builder object for constructing a value of this type.
+    pub fn builder() -> Builder {
+        Builder { secret_key: None }
     }
 
-    pub(crate) fn init(&self, h: &HeaderMap) -> Result<(), Error> {
-        let mut jar = self.jar.borrow_mut();
-        for raw in h.get_all(header::COOKIE) {
-            let raw_s = raw.to_str()?;
-            for s in raw_s.split(";").map(|s| s.trim()) {
-                let cookie = Cookie::parse_encoded(s)?.into_owned();
-                jar.add_original(cookie);
-            }
+    /// Returns the reference to the secret key.
+    pub(crate) fn secret_key(&self) -> &Key {
+        &self.secret_key
+    }
+}
+
+/// A builder object for constructing an instance of `SessionStorage`.
+pub struct Builder {
+    secret_key: Option<Key>,
+}
+
+impl fmt::Debug for Builder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Builder").finish()
+    }
+}
+
+impl Builder {
+    /// Generates a secret key to encrypt/decrypt Cookie values, by using the provided master key.
+    pub fn secret_key<K>(&mut self, master_key: K) -> &mut Self
+    where
+        K: AsRef<[u8]>,
+    {
+        self.secret_key = Some(Key::from_master(master_key.as_ref()));
+        self
+    }
+
+    /// Creates a new instance of `SessionStorage` with the current configuration.
+    pub fn finish(&mut self) -> SessionStorage {
+        SessionStorage {
+            secret_key: self.secret_key.take().unwrap_or_else(|| Key::generate()),
         }
-        self.init.set(true);
+    }
+}
+
+/// A manager of session variables associated with the current request.
+#[derive(Debug)]
+pub struct Session<'a> {
+    context: &'a Context,
+}
+
+impl<'a> Session<'a> {
+    #[allow(missing_docs)]
+    pub fn get<T>(&self, key: &str) -> Result<Option<T>, Error>
+    where
+        T: DeserializeOwned,
+    {
+        match self.with_private(|jar| jar.get(key))? {
+            Some(cookie) => serde_json::from_str(cookie.value())
+                .map(Some)
+                .map_err(Error::bad_request),
+            None => Ok(None),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn set<T>(&self, key: &str, value: T) -> Result<(), Error>
+    where
+        T: Serialize,
+    {
+        let value = serde_json::to_string(&value).map_err(Error::internal_server_error)?;
+        let cookie = Cookie::new(key.to_owned(), value);
+        self.with_private(|mut jar| jar.add(cookie))?;
         Ok(())
     }
 
-    pub(crate) fn cookies<'a>(&'a self) -> Cookies<'a> {
-        Cookies { jar: &self.jar }
+    #[allow(missing_docs)]
+    pub fn remove(&self, key: &str) -> Result<(), Error> {
+        self.with_private(|mut jar| jar.remove(Cookie::named(key.to_owned())))
     }
 
-    pub(crate) fn append_to(&self, h: &mut HeaderMap) {
-        if !self.is_init() {
-            return;
-        }
-
-        for cookie in self.jar.borrow().delta() {
-            h.insert(header::SET_COOKIE, cookie.encoded().to_string().parse().unwrap());
-        }
+    fn with_private<R>(&self, f: impl FnOnce(PrivateJar) -> R) -> Result<R, Error> {
+        AppState::with(|state| Ok(self.context.cookies()?.with_private(state.session().secret_key(), f)))
     }
-}
-
-/// [unstable]
-/// A proxy object for managing Cookie values.
-#[derive(Debug)]
-pub struct Cookies<'a> {
-    jar: &'a RefCell<CookieJar>,
 }
 
 #[allow(missing_docs)]
-impl<'a> Cookies<'a> {
-    pub fn get(&self, name: &str) -> Option<Cookie<'static>> {
-        self.jar.borrow().get(name).map(ToOwned::to_owned)
-    }
+pub trait ContextSessionExt {
+    fn session(&self) -> Session;
+}
 
-    pub fn get_private(&self, name: &str) -> Option<Cookie<'static>> {
-        AppState::with(|state| self.jar.borrow_mut().private(state.secret_key()).get(name))
-    }
-
-    pub fn add(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().add(cookie)
-    }
-
-    pub fn add_private(&self, cookie: Cookie<'static>) {
-        AppState::with(|state| self.jar.borrow_mut().private(state.secret_key()).add(cookie))
-    }
-
-    pub fn remove(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().remove(cookie)
-    }
-
-    pub fn remove_private(&self, cookie: Cookie<'static>) {
-        AppState::with(|state| self.jar.borrow_mut().private(state.secret_key()).remove(cookie))
+impl ContextSessionExt for Context {
+    fn session(&self) -> Session {
+        Session { context: self }
     }
 }
