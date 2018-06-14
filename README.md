@@ -3,6 +3,8 @@
 [![Build Status](https://travis-ci.org/ubnt-intrepid/tsukuyomi.svg?branch=master)](https://travis-ci.org/ubnt-intrepid/tsukuyomi)
 [![Build status](https://ci.appveyor.com/api/projects/status/kf8mx9k8iqfa08oj/branch/master?svg=true)](https://ci.appveyor.com/project/ubnt-intrepid/tsukuyomi/branch/master)
 [![Coverage Status](https://coveralls.io/repos/github/ubnt-intrepid/tsukuyomi/badge.svg?branch=master)](https://coveralls.io/github/ubnt-intrepid/tsukuyomi?branch=master)
+[![Docs.rs](https://docs.rs/tsukuyomi/badge.svg)](https://docs.rs/tsukuyomi)
+[![Gitter](https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg)](https://gitter.im/ubnt-intrepid/tsukuyomi?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 Tsukuyomi is a next generation Web framework for Rust.
 
@@ -30,7 +32,7 @@ The following features does not currently implemented but will be supported in t
 
 ## Documentation
 
-* [API documentation (0.1.x)](https://docs.rs/tsukuyomi/0.1.*/tsukuyomi)
+* [API documentation (released)](https://docs.rs/tsukuyomi/*/tsukuyomi)
 * [API documentation (master)](https://ubnt-intrepid.github.io/tsukuyomi/tsukuyomi/index.html)
 
 ## License
