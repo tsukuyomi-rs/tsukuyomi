@@ -153,11 +153,9 @@ impl AppServiceFuture {
         }
     }
 
-    #[allow(unused_mut)]
     fn handle_response(&mut self, output: Output, cx: ContextParts) -> Result<Response<Body>, CritError> {
         let (mut response, handler) = output.deconstruct();
 
-        #[cfg(feature = "session")]
         cx.cookies.append_to(response.headers_mut());
 
         if let Some(handler) = handler {

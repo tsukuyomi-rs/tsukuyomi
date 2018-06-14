@@ -12,6 +12,7 @@
 // #![deny(bare_trait_objects)]
 
 extern crate bytes;
+extern crate cookie;
 #[macro_use]
 extern crate failure;
 extern crate fnv;
@@ -33,9 +34,6 @@ extern crate tokio_tcp;
 #[cfg(unix)]
 extern crate tokio_uds;
 
-#[cfg(feature = "session")]
-extern crate cookie;
-
 #[cfg(feature = "tls")]
 extern crate rustls;
 #[cfg(feature = "tls")]
@@ -53,6 +51,9 @@ pub mod output;
 pub mod router;
 pub mod server;
 pub mod upgrade;
+
+#[cfg(feature = "session")]
+pub mod session;
 
 /// The definition of statically typed headers.
 ///
@@ -76,9 +77,6 @@ pub mod mime {
     pub use self::mime::*;
     pub use self::mime::{Mime, Name, Params};
 }
-
-#[cfg(feature = "session")]
-mod session;
 
 #[doc(inline)]
 pub use app::App;
