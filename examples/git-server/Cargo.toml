@@ -1,0 +1,22 @@
+[package]
+name = "git-server"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "git-server"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = { path = "../.." }
+bytes = "0.4.8"
+futures = "0.1"
+pretty_env_logger = "0.2.3"
+tokio-process = "0.2.2"
+failure = { version = "0.1.1", features = ["derive"] }
+serde = { version = "1.0.66", features = ["derive"] }
+serde_qs = "0.4.0"
+http = "0.1.6"
+tokio-io = "0.1.7"

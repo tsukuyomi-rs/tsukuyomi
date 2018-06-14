@@ -1,11 +1,10 @@
 extern crate tsukuyomi;
 
-#[cfg(unix)]
-fn main() -> tsukuyomi::AppResult<()> {
-    use tsukuyomi::future::ready;
-    use tsukuyomi::server::Server;
-    use tsukuyomi::App;
+use tsukuyomi::future::ready;
+use tsukuyomi::server::Server;
+use tsukuyomi::App;
 
+fn main() -> tsukuyomi::AppResult<()> {
     let sock_path: std::path::PathBuf = std::env::args()
         .nth(1)
         .map(Into::into)
@@ -32,9 +31,4 @@ fn main() -> tsukuyomi::AppResult<()> {
     server.serve();
 
     Ok(())
-}
-
-#[cfg(not(unix))]
-fn main() {
-    println!("This example works only on Unix platform.");
 }

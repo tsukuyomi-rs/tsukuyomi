@@ -27,7 +27,7 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo clean
-        - cargo test
+        - cargo test --all
         - cargo test --no-default-features
       after_success:
         - cargo fmt -- --write-mode=diff
@@ -39,7 +39,7 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo clean
-        - cargo test
+        - cargo test --all
         - cargo test --no-default-features
       after_success:
         - cargo fmt -- --write-mode=diff
@@ -49,7 +49,7 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo clean
-        - cargo test
+        - cargo test --all
         - cargo test --no-default-features
         - cargo test --features nightly
       after_success:

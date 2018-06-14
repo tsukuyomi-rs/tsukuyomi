@@ -1,16 +1,10 @@
 extern crate tsukuyomi;
 
-#[cfg(not(feature = "session"))]
-fn main() {
-    println!("This example works only if the feature 'session' is enabled");
-}
+use tsukuyomi::future::{ready, Ready};
+use tsukuyomi::session::ContextSessionExt;
+use tsukuyomi::{App, Error};
 
-#[cfg(feature = "session")]
 fn main() -> tsukuyomi::AppResult<()> {
-    use tsukuyomi::future::{ready, Ready};
-    use tsukuyomi::session::ContextSessionExt;
-    use tsukuyomi::{App, Error};
-
     let app = App::builder()
         .mount("/", |r| {
             r.get("/", |cx| -> Ready<_> {
