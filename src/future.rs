@@ -8,7 +8,7 @@
 use futures;
 use std::mem;
 
-#[cfg(feature = "nightly")]
+#[cfg(feature = "stdfuture")]
 use std::task as stdtask;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -80,7 +80,7 @@ impl<T, E> Into<Result<futures::Async<T>, E>> for Poll<Result<T, E>> {
     }
 }
 
-#[cfg(feature = "nightly")]
+#[cfg(feature = "stdfuture")]
 impl<T> From<stdtask::Poll<T>> for Poll<T> {
     fn from(p: stdtask::Poll<T>) -> Poll<T> {
         match p {
@@ -90,7 +90,7 @@ impl<T> From<stdtask::Poll<T>> for Poll<T> {
     }
 }
 
-#[cfg(feature = "nightly")]
+#[cfg(feature = "stdfuture")]
 impl<T> Into<stdtask::Poll<T>> for Poll<T> {
     fn into(self) -> stdtask::Poll<T> {
         match self {

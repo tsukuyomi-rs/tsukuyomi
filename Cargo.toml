@@ -55,3 +55,5 @@ default = ["tls", "session"]
 session = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
 nightly = []
+# FIXME: integrate with 'nightly'
+stdfuture = []
