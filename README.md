@@ -21,14 +21,35 @@ and fast Web services, with the help of ecosystem of Rust for asynchronous netwo
 * Support for both TCP and Unix domain socket
 * Custom error handling
 * Basic support for Cookie management
+* Middleware support
+* Cookie based session management
 
 The following features does not currently implemented but will be supported in the future version:
 
-* Middlewares
-* High-level APIs
-  - Authentication
-  - Session
-  - WebSocket
+* Custom session storage
+* Authentication
+* Embedded WebSocket handling
+
+## Example
+
+```rust
+extern crate tsukuyomi;
+
+use tsukuyomi::App;
+use tsukuyomi::future::ready;
+
+fn main() -> tsukuyomi::AppResult<()> {
+    let app = App::builder()
+        .mount("/", |r| {
+            r.get("/", |_cx| ready("Hello, world!\n"));
+        })
+        .finish()?;
+
+    tsukuyomi::run(app);
+}
+```
+
+More examples are located in [`examples/`](examples/).
 
 ## Documentation
 

@@ -1,6 +1,6 @@
 //! Tsukuyomi is a next generation Web framework for Rust.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.1.2")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.1.3")]
 #![cfg_attr(feature = "nightly", feature(futures_api))]
 #![cfg_attr(feature = "nightly", feature(extern_prelude))]
 #![deny(missing_docs)]
