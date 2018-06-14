@@ -11,6 +11,7 @@ use std::{fmt, mem};
 use session::{self, SessionStorage};
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
+use modifier::Modifier;
 use router::{self, Mount, Router};
 
 scoped_thread_local!(static STATE: AppState);
@@ -19,6 +20,7 @@ scoped_thread_local!(static STATE: AppState);
 pub struct AppState {
     router: Router,
     error_handler: Box<ErrorHandler + Send + Sync + 'static>,
+    modifiers: Vec<Box<Modifier + Send + Sync + 'static>>,
     states: Container,
     #[cfg(feature = "session")]
     session: SessionStorage,
@@ -56,6 +58,11 @@ impl AppState {
         &*self.error_handler
     }
 
+    /// Returns the reference to `ErrorHandler` contained in this value.
+    pub fn modifiers(&self) -> &[Box<Modifier + Send + Sync + 'static>] {
+        &self.modifiers
+    }
+
     /// Returns the reference to a value of `T` from the global storage.
     ///
     /// If the value is not registered, it returns a `None`.
@@ -87,6 +94,7 @@ impl App {
         AppBuilder {
             router: Router::builder(),
             error_handler: None,
+            modifiers: vec![],
             states: Container::new(),
             #[cfg(feature = "session")]
             session: SessionStorage::builder(),
@@ -98,6 +106,7 @@ impl App {
 pub struct AppBuilder {
     router: router::Builder,
     error_handler: Option<Box<ErrorHandler + Send + Sync + 'static>>,
+    modifiers: Vec<Box<Modifier + Send + Sync + 'static>>,
     states: Container,
     #[cfg(feature = "session")]
     session: session::Builder,
@@ -152,6 +161,15 @@ impl AppBuilder {
         self
     }
 
+    /// Sets the instance to an error handler into this builder.
+    pub fn modifier<M>(&mut self, modifier: M) -> &mut Self
+    where
+        M: Modifier + Send + Sync + 'static,
+    {
+        self.modifiers.push(Box::new(modifier));
+        self
+    }
+
     /// Sets a value of `T` to the global storage.
     ///
     /// If a value of provided type has already set, this method drops `state` immediately
@@ -194,6 +212,7 @@ impl AppBuilder {
             error_handler: builder
                 .error_handler
                 .unwrap_or_else(|| Box::new(DefaultErrorHandler::new())),
+            modifiers: builder.modifiers,
             states: builder.states,
             #[cfg(feature = "session")]
             session: builder.session.finish(),
