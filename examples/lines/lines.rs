@@ -1,7 +1,7 @@
 use futures::{future, Future, Sink, Stream};
 use http::{header, StatusCode};
 use std::mem;
-use tokio_io::codec::{Framed, FramedParts, LinesCodec};
+use tokio_codec::{Framed, FramedParts, LinesCodec};
 
 use tsukuyomi::upgrade::{Upgrade, UpgradeContext};
 use tsukuyomi::{Context, Error};
@@ -45,13 +45,10 @@ fn build_upgrade_handler<F>(cx: UpgradeContext, handler: F) -> impl Future<Item 
 where
     F: Fn(String) -> Option<String> + Send + Sync + 'static,
 {
-    let parts = FramedParts {
-        inner: cx.io,
-        readbuf: cx.read_buf.into(),
-        writebuf: Default::default(),
-    };
+    let mut parts = FramedParts::new(cx.io, LinesCodec::new());
+    parts.read_buf = cx.read_buf.into();
 
-    let (sink, stream) = Framed::from_parts(parts, LinesCodec::new()).split();
+    let (sink, stream) = Framed::from_parts(parts).split();
 
     future::lazy(|| Ok(()))
         .inspect(|_| info!("Start the connection"))

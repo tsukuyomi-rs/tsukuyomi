@@ -1,7 +1,7 @@
 extern crate futures;
 extern crate http;
 extern crate pretty_env_logger;
-extern crate tokio_io;
+extern crate tokio_codec;
 extern crate tsukuyomi;
 #[macro_use]
 extern crate failure;
