@@ -136,8 +136,9 @@ impl AppServiceFuture {
                         Ok(v) => v,
                         Err(e) => return Poll::Ready(Err((e, request.map(mem::drop)))),
                     };
+                    let route = &self.state.router().get_route(i).unwrap();
                     let cx = Context::new(request, i, params);
-                    let in_flight = self.state.router().get_route(i).unwrap().handle(&cx);
+                    let in_flight = self.state.set(|| route.handle(&cx));
 
                     self.kind = InFlight(cx, in_flight);
                 }
