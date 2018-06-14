@@ -1,4 +1,3 @@
-extern crate http;
 extern crate tsukuyomi;
 #[macro_use]
 extern crate serde;

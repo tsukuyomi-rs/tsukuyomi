@@ -12,6 +12,13 @@ readme = "README.md"
 keywords = ["web", "framework", "futures", "hyper", "tokio"]
 categories = ["web-programming::http-server"]
 
+include = [
+  "src/**/*.rs",
+  "Cargo.toml",
+  "README.md",
+  "LICENSE-*",
+]
+
 [package.metadata.docs.rs]
 features = ["default", "nightly"]
 
@@ -19,6 +26,17 @@ features = ["default", "nightly"]
 appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
 travis-ci = { repository = "ubnt-intrepid/tsukuyomi" }
 maintenance = { status = "actively-developed" }
+
+[workspace]
+members = [
+  "examples/basic",
+  "examples/git-server",
+  "examples/json",
+  "examples/lines",
+  "examples/routing",
+  "examples/session",
+  "examples/unix-socket",
+]
 
 [dependencies]
 hyper = { version = "0.12.1", features = ["runtime"], default-features = false }
@@ -42,13 +60,6 @@ state = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 tokio-uds = "0.2.0"
-
-[dev-dependencies]
-pretty_env_logger = "0.2.3"
-serde_qs = "0.4.0"
-tokio-io = "0.1.7"
-tokio-codec = "0.1.0"
-tokio-process = "0.2.2"
 
 [features]
 default = ["tls", "session"]
