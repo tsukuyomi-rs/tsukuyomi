@@ -12,11 +12,14 @@ use context::{Context, ContextParts};
 use error::{CritError, Error};
 use future::{self as future_compat, Poll};
 use input::RequestBody;
+use modifier::{AfterHandle, BeforeHandle};
 use output::{Output, ResponseBody};
 use server::{Io, ServiceUpgradeExt};
 use upgrade::service as upgrade;
 
 use super::{App, AppState};
+
+type HandleFuture = Box<future_compat::Future<Output = Result<Output, Error>> + Send>;
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -55,7 +58,6 @@ impl Service for AppService {
     type Future = AppServiceFuture;
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        // TODO: apply middleware
         AppServiceFuture {
             kind: AppServiceFutureKind::Initial(request.map(RequestBody::from_hyp)),
             state: self.state.clone(),
@@ -90,19 +92,31 @@ pub struct AppServiceFuture {
 
 enum AppServiceFutureKind {
     Initial(Request<RequestBody>),
-    InFlight(
-        Context,
-        Box<future_compat::Future<Output = Result<Output, Error>> + Send>,
-    ),
+    BeforeHandle {
+        in_flight: BeforeHandle,
+        current: usize,
+    },
+    Handle {
+        in_flight: HandleFuture,
+        context: Context,
+    },
+    AfterHandle {
+        in_flight: AfterHandle,
+        context: Context,
+        current: usize,
+    },
     Done,
 }
 
 impl fmt::Debug for AppServiceFutureKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::AppServiceFutureKind::*;
         match *self {
-            AppServiceFutureKind::Initial(ref req) => f.debug_tuple("Initial").field(req).finish(),
-            AppServiceFutureKind::InFlight(..) => f.debug_struct("InFlight").finish(),
-            AppServiceFutureKind::Done => f.debug_struct("Done").finish(),
+            Initial(ref req) => f.debug_tuple("Initial").field(req).finish(),
+            BeforeHandle { .. } => f.debug_tuple("BeforeHandle").finish(),
+            Handle { .. } => f.debug_struct("Handle").finish(),
+            AfterHandle { .. } => f.debug_tuple("AfterHandle").finish(),
+            Done => f.debug_struct("Done").finish(),
         }
     }
 }
@@ -123,34 +137,115 @@ impl futures::Future for AppServiceFuture {
 impl AppServiceFuture {
     fn poll_in_flight(&mut self) -> future_compat::Poll<Result<(Output, ContextParts), (Error, Request<()>)>> {
         use self::AppServiceFutureKind::*;
-        loop {
-            let in_flight_result = match self.kind {
-                Initial(..) => None,
-                InFlight(ref cx, ref mut f) => Some(ready!(self.state.set(|| cx.set(|| f.poll())))),
+
+        enum Inner {
+            BeforeHandle(Result<Context, (Context, Error)>),
+            Handle(Result<Output, Error>),
+            AfterHandle(Result<Output, Error>),
+            Empty,
+        }
+
+        let ret = loop {
+            let inner_state = match self.kind {
+                Initial(..) => Inner::Empty,
+                BeforeHandle { ref mut in_flight, .. } => {
+                    Inner::BeforeHandle(ready!(self.state.set(|| in_flight.poll_ready())))
+                }
+                Handle {
+                    ref mut in_flight,
+                    ref context,
+                } => Inner::Handle(ready!(self.state.set(|| context.set(|| in_flight.poll())))),
+                AfterHandle {
+                    ref mut in_flight,
+                    ref context,
+                    ..
+                } => Inner::AfterHandle(ready!(self.state.set(|| context.set(|| in_flight.poll_ready())))),
                 _ => panic!("unexpected state"),
             };
 
-            match (mem::replace(&mut self.kind, Done), in_flight_result) {
-                (Initial(request), None) => {
+            match (mem::replace(&mut self.kind, Done), inner_state) {
+                (Initial(request), Inner::Empty) => {
                     let (i, params) = match self.state.router().recognize(request.uri().path(), request.method()) {
                         Ok(v) => v,
-                        Err(e) => return Poll::Ready(Err((e, request.map(mem::drop)))),
+                        Err(e) => break Err((e, request.map(mem::drop))),
                     };
-                    let route = &self.state.router().get_route(i).unwrap();
-                    let cx = Context::new(request, i, params);
-                    let in_flight = self.state.set(|| route.handle(&cx));
 
-                    self.kind = InFlight(cx, in_flight);
+                    let cx = Context::new(request, i, params);
+
+                    if let Some(modifier) = self.state.modifiers().get(0) {
+                        // Start to applying the modifiers.
+
+                        self.kind = BeforeHandle {
+                            in_flight: modifier.before_handle(cx),
+                            current: 0,
+                        };
+                    } else {
+                        // No modifiers are registerd. transit to Handle directly.
+
+                        let route = &self.state.router().get_route(i).unwrap();
+                        let in_flight = self.state.set(|| route.handle(&cx));
+                        self.kind = Handle {
+                            in_flight: in_flight,
+                            context: cx,
+                        };
+                    }
                 }
-                (InFlight(cx, _), Some(result)) => {
-                    return Poll::Ready(match result {
-                        Ok(out) => Ok((out, cx.into_parts())),
-                        Err(err) => Err((err, cx.into_parts().request.map(mem::drop))),
-                    })
+                (BeforeHandle { current, .. }, Inner::BeforeHandle(Ok(cx))) => {
+                    if let Some(modifier) = self.state.modifiers().get(current) {
+                        // Apply the next modifier.
+                        self.kind = BeforeHandle {
+                            in_flight: modifier.before_handle(cx),
+                            current: current + 1,
+                        };
+                    } else {
+                        let i = cx.route_id();
+                        let route = &self.state.router().get_route(i).unwrap();
+                        let in_flight = self.state.set(|| route.handle(&cx));
+                        self.kind = Handle {
+                            in_flight: in_flight,
+                            context: cx,
+                        };
+                    }
+                }
+                (BeforeHandle { .. }, Inner::BeforeHandle(Err((cx, err)))) => {
+                    break Err((err, cx.into_parts().request.map(mem::drop)))
+                }
+                (Handle { context, .. }, Inner::Handle(Ok(out))) => {
+                    let current = self.state.modifiers().len();
+                    if current > 0 {
+                        let modifier = &self.state.modifiers()[current - 1];
+                        self.kind = AfterHandle {
+                            in_flight: modifier.after_handle(&context, out),
+                            context: context,
+                            current: current - 1,
+                        };
+                    } else {
+                        break Ok((out, context.into_parts()));
+                    }
+                }
+                (Handle { context, .. }, Inner::Handle(Err(err))) => {
+                    break Err((err, context.into_parts().request.map(mem::drop)))
+                }
+                (AfterHandle { context, current, .. }, Inner::AfterHandle(Ok(output))) => {
+                    if current > 0 {
+                        let modifier = &self.state.modifiers()[current - 1];
+                        self.kind = AfterHandle {
+                            in_flight: modifier.after_handle(&context, output),
+                            context: context,
+                            current: current - 1,
+                        };
+                    } else {
+                        break Ok((output, context.into_parts()));
+                    }
+                }
+                (AfterHandle { context, .. }, Inner::AfterHandle(Err(err))) => {
+                    break Err((err, context.into_parts().request.map(mem::drop)))
                 }
                 _ => panic!("unexpected state"),
             }
-        }
+        };
+
+        Poll::Ready(ret)
     }
 
     fn handle_response(&mut self, output: Output, cx: ContextParts) -> Result<Response<Body>, CritError> {
@@ -163,7 +258,7 @@ impl AppServiceFuture {
             self.tx.send(handler, cx.request.map(mem::drop));
         }
 
-        Ok(response)
+        Ok(response.map(ResponseBody::into_hyp))
     }
 
     fn handle_error(&mut self, err: Error, request: Request<()>) -> Result<Response<Body>, CritError> {

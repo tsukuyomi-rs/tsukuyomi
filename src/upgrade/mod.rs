@@ -44,7 +44,7 @@ impl Responder for Upgrade {
         }
 
         let response = self.response
-            .body(ResponseBody::empty().into_hyp())
+            .body(ResponseBody::empty())
             .map_err(Error::internal_server_error)?;
 
         Ok(Output {
