@@ -30,6 +30,7 @@ maintenance = { status = "actively-developed" }
 [workspace]
 members = [
   "examples/basic",
+  "examples/db",
   "examples/git-server",
   "examples/json",
   "examples/lines",
