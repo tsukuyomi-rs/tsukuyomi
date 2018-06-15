@@ -1,0 +1,20 @@
+[package]
+name = "template-askama"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "template-askama"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = { path = "../.." }
+askama = "0.6"
+http = "0.1.6"
+failure = "0.1.1"
+
+[build-dependencies]
+askama = "0.6"
