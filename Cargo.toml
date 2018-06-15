@@ -36,6 +36,7 @@ members = [
   "examples/lines",
   "examples/routing",
   "examples/session",
+  "examples/template-askama",
   "examples/unix-socket",
 ]
 
