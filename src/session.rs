@@ -7,7 +7,6 @@ use serde::ser::Serialize;
 use serde_json;
 use std::fmt;
 
-use app::AppState;
 use context::Context;
 use error::Error;
 
@@ -100,7 +99,9 @@ impl<'a> Session<'a> {
     }
 
     fn with_private<R>(&self, f: impl FnOnce(PrivateJar) -> R) -> Result<R, Error> {
-        AppState::with(|state| Ok(self.context.cookies()?.with_private(state.session().secret_key(), f)))
+        Ok(self.context
+            .cookies()?
+            .with_private(self.context.global().session().secret_key(), f))
     }
 }
 
