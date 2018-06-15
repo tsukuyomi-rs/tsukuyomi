@@ -59,13 +59,13 @@ matrix:
       env: DEPLOY_DOC
       script:
         - cargo clean
-        - cargo doc --no-deps
+        - cargo doc
         - rm -f target/doc/.lock
       deploy:
         provider: pages
         skip_cleanup: true
         github_token: $GH_TOKEN
-        repo: ubnt-intrepid/ganymede
+        repo: ubnt-intrepid/tsukuyomi
         target_branch: gh-pages
         local_dir: target/doc
         on:
