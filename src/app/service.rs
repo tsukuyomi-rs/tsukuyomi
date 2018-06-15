@@ -170,7 +170,7 @@ impl AppServiceFuture {
                         Err(e) => break Err((e, request.map(mem::drop))),
                     };
 
-                    let cx = Context::new(request, i, params);
+                    let cx = Context::new(request, i, params, self.state.clone());
 
                     if let Some(modifier) = self.state.modifiers().get(0) {
                         // Start to applying the modifiers.

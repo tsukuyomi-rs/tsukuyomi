@@ -37,13 +37,14 @@ impl AppState {
         STATE.set(self, f)
     }
 
-    /// Returns `true` if the reference to a `AppState` is set to the scoped TLS.
+    #[doc(hidden)]
+    #[deprecated(since = "0.1.4", note = "This method will remove at the next version")]
     pub fn is_set() -> bool {
         STATE.is_set()
     }
 
-    /// Executes a closure by using the reference to `AppState` set to the scoped TLS and
-    /// returns its result.
+    #[doc(hidden)]
+    #[deprecated(since = "0.1.4", note = "This method will remove at the next version")]
     pub fn with<R>(f: impl FnOnce(&AppState) -> R) -> R {
         STATE.with(f)
     }

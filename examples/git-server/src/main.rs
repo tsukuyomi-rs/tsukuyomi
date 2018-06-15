@@ -13,7 +13,6 @@ extern crate tokio_io;
 
 mod git;
 
-use tsukuyomi::app::AppState;
 use tsukuyomi::error::HttpError;
 use tsukuyomi::output::ResponseBody;
 use tsukuyomi::{App, Context, Error};
@@ -53,7 +52,7 @@ fn handle_info_refs(cx: &Context) -> Box<Future<Item = Response<ResponseBody>, E
         Err(err) => return Box::new(future::err(err.into())),
     };
 
-    let repo_path = AppState::with(|s| s.state::<RepositoryPath>().cloned().unwrap());
+    let repo_path = cx.global().state::<RepositoryPath>().unwrap();
 
     let future = Repository::new(&repo_path.0)
         .stateless_rpc(mode)
@@ -95,7 +94,7 @@ fn handle_rpc(cx: &Context, mode: RpcMode) -> Box<Future<Item = Response<Respons
 
     let input = cx.body().read_all().map_err(Error::critical);
 
-    let repo_path = AppState::with(|s| s.state::<RepositoryPath>().cloned().unwrap());
+    let repo_path = cx.global().state::<RepositoryPath>().unwrap();
 
     let future = Repository::new(&repo_path.0)
         .stateless_rpc(mode)

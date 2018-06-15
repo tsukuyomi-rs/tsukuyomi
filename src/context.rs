@@ -7,6 +7,7 @@ use http::{header, Request};
 use hyperx::header::Header;
 use std::cell::{Cell, RefCell};
 use std::ops::{Deref, Index};
+use std::sync::Arc;
 
 #[cfg(feature = "session")]
 use cookie::{Key, PrivateJar, SignedJar};
@@ -25,6 +26,7 @@ pub(crate) struct ContextParts {
     pub(crate) route: usize,
     pub(crate) params: Vec<(usize, usize)>,
     pub(crate) cookies: CookieManager,
+    pub(crate) global: Arc<AppState>,
     _priv: (),
 }
 
@@ -38,13 +40,19 @@ pub struct Context {
 }
 
 impl Context {
-    pub(crate) fn new(request: Request<RequestBody>, route: usize, params: Vec<(usize, usize)>) -> Context {
+    pub(crate) fn new(
+        request: Request<RequestBody>,
+        route: usize,
+        params: Vec<(usize, usize)>,
+        global: Arc<AppState>,
+    ) -> Context {
         Context {
             parts: ContextParts {
                 request: request,
                 route: route,
                 params: params,
                 cookies: CookieManager::default(),
+                global: global,
                 _priv: (),
             },
         }
@@ -85,12 +93,15 @@ impl Context {
         self.request().header()
     }
 
-    /// Runs a closure using the reference to a `Route` matched to the incoming request.
+    #[doc(hidden)]
+    #[deprecated(since = "0.1.4", note = "use `Context::route` instead")]
     pub fn with_route<R>(&self, f: impl FnOnce(&Route) -> R) -> R {
-        AppState::with(|state| {
-            let route = state.router().get_route(self.parts.route).unwrap();
-            f(route)
-        })
+        f(self.route())
+    }
+
+    /// Returns the reference to a `Route` matched to the incoming request.
+    pub fn route(&self) -> &Route {
+        self.global().router().get_route(self.parts.route).expect("The wrong route ID")
     }
 
     pub(crate) fn route_id(&self) -> usize {
@@ -118,7 +129,13 @@ impl Context {
         }
         Ok(Cookies {
             jar: &self.parts.cookies.jar,
+            global: self.global(),
         })
+    }
+
+    /// Returns the reference to the global state.
+    pub fn global(&self) -> &AppState {
+        &*self.parts.global
     }
 
     pub(crate) fn into_parts(self) -> ContextParts {
@@ -213,6 +230,7 @@ impl CookieManager {
 #[derive(Debug)]
 pub struct Cookies<'a> {
     jar: &'a RefCell<CookieJar>,
+    global: &'a AppState,
 }
 
 #[allow(missing_docs)]
@@ -252,20 +270,20 @@ impl<'a> Cookies<'a> {
     #[deprecated(since = "0.1.2", note = "use `Cookies::with_private` instead")]
     #[cfg(feature = "session")]
     pub fn get_private(&self, name: &str) -> Option<Cookie<'static>> {
-        AppState::with(|state| self.with_private(state.session().secret_key(), |jar| jar.get(name)))
+        self.with_private(self.global.session().secret_key(), |jar| jar.get(name))
     }
 
     #[doc(hidden)]
     #[deprecated(since = "0.1.2", note = "use `Cookies::with_private` instead")]
     #[cfg(feature = "session")]
     pub fn add_private(&self, cookie: Cookie<'static>) {
-        AppState::with(|state| self.with_private(state.session().secret_key(), |mut jar| jar.add(cookie)))
+        self.with_private(self.global.session().secret_key(), |mut jar| jar.add(cookie))
     }
 
     #[doc(hidden)]
     #[deprecated(since = "0.1.2", note = "use `Cookies::with_private` instead")]
     #[cfg(feature = "session")]
     pub fn remove_private(&self, cookie: Cookie<'static>) {
-        AppState::with(|state| self.with_private(state.session().secret_key(), |mut jar| jar.remove(cookie)))
+        self.with_private(self.global.session().secret_key(), |mut jar| jar.remove(cookie))
     }
 }
