@@ -7,12 +7,11 @@ use std::fmt;
 
 use error::Error;
 use future::{Future, Poll};
-use input::Input;
 use output::Output;
 
 pub trait Modifier {
-    fn before_handle(&self, input: &Input) -> BeforeHandle;
-    fn after_handle(&self, input: &Input, output: Output) -> AfterHandle;
+    fn before_handle(&self) -> BeforeHandle;
+    fn after_handle(&self, output: Output) -> AfterHandle;
 }
 
 // ==== BeforeHandle ====

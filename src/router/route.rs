@@ -15,7 +15,7 @@ pub struct Route {
     base: String,
     path: String,
     method: Method,
-    handler: Box<Fn(&Input) -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync + 'static>,
+    handler: Box<Fn() -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync + 'static>,
 }
 
 impl fmt::Debug for Route {
@@ -31,7 +31,7 @@ impl fmt::Debug for Route {
 impl Route {
     pub(super) fn new<H, R>(base: String, path: String, method: Method, handler: H) -> Route
     where
-        H: Fn(&Input) -> R + Send + Sync + 'static,
+        H: Fn() -> R + Send + Sync + 'static,
         R: Future + Send + 'static,
         R::Output: Responder,
     {
@@ -39,9 +39,9 @@ impl Route {
             base: base,
             path: path,
             method: method,
-            handler: Box::new(move |cx| {
+            handler: Box::new(move || {
                 // TODO: specialization for Result<T, E>
-                Box::new(HandlerFuture(handler(cx)))
+                Box::new(HandlerFuture(handler()))
             }),
         }
     }
@@ -66,8 +66,8 @@ impl Route {
         &self.method
     }
 
-    pub(crate) fn handle(&self, cx: &Input) -> Box<Future<Output = Result<Output, Error>> + Send> {
-        (*self.handler)(cx)
+    pub(crate) fn handle(&self) -> Box<Future<Output = Result<Output, Error>> + Send> {
+        (*self.handler)()
     }
 }
 

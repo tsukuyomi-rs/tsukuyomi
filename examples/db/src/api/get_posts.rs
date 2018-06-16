@@ -6,7 +6,7 @@ use tokio_threadpool::blocking;
 
 use tsukuyomi::json::Json;
 use tsukuyomi::output::HttpResponse;
-use tsukuyomi::{Error, Input};
+use tsukuyomi::Error;
 
 use conn::get_conn;
 use model::Post;
@@ -18,8 +18,8 @@ pub struct Response {
 
 impl HttpResponse for Response {}
 
-pub fn get_posts(cx: &Input) -> impl Future<Item = Json<Response>, Error = Error> + Send + 'static {
-    get_conn(cx)
+pub fn get_posts() -> impl Future<Item = Json<Response>, Error = Error> + Send + 'static {
+    get_conn()
         .and_then(|conn| {
             let query = {
                 use schema::posts::dsl::*;

@@ -9,7 +9,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", |_| ready("Hello, world!\n"));
+            r.get("/", || ready("Hello, world!\n"));
         })
         .finish()?;
 

@@ -14,13 +14,15 @@ use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::upgrade::Upgrade;
 use tsukuyomi::{App, Input};
 
-fn index(cx: &Input) -> Ready<tsukuyomi::Result<Upgrade>> {
-    ready(lines::start(cx, |line| {
-        if !line.is_empty() {
-            Some(format!(">> {}", line))
-        } else {
-            None
-        }
+fn index() -> Ready<tsukuyomi::Result<Upgrade>> {
+    ready(Input::with(|input| {
+        lines::start(input, |line| {
+            if !line.is_empty() {
+                Some(format!(">> {}", line))
+            } else {
+                None
+            }
+        })
     }))
 }
 

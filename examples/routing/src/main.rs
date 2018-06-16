@@ -9,15 +9,15 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            // r.get("/", async |_: &_| "Hello, world\n");
-            r.get("/", |_| ready("Hello, world\n"));
+            // r.get("/", async || "Hello, world\n");
+            r.get("/", || ready("Hello, world\n"));
 
-            r.get("/api/:name", |cx: &Input| {
-                ready(format!("Hello, {}\n", &cx.params()[0]))
+            r.get("/api/:name", || {
+                ready(Input::with(|input| format!("Hello, {}\n", &input.params()[0])))
             });
 
-            r.get("/static/*path", |cx: &Input| {
-                ready(format!("path = {}\n", &cx.params()[0]))
+            r.get("/static/*path", || {
+                ready(Input::with(|input| format!("path = {}\n", &input.params()[0])))
             });
         })
         .finish()?;

@@ -16,17 +16,20 @@ pub fn init_pool(database_url: String) -> Result<ConnPool, Error> {
     Ok(pool)
 }
 
-pub fn get_conn(cx: &Input) -> impl Future<Item = Conn, Error = Error> + Send + 'static {
-    cx.global()
-        .state::<ConnPool>()
-        .cloned()
-        .ok_or_else(|| format_err!("The connection pool is not exist"))
-        .into_future()
-        .and_then(|pool| {
-            poll_fn(move || {
-                try_ready!(blocking(|| pool.get()))
-                    .map(Async::Ready)
-                    .map_err(Into::into)
+pub fn get_conn() -> impl Future<Item = Conn, Error = Error> + Send + 'static {
+    Input::with(|input| {
+        input
+            .global()
+            .state::<ConnPool>()
+            .cloned()
+            .ok_or_else(|| format_err!("The connection pool is not exist"))
+            .into_future()
+            .and_then(|pool| {
+                poll_fn(move || {
+                    try_ready!(blocking(|| pool.get()))
+                        .map(Async::Ready)
+                        .map_err(Into::into)
+                })
             })
-        })
+    })
 }
