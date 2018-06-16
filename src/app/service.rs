@@ -93,6 +93,7 @@ enum AppServiceFutureKind {
     Initial(Request<RequestBody>),
     BeforeHandle {
         in_flight: BeforeHandle,
+        input: Input,
         current: usize,
     },
     Handle {
@@ -138,7 +139,7 @@ impl AppServiceFuture {
         use self::AppServiceFutureKind::*;
 
         enum Inner {
-            BeforeHandle(Result<Input, (Input, Error)>),
+            BeforeHandle(Result<(), Error>),
             Handle(Result<Output, Error>),
             AfterHandle(Result<Output, Error>),
             Empty,
@@ -147,9 +148,11 @@ impl AppServiceFuture {
         let ret = loop {
             let inner_state = match self.kind {
                 Initial(..) => Inner::Empty,
-                BeforeHandle { ref mut in_flight, .. } => {
-                    Inner::BeforeHandle(ready!(self.state.set(|| in_flight.poll_ready())))
-                }
+                BeforeHandle {
+                    ref mut in_flight,
+                    ref input,
+                    ..
+                } => Inner::BeforeHandle(ready!(self.state.set(|| input.set(|| in_flight.poll_ready())))),
                 Handle {
                     ref mut in_flight,
                     ref input,
@@ -169,45 +172,47 @@ impl AppServiceFuture {
                         Err(e) => break Err((e, request.map(mem::drop))),
                     };
 
-                    let cx = Input::new(request, i, params, self.state.clone());
+                    let input = Input::new(request, i, params, self.state.clone());
 
                     if let Some(modifier) = self.state.modifiers().get(0) {
                         // Start to applying the modifiers.
 
                         self.kind = BeforeHandle {
-                            in_flight: modifier.before_handle(cx),
+                            in_flight: modifier.before_handle(&input),
+                            input: input,
                             current: 0,
                         };
                     } else {
                         // No modifiers are registerd. transit to Handle directly.
 
                         let route = &self.state.router().get_route(i).unwrap();
-                        let in_flight = self.state.set(|| route.handle(&cx));
+                        let in_flight = self.state.set(|| route.handle(&input));
                         self.kind = Handle {
                             in_flight: in_flight,
-                            input: cx,
+                            input: input,
                         };
                     }
                 }
-                (BeforeHandle { current, .. }, Inner::BeforeHandle(Ok(cx))) => {
+                (BeforeHandle { current, input, .. }, Inner::BeforeHandle(Ok(()))) => {
                     if let Some(modifier) = self.state.modifiers().get(current) {
                         // Apply the next modifier.
                         self.kind = BeforeHandle {
-                            in_flight: modifier.before_handle(cx),
+                            in_flight: modifier.before_handle(&input),
+                            input: input,
                             current: current + 1,
                         };
                     } else {
-                        let i = cx.route_id();
+                        let i = input.route_id();
                         let route = &self.state.router().get_route(i).unwrap();
-                        let in_flight = self.state.set(|| route.handle(&cx));
+                        let in_flight = self.state.set(|| route.handle(&input));
                         self.kind = Handle {
                             in_flight: in_flight,
-                            input: cx,
+                            input: input,
                         };
                     }
                 }
-                (BeforeHandle { .. }, Inner::BeforeHandle(Err((cx, err)))) => {
-                    break Err((err, cx.into_parts().request.map(mem::drop)))
+                (BeforeHandle { input, .. }, Inner::BeforeHandle(Err(err))) => {
+                    break Err((err, input.into_parts().request.map(mem::drop)))
                 }
                 (Handle { input, .. }, Inner::Handle(Ok(out))) => {
                     let current = self.state.modifiers().len();

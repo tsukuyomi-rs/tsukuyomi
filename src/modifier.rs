@@ -3,24 +3,23 @@
 
 #![allow(missing_docs)]
 
-use futures::Future;
 use std::fmt;
 
 use error::Error;
-use future::Poll;
+use future::{Future, Poll};
 use input::Input;
 use output::Output;
 
 pub trait Modifier {
-    fn before_handle(&self, input: Input) -> BeforeHandle;
+    fn before_handle(&self, input: &Input) -> BeforeHandle;
     fn after_handle(&self, input: &Input, output: Output) -> AfterHandle;
 }
 
 // ==== BeforeHandle ====
 
 enum BeforeHandleState {
-    Immediate(Option<Result<Input, (Input, Error)>>),
-    Boxed(Box<Future<Item = Input, Error = (Input, Error)> + Send>),
+    Immediate(Option<Result<(), Error>>),
+    Boxed(Box<Future<Output = Result<(), Error>> + Send>),
 }
 
 impl fmt::Debug for BeforeHandleState {
@@ -37,22 +36,22 @@ impl fmt::Debug for BeforeHandleState {
 pub struct BeforeHandle(BeforeHandleState);
 
 impl BeforeHandle {
-    pub fn immediate(res: Result<Input, (Input, Error)>) -> BeforeHandle {
+    pub fn immediate(res: Result<(), Error>) -> BeforeHandle {
         BeforeHandle(BeforeHandleState::Immediate(Some(res)))
     }
 
     pub fn boxed<F>(future: F) -> BeforeHandle
     where
-        F: Future<Item = Input, Error = (Input, Error)> + Send + 'static,
+        F: Future<Output = Result<(), Error>> + Send + 'static,
     {
         BeforeHandle(BeforeHandleState::Boxed(Box::new(future)))
     }
 
-    pub fn poll_ready(&mut self) -> Poll<Result<Input, (Input, Error)>> {
+    pub fn poll_ready(&mut self) -> Poll<Result<(), Error>> {
         use self::BeforeHandleState::*;
         match self.0 {
             Immediate(ref mut res) => Poll::Ready(res.take().expect("BeforeHandle has already polled")),
-            Boxed(ref mut f) => f.poll().into(),
+            Boxed(ref mut f) => f.poll(),
         }
     }
 }
@@ -65,7 +64,7 @@ impl BeforeHandle {
 
 impl<F> From<F> for BeforeHandle
 where
-    F: Future<Item = Input, Error = (Input, Error)> + Send + 'static,
+    F: Future<Output = Result<(), Error>> + Send + 'static,
 {
     fn from(future: F) -> BeforeHandle {
         BeforeHandle::boxed(future)
@@ -76,7 +75,7 @@ where
 
 enum AfterHandleState {
     Immediate(Option<Result<Output, Error>>),
-    Boxed(Box<Future<Item = Output, Error = Error> + Send>),
+    Boxed(Box<Future<Output = Result<Output, Error>> + Send>),
 }
 
 impl fmt::Debug for AfterHandleState {
@@ -99,7 +98,7 @@ impl AfterHandle {
 
     pub fn boxed<F>(future: F) -> AfterHandle
     where
-        F: Future<Item = Output, Error = Error> + Send + 'static,
+        F: Future<Output = Result<Output, Error>> + Send + 'static,
     {
         AfterHandle(AfterHandleState::Boxed(Box::new(future)))
     }
@@ -108,7 +107,7 @@ impl AfterHandle {
         use self::AfterHandleState::*;
         match self.0 {
             Immediate(ref mut res) => Poll::Ready(res.take().expect("AfterHandle has already polled")),
-            Boxed(ref mut f) => f.poll().into(),
+            Boxed(ref mut f) => f.poll(),
         }
     }
 }
@@ -121,7 +120,7 @@ impl AfterHandle {
 
 impl<F> From<F> for AfterHandle
 where
-    F: Future<Item = Output, Error = Error> + Send + 'static,
+    F: Future<Output = Result<Output, Error>> + Send + 'static,
 {
     fn from(future: F) -> AfterHandle {
         AfterHandle::boxed(future)

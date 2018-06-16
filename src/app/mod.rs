@@ -115,12 +115,12 @@ impl AppBuilder {
     /// # Examples
     ///
     /// ```
-    /// # use tsukuyomi::{App, Context};
+    /// # use tsukuyomi::{App, Input};
     /// # use tsukuyomi::future::ready;
-    /// # let index = |_: &Context| ready("a");
-    /// # let find_post = |_: &Context| ready("a");
-    /// # let all_posts = |_: &Context| ready("a");
-    /// # let add_post = |_: &Context| ready("a");
+    /// # let index = |_: &Input| ready("a");
+    /// # let find_post = |_: &Input| ready("a");
+    /// # let all_posts = |_: &Input| ready("a");
+    /// # let add_post = |_: &Input| ready("a");
     /// let app = App::builder()
     ///     .mount("/", |r| { r.get("/", index); })
     ///     .mount("/api/v1/", |r| {
