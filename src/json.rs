@@ -14,7 +14,6 @@ use error::handler::ErrorHandler;
 use error::{CritError, Error, HttpError};
 use input::body::FromData;
 use input::Input;
-use input::RequestExt;
 use output::{HttpResponse, Output, Responder, ResponseBody};
 
 /// A wraper struct representing a statically typed JSON value.
@@ -43,8 +42,8 @@ impl<T> Deref for Json<T> {
 }
 
 impl<T: DeserializeOwned> FromData for Json<T> {
-    fn from_data<U>(data: Bytes, request: &Request<U>) -> Result<Json<T>, Error> {
-        if let Some(ContentType(mime)) = request.header()? {
+    fn from_data(data: Bytes, input: &Input) -> Result<Json<T>, Error> {
+        if let Some(ContentType(mime)) = input.header()? {
             if mime != mime::APPLICATION_JSON {
                 return Err(Error::bad_request(format_err!(
                     "The value of Content-type is not equal to application/json"

@@ -3,7 +3,6 @@
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{Future, Poll, Stream};
 use http::header::HeaderMap;
-use http::Request;
 use hyper::body::{self, Body, Payload as _Payload};
 use hyperx::header::ContentType;
 use mime;
@@ -13,8 +12,6 @@ use std::ops::Deref;
 
 use error::{CritError, Error};
 use input::Input;
-
-use super::request::RequestExt;
 
 // ==== RequestBody ====
 
@@ -192,7 +189,7 @@ impl ReadAll {
         T: FromData + Send + 'static,
     {
         self.map_err(Error::critical)
-            .and_then(|body| Input::with(|cx| T::from_data(body, cx.request())))
+            .and_then(|body| Input::with(|cx| T::from_data(body, cx)))
     }
 }
 
@@ -241,12 +238,12 @@ impl Future for ReadAll {
 /// A trait representing the conversion to certain type.
 pub trait FromData: Sized {
     /// Perform conversion from a received buffer of bytes into a value of `Self`.
-    fn from_data<T>(data: Bytes, request: &Request<T>) -> Result<Self, Error>;
+    fn from_data(data: Bytes, input: &Input) -> Result<Self, Error>;
 }
 
 impl FromData for String {
-    fn from_data<T>(data: Bytes, request: &Request<T>) -> Result<Self, Error> {
-        if let Some(ContentType(m)) = request.header()? {
+    fn from_data(data: Bytes, input: &Input) -> Result<Self, Error> {
+        if let Some(ContentType(m)) = input.header()? {
             if m != mime::TEXT_PLAIN {
                 return Err(Error::bad_request(format_err!("the content type must be text/plain")));
             }
