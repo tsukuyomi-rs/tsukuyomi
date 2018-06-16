@@ -93,12 +93,6 @@ impl Input {
         self.request().header()
     }
 
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.4", note = "use `Input::route` instead")]
-    pub fn with_route<R>(&self, f: impl FnOnce(&Route) -> R) -> R {
-        f(self.route())
-    }
-
     /// Returns the reference to a `Route` matched to the incoming request.
     pub fn route(&self) -> &Route {
         self.global()
@@ -132,7 +126,6 @@ impl Input {
         }
         Ok(Cookies {
             jar: &self.parts.cookies.jar,
-            global: self.global(),
         })
     }
 
@@ -233,7 +226,6 @@ impl CookieManager {
 #[derive(Debug)]
 pub struct Cookies<'a> {
     jar: &'a RefCell<CookieJar>,
-    global: &'a AppState,
 }
 
 #[allow(missing_docs)]
@@ -267,26 +259,5 @@ impl<'a> Cookies<'a> {
     #[cfg(feature = "session")]
     pub fn with_private<R>(&self, key: &Key, f: impl FnOnce(PrivateJar) -> R) -> R {
         f(self.jar.borrow_mut().private(key))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.2", note = "use `Cookies::with_private` instead")]
-    #[cfg(feature = "session")]
-    pub fn get_private(&self, name: &str) -> Option<Cookie<'static>> {
-        self.with_private(self.global.session().secret_key(), |jar| jar.get(name))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.2", note = "use `Cookies::with_private` instead")]
-    #[cfg(feature = "session")]
-    pub fn add_private(&self, cookie: Cookie<'static>) {
-        self.with_private(self.global.session().secret_key(), |mut jar| jar.add(cookie))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.2", note = "use `Cookies::with_private` instead")]
-    #[cfg(feature = "session")]
-    pub fn remove_private(&self, cookie: Cookie<'static>) {
-        self.with_private(self.global.session().secret_key(), |mut jar| jar.remove(cookie))
     }
 }

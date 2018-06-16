@@ -37,18 +37,6 @@ impl AppState {
         STATE.set(self, f)
     }
 
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.4", note = "This method will remove at the next version")]
-    pub fn is_set() -> bool {
-        STATE.is_set()
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.4", note = "This method will remove at the next version")]
-    pub fn with<R>(f: impl FnOnce(&AppState) -> R) -> R {
-        STATE.with(f)
-    }
-
     /// Returns the reference to `Router` contained in this value.
     pub fn router(&self) -> &Router {
         &self.router
@@ -189,17 +177,6 @@ impl AppBuilder {
     #[cfg(feature = "session")]
     pub fn session(&mut self, f: impl FnOnce(&mut session::Builder)) -> &mut Self {
         f(&mut self.session);
-        self
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.1.2", note = "use `session::Builder::secret_key` instead")]
-    #[cfg(feature = "session")]
-    pub fn secret_key<K>(&mut self, master_key: K) -> &mut Self
-    where
-        K: AsRef<[u8]>,
-    {
-        self.session.secret_key(master_key);
         self
     }
 
