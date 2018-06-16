@@ -1,3 +1,13 @@
+<a name="0.1.4"></a>
+## 0.1.4 (2018-06-16)
+
+#### Bug Fixes
+
+* **app:**  make AppState::with deprecated ([1dbaadc2](https://github.com/ubnt-intrepid/tsukuyomi/commit/1dbaadc22098a51e291b06a4040cabc8f4d69ef1))
+* **input:**
+  *  change the type of value received from FromData... ([682e0a5d](https://github.com/ubnt-intrepid/tsukuyomi/commit/682e0a5d43fc0fd53e59fc7b473a5757d2e5df0c))
+  *  rename Context with Input and move its definition into input/ ([32f8f9ea](https://github.com/ubnt-intrepid/tsukuyomi/commit/32f8f9ea98967559f1a42cc9c57df7eeb14eab98))
+
 <a name="0.1.3"></a>
 ## 0.1.3 (2018-06-14)
 
