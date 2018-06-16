@@ -12,6 +12,7 @@ cache:
 branches:
   only:
     - master
+    - /^\d+\.\d+$/
 
 matrix:
   allow_failures:

@@ -1,8 +1,9 @@
 version: "{build}"
 
 branches:
- only:
-   - master
+  only:
+    - master
+    - /^\d+\.\d+$/
 
 environment:
   matrix:
