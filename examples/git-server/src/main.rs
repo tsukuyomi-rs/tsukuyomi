@@ -15,7 +15,7 @@ mod git;
 
 use tsukuyomi::error::HttpError;
 use tsukuyomi::output::ResponseBody;
-use tsukuyomi::{App, Context, Error};
+use tsukuyomi::{App, Error, Input};
 
 use std::path::PathBuf;
 use std::{env, fs};
@@ -46,7 +46,7 @@ fn main() -> tsukuyomi::AppResult<()> {
     tsukuyomi::run(app)
 }
 
-fn handle_info_refs(cx: &Context) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+fn handle_info_refs(cx: &Input) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
     let mode = match validate_info_refs(cx) {
         Ok(service_name) => service_name,
         Err(err) => return Box::new(future::err(err.into())),
@@ -73,7 +73,7 @@ struct InfoRefs {
     service: String,
 }
 
-fn validate_info_refs(cx: &Context) -> Result<RpcMode, HandleError> {
+fn validate_info_refs(cx: &Input) -> Result<RpcMode, HandleError> {
     let query = cx.uri().query().ok_or_else(|| HandleError::Forbidden)?;
 
     let info_refs: InfoRefs = serde_qs::from_str(query).map_err(|cause| HandleError::InvalidQuery {
@@ -87,7 +87,7 @@ fn validate_info_refs(cx: &Context) -> Result<RpcMode, HandleError> {
     }
 }
 
-fn handle_rpc(cx: &Context, mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+fn handle_rpc(cx: &Input, mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
     if let Err(e) = validate_rpc(cx, mode) {
         return Box::new(future::err(e.into()));
     }
@@ -110,7 +110,7 @@ fn handle_rpc(cx: &Context, mode: RpcMode) -> Box<Future<Item = Response<Respons
     Box::new(future)
 }
 
-fn validate_rpc(cx: &Context, mode: RpcMode) -> Result<(), HandleError> {
+fn validate_rpc(cx: &Input, mode: RpcMode) -> Result<(), HandleError> {
     let content_type = format!("application/x-{}-request", mode);
     match cx.headers().get(header::CONTENT_TYPE) {
         Some(h) if h.as_bytes() == content_type.as_bytes() => Ok(()),

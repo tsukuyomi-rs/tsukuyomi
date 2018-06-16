@@ -43,7 +43,6 @@ extern crate tokio_rustls;
 pub mod future;
 
 pub mod app;
-pub mod context;
 pub mod error;
 pub mod input;
 pub mod json;
@@ -55,6 +54,18 @@ pub mod upgrade;
 
 #[cfg(feature = "session")]
 pub mod session;
+
+#[doc(hidden)]
+pub mod context {
+    #[deprecated(since = "0.1.4", note = "use `input::Input` instead")]
+    pub type Context = ::input::Input;
+
+    #[deprecated(since = "0.1.4", note = "use `input::Cookies` instead")]
+    pub type Cookies<'a> = ::input::Cookies<'a>;
+
+    #[deprecated(since = "0.1.4", note = "use `input::Params` instead")]
+    pub type Params<'a> = ::input::Params<'a>;
+}
 
 /// The definition of statically typed headers.
 ///
@@ -81,10 +92,16 @@ pub mod mime {
 
 #[doc(inline)]
 pub use app::App;
-#[doc(inline)]
+
+#[doc(hidden)]
+#[allow(deprecated)]
 pub use context::Context;
+
 #[doc(inline)]
 pub use error::{Error, Result};
+
+#[doc(inline)]
+pub use input::Input;
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///

@@ -6,7 +6,7 @@ use tokio_threadpool::blocking;
 
 use tsukuyomi::json::Json;
 use tsukuyomi::output::HttpResponse;
-use tsukuyomi::{Context, Error};
+use tsukuyomi::{Error, Input};
 
 use conn::get_conn;
 use model::Post;
@@ -18,7 +18,7 @@ pub struct Response {
 
 impl HttpResponse for Response {}
 
-pub fn get_posts(cx: &Context) -> impl Future<Item = Json<Response>, Error = Error> + Send + 'static {
+pub fn get_posts(cx: &Input) -> impl Future<Item = Json<Response>, Error = Error> + Send + 'static {
     get_conn(cx)
         .and_then(|conn| {
             let query = {

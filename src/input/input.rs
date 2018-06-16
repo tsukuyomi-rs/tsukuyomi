@@ -17,11 +17,11 @@ use error::Error;
 use input::{RequestBody, RequestExt};
 use router::Route;
 
-scoped_thread_local!(static CONTEXT: Context);
+scoped_thread_local!(static CONTEXT: Input);
 
-/// The inner parts of `Context`.
+/// The inner parts of `Input`.
 #[derive(Debug)]
-pub(crate) struct ContextParts {
+pub(crate) struct InputParts {
     pub(crate) request: Request<RequestBody>,
     pub(crate) route: usize,
     pub(crate) params: Vec<(usize, usize)>,
@@ -30,24 +30,24 @@ pub(crate) struct ContextParts {
     _priv: (),
 }
 
-/// Contextural values used by handlers during processing an incoming HTTP request.
+/// All of contextural values used by handlers during processing an incoming HTTP request.
 ///
 /// The values of this type are created at calling `AppService::call`, and used until the future
 /// created at its time is completed.
 #[derive(Debug)]
-pub struct Context {
-    parts: ContextParts,
+pub struct Input {
+    parts: InputParts,
 }
 
-impl Context {
+impl Input {
     pub(crate) fn new(
         request: Request<RequestBody>,
         route: usize,
         params: Vec<(usize, usize)>,
         global: Arc<AppState>,
-    ) -> Context {
-        Context {
-            parts: ContextParts {
+    ) -> Input {
+        Input {
+            parts: InputParts {
                 request: request,
                 route: route,
                 params: params,
@@ -62,20 +62,20 @@ impl Context {
         CONTEXT.set(self, f)
     }
 
-    /// Returns 'true' if the reference to a `Context` is set to the scoped TLS.
+    /// Returns 'true' if the reference to a `Input` is set to the scoped TLS.
     ///
-    /// If this function returns 'false', the function `Context::with` will panic.
+    /// If this function returns 'false', the function `Input::with` will panic.
     pub fn is_set() -> bool {
         CONTEXT.is_set()
     }
 
-    /// Executes a closure by using a reference to a `Context` from the scoped TLS and returns its
+    /// Executes a closure by using a reference to a `Input` from the scoped TLS and returns its
     /// result.
     ///
     /// # Panics
-    /// This function will panic if any reference to `Context` is set to the scoped TLS.
+    /// This function will panic if any reference to `Input` is set to the scoped TLS.
     /// Do not call this function outside the manage of the framework.
-    pub fn with<R>(f: impl FnOnce(&Context) -> R) -> R {
+    pub fn with<R>(f: impl FnOnce(&Input) -> R) -> R {
         CONTEXT.with(f)
     }
 
@@ -94,14 +94,17 @@ impl Context {
     }
 
     #[doc(hidden)]
-    #[deprecated(since = "0.1.4", note = "use `Context::route` instead")]
+    #[deprecated(since = "0.1.4", note = "use `Input::route` instead")]
     pub fn with_route<R>(&self, f: impl FnOnce(&Route) -> R) -> R {
         f(self.route())
     }
 
     /// Returns the reference to a `Route` matched to the incoming request.
     pub fn route(&self) -> &Route {
-        self.global().router().get_route(self.parts.route).expect("The wrong route ID")
+        self.global()
+            .router()
+            .get_route(self.parts.route)
+            .expect("The wrong route ID")
     }
 
     pub(crate) fn route_id(&self) -> usize {
@@ -138,12 +141,12 @@ impl Context {
         &*self.parts.global
     }
 
-    pub(crate) fn into_parts(self) -> ContextParts {
+    pub(crate) fn into_parts(self) -> InputParts {
         self.parts
     }
 }
 
-impl Deref for Context {
+impl Deref for Input {
     type Target = Request<RequestBody>;
 
     fn deref(&self) -> &Self::Target {

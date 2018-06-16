@@ -9,12 +9,12 @@ use failure::SyncFailure;
 use http::{header, Response};
 use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::output::{Output, Responder};
-use tsukuyomi::{App, Context, Error};
+use tsukuyomi::{App, Error, Input};
 
 struct Template<T: _Template>(T);
 
 impl<T: _Template> Responder for Template<T> {
-    fn respond_to(self, _: &Context) -> Result<Output, Error> {
+    fn respond_to(self, _: &Input) -> Result<Output, Error> {
         let body = self.0
             .render()
             .map_err(|e| Error::internal_server_error(SyncFailure::new(e)))?;
@@ -32,7 +32,7 @@ struct Hello {
     name: String,
 }
 
-fn index(cx: &Context) -> Ready<Template<Hello>> {
+fn index(cx: &Input) -> Ready<Template<Hello>> {
     let name = cx.params()[0].to_owned();
     ready(Template(Hello { name: name }))
 }
