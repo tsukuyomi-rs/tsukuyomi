@@ -12,9 +12,9 @@ mod lines;
 
 use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::upgrade::Upgrade;
-use tsukuyomi::{App, Context};
+use tsukuyomi::{App, Input};
 
-fn index(cx: &Context) -> Ready<tsukuyomi::Result<Upgrade>> {
+fn index(cx: &Input) -> Ready<tsukuyomi::Result<Upgrade>> {
     ready(lines::start(cx, |line| {
         if !line.is_empty() {
             Some(format!(">> {}", line))

@@ -8,10 +8,9 @@ use hyper::service::{NewService, Service};
 use std::sync::Arc;
 use std::{fmt, mem};
 
-use context::{Context, ContextParts};
 use error::{CritError, Error};
 use future::{self as future_compat, Poll};
-use input::RequestBody;
+use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
 use output::{Output, ResponseBody};
 use server::{Io, ServiceUpgradeExt};
@@ -98,11 +97,11 @@ enum AppServiceFutureKind {
     },
     Handle {
         in_flight: HandleFuture,
-        context: Context,
+        input: Input,
     },
     AfterHandle {
         in_flight: AfterHandle,
-        context: Context,
+        input: Input,
         current: usize,
     },
     Done,
@@ -135,11 +134,11 @@ impl futures::Future for AppServiceFuture {
 }
 
 impl AppServiceFuture {
-    fn poll_in_flight(&mut self) -> future_compat::Poll<Result<(Output, ContextParts), (Error, Request<()>)>> {
+    fn poll_in_flight(&mut self) -> future_compat::Poll<Result<(Output, InputParts), (Error, Request<()>)>> {
         use self::AppServiceFutureKind::*;
 
         enum Inner {
-            BeforeHandle(Result<Context, (Context, Error)>),
+            BeforeHandle(Result<Input, (Input, Error)>),
             Handle(Result<Output, Error>),
             AfterHandle(Result<Output, Error>),
             Empty,
@@ -153,13 +152,13 @@ impl AppServiceFuture {
                 }
                 Handle {
                     ref mut in_flight,
-                    ref context,
-                } => Inner::Handle(ready!(self.state.set(|| context.set(|| in_flight.poll())))),
+                    ref input,
+                } => Inner::Handle(ready!(self.state.set(|| input.set(|| in_flight.poll())))),
                 AfterHandle {
                     ref mut in_flight,
-                    ref context,
+                    ref input,
                     ..
-                } => Inner::AfterHandle(ready!(self.state.set(|| context.set(|| in_flight.poll_ready())))),
+                } => Inner::AfterHandle(ready!(self.state.set(|| input.set(|| in_flight.poll_ready())))),
                 _ => panic!("unexpected state"),
             };
 
@@ -170,7 +169,7 @@ impl AppServiceFuture {
                         Err(e) => break Err((e, request.map(mem::drop))),
                     };
 
-                    let cx = Context::new(request, i, params, self.state.clone());
+                    let cx = Input::new(request, i, params, self.state.clone());
 
                     if let Some(modifier) = self.state.modifiers().get(0) {
                         // Start to applying the modifiers.
@@ -186,7 +185,7 @@ impl AppServiceFuture {
                         let in_flight = self.state.set(|| route.handle(&cx));
                         self.kind = Handle {
                             in_flight: in_flight,
-                            context: cx,
+                            input: cx,
                         };
                     }
                 }
@@ -203,43 +202,43 @@ impl AppServiceFuture {
                         let in_flight = self.state.set(|| route.handle(&cx));
                         self.kind = Handle {
                             in_flight: in_flight,
-                            context: cx,
+                            input: cx,
                         };
                     }
                 }
                 (BeforeHandle { .. }, Inner::BeforeHandle(Err((cx, err)))) => {
                     break Err((err, cx.into_parts().request.map(mem::drop)))
                 }
-                (Handle { context, .. }, Inner::Handle(Ok(out))) => {
+                (Handle { input, .. }, Inner::Handle(Ok(out))) => {
                     let current = self.state.modifiers().len();
                     if current > 0 {
                         let modifier = &self.state.modifiers()[current - 1];
                         self.kind = AfterHandle {
-                            in_flight: modifier.after_handle(&context, out),
-                            context: context,
+                            in_flight: modifier.after_handle(&input, out),
+                            input: input,
                             current: current - 1,
                         };
                     } else {
-                        break Ok((out, context.into_parts()));
+                        break Ok((out, input.into_parts()));
                     }
                 }
-                (Handle { context, .. }, Inner::Handle(Err(err))) => {
-                    break Err((err, context.into_parts().request.map(mem::drop)))
+                (Handle { input, .. }, Inner::Handle(Err(err))) => {
+                    break Err((err, input.into_parts().request.map(mem::drop)))
                 }
-                (AfterHandle { context, current, .. }, Inner::AfterHandle(Ok(output))) => {
+                (AfterHandle { input, current, .. }, Inner::AfterHandle(Ok(output))) => {
                     if current > 0 {
                         let modifier = &self.state.modifiers()[current - 1];
                         self.kind = AfterHandle {
-                            in_flight: modifier.after_handle(&context, output),
-                            context: context,
+                            in_flight: modifier.after_handle(&input, output),
+                            input: input,
                             current: current - 1,
                         };
                     } else {
-                        break Ok((output, context.into_parts()));
+                        break Ok((output, input.into_parts()));
                     }
                 }
-                (AfterHandle { context, .. }, Inner::AfterHandle(Err(err))) => {
-                    break Err((err, context.into_parts().request.map(mem::drop)))
+                (AfterHandle { input, .. }, Inner::AfterHandle(Err(err))) => {
+                    break Err((err, input.into_parts().request.map(mem::drop)))
                 }
                 _ => panic!("unexpected state"),
             }
@@ -248,7 +247,7 @@ impl AppServiceFuture {
         Poll::Ready(ret)
     }
 
-    fn handle_response(&mut self, output: Output, cx: ContextParts) -> Result<Response<Body>, CritError> {
+    fn handle_response(&mut self, output: Output, cx: InputParts) -> Result<Response<Body>, CritError> {
         let (mut response, handler) = output.deconstruct();
 
         cx.cookies.append_to(response.headers_mut());

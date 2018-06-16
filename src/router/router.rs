@@ -3,9 +3,9 @@ use fnv::FnvHashMap;
 use http::Method;
 use std::mem;
 
-use context::Context;
 use error::Error;
 use future::Future;
+use input::Input;
 use output::Responder;
 
 use super::recognizer::Recognizer;
@@ -91,7 +91,7 @@ pub struct Builder {
 impl Builder {
     fn add_route<H, R>(&mut self, base: &str, path: &str, method: Method, handler: H) -> &mut Self
     where
-        H: Fn(&Context) -> R + Send + Sync + 'static,
+        H: Fn(&Input) -> R + Send + Sync + 'static,
         R: Future + Send + 'static,
         R::Output: Responder,
     {
@@ -174,7 +174,7 @@ macro_rules! impl_methods_for_mount {
         #[inline]
         pub fn $name<H, R>(&mut self, path: &str, handler: H) -> &mut Self
         where
-            H: Fn(&Context) -> R + Send + Sync + 'static,
+            H: Fn(&Input) -> R + Send + Sync + 'static,
             R: Future + Send + 'static,
             R::Output: Responder,
         {
@@ -187,7 +187,7 @@ impl<'a> Mount<'a> {
     /// Adds a route with the provided path, method and handler.
     pub fn route<H, R>(&mut self, path: &str, method: Method, handler: H) -> &mut Self
     where
-        H: Fn(&Context) -> R + Send + Sync + 'static,
+        H: Fn(&Input) -> R + Send + Sync + 'static,
         R: Future + Send + 'static,
         R::Output: Responder,
     {

@@ -5,7 +5,7 @@ use futures::future::poll_fn;
 use futures::{Async, Future, IntoFuture};
 use tokio_threadpool::blocking;
 
-use tsukuyomi::Context;
+use tsukuyomi::Input;
 
 pub type ConnPool = Pool<ConnectionManager<SqliteConnection>>;
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
@@ -16,7 +16,7 @@ pub fn init_pool(database_url: String) -> Result<ConnPool, Error> {
     Ok(pool)
 }
 
-pub fn get_conn(cx: &Context) -> impl Future<Item = Conn, Error = Error> + Send + 'static {
+pub fn get_conn(cx: &Input) -> impl Future<Item = Conn, Error = Error> + Send + 'static {
     cx.global()
         .state::<ConnPool>()
         .cloned()

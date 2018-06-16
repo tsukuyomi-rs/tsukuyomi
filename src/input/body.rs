@@ -11,8 +11,8 @@ use std::cell::UnsafeCell;
 use std::mem;
 use std::ops::Deref;
 
-use context::Context;
 use error::{CritError, Error};
+use input::Input;
 
 use super::request::RequestExt;
 
@@ -192,7 +192,7 @@ impl ReadAll {
         T: FromData + Send + 'static,
     {
         self.map_err(Error::critical)
-            .and_then(|body| Context::with(|cx| T::from_data(body, cx.request())))
+            .and_then(|body| Input::with(|cx| T::from_data(body, cx.request())))
     }
 }
 

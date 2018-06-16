@@ -4,7 +4,7 @@ use std::mem;
 use tokio_codec::{Framed, FramedParts, LinesCodec};
 
 use tsukuyomi::upgrade::{Upgrade, UpgradeContext};
-use tsukuyomi::{Context, Error};
+use tsukuyomi::{Error, Input};
 
 fn missing_header(name: &str) -> Error {
     Error::from_failure(
@@ -13,7 +13,7 @@ fn missing_header(name: &str) -> Error {
     )
 }
 
-pub fn start<F>(cx: &Context, handler: F) -> Result<Upgrade, Error>
+pub fn start<F>(cx: &Input, handler: F) -> Result<Upgrade, Error>
 where
     F: Fn(String) -> Option<String> + Send + Sync + 'static,
 {

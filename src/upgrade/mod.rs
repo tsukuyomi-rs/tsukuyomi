@@ -9,8 +9,8 @@ use http::header::{HeaderName, HeaderValue};
 use http::{header, response, HttpTryFrom, Request, Response, StatusCode, Version};
 use std::{fmt, mem};
 
-use context::Context;
 use error::Error;
+use input::Input;
 use output::{Output, Responder, ResponseBody};
 use server::Io;
 
@@ -35,7 +35,7 @@ impl Upgrade {
 }
 
 impl Responder for Upgrade {
-    fn respond_to(mut self, cx: &Context) -> Result<Output, Error> {
+    fn respond_to(mut self, cx: &Input) -> Result<Output, Error> {
         if cx.version() != Version::HTTP_11 {
             // FIXME: choose appropriate status code
             return Err(Error::bad_request(format_err!(

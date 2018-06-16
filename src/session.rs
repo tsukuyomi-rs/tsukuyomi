@@ -7,8 +7,8 @@ use serde::ser::Serialize;
 use serde_json;
 use std::fmt;
 
-use context::Context;
 use error::Error;
+use input::Input;
 
 /// A struct for managing the session variables.
 pub struct SessionStorage {
@@ -65,7 +65,7 @@ impl Builder {
 /// A manager of session variables associated with the current request.
 #[derive(Debug)]
 pub struct Session<'a> {
-    context: &'a Context,
+    input: &'a Input,
 }
 
 impl<'a> Session<'a> {
@@ -99,19 +99,19 @@ impl<'a> Session<'a> {
     }
 
     fn with_private<R>(&self, f: impl FnOnce(PrivateJar) -> R) -> Result<R, Error> {
-        Ok(self.context
+        Ok(self.input
             .cookies()?
-            .with_private(self.context.global().session().secret_key(), f))
+            .with_private(self.input.global().session().secret_key(), f))
     }
 }
 
 #[allow(missing_docs)]
-pub trait ContextSessionExt {
+pub trait InputSessionExt {
     fn session(&self) -> Session;
 }
 
-impl ContextSessionExt for Context {
+impl InputSessionExt for Input {
     fn session(&self) -> Session {
-        Session { context: self }
+        Session { input: self }
     }
 }

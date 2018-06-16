@@ -11,7 +11,7 @@ use futures::prelude::*;
 use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::json::{Json, JsonErrorHandler};
 use tsukuyomi::output::HttpResponse;
-use tsukuyomi::{App, Context, Error};
+use tsukuyomi::{App, Error, Input};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -21,16 +21,16 @@ struct User {
 
 impl HttpResponse for User {}
 
-// async fn get_json(_: &Context) -> Json<User> { ... }
-fn get_json(_: &Context) -> Ready<Json<User>> {
+// async fn get_json(_: &Input) -> Json<User> { ... }
+fn get_json(_: &Input) -> Ready<Json<User>> {
     ready(Json(User {
         name: "Sakura Kinomoto".into(),
         age: 13,
     }))
 }
 
-// async fn read_json_payload(_: &Context) -> tsukuyomi::Result<Json<User>> { ... }
-fn read_json_payload(ctxt: &Context) -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
+// async fn read_json_payload(_: &Input) -> tsukuyomi::Result<Json<User>> { ... }
+fn read_json_payload(ctxt: &Input) -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
     ctxt.body().read_all().convert_to::<Json<User>>().map(|user| {
         info!("Received: {:?}", user);
         user

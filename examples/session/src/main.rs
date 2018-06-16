@@ -1,7 +1,7 @@
 extern crate tsukuyomi;
 
 use tsukuyomi::future::{ready, Ready};
-use tsukuyomi::session::ContextSessionExt;
+use tsukuyomi::session::InputSessionExt;
 use tsukuyomi::{App, Error};
 
 fn main() -> tsukuyomi::AppResult<()> {
