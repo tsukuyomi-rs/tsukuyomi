@@ -32,8 +32,8 @@ struct Hello {
     name: String,
 }
 
-fn index(cx: &Input) -> Ready<Template<Hello>> {
-    let name = cx.params()[0].to_owned();
+fn index() -> Ready<Template<Hello>> {
+    let name = Input::with(|input| input.params()[0].to_owned());
     ready(Template(Hello { name: name }))
 }
 

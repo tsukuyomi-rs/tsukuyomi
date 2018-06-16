@@ -22,7 +22,7 @@ struct User {
 impl HttpResponse for User {}
 
 // async fn get_json(_: &Input) -> Json<User> { ... }
-fn get_json(_: &Input) -> Ready<Json<User>> {
+fn get_json() -> Ready<Json<User>> {
     ready(Json(User {
         name: "Sakura Kinomoto".into(),
         age: 13,
@@ -30,10 +30,12 @@ fn get_json(_: &Input) -> Ready<Json<User>> {
 }
 
 // async fn read_json_payload(_: &Input) -> tsukuyomi::Result<Json<User>> { ... }
-fn read_json_payload(ctxt: &Input) -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
-    ctxt.body().read_all().convert_to::<Json<User>>().map(|user| {
-        info!("Received: {:?}", user);
-        user
+fn read_json_payload() -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
+    Input::with(|input| {
+        input.body().read_all().convert_to::<Json<User>>().map(|user| {
+            info!("Received: {:?}", user);
+            user
+        })
     })
 }
 

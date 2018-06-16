@@ -152,16 +152,16 @@ impl AppServiceFuture {
                     ref mut in_flight,
                     ref input,
                     ..
-                } => Inner::BeforeHandle(ready!(self.state.set(|| input.set(|| in_flight.poll_ready())))),
+                } => Inner::BeforeHandle(ready!(input.set(|| in_flight.poll_ready()))),
                 Handle {
                     ref mut in_flight,
                     ref input,
-                } => Inner::Handle(ready!(self.state.set(|| input.set(|| in_flight.poll())))),
+                } => Inner::Handle(ready!(input.set(|| in_flight.poll()))),
                 AfterHandle {
                     ref mut in_flight,
                     ref input,
                     ..
-                } => Inner::AfterHandle(ready!(self.state.set(|| input.set(|| in_flight.poll_ready())))),
+                } => Inner::AfterHandle(ready!(input.set(|| in_flight.poll_ready()))),
                 _ => panic!("unexpected state"),
             };
 
@@ -176,9 +176,9 @@ impl AppServiceFuture {
 
                     if let Some(modifier) = self.state.modifiers().get(0) {
                         // Start to applying the modifiers.
-
+                        let in_flight = input.set(|| modifier.before_handle());
                         self.kind = BeforeHandle {
-                            in_flight: modifier.before_handle(&input),
+                            in_flight: in_flight,
                             input: input,
                             current: 0,
                         };
@@ -186,7 +186,7 @@ impl AppServiceFuture {
                         // No modifiers are registerd. transit to Handle directly.
 
                         let route = &self.state.router().get_route(i).unwrap();
-                        let in_flight = self.state.set(|| route.handle(&input));
+                        let in_flight = input.set(|| route.handle());
                         self.kind = Handle {
                             in_flight: in_flight,
                             input: input,
@@ -196,15 +196,16 @@ impl AppServiceFuture {
                 (BeforeHandle { current, input, .. }, Inner::BeforeHandle(Ok(()))) => {
                     if let Some(modifier) = self.state.modifiers().get(current) {
                         // Apply the next modifier.
+                        let in_flight = input.set(|| modifier.before_handle());
                         self.kind = BeforeHandle {
-                            in_flight: modifier.before_handle(&input),
+                            in_flight: in_flight,
                             input: input,
                             current: current + 1,
                         };
                     } else {
                         let i = input.route_id();
                         let route = &self.state.router().get_route(i).unwrap();
-                        let in_flight = self.state.set(|| route.handle(&input));
+                        let in_flight = input.set(|| route.handle());
                         self.kind = Handle {
                             in_flight: in_flight,
                             input: input,
@@ -214,17 +215,18 @@ impl AppServiceFuture {
                 (BeforeHandle { input, .. }, Inner::BeforeHandle(Err(err))) => {
                     break Err((err, input.into_parts().request.map(mem::drop)))
                 }
-                (Handle { input, .. }, Inner::Handle(Ok(out))) => {
+                (Handle { input, .. }, Inner::Handle(Ok(output))) => {
                     let current = self.state.modifiers().len();
                     if current > 0 {
                         let modifier = &self.state.modifiers()[current - 1];
+                        let in_flight = input.set(|| modifier.after_handle(output));
                         self.kind = AfterHandle {
-                            in_flight: modifier.after_handle(&input, out),
+                            in_flight: in_flight,
                             input: input,
                             current: current - 1,
                         };
                     } else {
-                        break Ok((out, input.into_parts()));
+                        break Ok((output, input.into_parts()));
                     }
                 }
                 (Handle { input, .. }, Inner::Handle(Err(err))) => {
@@ -233,8 +235,9 @@ impl AppServiceFuture {
                 (AfterHandle { input, current, .. }, Inner::AfterHandle(Ok(output))) => {
                     if current > 0 {
                         let modifier = &self.state.modifiers()[current - 1];
+                        let in_flight = input.set(|| modifier.after_handle(output));
                         self.kind = AfterHandle {
-                            in_flight: modifier.after_handle(&input, output),
+                            in_flight: in_flight,
                             input: input,
                             current: current - 1,
                         };

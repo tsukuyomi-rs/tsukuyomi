@@ -14,8 +14,6 @@ use error::handler::{DefaultErrorHandler, ErrorHandler};
 use modifier::Modifier;
 use router::{self, Mount, Router};
 
-scoped_thread_local!(static STATE: AppState);
-
 /// The global and shared variables used throughout the serving an HTTP application.
 pub struct AppState {
     router: Router,
@@ -33,10 +31,6 @@ impl fmt::Debug for AppState {
 }
 
 impl AppState {
-    pub(crate) fn set<R>(&self, f: impl FnOnce() -> R) -> R {
-        STATE.set(self, f)
-    }
-
     /// Returns the reference to `Router` contained in this value.
     pub fn router(&self) -> &Router {
         &self.router
@@ -115,12 +109,12 @@ impl AppBuilder {
     /// # Examples
     ///
     /// ```
-    /// # use tsukuyomi::{App, Input};
+    /// # use tsukuyomi::App;
     /// # use tsukuyomi::future::ready;
-    /// # let index = |_: &Input| ready("a");
-    /// # let find_post = |_: &Input| ready("a");
-    /// # let all_posts = |_: &Input| ready("a");
-    /// # let add_post = |_: &Input| ready("a");
+    /// # let index = || ready("a");
+    /// # let find_post = || ready("a");
+    /// # let all_posts = || ready("a");
+    /// # let add_post = || ready("a");
     /// let app = App::builder()
     ///     .mount("/", |r| { r.get("/", index); })
     ///     .mount("/api/v1/", |r| {

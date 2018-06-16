@@ -37,8 +37,8 @@ fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |r| {
             r.get("/info/refs", handle_info_refs);
-            r.post("/git-receive-pack", |cx| handle_rpc(cx, RpcMode::Receive));
-            r.post("/git-upload-pack", |cx| handle_rpc(cx, RpcMode::Upload));
+            r.post("/git-receive-pack", || handle_rpc(RpcMode::Receive));
+            r.post("/git-upload-pack", || handle_rpc(RpcMode::Upload));
         })
         .manage(repo_path)
         .finish()?;
@@ -46,24 +46,24 @@ fn main() -> tsukuyomi::AppResult<()> {
     tsukuyomi::run(app)
 }
 
-fn handle_info_refs(cx: &Input) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
-    let mode = match validate_info_refs(cx) {
+fn handle_info_refs() -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+    let mode = match Input::with(|input| validate_info_refs(input)) {
         Ok(service_name) => service_name,
         Err(err) => return Box::new(future::err(err.into())),
     };
 
-    let repo_path = cx.global().state::<RepositoryPath>().unwrap();
+    let output = Input::with(|input| {
+        let repo_path = input.global().state::<RepositoryPath>().unwrap();
+        Repository::new(&repo_path.0).stateless_rpc(mode).advertise_refs()
+    });
 
-    let future = Repository::new(&repo_path.0)
-        .stateless_rpc(mode)
-        .advertise_refs()
-        .and_then(move |output| {
-            Response::builder()
-                .header(header::CACHE_CONTROL, "no-cache")
-                .header(header::CONTENT_TYPE, &*format!("application/x-{}-advertisement", mode))
-                .body(output.into())
-                .map_err(Error::internal_server_error)
-        });
+    let future = output.and_then(move |output| {
+        Response::builder()
+            .header(header::CACHE_CONTROL, "no-cache")
+            .header(header::CONTENT_TYPE, &*format!("application/x-{}-advertisement", mode))
+            .body(output.into())
+            .map_err(Error::internal_server_error)
+    });
 
     Box::new(future)
 }
@@ -87,25 +87,25 @@ fn validate_info_refs(cx: &Input) -> Result<RpcMode, HandleError> {
     }
 }
 
-fn handle_rpc(cx: &Input, mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
-    if let Err(e) = validate_rpc(cx, mode) {
+fn handle_rpc(mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
+    if let Err(e) = Input::with(|input| validate_rpc(input, mode)) {
         return Box::new(future::err(e.into()));
     }
 
-    let input = cx.body().read_all().map_err(Error::critical);
+    let body = Input::with(|input| input.body().read_all().map_err(Error::critical));
 
-    let repo_path = cx.global().state::<RepositoryPath>().unwrap();
+    let output = Input::with(|input| {
+        let repo_path = input.global().state::<RepositoryPath>().unwrap();
+        Repository::new(&repo_path.0).stateless_rpc(mode).call(body)
+    });
 
-    let future = Repository::new(&repo_path.0)
-        .stateless_rpc(mode)
-        .call(input)
-        .and_then(move |output| {
-            Response::builder()
-                .header(header::CACHE_CONTROL, "no-cache")
-                .header(header::CONTENT_TYPE, &*format!("application/x-{}-result", mode))
-                .body(output.into())
-                .map_err(Error::internal_server_error)
-        });
+    let future = output.and_then(move |output| {
+        Response::builder()
+            .header(header::CACHE_CONTROL, "no-cache")
+            .header(header::CONTENT_TYPE, &*format!("application/x-{}-result", mode))
+            .body(output.into())
+            .map_err(Error::internal_server_error)
+    });
 
     Box::new(future)
 }
