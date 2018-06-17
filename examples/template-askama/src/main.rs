@@ -32,7 +32,7 @@ struct Hello {
 }
 
 fn index(_: &mut Input) -> Template<Hello> {
-    let name = Input::with(|input| input.params()[0].to_owned());
+    let name = Input::with_get(|input| input.params()[0].to_owned());
     Template(Hello { name: name })
 }
 

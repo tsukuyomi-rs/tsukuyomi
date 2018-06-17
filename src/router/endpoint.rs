@@ -75,7 +75,7 @@ impl Endpoint {
 
     pub(crate) fn handle(&self) -> Handle {
         match self.handler {
-            HandlerKind::Ready(ref f) => Box::new(ready(Input::with_mut(|input| f(input)))),
+            HandlerKind::Ready(ref f) => Box::new(ready(Input::with_get(|input| f(input)))),
             HandlerKind::Async(ref f) => f(),
         }
     }
@@ -92,6 +92,6 @@ where
     type Output = Result<Output, Error>;
 
     fn poll(&mut self) -> Poll<Self::Output> {
-        Input::with(|cx| self.0.poll().map(|x| x.respond_to(cx)))
+        self.0.poll().map(|x| Input::with_get(|input| x.respond_to(&*input)))
     }
 }
