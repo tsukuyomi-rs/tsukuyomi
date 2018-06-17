@@ -1,21 +1,17 @@
 //! Components for managing the contextural information throughout the handling.
 
-use cookie::{Cookie, CookieJar};
-use failure;
-use http::header::HeaderMap;
-use http::{header, Request};
+use http::Request;
 use hyperx::header::Header;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::ops::{Deref, DerefMut, Index};
 use std::sync::Arc;
-
-#[cfg(feature = "session")]
-use cookie::{Key, PrivateJar, SignedJar};
 
 use app::AppState;
 use error::Error;
 use input::{RequestBody, RequestExt};
 use router::Route;
+
+use super::cookie::{CookieManager, Cookies};
 
 scoped_thread_local!(static INPUT: RefCell<Input>);
 
@@ -51,7 +47,7 @@ impl Input {
                 request: request,
                 route: route,
                 params: params,
-                cookies: CookieManager::default(),
+                cookies: CookieManager::new(),
                 global: global,
                 _priv: (),
             },
@@ -101,16 +97,12 @@ impl Input {
     ///
     /// This function will perform parsing when called at first, and returns an `Err`
     /// if the value of header field is invalid.
-    pub fn cookies(&self) -> Result<Cookies, Error> {
-        if !self.parts.cookies.is_init() {
-            self.parts
-                .cookies
-                .init(self.request().headers())
-                .map_err(Error::bad_request)?;
+    pub fn cookies(&mut self) -> Result<Cookies, Error> {
+        let cookies = &mut self.parts.cookies;
+        if !cookies.is_init() {
+            cookies.init(self.parts.request.headers()).map_err(Error::bad_request)?;
         }
-        Ok(Cookies {
-            jar: &self.parts.cookies.jar,
-        })
+        Ok(cookies.cookies())
     }
 
     /// Returns the reference to the global state.
@@ -251,85 +243,5 @@ impl<'a> Index<usize> for Params<'a> {
 
     fn index(&self, i: usize) -> &Self::Output {
         self.get(i).expect("Out of range")
-    }
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct CookieManager {
-    jar: RefCell<CookieJar>,
-    init: Cell<bool>,
-}
-
-impl CookieManager {
-    pub(crate) fn is_init(&self) -> bool {
-        self.init.get()
-    }
-
-    pub(crate) fn init(&self, h: &HeaderMap) -> Result<(), failure::Error> {
-        let mut jar = self.jar.borrow_mut();
-        for raw in h.get_all(header::COOKIE) {
-            let raw_s = raw.to_str()?;
-            for s in raw_s.split(";").map(|s| s.trim()) {
-                let cookie = Cookie::parse_encoded(s)?.into_owned();
-                jar.add_original(cookie);
-            }
-        }
-        self.init.set(true);
-        Ok(())
-    }
-
-    pub(crate) fn append_to(&self, h: &mut HeaderMap) {
-        if !self.is_init() {
-            return;
-        }
-
-        for cookie in self.jar.borrow().delta() {
-            h.insert(header::SET_COOKIE, cookie.encoded().to_string().parse().unwrap());
-        }
-    }
-}
-
-/// [unstable]
-/// A proxy object for managing Cookie values.
-///
-/// This object is a thin wrapper of 'CookieJar' defined at 'cookie' crate,
-/// and it provides some *basic* APIs for getting the entries of Cookies from an HTTP request
-/// or adding/removing Cookie values into an HTTP response.
-#[derive(Debug)]
-pub struct Cookies<'a> {
-    jar: &'a RefCell<CookieJar>,
-}
-
-#[allow(missing_docs)]
-impl<'a> Cookies<'a> {
-    /// Gets a value of Cookie with the provided name from this jar.
-    pub fn get(&self, name: &str) -> Option<Cookie<'static>> {
-        self.jar.borrow().get(name).map(ToOwned::to_owned)
-    }
-
-    /// Adds the provided entry of Cookie into this jar.
-    pub fn add(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().add(cookie)
-    }
-
-    /// Removes the provided entry of Cookie from this jar.
-    pub fn remove(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().remove(cookie)
-    }
-
-    /// Creates a proxy object to manage signed Cookies, and passes the value to a closure and get its result.
-    ///
-    /// This method is available only if the feature `session` is enabled.
-    #[cfg(feature = "session")]
-    pub fn with_signed<R>(&self, key: &Key, f: impl FnOnce(SignedJar) -> R) -> R {
-        f(self.jar.borrow_mut().signed(key))
-    }
-
-    /// Creates a proxy object to manage encrypted Cookies, and passes the value to a closure and get its result.
-    ///
-    /// This method is available only if the feature `session` is enabled.
-    #[cfg(feature = "session")]
-    pub fn with_private<R>(&self, key: &Key, f: impl FnOnce(PrivateJar) -> R) -> R {
-        f(self.jar.borrow_mut().private(key))
     }
 }

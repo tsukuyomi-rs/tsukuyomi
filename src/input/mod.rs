@@ -2,6 +2,7 @@
 
 pub mod body;
 
+mod cookie;
 mod input;
 mod request;
 
@@ -9,7 +10,10 @@ mod request;
 pub use self::body::RequestBody;
 
 #[doc(inline)]
-pub use self::input::{Cookies, Input, Params};
+pub use self::cookie::Cookies;
+
+#[doc(inline)]
+pub use self::input::{Input, Params};
 
 #[doc(inline)]
 pub use self::request::RequestExt;

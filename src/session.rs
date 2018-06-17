@@ -65,12 +65,12 @@ impl Builder {
 /// A manager of session variables associated with the current request.
 #[derive(Debug)]
 pub struct Session<'a> {
-    input: &'a Input,
+    input: &'a mut Input,
 }
 
 impl<'a> Session<'a> {
     #[allow(missing_docs)]
-    pub fn get<T>(&self, key: &str) -> Result<Option<T>, Error>
+    pub fn get<T>(&mut self, key: &str) -> Result<Option<T>, Error>
     where
         T: DeserializeOwned,
     {
@@ -83,7 +83,7 @@ impl<'a> Session<'a> {
     }
 
     #[allow(missing_docs)]
-    pub fn set<T>(&self, key: &str, value: T) -> Result<(), Error>
+    pub fn set<T>(&mut self, key: &str, value: T) -> Result<(), Error>
     where
         T: Serialize,
     {
@@ -94,24 +94,24 @@ impl<'a> Session<'a> {
     }
 
     #[allow(missing_docs)]
-    pub fn remove(&self, key: &str) -> Result<(), Error> {
+    pub fn remove(&mut self, key: &str) -> Result<(), Error> {
         self.with_private(|mut jar| jar.remove(Cookie::named(key.to_owned())))
     }
 
-    fn with_private<R>(&self, f: impl FnOnce(PrivateJar) -> R) -> Result<R, Error> {
-        Ok(self.input
-            .cookies()?
-            .with_private(self.input.global().session().secret_key(), f))
+    fn with_private<R>(&mut self, f: impl FnOnce(PrivateJar) -> R) -> Result<R, Error> {
+        let key = self.input.global().session().secret_key().clone();
+        let mut jar = self.input.cookies()?;
+        Ok(f(jar.private(&key)))
     }
 }
 
 #[allow(missing_docs)]
 pub trait InputSessionExt {
-    fn session(&self) -> Session;
+    fn session(&mut self) -> Session;
 }
 
 impl InputSessionExt for Input {
-    fn session(&self) -> Session {
+    fn session(&mut self) -> Session {
         Session { input: self }
     }
 }
