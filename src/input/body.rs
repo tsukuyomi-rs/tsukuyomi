@@ -175,7 +175,7 @@ impl ReadAll {
         T: FromData + Send + 'static,
     {
         self.map_err(Error::critical)
-            .and_then(|body| Input::with(|cx| T::from_data(body, cx)))
+            .and_then(|body| Input::with_get(|input| T::from_data(body, &*input)))
     }
 }
 

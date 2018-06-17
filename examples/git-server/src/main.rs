@@ -48,12 +48,12 @@ fn main() -> tsukuyomi::AppResult<()> {
 }
 
 fn handle_info_refs() -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
-    let mode = match Input::with(|input| validate_info_refs(input)) {
+    let mode = match Input::with_get(|input| validate_info_refs(input)) {
         Ok(service_name) => service_name,
         Err(err) => return Box::new(future::err(err.into())),
     };
 
-    let output = Input::with(|input| {
+    let output = Input::with_get(|input| {
         let repo_path = input.global().state::<RepositoryPath>().unwrap();
         Repository::new(&repo_path.0).stateless_rpc(mode).advertise_refs()
     });
@@ -89,13 +89,13 @@ fn validate_info_refs(cx: &Input) -> Result<RpcMode, HandleError> {
 }
 
 fn handle_rpc(mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
-    if let Err(e) = Input::with(|input| validate_rpc(input, mode)) {
+    if let Err(e) = Input::with_get(|input| validate_rpc(input, mode)) {
         return Box::new(future::err(e.into()));
     }
 
-    let body = Input::with_mut(|input| input.body_mut().read_all().map_err(Error::critical));
+    let body = Input::with_get(|input| input.body_mut().read_all().map_err(Error::critical));
 
-    let output = Input::with(|input| {
+    let output = Input::with_get(|input| {
         let repo_path = input.global().state::<RepositoryPath>().unwrap();
         Repository::new(&repo_path.0).stateless_rpc(mode).call(body)
     });

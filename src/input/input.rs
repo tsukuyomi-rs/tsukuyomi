@@ -2,8 +2,9 @@
 
 use http::Request;
 use hyperx::header::Header;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
+use std::ptr::NonNull;
 use std::sync::Arc;
 
 use app::AppState;
@@ -13,7 +14,9 @@ use router::Endpoint;
 
 use super::cookie::{CookieManager, Cookies};
 
-scoped_thread_local!(static INPUT: RefCell<Input>);
+thread_local! {
+    static INPUT: Cell<Option<NonNull<Input>>> = Cell::new(None);
+}
 
 /// The inner parts of `Input`.
 #[derive(Debug)]
@@ -120,6 +123,17 @@ impl Input {
     }
 }
 
+#[allow(missing_debug_implementations)]
+struct ResetOnDrop(Option<NonNull<Input>>);
+
+impl Drop for ResetOnDrop {
+    fn drop(&mut self) {
+        INPUT.with(|input| {
+            input.set(self.0.take());
+        })
+    }
+}
+
 /// A set of functions for accessing the reference to `Input` located at the task local storage.
 ///
 /// These functions only work in `Future`s called directly in `AppServiceFuture`.
@@ -134,70 +148,52 @@ impl Input {
 /// If these scopes violate the borrowing rule in Rust, a runtime error will reported or cause a
 /// panic.
 impl Input {
-    pub(crate) fn set<R>(self_: &RefCell<Self>, f: impl FnOnce() -> R) -> R {
-        INPUT.set(self_, f)
+    pub(crate) fn with_set<R>(&mut self, f: impl FnOnce() -> R) -> R {
+        let prev = INPUT.with(|input| {
+            let prev = input.get();
+            // safety: &mut self is non-null.
+            input.set(Some(unsafe { NonNull::new_unchecked(self as *mut Input) }));
+            prev
+        });
+        let _reset = ResetOnDrop(prev);
+        let res = f();
+        res
     }
 
-    /// Returns 'true' if the reference to a `Input` is set to the scoped TLS.
-    pub fn is_set() -> bool {
-        INPUT.is_set()
-    }
-
-    /// Retrieves a shared borrow of `Input` from scoped TLS and executes the provided closure
-    /// with its reference.
+    /// Returns `true` if the reference to `Input` is set to the current task.
     ///
-    /// # Panics
-    /// This function will cause a panic if any reference to `Input` is set at the current task or
-    /// a mutable borrow has already been exist.
-    #[inline]
-    pub fn with<R>(f: impl FnOnce(&Input) -> R) -> R {
-        Input::try_with(f).expect("in Input::with")
+    /// * Outside of `Future` managed by the framework.
+    /// * A mutable borrow has already been acquired in the higher scope.
+    pub fn is_set() -> bool {
+        INPUT.with(|input| input.get().is_some())
     }
 
     /// Retrieves a mutable borrow of `Input` from scoped TLS and executes the provided closure
     /// with its reference.
     ///
     /// # Panics
-    /// This function will cause a panic if any reference to `Input` is set at the current task or
-    /// a mutable or shared borrows have already been exist.
+    /// This function will cause a panic if any reference to `Input` is not set at the current task.
     #[inline]
-    pub fn with_mut<R>(f: impl FnOnce(&mut Input) -> R) -> R {
-        Input::try_with_mut(f).expect("in Input::with_mut")
-    }
-
-    /// Tries to acquire a shared borrow of `Input` from scoped TLS and executes the provided closure
-    /// with its reference if it succeeds.
-    ///
-    /// This function will report an error if any reference to `Input` is set at the current task or
-    /// a mutable borrow has already been exist.
-    #[inline]
-    pub fn try_with<R>(f: impl FnOnce(&Input) -> R) -> Result<R, Error> {
-        Input::try_with_inner(|input| {
-            let input = input.try_borrow().map_err(Error::internal_server_error)?;
-            Ok(f(&*input))
-        })
+    pub fn with_get<R>(f: impl FnOnce(&mut Input) -> R) -> R {
+        Input::try_with_get(f).expect("failed to acquire a &mut Input from the current task")
     }
 
     /// Tries to acquire a mutable borrow of `Input` from scoped TLS and executes the provided closure
     /// with its reference if it succeeds.
     ///
-    /// This function will report an error if any reference to `Input` is set at the current task or
-    /// a mutable or shared borrows have already been exist.
+    /// This function will return a `None` if any reference to `Input` is not set at the current task.
     #[inline]
-    pub fn try_with_mut<R>(f: impl FnOnce(&mut Input) -> R) -> Result<R, Error> {
-        Input::try_with_inner(|input| {
-            let mut input = input.try_borrow_mut().map_err(Error::internal_server_error)?;
-            Ok(f(&mut *input))
-        })
-    }
+    pub fn try_with_get<R>(f: impl FnOnce(&mut Input) -> R) -> Option<R> {
+        let input_ptr = INPUT.with(|input| {
+            let input_ptr = input.get();
+            input.set(None);
+            input_ptr
+        });
+        let _reset = ResetOnDrop(input_ptr);
 
-    fn try_with_inner<R>(f: impl FnOnce(&RefCell<Input>) -> Result<R, Error>) -> Result<R, Error> {
-        if INPUT.is_set() {
-            INPUT.with(f)
-        } else {
-            Err(Error::internal_server_error(format_err!(
-                "The reference to Input is not set at the current task."
-            )))
+        match input_ptr {
+            Some(mut input_ptr) => Some(unsafe { f(input_ptr.as_mut()) }),
+            None => None,
         }
     }
 }
