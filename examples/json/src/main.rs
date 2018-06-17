@@ -8,7 +8,6 @@ extern crate log;
 
 use futures::prelude::*;
 
-use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::json::{Json, JsonErrorHandler};
 use tsukuyomi::output::HttpResponse;
 use tsukuyomi::{App, Error, Input};
@@ -21,12 +20,11 @@ struct User {
 
 impl HttpResponse for User {}
 
-// async fn get_json() -> Json<User> { ... }
-fn get_json() -> Ready<Json<User>> {
-    ready(Json(User {
+fn get_json(_: &mut Input) -> Json<User> {
+    Json(User {
         name: "Sakura Kinomoto".into(),
         age: 13,
-    }))
+    })
 }
 
 // async fn read_json_payload() -> tsukuyomi::Result<Json<User>> { ... }
@@ -44,8 +42,8 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", get_json);
-            r.post("/", read_json_payload);
+            r.get("/").handle(get_json);
+            r.post("/").handle_async(read_json_payload);
         })
         .error_handler(JsonErrorHandler::new())
         .finish()?;

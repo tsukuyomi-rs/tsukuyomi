@@ -1,6 +1,5 @@
 extern crate tsukuyomi;
 
-use tsukuyomi::future::ready;
 use tsukuyomi::server::Server;
 use tsukuyomi::App;
 
@@ -12,7 +11,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", || ready("Hello"));
+            r.get("/").handle(|_| "Hello");
         })
         .finish()?;
 

@@ -36,9 +36,10 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/info/refs", handle_info_refs);
-            r.post("/git-receive-pack", || handle_rpc(RpcMode::Receive));
-            r.post("/git-upload-pack", || handle_rpc(RpcMode::Upload));
+            r.get("/info/refs").handle_async(handle_info_refs);
+            r.post("/git-receive-pack")
+                .handle_async(|| handle_rpc(RpcMode::Receive));
+            r.post("/git-upload-pack").handle_async(|| handle_rpc(RpcMode::Upload));
         })
         .manage(repo_path)
         .finish()?;

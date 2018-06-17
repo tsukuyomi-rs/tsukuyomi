@@ -1,24 +1,32 @@
 extern crate pretty_env_logger;
 extern crate tsukuyomi;
 
-use tsukuyomi::future::ready;
-use tsukuyomi::{App, Input};
+use tsukuyomi::App;
 
 fn main() -> tsukuyomi::AppResult<()> {
     pretty_env_logger::init();
 
     let app = App::builder()
-        .mount("/", |r| {
-            // r.get("/", async || "Hello, world\n");
-            r.get("/", || ready("Hello, world\n"));
+        .mount("/", |m| {
+            m.get("/").handle(|_| "Hello, world\n");
 
-            r.get("/api/:name", || {
-                ready(Input::with(|input| format!("Hello, {}\n", &input.params()[0])))
+            m.mount("/api/v1/", |m| {
+                m.mount("/posts", |m| {
+                    m.get("/:id")
+                        .handle(|input| format!("get_post(id = {})", &input.params()[0]));
+
+                    m.get("/").handle(|_| "list_posts");
+
+                    m.post("/").handle(|_| "add_post");
+                });
+
+                m.mount("/user", |m| {
+                    m.get("/auth").handle(|_| "Authentication");
+                });
             });
 
-            r.get("/static/*path", || {
-                ready(Input::with(|input| format!("path = {}\n", &input.params()[0])))
-            });
+            m.get("/static/*path")
+                .handle(|input| format!("path = {}\n", &input.params()[0]));
         })
         .finish()?;
 

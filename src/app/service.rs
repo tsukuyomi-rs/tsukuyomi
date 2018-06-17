@@ -14,12 +14,11 @@ use future::{self as future_compat, Poll};
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
 use output::{Output, ResponseBody};
+use router::Handle;
 use server::{Io, ServiceUpgradeExt};
 use upgrade::service as upgrade;
 
 use super::{App, AppState};
-
-type HandleFuture = Box<future_compat::Future<Output = Result<Output, Error>> + Send>;
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -98,7 +97,7 @@ enum AppServiceFutureKind {
         current: usize,
     },
     Handle {
-        in_flight: HandleFuture,
+        in_flight: Handle,
         input: RefCell<Input>,
     },
     AfterHandle {
@@ -186,7 +185,7 @@ impl AppServiceFuture {
                     } else {
                         // No modifiers are registerd. transit to Handle directly.
 
-                        let route = &self.state.router().get_route(i).unwrap();
+                        let route = &self.state.router()[i];
                         let in_flight = Input::set(&input, || route.handle());
                         self.kind = Handle {
                             in_flight: in_flight,
@@ -205,7 +204,7 @@ impl AppServiceFuture {
                         };
                     } else {
                         let i = input.borrow().route_id();
-                        let route = &self.state.router().get_route(i).unwrap();
+                        let route = &self.state.router()[i];
                         let in_flight = Input::set(&input, || route.handle());
                         self.kind = Handle {
                             in_flight: in_flight,
