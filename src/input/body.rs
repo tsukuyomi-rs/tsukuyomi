@@ -6,7 +6,6 @@ use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
 use hyperx::header::ContentType;
 use mime;
-use std::cell::UnsafeCell;
 use std::mem;
 use std::ops::Deref;
 
@@ -16,48 +15,35 @@ use input::Input;
 // ==== RequestBody ====
 
 /// A type representing a message body in the incoming HTTP request.
-///
-/// NOTE: This type has the internal mutability in order to extract the instance of raw message body
-/// without a mutable borrow.
 #[derive(Debug)]
-pub struct RequestBody(UnsafeCell<Option<Body>>);
+pub struct RequestBody(Option<Body>);
 
 impl RequestBody {
     pub(crate) fn from_hyp(body: Body) -> RequestBody {
-        RequestBody(UnsafeCell::new(Some(body)))
+        RequestBody(Some(body))
     }
 
-    fn take_body(&self) -> Option<Body> {
-        // safety: this type does not shared between threads and the following
-        // mutable reference is used only this block.
-        unsafe {
-            let body = &mut *self.0.get();
-            body.take()
-        }
+    fn take_body(&mut self) -> Option<Body> {
+        self.0.take()
     }
 
     /// Takes away the instance of raw message body if exists.
-    pub fn forget(&self) {
+    pub fn forget(&mut self) {
         self.take_body().map(mem::drop);
     }
 
     /// Returns 'true' if the instance of raw message body has already taken away.
     pub fn is_gone(&self) -> bool {
-        // safety: this type does not shared between threads and the following
-        // shared reference is used only this block.
-        unsafe {
-            let body = &*self.0.get();
-            body.is_none()
-        }
+        self.0.is_none()
     }
 
     /// Creates an instance of "Payload" from the raw message body.
-    pub fn payload(&self) -> Payload {
+    pub fn payload(&mut self) -> Payload {
         Payload(self.take_body())
     }
 
     /// Creates an instance of "ReadAll" from the raw message body.
-    pub fn read_all(&self) -> ReadAll {
+    pub fn read_all(&mut self) -> ReadAll {
         ReadAll {
             state: ReadAllState::Init(self.take_body()),
         }

@@ -21,7 +21,7 @@ struct User {
 
 impl HttpResponse for User {}
 
-// async fn get_json(_: &Input) -> Json<User> { ... }
+// async fn get_json() -> Json<User> { ... }
 fn get_json() -> Ready<Json<User>> {
     ready(Json(User {
         name: "Sakura Kinomoto".into(),
@@ -29,10 +29,10 @@ fn get_json() -> Ready<Json<User>> {
     }))
 }
 
-// async fn read_json_payload(_: &Input) -> tsukuyomi::Result<Json<User>> { ... }
+// async fn read_json_payload() -> tsukuyomi::Result<Json<User>> { ... }
 fn read_json_payload() -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
-    Input::with(|input| {
-        input.body().read_all().convert_to::<Json<User>>().map(|user| {
+    Input::with_mut(|input| {
+        input.body_mut().read_all().convert_to::<Json<User>>().map(|user| {
             info!("Received: {:?}", user);
             user
         })

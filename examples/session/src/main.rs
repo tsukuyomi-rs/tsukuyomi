@@ -8,7 +8,7 @@ fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |r| {
             r.get("/", || -> Ready<_> {
-                ready(Input::with(|input| -> Result<String, Error> {
+                ready(Input::with_mut(|input| -> Result<String, Error> {
                     if let Some(foo) = input.session().get::<String>("foo")? {
                         Ok(format!("foo = {}\n", foo))
                     } else {

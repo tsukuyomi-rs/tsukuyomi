@@ -1,23 +1,19 @@
 //! Components for managing the contextural information throughout the handling.
 
-use cookie::{Cookie, CookieJar};
-use failure;
-use http::header::HeaderMap;
-use http::{header, Request};
+use http::Request;
 use hyperx::header::Header;
-use std::cell::{Cell, RefCell};
-use std::ops::{Deref, Index};
+use std::cell::RefCell;
+use std::ops::{Deref, DerefMut, Index};
 use std::sync::Arc;
-
-#[cfg(feature = "session")]
-use cookie::{Key, PrivateJar, SignedJar};
 
 use app::AppState;
 use error::Error;
-use input::{RequestBody, RequestExt};
+use input::RequestBody;
 use router::Route;
 
-scoped_thread_local!(static CONTEXT: Input);
+use super::cookie::{CookieManager, Cookies};
+
+scoped_thread_local!(static INPUT: RefCell<Input>);
 
 /// The inner parts of `Input`.
 #[derive(Debug)]
@@ -51,37 +47,21 @@ impl Input {
                 request: request,
                 route: route,
                 params: params,
-                cookies: CookieManager::default(),
+                cookies: CookieManager::new(),
                 global: global,
                 _priv: (),
             },
         }
     }
 
-    pub(crate) fn set<R>(&self, f: impl FnOnce() -> R) -> R {
-        CONTEXT.set(self, f)
-    }
-
-    /// Returns 'true' if the reference to a `Input` is set to the scoped TLS.
-    ///
-    /// If this function returns 'false', the function `Input::with` will panic.
-    pub fn is_set() -> bool {
-        CONTEXT.is_set()
-    }
-
-    /// Executes a closure by using a reference to a `Input` from the scoped TLS and returns its
-    /// result.
-    ///
-    /// # Panics
-    /// This function will panic if any reference to `Input` is set to the scoped TLS.
-    /// Do not call this function outside the manage of the framework.
-    pub fn with<R>(f: impl FnOnce(&Input) -> R) -> R {
-        CONTEXT.with(f)
-    }
-
-    /// Returns a reference to the value of `Request` contained in this context.
+    /// Returns a shared reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
         &self.parts.request
+    }
+
+    /// Returns a mutable reference to the value of `Request` contained in this context.
+    pub fn request_mut(&mut self) -> &mut Request<RequestBody> {
+        &mut self.parts.request
     }
 
     /// Parses a header field in the request to a value of `H`.
@@ -90,7 +70,12 @@ impl Input {
         H: Header,
     {
         // TODO: cache the parsed values
-        self.request().header()
+        match self.headers().get(H::header_name()) {
+            Some(h) => H::parse_header(&h.as_bytes().into())
+                .map_err(Error::bad_request)
+                .map(Some),
+            None => Ok(None),
+        }
     }
 
     /// Returns the reference to a `Route` matched to the incoming request.
@@ -117,16 +102,12 @@ impl Input {
     ///
     /// This function will perform parsing when called at first, and returns an `Err`
     /// if the value of header field is invalid.
-    pub fn cookies(&self) -> Result<Cookies, Error> {
-        if !self.parts.cookies.is_init() {
-            self.parts
-                .cookies
-                .init(self.request().headers())
-                .map_err(Error::bad_request)?;
+    pub fn cookies(&mut self) -> Result<Cookies, Error> {
+        let cookies = &mut self.parts.cookies;
+        if !cookies.is_init() {
+            cookies.init(self.parts.request.headers()).map_err(Error::bad_request)?;
         }
-        Ok(Cookies {
-            jar: &self.parts.cookies.jar,
-        })
+        Ok(cookies.cookies())
     }
 
     /// Returns the reference to the global state.
@@ -139,11 +120,99 @@ impl Input {
     }
 }
 
+/// A set of functions for accessing the reference to `Input` located at the task local storage.
+///
+/// These functions only work in `Future`s called directly in `AppServiceFuture`.
+/// Do not use these in the following situations:
+///
+/// * The outside of this framework.
+/// * Inside the futures spawned by some `Executor`s (such situation will cause by using
+///   `tokio::spawn()`).
+///
+/// The provided functions forms some dynamic scope for the borrowing the instance of `Input` on
+/// the scoped TLS.
+/// If these scopes violate the borrowing rule in Rust, a runtime error will reported or cause a
+/// panic.
+impl Input {
+    pub(crate) fn set<R>(self_: &RefCell<Self>, f: impl FnOnce() -> R) -> R {
+        INPUT.set(self_, f)
+    }
+
+    /// Returns 'true' if the reference to a `Input` is set to the scoped TLS.
+    pub fn is_set() -> bool {
+        INPUT.is_set()
+    }
+
+    /// Retrieves a shared borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference.
+    ///
+    /// # Panics
+    /// This function will cause a panic if any reference to `Input` is set at the current task or
+    /// a mutable borrow has already been exist.
+    #[inline]
+    pub fn with<R>(f: impl FnOnce(&Input) -> R) -> R {
+        Input::try_with(f).expect("in Input::with")
+    }
+
+    /// Retrieves a mutable borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference.
+    ///
+    /// # Panics
+    /// This function will cause a panic if any reference to `Input` is set at the current task or
+    /// a mutable or shared borrows have already been exist.
+    #[inline]
+    pub fn with_mut<R>(f: impl FnOnce(&mut Input) -> R) -> R {
+        Input::try_with_mut(f).expect("in Input::with_mut")
+    }
+
+    /// Tries to acquire a shared borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference if it succeeds.
+    ///
+    /// This function will report an error if any reference to `Input` is set at the current task or
+    /// a mutable borrow has already been exist.
+    #[inline]
+    pub fn try_with<R>(f: impl FnOnce(&Input) -> R) -> Result<R, Error> {
+        Input::try_with_inner(|input| {
+            let input = input.try_borrow().map_err(Error::internal_server_error)?;
+            Ok(f(&*input))
+        })
+    }
+
+    /// Tries to acquire a mutable borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference if it succeeds.
+    ///
+    /// This function will report an error if any reference to `Input` is set at the current task or
+    /// a mutable or shared borrows have already been exist.
+    #[inline]
+    pub fn try_with_mut<R>(f: impl FnOnce(&mut Input) -> R) -> Result<R, Error> {
+        Input::try_with_inner(|input| {
+            let mut input = input.try_borrow_mut().map_err(Error::internal_server_error)?;
+            Ok(f(&mut *input))
+        })
+    }
+
+    fn try_with_inner<R>(f: impl FnOnce(&RefCell<Input>) -> Result<R, Error>) -> Result<R, Error> {
+        if INPUT.is_set() {
+            INPUT.with(f)
+        } else {
+            Err(Error::internal_server_error(format_err!(
+                "The reference to Input is not set at the current task."
+            )))
+        }
+    }
+}
+
 impl Deref for Input {
     type Target = Request<RequestBody>;
 
     fn deref(&self) -> &Self::Target {
         self.request()
+    }
+}
+
+impl DerefMut for Input {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.request_mut()
     }
 }
 
@@ -179,85 +248,5 @@ impl<'a> Index<usize> for Params<'a> {
 
     fn index(&self, i: usize) -> &Self::Output {
         self.get(i).expect("Out of range")
-    }
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct CookieManager {
-    jar: RefCell<CookieJar>,
-    init: Cell<bool>,
-}
-
-impl CookieManager {
-    pub(crate) fn is_init(&self) -> bool {
-        self.init.get()
-    }
-
-    pub(crate) fn init(&self, h: &HeaderMap) -> Result<(), failure::Error> {
-        let mut jar = self.jar.borrow_mut();
-        for raw in h.get_all(header::COOKIE) {
-            let raw_s = raw.to_str()?;
-            for s in raw_s.split(";").map(|s| s.trim()) {
-                let cookie = Cookie::parse_encoded(s)?.into_owned();
-                jar.add_original(cookie);
-            }
-        }
-        self.init.set(true);
-        Ok(())
-    }
-
-    pub(crate) fn append_to(&self, h: &mut HeaderMap) {
-        if !self.is_init() {
-            return;
-        }
-
-        for cookie in self.jar.borrow().delta() {
-            h.insert(header::SET_COOKIE, cookie.encoded().to_string().parse().unwrap());
-        }
-    }
-}
-
-/// [unstable]
-/// A proxy object for managing Cookie values.
-///
-/// This object is a thin wrapper of 'CookieJar' defined at 'cookie' crate,
-/// and it provides some *basic* APIs for getting the entries of Cookies from an HTTP request
-/// or adding/removing Cookie values into an HTTP response.
-#[derive(Debug)]
-pub struct Cookies<'a> {
-    jar: &'a RefCell<CookieJar>,
-}
-
-#[allow(missing_docs)]
-impl<'a> Cookies<'a> {
-    /// Gets a value of Cookie with the provided name from this jar.
-    pub fn get(&self, name: &str) -> Option<Cookie<'static>> {
-        self.jar.borrow().get(name).map(ToOwned::to_owned)
-    }
-
-    /// Adds the provided entry of Cookie into this jar.
-    pub fn add(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().add(cookie)
-    }
-
-    /// Removes the provided entry of Cookie from this jar.
-    pub fn remove(&self, cookie: Cookie<'static>) {
-        self.jar.borrow_mut().remove(cookie)
-    }
-
-    /// Creates a proxy object to manage signed Cookies, and passes the value to a closure and get its result.
-    ///
-    /// This method is available only if the feature `session` is enabled.
-    #[cfg(feature = "session")]
-    pub fn with_signed<R>(&self, key: &Key, f: impl FnOnce(SignedJar) -> R) -> R {
-        f(self.jar.borrow_mut().signed(key))
-    }
-
-    /// Creates a proxy object to manage encrypted Cookies, and passes the value to a closure and get its result.
-    ///
-    /// This method is available only if the feature `session` is enabled.
-    #[cfg(feature = "session")]
-    pub fn with_private<R>(&self, key: &Key, f: impl FnOnce(PrivateJar) -> R) -> R {
-        f(self.jar.borrow_mut().private(key))
     }
 }
