@@ -2,7 +2,7 @@ use http::Method;
 use std::fmt;
 
 use error::Error;
-use future::{ready, Future, Poll};
+use future::{Future, Poll};
 use input::Input;
 use output::{Output, Responder};
 
@@ -22,7 +22,25 @@ impl fmt::Debug for HandlerKind {
     }
 }
 
-pub(crate) type Handle = Box<Future<Output = Result<Output, Error>> + Send>;
+pub(crate) enum Handle {
+    Ready(Option<Result<Output, Error>>),
+    Async(Box<Future<Output = Result<Output, Error>> + Send>),
+}
+
+impl fmt::Debug for Handle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Handle").finish()
+    }
+}
+
+impl Handle {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Result<Output, Error>> {
+        match *self {
+            Handle::Ready(ref mut res) => Poll::Ready(res.take().expect("this future has already polled")),
+            Handle::Async(ref mut f) => input.with_set(|| f.poll()),
+        }
+    }
+}
 
 /// A type representing an endpoint.
 ///
@@ -73,10 +91,10 @@ impl Endpoint {
         &self.method
     }
 
-    pub(crate) fn handle(&self) -> Handle {
+    pub(crate) fn handle(&self, input: &mut Input) -> Handle {
         match self.handler {
-            HandlerKind::Ready(ref f) => Box::new(ready(Input::with_get(|input| f(input)))),
-            HandlerKind::Async(ref f) => f(),
+            HandlerKind::Ready(ref f) => Handle::Ready(Some(f(input))),
+            HandlerKind::Async(ref f) => Handle::Async(input.with_set(|| f())),
         }
     }
 }
