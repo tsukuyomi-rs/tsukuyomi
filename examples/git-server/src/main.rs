@@ -92,7 +92,7 @@ fn handle_rpc(mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error 
         return Box::new(future::err(e.into()));
     }
 
-    let body = Input::with(|input| input.body().read_all().map_err(Error::critical));
+    let body = Input::with_mut(|input| input.body_mut().read_all().map_err(Error::critical));
 
     let output = Input::with(|input| {
         let repo_path = input.global().state::<RepositoryPath>().unwrap();
