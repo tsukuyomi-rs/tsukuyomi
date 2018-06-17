@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use app::AppState;
 use error::Error;
-use input::{RequestBody, RequestExt};
+use input::RequestBody;
 use router::Route;
 
 use super::cookie::{CookieManager, Cookies};
@@ -70,7 +70,12 @@ impl Input {
         H: Header,
     {
         // TODO: cache the parsed values
-        self.request().header()
+        match self.headers().get(H::header_name()) {
+            Some(h) => H::parse_header(&h.as_bytes().into())
+                .map_err(Error::bad_request)
+                .map(Some),
+            None => Ok(None),
+        }
     }
 
     /// Returns the reference to a `Route` matched to the incoming request.
