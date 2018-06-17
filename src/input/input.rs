@@ -6,7 +6,7 @@ use http::header::HeaderMap;
 use http::{header, Request};
 use hyperx::header::Header;
 use std::cell::{Cell, RefCell};
-use std::ops::{Deref, Index};
+use std::ops::{Deref, DerefMut, Index};
 use std::sync::Arc;
 
 #[cfg(feature = "session")]
@@ -17,7 +17,7 @@ use error::Error;
 use input::{RequestBody, RequestExt};
 use router::Route;
 
-scoped_thread_local!(static CONTEXT: Input);
+scoped_thread_local!(static INPUT: RefCell<Input>);
 
 /// The inner parts of `Input`.
 #[derive(Debug)]
@@ -58,30 +58,14 @@ impl Input {
         }
     }
 
-    pub(crate) fn set<R>(&self, f: impl FnOnce() -> R) -> R {
-        CONTEXT.set(self, f)
-    }
-
-    /// Returns 'true' if the reference to a `Input` is set to the scoped TLS.
-    ///
-    /// If this function returns 'false', the function `Input::with` will panic.
-    pub fn is_set() -> bool {
-        CONTEXT.is_set()
-    }
-
-    /// Executes a closure by using a reference to a `Input` from the scoped TLS and returns its
-    /// result.
-    ///
-    /// # Panics
-    /// This function will panic if any reference to `Input` is set to the scoped TLS.
-    /// Do not call this function outside the manage of the framework.
-    pub fn with<R>(f: impl FnOnce(&Input) -> R) -> R {
-        CONTEXT.with(f)
-    }
-
-    /// Returns a reference to the value of `Request` contained in this context.
+    /// Returns a shared reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
         &self.parts.request
+    }
+
+    /// Returns a mutable reference to the value of `Request` contained in this context.
+    pub fn request_mut(&mut self) -> &mut Request<RequestBody> {
+        &mut self.parts.request
     }
 
     /// Parses a header field in the request to a value of `H`.
@@ -139,11 +123,99 @@ impl Input {
     }
 }
 
+/// A set of functions for accessing the reference to `Input` located at the task local storage.
+///
+/// These functions only work in `Future`s called directly in `AppServiceFuture`.
+/// Do not use these in the following situations:
+///
+/// * The outside of this framework.
+/// * Inside the futures spawned by some `Executor`s (such situation will cause by using
+///   `tokio::spawn()`).
+///
+/// The provided functions forms some dynamic scope for the borrowing the instance of `Input` on
+/// the scoped TLS.
+/// If these scopes violate the borrowing rule in Rust, a runtime error will reported or cause a
+/// panic.
+impl Input {
+    pub(crate) fn set<R>(self_: &RefCell<Self>, f: impl FnOnce() -> R) -> R {
+        INPUT.set(self_, f)
+    }
+
+    /// Returns 'true' if the reference to a `Input` is set to the scoped TLS.
+    pub fn is_set() -> bool {
+        INPUT.is_set()
+    }
+
+    /// Retrieves a shared borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference.
+    ///
+    /// # Panics
+    /// This function will cause a panic if any reference to `Input` is set at the current task or
+    /// a mutable borrow has already been exist.
+    #[inline]
+    pub fn with<R>(f: impl FnOnce(&Input) -> R) -> R {
+        Input::try_with(f).expect("in Input::with")
+    }
+
+    /// Retrieves a mutable borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference.
+    ///
+    /// # Panics
+    /// This function will cause a panic if any reference to `Input` is set at the current task or
+    /// a mutable or shared borrows have already been exist.
+    #[inline]
+    pub fn with_mut<R>(f: impl FnOnce(&mut Input) -> R) -> R {
+        Input::try_with_mut(f).expect("in Input::with_mut")
+    }
+
+    /// Tries to acquire a shared borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference if it succeeds.
+    ///
+    /// This function will report an error if any reference to `Input` is set at the current task or
+    /// a mutable borrow has already been exist.
+    #[inline]
+    pub fn try_with<R>(f: impl FnOnce(&Input) -> R) -> Result<R, Error> {
+        Input::try_with_inner(|input| {
+            let input = input.try_borrow().map_err(Error::internal_server_error)?;
+            Ok(f(&*input))
+        })
+    }
+
+    /// Tries to acquire a mutable borrow of `Input` from scoped TLS and executes the provided closure
+    /// with its reference if it succeeds.
+    ///
+    /// This function will report an error if any reference to `Input` is set at the current task or
+    /// a mutable or shared borrows have already been exist.
+    #[inline]
+    pub fn try_with_mut<R>(f: impl FnOnce(&mut Input) -> R) -> Result<R, Error> {
+        Input::try_with_inner(|input| {
+            let mut input = input.try_borrow_mut().map_err(Error::internal_server_error)?;
+            Ok(f(&mut *input))
+        })
+    }
+
+    fn try_with_inner<R>(f: impl FnOnce(&RefCell<Input>) -> Result<R, Error>) -> Result<R, Error> {
+        if INPUT.is_set() {
+            INPUT.with(f)
+        } else {
+            Err(Error::internal_server_error(format_err!(
+                "The reference to Input is not set at the current task."
+            )))
+        }
+    }
+}
+
 impl Deref for Input {
     type Target = Request<RequestBody>;
 
     fn deref(&self) -> &Self::Target {
         self.request()
+    }
+}
+
+impl DerefMut for Input {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.request_mut()
     }
 }
 
