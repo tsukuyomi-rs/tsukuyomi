@@ -7,7 +7,6 @@ extern crate http;
 use askama::Template as _Template;
 use failure::SyncFailure;
 use http::{header, Response};
-use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::output::{Output, Responder};
 use tsukuyomi::{App, Error, Input};
 
@@ -32,15 +31,15 @@ struct Hello {
     name: String,
 }
 
-fn index() -> Ready<Template<Hello>> {
+fn index(_: &mut Input) -> Template<Hello> {
     let name = Input::with(|input| input.params()[0].to_owned());
-    ready(Template(Hello { name: name }))
+    Template(Hello { name: name })
 }
 
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/:name", index);
+            r.get("/:name").handle(index);
         })
         .finish()?;
 

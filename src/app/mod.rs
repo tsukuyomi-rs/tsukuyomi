@@ -105,27 +105,8 @@ impl AppBuilder {
     /// Registers some handlers to the router, with mounting on the specified prefix.
     ///
     /// See the documentation of `Mount` for details.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use tsukuyomi::App;
-    /// # use tsukuyomi::future::ready;
-    /// # let index = || ready("a");
-    /// # let find_post = || ready("a");
-    /// # let all_posts = || ready("a");
-    /// # let add_post = || ready("a");
-    /// let app = App::builder()
-    ///     .mount("/", |r| { r.get("/", index); })
-    ///     .mount("/api/v1/", |r| {
-    ///         r.get("/posts/:id", find_post);
-    ///         r.get("/posts", all_posts);
-    ///         r.post("/posts", add_post);
-    ///     })
-    ///     .finish();
-    /// ```
     pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) -> &mut Self {
-        f(&mut self.router.mount(base));
+        self.router.mount(base, f);
         self
     }
 

@@ -10,20 +10,17 @@ extern crate log;
 
 mod lines;
 
-use tsukuyomi::future::{ready, Ready};
 use tsukuyomi::upgrade::Upgrade;
 use tsukuyomi::{App, Input};
 
-fn index() -> Ready<tsukuyomi::Result<Upgrade>> {
-    ready(Input::with(|input| {
-        lines::start(input, |line| {
-            if !line.is_empty() {
-                Some(format!(">> {}", line))
-            } else {
-                None
-            }
-        })
-    }))
+fn index(input: &mut Input) -> tsukuyomi::Result<Upgrade> {
+    lines::start(input, |line| {
+        if !line.is_empty() {
+            Some(format!(">> {}", line))
+        } else {
+            None
+        }
+    })
 }
 
 fn main() -> tsukuyomi::AppResult<()> {
@@ -32,7 +29,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", index);
+            r.get("/").handle(index);
         })
         .finish()?;
 

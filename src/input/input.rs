@@ -9,7 +9,7 @@ use std::sync::Arc;
 use app::AppState;
 use error::Error;
 use input::RequestBody;
-use router::Route;
+use router::Endpoint;
 
 use super::cookie::{CookieManager, Cookies};
 
@@ -78,11 +78,11 @@ impl Input {
         }
     }
 
-    /// Returns the reference to a `Route` matched to the incoming request.
-    pub fn route(&self) -> &Route {
+    /// Returns the reference to a `Endpoint` matched to the incoming request.
+    pub fn endpoint(&self) -> &Endpoint {
         self.global()
             .router()
-            .get_route(self.parts.route)
+            .get(self.parts.route)
             .expect("The wrong route ID")
     }
 
