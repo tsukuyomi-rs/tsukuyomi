@@ -1,0 +1,13 @@
+[package]
+name = "example-tls"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "tls"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = { path = "../..", features = ["tls"] }
