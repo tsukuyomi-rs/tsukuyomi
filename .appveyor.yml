@@ -43,3 +43,6 @@ test_script:
   - cargo test -p routing
   - cargo test -p session
   # - cargo test -p unix-socket
+  - if [%TOOLCHAIN%]==[nightly] (
+      cargo test -p async-await
+    )

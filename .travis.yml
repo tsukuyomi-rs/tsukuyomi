@@ -28,8 +28,16 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo clean
-        - cargo test --all
+        - cargo test
         - cargo test --no-default-features
+        # examples
+        - cargo test -p basic
+        - cargo test -p git-server
+        - cargo test -p json
+        - cargo test -p lines
+        - cargo test -p routing
+        - cargo test -p session
+        - cargo test -p unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
         - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
@@ -40,8 +48,16 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo clean
-        - cargo test --all
+        - cargo test
         - cargo test --no-default-features
+        # examples
+        - cargo test -p basic
+        - cargo test -p git-server
+        - cargo test -p json
+        - cargo test -p lines
+        - cargo test -p routing
+        - cargo test -p session
+        - cargo test -p unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
 
@@ -50,9 +66,18 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo clean
-        - cargo test --all
+        - cargo test
         - cargo test --no-default-features
         - cargo test --features nightly
+        # examples
+        - cargo test -p async-await
+        - cargo test -p basic
+        - cargo test -p git-server
+        - cargo test -p json
+        - cargo test -p lines
+        - cargo test -p routing
+        - cargo test -p session
+        - cargo test -p unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
 

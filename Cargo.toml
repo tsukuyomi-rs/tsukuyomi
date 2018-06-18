@@ -29,6 +29,7 @@ maintenance = { status = "actively-developed" }
 
 [workspace]
 members = [
+  "examples/async-await",
   "examples/basic",
   "examples/db",
   "examples/git-server",
