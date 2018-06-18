@@ -89,10 +89,6 @@ impl Input {
             .expect("The wrong route ID")
     }
 
-    pub(crate) fn route_id(&self) -> usize {
-        self.parts.route
-    }
-
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Params {
         Params {
