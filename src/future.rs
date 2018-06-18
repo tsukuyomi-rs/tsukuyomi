@@ -6,9 +6,8 @@
 //! `std::future` and `std::task`.
 
 use futures;
-use std::mem;
 
-#[cfg(feature = "stdfuture")]
+#[cfg(feature = "nightly")]
 use std::task as stdtask;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -99,7 +98,7 @@ impl Into<Result<futures::Async<()>, ()>> for Poll<()> {
     }
 }
 
-#[cfg(feature = "stdfuture")]
+#[cfg(feature = "nightly")]
 impl<T> From<stdtask::Poll<T>> for Poll<T> {
     fn from(p: stdtask::Poll<T>) -> Poll<T> {
         match p {
@@ -109,7 +108,7 @@ impl<T> From<stdtask::Poll<T>> for Poll<T> {
     }
 }
 
-#[cfg(feature = "stdfuture")]
+#[cfg(feature = "nightly")]
 impl<T> Into<stdtask::Poll<T>> for Poll<T> {
     fn into(self) -> stdtask::Poll<T> {
         match self {
@@ -147,71 +146,3 @@ macro_rules! ready {
     }};
 }
 
-// ==== Ready ====
-
-#[derive(Debug)]
-#[must_use = "futures do nothing unless polled"]
-pub struct Ready<T>(Option<T>);
-
-impl<T> Future for Ready<T> {
-    type Output = T;
-
-    fn poll(&mut self) -> Poll<Self::Output> {
-        Poll::Ready(self.0.take().expect("The future has already polled"))
-    }
-}
-
-pub fn ready<T>(x: T) -> Ready<T> {
-    Ready(Some(x))
-}
-
-// ==== Lazy ====
-
-#[derive(Debug)]
-pub struct Lazy<F, R> {
-    state: LazyState<F, R>,
-}
-
-#[derive(Debug)]
-enum LazyState<F, R> {
-    Init(F),
-    Polling(R),
-    Done,
-}
-
-impl<F, R> Future for Lazy<F, R>
-where
-    F: FnOnce() -> R,
-    R: Future,
-{
-    type Output = R::Output;
-
-    fn poll(&mut self) -> Poll<Self::Output> {
-        loop {
-            let polled = match self.state {
-                LazyState::Init(..) => None,
-                LazyState::Polling(ref mut f) => Some(ready!(f.poll())),
-                LazyState::Done => panic!(""),
-            };
-
-            // safety: The future has not initialized yet or already resolved.
-            match (mem::replace(&mut self.state, LazyState::Done), polled) {
-                (LazyState::Init(f), None) => {
-                    self.state = LazyState::Polling(f());
-                }
-                (LazyState::Polling(_), Some(x)) => return Poll::Ready(x),
-                _ => unreachable!("unexpected state"),
-            }
-        }
-    }
-}
-
-pub fn lazy<F, R>(f: F) -> Lazy<F, R>
-where
-    F: FnOnce() -> R,
-    R: Future,
-{
-    Lazy {
-        state: LazyState::Init(f),
-    }
-}

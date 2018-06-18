@@ -20,7 +20,7 @@ include = [
 ]
 
 [package.metadata.docs.rs]
-features = ["default", "nightly"]
+features = ["default"]
 
 [badges]
 appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
@@ -68,5 +68,3 @@ default = ["tls", "session"]
 session = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
 nightly = []
-# FIXME: integrate with 'nightly'
-stdfuture = []
