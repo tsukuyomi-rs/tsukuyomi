@@ -1,7 +1,7 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
 use bytes::Bytes;
-use futures::{self, Async, Future};
+use futures;
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::{fmt, mem};
 
 use error::{CritError, Error};
-use future::{self as future_compat, Poll};
+use future::Poll;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
 use output::{Output, ResponseBody};
@@ -49,18 +49,38 @@ pub struct AppService {
     rx: upgrade::Receiver,
 }
 
+impl AppService {
+    #[allow(missing_docs)]
+    pub fn dispatch_request(&mut self, request: Request<RequestBody>) -> AppServiceFuture {
+        AppServiceFuture {
+            state: AppServiceFutureState::Initial(request),
+            global: self.global.clone(),
+            tx: self.rx.sender(),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn poll_ready(&mut self) -> Poll<Result<(), CritError>> {
+        self.rx.poll_ready().into()
+    }
+
+    #[allow(missing_docs)]
+    pub fn upgrade(self, io: Io, read_buf: Bytes) -> AppServiceUpgrade {
+        AppServiceUpgrade {
+            inner: self.rx.try_upgrade(io, read_buf),
+        }
+    }
+}
+
 impl Service for AppService {
     type ReqBody = Body;
     type ResBody = Body;
     type Error = CritError;
     type Future = AppServiceFuture;
 
+    #[inline]
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        AppServiceFuture {
-            state: AppServiceFutureState::Initial(request.map(RequestBody::from_hyp)),
-            global: self.global.clone(),
-            tx: self.rx.sender(),
-        }
+        self.dispatch_request(request.map(RequestBody::from_hyp))
     }
 }
 
@@ -69,13 +89,11 @@ impl ServiceUpgradeExt<Io> for AppService {
     type UpgradeError = CritError;
 
     fn poll_ready_upgradable(&mut self) -> futures::Poll<(), Self::UpgradeError> {
-        self.rx.poll_ready()
+        self.poll_ready().into()
     }
 
     fn upgrade(self, io: Io, read_buf: Bytes) -> Self::Upgrade {
-        AppServiceUpgrade {
-            inner: self.rx.try_upgrade(io, read_buf),
-        }
+        self.upgrade(io, read_buf)
     }
 }
 
@@ -109,28 +127,8 @@ enum AppServiceFutureState {
     Done,
 }
 
-impl futures::Future for AppServiceFuture {
-    type Item = Response<Body>;
-    type Error = CritError;
-
-    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        match {
-            let state = &mut self.state;
-            let global = &mut self.global;
-            global.with_set(|| state.poll_in_flight(global))
-        } {
-            Poll::Pending => Ok(futures::Async::NotReady),
-            Poll::Ready(Ok((out, input))) => self.handle_response(out, input.into_parts()).map(Async::Ready),
-            Poll::Ready(Err((err, request))) => self.handle_error(err, request).map(Async::Ready),
-        }
-    }
-}
-
 impl AppServiceFutureState {
-    fn poll_in_flight(
-        &mut self,
-        global: &AppState,
-    ) -> future_compat::Poll<Result<(Output, Input), (Error, Request<()>)>> {
+    fn poll_in_flight(&mut self, global: &AppState) -> Poll<Result<(Output, Input), (Error, Request<()>)>> {
         use self::AppServiceFutureState::*;
 
         enum Polled {
@@ -257,7 +255,19 @@ impl AppServiceFutureState {
 }
 
 impl AppServiceFuture {
-    fn handle_response(&mut self, output: Output, cx: InputParts) -> Result<Response<Body>, CritError> {
+    #[allow(missing_docs)]
+    pub fn poll_ready(&mut self) -> Poll<Result<Response<ResponseBody>, CritError>> {
+        match {
+            let state = &mut self.state;
+            let global = &mut self.global;
+            ready!(global.with_set(|| state.poll_in_flight(global)))
+        } {
+            Ok((out, input)) => Poll::Ready(self.handle_response(out, input.into_parts())),
+            Err((err, request)) => Poll::Ready(self.handle_error(err, request)),
+        }
+    }
+
+    fn handle_response(&mut self, output: Output, cx: InputParts) -> Result<Response<ResponseBody>, CritError> {
         let (mut response, handler) = output.deconstruct();
 
         cx.cookies.append_to(response.headers_mut());
@@ -267,16 +277,27 @@ impl AppServiceFuture {
             self.tx.send(handler, cx.request.map(mem::drop));
         }
 
-        Ok(response.map(ResponseBody::into_hyp))
+        Ok(response)
     }
 
-    fn handle_error(&mut self, err: Error, request: Request<()>) -> Result<Response<Body>, CritError> {
+    fn handle_error(&mut self, err: Error, request: Request<()>) -> Result<Response<ResponseBody>, CritError> {
         if let Some(err) = err.as_http_error() {
             let response = self.global.error_handler().handle_error(err, &request)?;
-            return Ok(response.map(ResponseBody::into_hyp));
+            return Ok(response);
         }
         Err(err.into_critical()
             .expect("unexpected condition in AppServiceFuture::handle_error"))
+    }
+}
+
+impl futures::Future for AppServiceFuture {
+    type Item = Response<Body>;
+    type Error = CritError;
+
+    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
+        self.poll_ready()
+            .map_ok(|response| response.map(ResponseBody::into_hyp))
+            .into()
     }
 }
 
@@ -284,7 +305,7 @@ impl AppServiceFuture {
 /// from HTTP to another one.
 #[must_use = "futures do nothing unless polled"]
 pub struct AppServiceUpgrade {
-    inner: Result<Box<Future<Item = (), Error = ()> + Send>, Io>,
+    inner: Result<Box<futures::Future<Item = (), Error = ()> + Send>, Io>,
 }
 
 impl fmt::Debug for AppServiceUpgrade {
@@ -293,14 +314,21 @@ impl fmt::Debug for AppServiceUpgrade {
     }
 }
 
+impl AppServiceUpgrade {
+    #[allow(missing_docs)]
+    pub fn poll_ready(&mut self) -> Poll<()> {
+        match self.inner {
+            Ok(ref mut f) => f.poll().into(),
+            Err(ref mut io) => io.shutdown().map_err(mem::drop).into(),
+        }
+    }
+}
+
 impl futures::Future for AppServiceUpgrade {
     type Item = ();
     type Error = ();
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        match self.inner {
-            Ok(ref mut f) => f.poll(),
-            Err(ref mut io) => io.shutdown().map_err(mem::drop),
-        }
+        self.poll_ready().map(Ok).into()
     }
 }

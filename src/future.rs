@@ -61,6 +61,16 @@ impl<T, E> From<Result<futures::Async<T>, E>> for Poll<Result<T, E>> {
     }
 }
 
+impl From<Result<futures::Async<()>, ()>> for Poll<()> {
+    fn from(a: Result<futures::Async<()>, ()>) -> Self {
+        match a {
+            Ok(futures::Async::Ready(())) => Poll::Ready(()),
+            Ok(futures::Async::NotReady) => Poll::Pending,
+            Err(()) => Poll::Ready(()),
+        }
+    }
+}
+
 impl<T> Into<futures::Async<T>> for Poll<T> {
     fn into(self) -> futures::Async<T> {
         match self {
@@ -75,6 +85,15 @@ impl<T, E> Into<Result<futures::Async<T>, E>> for Poll<Result<T, E>> {
         match self {
             Poll::Ready(Ok(v)) => Ok(futures::Async::Ready(v)),
             Poll::Ready(Err(e)) => Err(e),
+            Poll::Pending => Ok(futures::Async::NotReady),
+        }
+    }
+}
+
+impl Into<Result<futures::Async<()>, ()>> for Poll<()> {
+    fn into(self) -> Result<futures::Async<()>, ()> {
+        match self {
+            Poll::Ready(()) => Ok(futures::Async::Ready(())),
             Poll::Pending => Ok(futures::Async::NotReady),
         }
     }
