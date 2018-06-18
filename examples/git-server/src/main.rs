@@ -53,8 +53,7 @@ fn handle_info_refs() -> Box<Future<Item = Response<ResponseBody>, Error = Error
         Err(err) => return Box::new(future::err(err.into())),
     };
 
-    let output = Input::with_get(|input| {
-        let repo_path = input.global().state::<RepositoryPath>().unwrap();
+    let output = App::with_global(|repo_path: &RepositoryPath| {
         Repository::new(&repo_path.0).stateless_rpc(mode).advertise_refs()
     });
 
@@ -95,10 +94,8 @@ fn handle_rpc(mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error 
 
     let body = Input::with_get(|input| input.body_mut().read_all().map_err(Error::critical));
 
-    let output = Input::with_get(|input| {
-        let repo_path = input.global().state::<RepositoryPath>().unwrap();
-        Repository::new(&repo_path.0).stateless_rpc(mode).call(body)
-    });
+    let output =
+        App::with_global(|repo_path: &RepositoryPath| Repository::new(&repo_path.0).stateless_rpc(mode).call(body));
 
     let future = output.and_then(move |output| {
         Response::builder()

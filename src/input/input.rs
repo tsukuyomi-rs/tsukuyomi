@@ -5,7 +5,6 @@ use hyperx::header::Header;
 use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
-use std::sync::Arc;
 
 use app::AppState;
 use error::Error;
@@ -25,7 +24,6 @@ pub(crate) struct InputParts {
     pub(crate) route: usize,
     pub(crate) params: Vec<(usize, usize)>,
     pub(crate) cookies: CookieManager,
-    pub(crate) global: Arc<AppState>,
     _priv: (),
 }
 
@@ -39,19 +37,13 @@ pub struct Input {
 }
 
 impl Input {
-    pub(crate) fn new(
-        request: Request<RequestBody>,
-        route: usize,
-        params: Vec<(usize, usize)>,
-        global: Arc<AppState>,
-    ) -> Input {
+    pub(crate) fn new(request: Request<RequestBody>, route: usize, params: Vec<(usize, usize)>) -> Input {
         Input {
             parts: InputParts {
                 request: request,
                 route: route,
                 params: params,
                 cookies: CookieManager::new(),
-                global: global,
                 _priv: (),
             },
         }
@@ -82,11 +74,11 @@ impl Input {
     }
 
     /// Returns the reference to a `Endpoint` matched to the incoming request.
-    pub fn endpoint(&self) -> &Endpoint {
-        self.global()
-            .router()
-            .get(self.parts.route)
-            .expect("The wrong route ID")
+    pub fn with_endpoint<R>(&self, f: impl FnOnce(&Endpoint) -> R) -> R {
+        AppState::with_get(|global| {
+            let endpoint = &global.router()[self.parts.route];
+            f(endpoint)
+        })
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
@@ -107,11 +99,6 @@ impl Input {
             cookies.init(self.parts.request.headers()).map_err(Error::bad_request)?;
         }
         Ok(cookies.cookies())
-    }
-
-    /// Returns the reference to the global state.
-    pub fn global(&self) -> &AppState {
-        &*self.parts.global
     }
 
     pub(crate) fn into_parts(self) -> InputParts {

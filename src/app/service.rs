@@ -23,7 +23,7 @@ impl App {
     /// Creates a new `AppService` to manage a session.
     pub fn new_service(&self) -> AppService {
         AppService {
-            state: self.state.clone(),
+            global: self.global.clone(),
             rx: upgrade::new(),
         }
     }
@@ -45,7 +45,7 @@ impl NewService for App {
 /// A `Service` representation of the application, created by `App`.
 #[derive(Debug)]
 pub struct AppService {
-    state: Arc<AppState>,
+    global: Arc<AppState>,
     rx: upgrade::Receiver,
 }
 
@@ -57,8 +57,8 @@ impl Service for AppService {
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
         AppServiceFuture {
-            kind: AppServiceFutureKind::Initial(request.map(RequestBody::from_hyp)),
-            state: self.state.clone(),
+            state: AppServiceFutureState::Initial(request.map(RequestBody::from_hyp)),
+            global: self.global.clone(),
             tx: self.rx.sender(),
         }
     }
@@ -83,12 +83,13 @@ impl ServiceUpgradeExt<Io> for AppService {
 #[must_use = "futures do nothing unless polled"]
 #[derive(Debug)]
 pub struct AppServiceFuture {
-    kind: AppServiceFutureKind,
-    state: Arc<AppState>,
+    state: AppServiceFutureState,
+    global: Arc<AppState>,
     tx: upgrade::Sender,
 }
 
-enum AppServiceFutureKind {
+#[derive(Debug)]
+enum AppServiceFutureState {
     Initial(Request<RequestBody>),
     BeforeHandle {
         in_flight: BeforeHandle,
@@ -108,25 +109,16 @@ enum AppServiceFutureKind {
     Done,
 }
 
-impl fmt::Debug for AppServiceFutureKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::AppServiceFutureKind::*;
-        match *self {
-            Initial(ref req) => f.debug_tuple("Initial").field(req).finish(),
-            BeforeHandle { .. } => f.debug_tuple("BeforeHandle").finish(),
-            Handle { .. } => f.debug_struct("Handle").finish(),
-            AfterHandle { .. } => f.debug_tuple("AfterHandle").finish(),
-            Done => f.debug_struct("Done").finish(),
-        }
-    }
-}
-
 impl futures::Future for AppServiceFuture {
     type Item = Response<Body>;
     type Error = CritError;
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        match self.poll_in_flight() {
+        match {
+            let state = &mut self.state;
+            let global = &mut self.global;
+            global.with_set(|| state.poll_in_flight(global))
+        } {
             Poll::Pending => Ok(futures::Async::NotReady),
             Poll::Ready(Ok((out, input))) => self.handle_response(out, input.into_parts()).map(Async::Ready),
             Poll::Ready(Err((err, request))) => self.handle_error(err, request).map(Async::Ready),
@@ -134,9 +126,12 @@ impl futures::Future for AppServiceFuture {
     }
 }
 
-impl AppServiceFuture {
-    fn poll_in_flight(&mut self) -> future_compat::Poll<Result<(Output, Input), (Error, Request<()>)>> {
-        use self::AppServiceFutureKind::*;
+impl AppServiceFutureState {
+    fn poll_in_flight(
+        &mut self,
+        global: &AppState,
+    ) -> future_compat::Poll<Result<(Output, Input), (Error, Request<()>)>> {
+        use self::AppServiceFutureState::*;
 
         enum Polled {
             BeforeHandle(Result<(), Error>),
@@ -145,7 +140,7 @@ impl AppServiceFuture {
         }
 
         let ret = loop {
-            let polled = match self.kind {
+            let polled = match self {
                 Initial(..) => None,
                 BeforeHandle {
                     ref mut in_flight,
@@ -164,27 +159,27 @@ impl AppServiceFuture {
                 _ => panic!("unexpected state"),
             };
 
-            match (mem::replace(&mut self.kind, Done), polled) {
+            match (mem::replace(self, Done), polled) {
                 (Initial(request), None) => {
-                    let (i, params) = match self.state.router().recognize(request.uri().path(), request.method()) {
+                    let (i, params) = match global.router().recognize(request.uri().path(), request.method()) {
                         Ok(v) => v,
                         Err(e) => break Err((e, request.map(mem::drop))),
                     };
 
-                    let mut input = Input::new(request, i, params, self.state.clone());
+                    let mut input = Input::new(request, i, params);
 
-                    if let Some(modifier) = self.state.modifiers().get(0) {
+                    if let Some(modifier) = global.modifiers().get(0) {
                         let in_flight = modifier.before_handle(&mut input);
-                        self.kind = BeforeHandle {
+                        *self = BeforeHandle {
                             in_flight: in_flight,
                             input: input,
                             current: 0,
                             route_id: i,
                         };
                     } else {
-                        let route = &self.state.router()[i];
+                        let route = &global.router()[i];
                         let in_flight = route.handle(&mut input);
-                        self.kind = Handle {
+                        *self = Handle {
                             in_flight: in_flight,
                             input: input,
                         };
@@ -200,18 +195,18 @@ impl AppServiceFuture {
                     },
                     Some(Polled::BeforeHandle(Ok(()))),
                 ) => {
-                    if let Some(modifier) = self.state.modifiers().get(current) {
+                    if let Some(modifier) = global.modifiers().get(current) {
                         let in_flight = modifier.before_handle(&mut input);
-                        self.kind = BeforeHandle {
+                        *self = BeforeHandle {
                             in_flight: in_flight,
                             input: input,
                             current: current + 1,
                             route_id: route_id,
                         };
                     } else {
-                        let route = &self.state.router()[route_id];
+                        let route = &global.router()[route_id];
                         let in_flight = route.handle(&mut input);
-                        self.kind = Handle {
+                        *self = Handle {
                             in_flight: in_flight,
                             input: input,
                         };
@@ -219,11 +214,11 @@ impl AppServiceFuture {
                 }
 
                 (Handle { mut input, .. }, Some(Polled::Handle(Ok(output)))) => {
-                    let current = self.state.modifiers().len();
+                    let current = global.modifiers().len();
                     if current > 0 {
-                        let modifier = &self.state.modifiers()[current - 1];
+                        let modifier = &global.modifiers()[current - 1];
                         let in_flight = modifier.after_handle(&mut input, output);
-                        self.kind = AfterHandle {
+                        *self = AfterHandle {
                             in_flight: in_flight,
                             input: input,
                             current: current - 1,
@@ -235,9 +230,9 @@ impl AppServiceFuture {
 
                 (AfterHandle { mut input, current, .. }, Some(Polled::AfterHandle(Ok(output)))) => {
                     if current > 0 {
-                        let modifier = &self.state.modifiers()[current - 1];
+                        let modifier = &global.modifiers()[current - 1];
                         let in_flight = modifier.after_handle(&mut input, output);
-                        self.kind = AfterHandle {
+                        *self = AfterHandle {
                             in_flight: in_flight,
                             input: input,
                             current: current - 1,
@@ -259,7 +254,9 @@ impl AppServiceFuture {
 
         Poll::Ready(ret)
     }
+}
 
+impl AppServiceFuture {
     fn handle_response(&mut self, output: Output, cx: InputParts) -> Result<Response<Body>, CritError> {
         let (mut response, handler) = output.deconstruct();
 
@@ -275,7 +272,7 @@ impl AppServiceFuture {
 
     fn handle_error(&mut self, err: Error, request: Request<()>) -> Result<Response<Body>, CritError> {
         if let Some(err) = err.as_http_error() {
-            let response = self.state.error_handler().handle_error(err, &request)?;
+            let response = self.global.error_handler().handle_error(err, &request)?;
             return Ok(response.map(ResponseBody::into_hyp));
         }
         Err(err.into_critical()
