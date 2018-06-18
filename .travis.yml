@@ -31,13 +31,14 @@ matrix:
         - cargo test
         - cargo test --no-default-features
         # examples
-        - cargo test -p basic
-        - cargo test -p git-server
-        - cargo test -p json
-        - cargo test -p lines
-        - cargo test -p routing
-        - cargo test -p session
-        - cargo test -p unix-socket
+        - cargo test -p example-basic
+        - cargo test -p example-diesel
+        - cargo test -p example-git-server
+        - cargo test -p example-json
+        - cargo test -p example-lines
+        - cargo test -p example-routing
+        - cargo test -p example-session
+        - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
         - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
@@ -51,13 +52,14 @@ matrix:
         - cargo test
         - cargo test --no-default-features
         # examples
-        - cargo test -p basic
-        - cargo test -p git-server
-        - cargo test -p json
-        - cargo test -p lines
-        - cargo test -p routing
-        - cargo test -p session
-        - cargo test -p unix-socket
+        - cargo test -p example-basic
+        - cargo test -p example-diesel
+        - cargo test -p example-git-server
+        - cargo test -p example-json
+        - cargo test -p example-lines
+        - cargo test -p example-routing
+        - cargo test -p example-session
+        - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
 
@@ -70,14 +72,15 @@ matrix:
         - cargo test --no-default-features
         - cargo test --features nightly
         # examples
-        - cargo test -p async-await
-        - cargo test -p basic
-        - cargo test -p git-server
-        - cargo test -p json
-        - cargo test -p lines
-        - cargo test -p routing
-        - cargo test -p session
-        - cargo test -p unix-socket
+        - cargo test -p example-async-await
+        - cargo test -p example-basic
+        - cargo test -p example-diesel
+        - cargo test -p example-git-server
+        - cargo test -p example-json
+        - cargo test -p example-lines
+        - cargo test -p example-routing
+        - cargo test -p example-session
+        - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
 

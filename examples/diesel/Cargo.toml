@@ -1,11 +1,11 @@
 [package]
-name = "db"
+name = "example-diesel"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [[bin]]
-name = "db"
+name = "diesel"
 path = "src/main.rs"
 doc = false
 

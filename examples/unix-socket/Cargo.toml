@@ -1,5 +1,5 @@
 [package]
-name = "unix-socket"
+name = "example-unix-socket"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false

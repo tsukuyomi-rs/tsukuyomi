@@ -1,5 +1,5 @@
 [package]
-name = "async-await"
+name = "example-async-await"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false

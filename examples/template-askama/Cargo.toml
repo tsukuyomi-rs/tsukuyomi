@@ -1,5 +1,5 @@
 [package]
-name = "template-askama"
+name = "example-template-askama"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
