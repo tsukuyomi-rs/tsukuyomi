@@ -1,12 +1,11 @@
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
-#[macro_use]
 extern crate failure;
-#[macro_use]
 extern crate futures;
 #[macro_use]
 extern crate serde;
+extern crate tokio_executor;
 extern crate tokio_threadpool;
 extern crate tsukuyomi;
 

@@ -7,6 +7,7 @@ use serde::ser::Serialize;
 use serde_json;
 use std::fmt;
 
+use app::AppState;
 use error::Error;
 use input::Input;
 
@@ -99,9 +100,11 @@ impl<'a> Session<'a> {
     }
 
     fn with_private<R>(&mut self, f: impl FnOnce(PrivateJar) -> R) -> Result<R, Error> {
-        let key = self.input.global().session().secret_key().clone();
-        let mut jar = self.input.cookies()?;
-        Ok(f(jar.private(&key)))
+        AppState::with_get(|global| {
+            let key = global.session().secret_key();
+            let mut jar = self.input.cookies()?;
+            Ok(f(jar.private(&key)))
+        })
     }
 }
 

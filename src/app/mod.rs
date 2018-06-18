@@ -14,6 +14,8 @@ use error::handler::{DefaultErrorHandler, ErrorHandler};
 use modifier::Modifier;
 use router::{self, Mount, Router};
 
+scoped_thread_local!(static STATE: AppState);
+
 /// The global and shared variables used throughout the serving an HTTP application.
 pub struct AppState {
     router: Router,
@@ -31,6 +33,15 @@ impl fmt::Debug for AppState {
 }
 
 impl AppState {
+    pub(crate) fn with_set<R>(&self, f: impl FnOnce() -> R) -> R {
+        STATE.set(self, f)
+    }
+
+    #[allow(missing_docs)]
+    pub fn with_get<R>(f: impl FnOnce(&Self) -> R) -> R {
+        STATE.with(f)
+    }
+
     /// Returns the reference to `Router` contained in this value.
     pub fn router(&self) -> &Router {
         &self.router
@@ -68,7 +79,7 @@ impl AppState {
 /// The main type in this framework, which represents an HTTP application.
 #[derive(Debug)]
 pub struct App {
-    state: Arc<AppState>,
+    global: Arc<AppState>,
 }
 
 impl App {
@@ -82,6 +93,23 @@ impl App {
             #[cfg(feature = "session")]
             session: SessionStorage::builder(),
         }
+    }
+
+    #[allow(missing_docs)]
+    #[inline]
+    pub fn with_global<T, R>(f: impl FnOnce(&T) -> R) -> R
+    where
+        T: Send + Sync + 'static,
+    {
+        App::try_with_global(f).expect("empty state")
+    }
+
+    #[allow(missing_docs)]
+    pub fn try_with_global<T, R>(f: impl FnOnce(&T) -> R) -> Option<R>
+    where
+        T: Send + Sync + 'static,
+    {
+        AppState::with_get(|global| global.state::<T>().map(f))
     }
 }
 
@@ -160,7 +188,7 @@ impl AppBuilder {
         let mut builder = mem::replace(self, App::builder());
         builder.states.freeze();
 
-        let state = AppState {
+        let global = AppState {
             router: builder.router.finish()?,
             error_handler: builder
                 .error_handler
@@ -171,6 +199,8 @@ impl AppBuilder {
             session: builder.session.finish(),
         };
 
-        Ok(App { state: Arc::new(state) })
+        Ok(App {
+            global: Arc::new(global),
+        })
     }
 }

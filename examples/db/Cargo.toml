@@ -17,4 +17,5 @@ dotenv = "0.9.0"
 failure = { version = "0.1.1", features = ["derive"] }
 futures = "0.1.21"
 serde = { version = "1.0.0", features = ["derive"] }
+tokio-executor = "0.1"
 tokio-threadpool = "0.1"
