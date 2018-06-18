@@ -36,12 +36,12 @@ The following features does not currently implemented but will be supported in t
 extern crate tsukuyomi;
 
 use tsukuyomi::App;
-use tsukuyomi::future::ready;
 
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/", |_cx| ready("Hello, world!\n"));
+            r.get("/")
+                .handle(|_| "Hello, world!\n");
         })
         .finish()?;
 
