@@ -2,7 +2,6 @@
 
 #![doc(html_root_url = "https://docs.rs/tsukuyomi/0.1.4")]
 #![cfg_attr(feature = "nightly", feature(futures_api))]
-#![cfg_attr(feature = "nightly", feature(extern_prelude))]
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![deny(unreachable_pub)]
@@ -23,6 +22,7 @@ extern crate hyper;
 extern crate hyperx;
 #[macro_use]
 extern crate log;
+extern crate mime;
 #[macro_use]
 extern crate scoped_tls;
 extern crate serde;
@@ -54,29 +54,6 @@ pub mod upgrade;
 
 #[cfg(feature = "session")]
 pub mod session;
-
-/// The definition of statically typed headers.
-///
-/// The items in this module are simply re-exports from `hyperx` crate.
-/// See [the crate level documentation of hyperx][hyperx] for details.
-///
-/// [hyperx]: https://docs.rs/hyperx/0.12.*/
-pub mod header {
-    pub use hyperx::header::Header;
-    pub use hyperx::header::*;
-}
-
-/// The definition of media types.
-///
-/// The items in this module are simply re-exports from `mime` crate.
-/// See [the crate level documentation of mime][mime] for details.
-///
-/// [mime]: https://docs.rs/mime/0.3.*/
-pub mod mime {
-    extern crate mime;
-    pub use self::mime::*;
-    pub use self::mime::{Mime, Name, Params};
-}
 
 #[doc(inline)]
 pub use app::App;
