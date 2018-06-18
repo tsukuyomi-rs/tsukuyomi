@@ -1,5 +1,5 @@
 [package]
-name = "git-server"
+name = "example-git-server"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
