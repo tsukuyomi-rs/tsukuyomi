@@ -1,7 +1,8 @@
 use bytes::{Bytes, BytesMut};
+use failure::format_err;
 use futures::{Future, IntoFuture};
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tokio_io;
 use tokio_process::CommandExt;
@@ -49,7 +50,7 @@ impl fmt::Display for RpcMode {
 
 #[derive(Debug)]
 pub struct StatelessRpc<'a> {
-    repository: &'a Repository<'a>,
+    repository: &'a Repository,
     mode: RpcMode,
 }
 
@@ -58,7 +59,7 @@ impl<'a> StatelessRpc<'a> {
         let mut command = Command::new(format!("/usr/lib/git-core/{}", self.mode.as_str()));
         command
             .args(&["--stateless-rpc", "."])
-            .current_dir(self.repository.path)
+            .current_dir(&self.repository.path)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
