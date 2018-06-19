@@ -338,8 +338,9 @@ impl<'a, 'b> Route<'a, 'b> {
 
     /// Creates an endpoint with the current configuration and the provided handler function.
     ///
-    /// The provided handler is *synchronous*.
-    /// The return value will be converted into an HTTP response immediately.
+    /// The provided handler is *fully synchronous*, which means that the provided handler
+    /// will return a result and immediately converted into an HTTP response without polling
+    /// the asynchronous status.
     ///
     /// # Examples
     ///
@@ -368,8 +369,9 @@ impl<'a, 'b> Route<'a, 'b> {
 
     /// Creates an endpoint with the current configuration and the provided handler function.
     ///
-    /// The provided handler is *asynchronous*, which returns a **future** and will be polled by
-    /// the runtime until the return value is ready.
+    /// The provided handler is *fully asynchronous*, which means that the handler will do nothing
+    /// and immediately return a **future** which will be resolved as a value to be converted into
+    /// an HTTP response.
     ///
     /// # Examples
     ///
@@ -386,6 +388,11 @@ impl<'a, 'b> Route<'a, 'b> {
     ///     })
     /// }
     ///
+    /// // uses upcoming async/await syntax
+    /// // async fn handler() -> &'static str {
+    /// //    "Hello, Tsukuyomi.\n"
+    /// // }
+    ///
     /// let router = Router::builder()
     ///     .mount("/", |m| {
     ///         m.get("/posts").handle_async(handler);
@@ -400,6 +407,46 @@ impl<'a, 'b> Route<'a, 'b> {
     {
         let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
         let endpoint = Endpoint::new_async(uri, self.method, f);
+        self.mount.builder.endpoints.push(endpoint);
+    }
+
+    /// Creates an endpoint with the current configuration and the provided handler function.
+    ///
+    /// The provided handler is *partially asynchronous*, which means that the handler will
+    /// process some tasks by using the provided reference to `Input` and return a future for
+    /// processing the remaining task.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate futures;
+    /// # extern crate tsukuyomi;
+    /// # use tsukuyomi::error::Error;
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::router::Router;
+    /// # use futures::Future;
+    /// # use futures::future::lazy;
+    /// fn handler(input: &mut Input) -> impl Future<Item = String, Error = Error> + Send + 'static {
+    ///     let query = input.uri().query().unwrap_or("<empty>").to_owned();
+    ///     lazy(move || {
+    ///         Ok(format!("query = {}", query))
+    ///     })
+    /// }
+    ///
+    /// let router = Router::builder()
+    ///     .mount("/", |m| {
+    ///         m.get("/posts").handle_async_with_input(handler);
+    ///     })
+    ///     .finish();
+    /// # assert!(router.is_ok());
+    /// ```
+    pub fn handle_async_with_input<R>(self, f: impl Fn(&mut Input) -> R + Send + Sync + 'static)
+    where
+        R: Future + Send + 'static,
+        R::Output: Responder,
+    {
+        let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
+        let endpoint = Endpoint::new_async_with_input(uri, self.method, f);
         self.mount.builder.endpoints.push(endpoint);
     }
 }

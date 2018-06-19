@@ -11,6 +11,7 @@ use super::uri::Uri;
 enum HandlerKind {
     Ready(Box<Fn(&mut Input) -> Result<Output, Error> + Send + Sync>),
     Async(Box<Fn() -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
+    AsyncWithInput(Box<Fn(&mut Input) -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
 }
 
 impl fmt::Debug for HandlerKind {
@@ -18,6 +19,7 @@ impl fmt::Debug for HandlerKind {
         match *self {
             HandlerKind::Ready(..) => f.debug_tuple("Ready").finish(),
             HandlerKind::Async(..) => f.debug_tuple("Async").finish(),
+            HandlerKind::AsyncWithInput(..) => f.debug_tuple("AsyncWithInput").finish(),
         }
     }
 }
@@ -81,6 +83,22 @@ impl Endpoint {
         }
     }
 
+    pub(super) fn new_async_with_input<R>(
+        uri: Uri,
+        method: Method,
+        handler: impl Fn(&mut Input) -> R + Send + Sync + 'static,
+    ) -> Endpoint
+    where
+        R: Future + Send + 'static,
+        R::Output: Responder,
+    {
+        Endpoint {
+            uri: uri,
+            method: method,
+            handler: HandlerKind::AsyncWithInput(Box::new(move |input| Box::new(HandlerFuture(handler(input))))),
+        }
+    }
+
     /// Returns the full HTTP path of this endpoint.
     pub fn uri(&self) -> &Uri {
         &self.uri
@@ -94,7 +112,8 @@ impl Endpoint {
     pub(crate) fn handle(&self, input: &mut Input) -> Handle {
         match self.handler {
             HandlerKind::Ready(ref f) => Handle::Ready(Some(f(input))),
-            HandlerKind::Async(ref f) => Handle::Async(input.with_set(|| f())),
+            HandlerKind::Async(ref f) => Handle::Async(f()),
+            HandlerKind::AsyncWithInput(ref f) => Handle::Async(f(input)),
         }
     }
 }
