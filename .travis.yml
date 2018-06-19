@@ -13,6 +13,7 @@ branches:
   only:
     - master
     - /^\d+\.\d+$/
+    - /^wip\/.*$/
 
 matrix:
   allow_failures:
