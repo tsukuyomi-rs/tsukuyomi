@@ -1,42 +1,33 @@
-#![feature(proc_macro, proc_macro_non_items, generators)]
+#![feature(proc_macro)]
+#![feature(proc_macro_non_items)]
+#![feature(generators)]
 
-extern crate tsukuyomi;
-#[macro_use]
-extern crate serde;
 extern crate futures_await as futures;
-extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
+extern crate tsukuyomi;
 
 use futures::prelude::*;
-
-use tsukuyomi::json::{Json, JsonErrorHandler};
-use tsukuyomi::output::HttpResponse;
-use tsukuyomi::{App, Input};
-
-#[derive(Debug, Serialize, Deserialize)]
-struct User {
-    name: String,
-    age: u32,
-}
-
-impl HttpResponse for User {}
+use tsukuyomi::{App, Error, Input};
 
 #[async]
-fn async_handler() -> tsukuyomi::Result<Json<User>> {
-    let user: Json<User> = await!(Input::with_get(|input| input.body_mut().read_all()).convert_to())?;
-    info!("Received: {:?}", user);
-    Ok(user)
+fn async_handler() -> tsukuyomi::Result<String> {
+    let body = await!(Input::with_get(|input| input.body_mut().read_all()).convert_to())?;
+    println!("Received: {:?}", body);
+    Ok(body)
+}
+
+fn async_handler_with_input(input: &mut Input) -> impl Future<Item = String, Error = Error> + Send + 'static {
+    input.body_mut().read_all().convert_to().and_then(|body| {
+        println!("Received: {:?}", body);
+        Ok(body)
+    })
 }
 
 fn main() -> tsukuyomi::AppResult<()> {
-    pretty_env_logger::init();
-
     let app = App::builder()
-        .mount("/", |r| {
-            r.post("/").handle_async(async_handler);
+        .mount("/", |m| {
+            m.post("/async1").handle_async(async_handler);
+            m.post("/async2").handle_async_with_input(async_handler_with_input);
         })
-        .error_handler(JsonErrorHandler::new())
         .finish()?;
 
     tsukuyomi::run(app)
