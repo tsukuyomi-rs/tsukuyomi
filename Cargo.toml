@@ -62,6 +62,9 @@ serde_json = "1.0.20"
 state = "0.4"
 scoped-tls = "0.1.2"
 
+[dev-dependencies]
+matches = "0.1.6"
+
 [target.'cfg(unix)'.dependencies]
 tokio-uds = "0.2.0"
 

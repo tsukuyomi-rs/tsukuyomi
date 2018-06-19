@@ -10,7 +10,9 @@ where
 {
     let mut uri = String::new();
     for p in prefix {
-        uri = format!("{}{}", uri.trim_right_matches("/"), p.as_ref());
+        if p.as_ref().0 != "/" {
+            uri = format!("{}{}", uri.trim_right_matches("/"), p.as_ref());
+        }
     }
 
     if uri.is_empty() {
@@ -158,7 +160,7 @@ mod tests {
     #[test]
     fn join_path_case3() {
         assert_eq!(
-            join_all(&[Uri("/".into()), Uri("/path/to".into())]),
+            join_all(&[Uri("/path/".into()), Uri("/to".into())]),
             Uri("/path/to".into())
         );
     }
@@ -166,8 +168,24 @@ mod tests {
     #[test]
     fn join_path_case4() {
         assert_eq!(
+            join_all(&[Uri("/".into()), Uri("/path/to".into())]),
+            Uri("/path/to".into())
+        );
+    }
+
+    #[test]
+    fn join_path_case5() {
+        assert_eq!(
             join_all(&[Uri("/path/to/".into()), Uri("/".into())]),
             Uri("/path/to/".into())
+        );
+    }
+
+    #[test]
+    fn join_path_case6() {
+        assert_eq!(
+            join_all(&[Uri("/path/to".into()), Uri("/".into())]),
+            Uri("/path/to".into())
         );
     }
 }

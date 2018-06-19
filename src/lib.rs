@@ -32,6 +32,9 @@ extern crate tokio;
 extern crate tokio_tcp;
 #[cfg(unix)]
 extern crate tokio_uds;
+#[cfg(test)]
+#[macro_use]
+extern crate matches;
 
 #[cfg(feature = "tls")]
 extern crate rustls;

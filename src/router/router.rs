@@ -44,7 +44,7 @@ impl RouterEntry {
             return Some(i);
         }
 
-        if config.fallback_head && *method == Method::GET {
+        if config.fallback_head && *method == Method::HEAD {
             if let Some(&i) = self.routes.get(&Method::GET) {
                 return Some(i);
             }
@@ -448,5 +448,98 @@ impl<'a, 'b> Route<'a, 'b> {
         let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
         let endpoint = Endpoint::new_async_with_input(uri, self.method, f);
         self.mount.builder.endpoints.push(endpoint);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty() {
+        let router = Router::builder().finish().unwrap();
+        assert!(router.recognize("/", &Method::GET).is_err());
+    }
+
+    #[test]
+    fn root_single_method() {
+        let router = Router::builder()
+            .mount("/", |m| {
+                m.get("/").handle(|_| "a");
+            })
+            .finish()
+            .unwrap();
+
+        assert_matches!(router.recognize("/", &Method::GET), Ok((0, _)));
+
+        assert!(router.recognize("/path/to", &Method::GET).is_err());
+        assert!(router.recognize("/", &Method::POST).is_err());
+    }
+
+    #[test]
+    fn root_multiple_method() {
+        let router = Router::builder()
+            .mount("/", |m| {
+                m.get("/").handle(|_| "a");
+                m.post("/").handle(|_| "b");
+            })
+            .finish()
+            .unwrap();
+
+        assert_matches!(router.recognize("/", &Method::GET), Ok((0, _)));
+        assert_matches!(router.recognize("/", &Method::POST), Ok((1, _)));
+
+        assert!(router.recognize("/", &Method::PUT).is_err());
+    }
+
+    #[test]
+    fn root_fallback_head() {
+        let router = Router::builder()
+            .mount("/", |m| {
+                m.get("/").handle(|_| "a");
+            })
+            .finish()
+            .unwrap();
+
+        assert_matches!(router.recognize("/", &Method::HEAD), Ok((0, _)));
+    }
+
+    #[test]
+    fn root_fallback_head_disabled() {
+        let router = Router::builder()
+            .mount("/", |m| {
+                m.get("/").handle(|_| "a");
+            })
+            .fallback_head(false)
+            .finish()
+            .unwrap();
+
+        assert!(router.recognize("/", &Method::HEAD).is_err());
+    }
+
+    #[test]
+    fn mount() {
+        let router = Router::builder()
+            .mount("/", |m| {
+                m.get("/foo").handle(|_| "a"); // /foo
+                m.get("/bar").handle(|_| "b"); // /bar
+            })
+            .mount("/baz", |m| {
+                m.get("/").handle(|_| "c"); // /baz
+
+                m.mount("/", |m| {
+                    m.get("/").handle(|_| "d"); // /baz
+                    m.get("/foobar").handle(|_| "e"); // /baz/foobar
+                });
+            })
+            .finish()
+            .unwrap();
+
+        assert_matches!(router.recognize("/foo", &Method::GET), Ok((0, _)));
+        assert_matches!(router.recognize("/bar", &Method::GET), Ok((1, _)));
+        assert_matches!(router.recognize("/baz", &Method::GET), Ok((3, _)));
+        assert_matches!(router.recognize("/baz/foobar", &Method::GET), Ok((4, _)));
+
+        assert!(router.recognize("/baz/", &Method::GET).is_err());
     }
 }
