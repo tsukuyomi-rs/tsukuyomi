@@ -33,7 +33,6 @@ matrix:
         # examples
         - cargo test -p example-basic
         - cargo test -p example-diesel
-        - cargo test -p example-git-server
         - cargo test -p example-json
         - cargo test -p example-lines
         - cargo test -p example-routing
@@ -54,7 +53,6 @@ matrix:
         # examples
         - cargo test -p example-basic
         - cargo test -p example-diesel
-        - cargo test -p example-git-server
         - cargo test -p example-json
         - cargo test -p example-lines
         - cargo test -p example-routing
@@ -72,15 +70,16 @@ matrix:
         - cargo test --no-default-features
         - cargo test --features nightly
         # examples
-        - cargo test -p example-async-await
         - cargo test -p example-basic
         - cargo test -p example-diesel
-        - cargo test -p example-git-server
         - cargo test -p example-json
         - cargo test -p example-lines
         - cargo test -p example-routing
         - cargo test -p example-session
         - cargo test -p example-unix-socket
+        # works only on nightly channel
+        - cargo test -p example-async-await
+        - cargo test -p example-git-server
       after_success:
         - cargo fmt -- --write-mode=diff
 

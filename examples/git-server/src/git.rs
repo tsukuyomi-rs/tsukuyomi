@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use futures::{Future, IntoFuture};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tokio_io;
 use tokio_process::CommandExt;
@@ -9,16 +9,16 @@ use tokio_process::CommandExt;
 use tsukuyomi::error::Error;
 
 #[derive(Debug)]
-pub struct Repository<'p> {
-    path: &'p Path,
+pub struct Repository {
+    path: PathBuf,
 }
 
-impl<'p> Repository<'p> {
-    pub fn new<P>(path: &'p P) -> Repository<'p>
+impl Repository {
+    pub fn new<P>(path: P) -> Repository
     where
-        P: AsRef<Path> + ?Sized,
+        P: Into<PathBuf>,
     {
-        Repository { path: path.as_ref() }
+        Repository { path: path.into() }
     }
 
     pub fn stateless_rpc<'a>(&'a self, mode: RpcMode) -> StatelessRpc<'a> {

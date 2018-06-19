@@ -12,7 +12,7 @@ doc = false
 [dependencies]
 tsukuyomi = { path = "../.." }
 bytes = "0.4.8"
-futures = "0.1"
+futures-await = "0.1.1"
 pretty_env_logger = "0.2.3"
 tokio-process = "0.2.2"
 failure = { version = "0.1.1", features = ["derive"] }

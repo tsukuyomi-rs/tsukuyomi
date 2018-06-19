@@ -1,15 +1,15 @@
-extern crate futures;
+#![feature(proc_macro, proc_macro_non_items, generators)]
+
+extern crate bytes;
+extern crate failure;
+extern crate futures_await as futures;
+extern crate http;
 extern crate pretty_env_logger;
+extern crate serde;
+extern crate serde_qs;
+extern crate tokio_io;
 extern crate tokio_process;
 extern crate tsukuyomi;
-#[macro_use]
-extern crate failure;
-extern crate serde_qs;
-#[macro_use]
-extern crate serde;
-extern crate bytes;
-extern crate http;
-extern crate tokio_io;
 
 mod git;
 
@@ -17,22 +17,19 @@ use tsukuyomi::error::HttpError;
 use tsukuyomi::output::ResponseBody;
 use tsukuyomi::{App, Error, Input};
 
-use std::path::PathBuf;
+use failure::{format_err, Fail};
+use futures::prelude::*;
+use http::{header, Response, StatusCode};
+use serde::Deserialize;
 use std::{env, fs};
 
-use futures::{future, Future};
-use http::{header, Response, StatusCode};
-
 use git::{Repository, RpcMode};
-
-#[derive(Debug, Clone)]
-struct RepositoryPath(PathBuf);
 
 fn main() -> tsukuyomi::AppResult<()> {
     pretty_env_logger::init();
 
     let repo_path = env::args().nth(1).ok_or_else(|| format_err!("empty repository path"))?;
-    let repo_path = RepositoryPath(fs::canonicalize(repo_path)?);
+    let repo = Repository::new(fs::canonicalize(repo_path)?);
 
     let app = App::builder()
         .mount("/", |r| {
@@ -41,31 +38,25 @@ fn main() -> tsukuyomi::AppResult<()> {
                 .handle_async(|| handle_rpc(RpcMode::Receive));
             r.post("/git-upload-pack").handle_async(|| handle_rpc(RpcMode::Upload));
         })
-        .manage(repo_path)
+        .manage(repo)
         .finish()?;
 
     tsukuyomi::run(app)
 }
 
-fn handle_info_refs() -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
-    let mode = match Input::with_get(|input| validate_info_refs(input)) {
-        Ok(service_name) => service_name,
-        Err(err) => return Box::new(future::err(err.into())),
-    };
+#[async]
+fn handle_info_refs() -> tsukuyomi::Result<Response<ResponseBody>> {
+    let mode = Input::with_get(|input| validate_info_refs(input))?;
 
-    let output = App::with_global(|repo_path: &RepositoryPath| {
-        Repository::new(&repo_path.0).stateless_rpc(mode).advertise_refs()
-    });
+    let advertise_refs = App::with_global(|repo: &Repository| repo.stateless_rpc(mode).advertise_refs());
 
-    let future = output.and_then(move |output| {
-        Response::builder()
-            .header(header::CACHE_CONTROL, "no-cache")
-            .header(header::CONTENT_TYPE, &*format!("application/x-{}-advertisement", mode))
-            .body(output.into())
-            .map_err(Error::internal_server_error)
-    });
+    let output = await!(advertise_refs)?;
 
-    Box::new(future)
+    Response::builder()
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header(header::CONTENT_TYPE, &*format!("application/x-{}-advertisement", mode))
+        .body(output.into())
+        .map_err(Error::internal_server_error)
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,25 +78,20 @@ fn validate_info_refs(cx: &Input) -> Result<RpcMode, HandleError> {
     }
 }
 
-fn handle_rpc(mode: RpcMode) -> Box<Future<Item = Response<ResponseBody>, Error = Error> + Send> {
-    if let Err(e) = Input::with_get(|input| validate_rpc(input, mode)) {
-        return Box::new(future::err(e.into()));
-    }
+#[async]
+fn handle_rpc(mode: RpcMode) -> tsukuyomi::Result<Response<ResponseBody>> {
+    Input::with_get(|input| validate_rpc(input, mode))?;
 
     let body = Input::with_get(|input| input.body_mut().read_all().map_err(Error::critical));
 
-    let output =
-        App::with_global(|repo_path: &RepositoryPath| Repository::new(&repo_path.0).stateless_rpc(mode).call(body));
+    let rpc_call = App::with_global(|repo: &Repository| repo.stateless_rpc(mode).call(body));
+    let output = await!(rpc_call)?;
 
-    let future = output.and_then(move |output| {
-        Response::builder()
-            .header(header::CACHE_CONTROL, "no-cache")
-            .header(header::CONTENT_TYPE, &*format!("application/x-{}-result", mode))
-            .body(output.into())
-            .map_err(Error::internal_server_error)
-    });
-
-    Box::new(future)
+    Response::builder()
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header(header::CONTENT_TYPE, &*format!("application/x-{}-result", mode))
+        .body(output.into())
+        .map_err(Error::internal_server_error)
 }
 
 fn validate_rpc(cx: &Input, mode: RpcMode) -> Result<(), HandleError> {
