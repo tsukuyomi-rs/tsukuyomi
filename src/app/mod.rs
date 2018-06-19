@@ -38,8 +38,22 @@ impl AppState {
     }
 
     #[allow(missing_docs)]
+    pub fn is_set() -> bool {
+        STATE.is_set()
+    }
+
+    #[allow(missing_docs)]
     pub fn with_get<R>(f: impl FnOnce(&Self) -> R) -> R {
         STATE.with(f)
+    }
+
+    #[allow(missing_docs)]
+    pub fn try_with_get<R>(f: impl FnOnce(&Self) -> R) -> Option<R> {
+        if STATE.is_set() {
+            Some(STATE.with(f))
+        } else {
+            None
+        }
     }
 
     /// Returns the reference to `Router` contained in this value.
@@ -59,8 +73,19 @@ impl AppState {
 
     /// Returns the reference to a value of `T` from the global storage.
     ///
+    /// # Panics
+    /// If the value is not registered, it will cause a panic.
+    pub fn get<T>(&self) -> &T
+    where
+        T: Send + Sync + 'static,
+    {
+        self.states.get()
+    }
+
+    /// Returns the reference to a value of `T` from the global storage.
+    ///
     /// If the value is not registered, it returns a `None`.
-    pub fn state<T>(&self) -> Option<&T>
+    pub fn try_get<T>(&self) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
@@ -76,7 +101,7 @@ impl AppState {
     }
 }
 
-/// The main type in this framework, which represents an HTTP application.
+/// The main type which represents an HTTP application.
 #[derive(Debug)]
 pub struct App {
     global: Arc<AppState>,
@@ -95,7 +120,12 @@ impl App {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Acquire a borrow of `T` from the global storage, executes the provided function
+    /// with the borrow and get its result.
+    ///
+    /// # Panics
+    /// This function will cause a panic if the global storage is not initialize or the value
+    /// of `T` is not registered in the storage.
     #[inline]
     pub fn with_global<T, R>(f: impl FnOnce(&T) -> R) -> R
     where
@@ -104,12 +134,16 @@ impl App {
         App::try_with_global(f).expect("empty state")
     }
 
-    #[allow(missing_docs)]
+    /// Tries to acquire a borrow of `T` from the global storage, executes the provided
+    /// function with the borrow if the borrowing succeeds and gets its result.
+    ///
+    /// This function will return a `None` if the global storage is not initialized or the value
+    /// of `T` is not registered in the storage.
     pub fn try_with_global<T, R>(f: impl FnOnce(&T) -> R) -> Option<R>
     where
         T: Send + Sync + 'static,
     {
-        AppState::with_get(|global| global.state::<T>().map(f))
+        AppState::try_with_get(|global| global.try_get::<T>().map(f)).and_then(|r| r)
     }
 }
 
@@ -183,7 +217,7 @@ impl AppBuilder {
         self
     }
 
-    /// Creates a configured `App` from the current configuration.
+    /// Creates a configured `App` using the current settings.
     pub fn finish(&mut self) -> Result<App, Error> {
         let mut builder = mem::replace(self, App::builder());
         builder.states.freeze();
