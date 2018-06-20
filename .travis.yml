@@ -37,7 +37,6 @@ matrix:
         - cargo test -p example-json
         - cargo test -p example-lines
         - cargo test -p example-routing
-        - cargo test -p example-session
         - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
@@ -57,7 +56,6 @@ matrix:
         - cargo test -p example-json
         - cargo test -p example-lines
         - cargo test -p example-routing
-        - cargo test -p example-session
         - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
@@ -76,7 +74,6 @@ matrix:
         - cargo test -p example-json
         - cargo test -p example-lines
         - cargo test -p example-routing
-        - cargo test -p example-session
         - cargo test -p example-unix-socket
         # works only on nightly channel
         - cargo test -p example-async-await

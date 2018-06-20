@@ -54,9 +54,6 @@ pub mod router;
 pub mod server;
 pub mod upgrade;
 
-#[cfg(feature = "session")]
-pub mod session;
-
 #[doc(inline)]
 pub use app::App;
 

@@ -7,9 +7,6 @@ use state::Container;
 use std::sync::Arc;
 use std::{fmt, mem};
 
-#[cfg(feature = "session")]
-use session::{self, SessionStorage};
-
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use modifier::Modifier;
 use router::{self, Mount, Router};
@@ -22,8 +19,6 @@ pub struct AppState {
     error_handler: Box<ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<Modifier + Send + Sync + 'static>>,
     states: Container,
-    #[cfg(feature = "session")]
-    session: SessionStorage,
 }
 
 impl fmt::Debug for AppState {
@@ -91,14 +86,6 @@ impl AppState {
     {
         self.states.try_get()
     }
-
-    /// Returns the reference to session manager.
-    ///
-    /// This method is available only if the feature `session` is enabled.
-    #[cfg(feature = "session")]
-    pub fn session(&self) -> &SessionStorage {
-        &self.session
-    }
 }
 
 /// The main type which represents an HTTP application.
@@ -115,8 +102,6 @@ impl App {
             error_handler: None,
             modifiers: vec![],
             states: Container::new(),
-            #[cfg(feature = "session")]
-            session: SessionStorage::builder(),
         }
     }
 
@@ -153,8 +138,6 @@ pub struct AppBuilder {
     error_handler: Option<Box<ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<Modifier + Send + Sync + 'static>>,
     states: Container,
-    #[cfg(feature = "session")]
-    session: session::Builder,
 }
 
 impl fmt::Debug for AppBuilder {
@@ -208,15 +191,6 @@ impl AppBuilder {
         self
     }
 
-    /// Modifies the configuration of session manager.
-    ///
-    /// This method is available only if the feature `session` is enabled.
-    #[cfg(feature = "session")]
-    pub fn session(&mut self, f: impl FnOnce(&mut session::Builder)) -> &mut Self {
-        f(&mut self.session);
-        self
-    }
-
     /// Creates a configured `App` using the current settings.
     pub fn finish(&mut self) -> Result<App, Error> {
         let mut builder = mem::replace(self, App::builder());
@@ -229,8 +203,6 @@ impl AppBuilder {
                 .unwrap_or_else(|| Box::new(DefaultErrorHandler::new())),
             modifiers: builder.modifiers,
             states: builder.states,
-            #[cfg(feature = "session")]
-            session: builder.session.finish(),
         };
 
         Ok(App {

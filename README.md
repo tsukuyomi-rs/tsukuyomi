@@ -22,7 +22,6 @@ and fast Web services, with the help of ecosystem of Rust for asynchronous netwo
 * Custom error handling
 * Basic support for Cookie management
 * Middleware support
-* Cookie based session management
 
 The following features does not currently implemented but will be supported in the future version:
 
