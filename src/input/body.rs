@@ -6,6 +6,7 @@ use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
 use hyperx::header::ContentType;
 use mime;
+use std::borrow::Cow;
 use std::mem;
 use std::ops::Deref;
 
@@ -49,6 +50,38 @@ impl RequestBody {
         }
     }
 }
+
+impl Default for RequestBody {
+    fn default() -> Self {
+        RequestBody(Some(Default::default()))
+    }
+}
+
+impl From<()> for RequestBody {
+    fn from(_: ()) -> Self {
+        Default::default()
+    }
+}
+
+macro_rules! impl_from_for_request_body {
+    ($($t:ty,)*) => {$(
+        impl From<$t> for RequestBody {
+            fn from(body: $t) -> Self {
+                RequestBody(Some(body.into()))
+            }
+        }
+    )*};
+}
+
+impl_from_for_request_body![
+    &'static str,
+    &'static [u8],
+    Vec<u8>,
+    String,
+    Cow<'static, str>,
+    Cow<'static, [u8]>,
+    Bytes,
+];
 
 // ==== Payload ====
 
