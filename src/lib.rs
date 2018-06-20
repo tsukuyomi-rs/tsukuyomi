@@ -52,6 +52,7 @@ pub mod modifier;
 pub mod output;
 pub mod router;
 pub mod server;
+pub mod test;
 pub mod upgrade;
 
 #[doc(inline)]
