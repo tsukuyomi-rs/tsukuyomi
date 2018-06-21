@@ -1,5 +1,7 @@
 //! Components for constructing HTTP responses.
 
+pub mod upgrade;
+
 mod body;
 mod output;
 mod responder;

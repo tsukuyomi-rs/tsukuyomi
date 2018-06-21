@@ -1,21 +1,21 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
-use bytes::Bytes;
-use futures;
+use futures::future::lazy;
+use futures::{self, Future as _Future};
 use http::{Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
+use std::mem;
 use std::sync::Arc;
-use std::{fmt, mem};
+use tokio;
 
 use error::{CritError, Error};
 use future::Poll;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
+use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 use router::Handle;
-use server::{Io, ServiceUpgradeExt};
-use upgrade::service as upgrade;
 
 use super::{App, AppState};
 
@@ -24,7 +24,6 @@ impl App {
     pub fn new_service(&self) -> AppService {
         AppService {
             global: self.global.clone(),
-            rx: upgrade::new(),
         }
     }
 }
@@ -46,7 +45,6 @@ impl NewService for App {
 #[derive(Debug)]
 pub struct AppService {
     global: Arc<AppState>,
-    rx: upgrade::Receiver,
 }
 
 impl AppService {
@@ -55,19 +53,6 @@ impl AppService {
         AppServiceFuture {
             state: AppServiceFutureState::Initial(request),
             global: self.global.clone(),
-            tx: self.rx.sender(),
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn poll_ready(&mut self) -> Poll<Result<(), CritError>> {
-        self.rx.poll_ready().into()
-    }
-
-    #[allow(missing_docs)]
-    pub fn upgrade(self, io: Io, read_buf: Bytes) -> AppServiceUpgrade {
-        AppServiceUpgrade {
-            inner: self.rx.try_upgrade(io, read_buf),
         }
     }
 }
@@ -84,26 +69,12 @@ impl Service for AppService {
     }
 }
 
-impl ServiceUpgradeExt<Io> for AppService {
-    type Upgrade = AppServiceUpgrade;
-    type UpgradeError = CritError;
-
-    fn poll_ready_upgradable(&mut self) -> futures::Poll<(), Self::UpgradeError> {
-        self.poll_ready().into()
-    }
-
-    fn upgrade(self, io: Io, read_buf: Bytes) -> Self::Upgrade {
-        self.upgrade(io, read_buf)
-    }
-}
-
 /// A future for managing an incoming HTTP request, created by `AppService`.
 #[must_use = "futures do nothing unless polled"]
 #[derive(Debug)]
 pub struct AppServiceFuture {
     state: AppServiceFutureState,
     global: Arc<AppState>,
-    tx: upgrade::Sender,
 }
 
 #[derive(Debug)]
@@ -267,14 +238,33 @@ impl AppServiceFuture {
         }
     }
 
-    fn handle_response(&mut self, output: Output, cx: InputParts) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_response(&mut self, output: Output, input: InputParts) -> Result<Response<ResponseBody>, CritError> {
         let (mut response, handler) = output.deconstruct();
+        let InputParts {
+            cookies, mut request, ..
+        } = input;
 
-        cx.cookies.append_to(response.headers_mut());
+        cookies.append_to(response.headers_mut());
 
         if let Some(handler) = handler {
             debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
-            self.tx.send(handler, cx.request.map(mem::drop));
+
+            let on_upgrade = request
+                .body_mut()
+                .on_upgrade()
+                .ok_or_else(|| format_err!("The request body has already gone").compat())?;
+            let request = request.map(mem::drop);
+
+            tokio::spawn(lazy(move || {
+                on_upgrade.map_err(|_| error!("")).and_then(|upgraded| {
+                    let cx = UpgradeContext {
+                        io: upgraded,
+                        request: request,
+                        _priv: (),
+                    };
+                    handler.upgrade(cx)
+                })
+            }));
         }
 
         Ok(response)
@@ -298,37 +288,5 @@ impl futures::Future for AppServiceFuture {
         self.poll_ready()
             .map_ok(|response| response.map(ResponseBody::into_hyp))
             .into()
-    }
-}
-
-/// A future representing an asynchronous computation after upgrading the protocol
-/// from HTTP to another one.
-#[must_use = "futures do nothing unless polled"]
-pub struct AppServiceUpgrade {
-    inner: Result<Box<futures::Future<Item = (), Error = ()> + Send>, Io>,
-}
-
-impl fmt::Debug for AppServiceUpgrade {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("AppServiceUpgrade").finish()
-    }
-}
-
-impl AppServiceUpgrade {
-    #[allow(missing_docs)]
-    pub fn poll_ready(&mut self) -> Poll<()> {
-        match self.inner {
-            Ok(ref mut f) => f.poll().into(),
-            Err(ref mut io) => io.shutdown().map_err(mem::drop).into(),
-        }
-    }
-}
-
-impl futures::Future for AppServiceUpgrade {
-    type Item = ();
-    type Error = ();
-
-    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        self.poll_ready().map(Ok).into()
     }
 }
