@@ -5,6 +5,7 @@ use hyperx::header::Header;
 use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
+use std::sync::Arc;
 
 use app::AppState;
 use error::Error;
@@ -21,34 +22,33 @@ thread_local! {
 #[derive(Debug)]
 pub(crate) struct InputParts {
     pub(crate) request: Request<RequestBody>,
-    pub(crate) route: usize,
-    pub(crate) params: Vec<(usize, usize)>,
+    pub(crate) route: Option<(usize, Vec<(usize, usize)>)>,
     pub(crate) cookies: CookieManager,
     _priv: (),
 }
 
-/// All of contextural values used by handlers during processing an incoming HTTP request.
+impl InputParts {
+    pub(crate) fn new(request: Request<RequestBody>) -> InputParts {
+        InputParts {
+            request: request.map(Into::into),
+            route: None,
+            cookies: CookieManager::new(),
+            _priv: (),
+        }
+    }
+}
+
+/// Contextual information used by processes during an incoming HTTP request.
 ///
 /// The values of this type are created at calling `AppService::call`, and used until the future
 /// created at its time is completed.
 #[derive(Debug)]
 pub struct Input {
-    parts: InputParts,
+    pub(crate) parts: InputParts,
+    pub(crate) state: Arc<AppState>,
 }
 
 impl Input {
-    pub(crate) fn new(request: Request<RequestBody>, route: usize, params: Vec<(usize, usize)>) -> Input {
-        Input {
-            parts: InputParts {
-                request: request,
-                route: route,
-                params: params,
-                cookies: CookieManager::new(),
-                _priv: (),
-            },
-        }
-    }
-
     /// Returns a shared reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
         &self.parts.request
@@ -74,19 +74,48 @@ impl Input {
     }
 
     /// Returns the reference to a `Endpoint` matched to the incoming request.
-    pub fn with_endpoint<R>(&self, f: impl FnOnce(&Endpoint) -> R) -> R {
-        AppState::with_get(|global| {
-            let endpoint = &global.router()[self.parts.route];
-            f(endpoint)
-        })
+    pub fn endpoint(&self) -> Option<&Endpoint> {
+        match self.parts.route {
+            Some((i, _)) => self.state.router().get(i),
+            None => None,
+        }
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Params {
-        Params {
-            path: self.request().uri().path(),
-            params: &self.parts.params[..],
+        match self.parts.route {
+            Some((_, ref params)) => Params {
+                path: self.request().uri().path(),
+                params: Some(&params[..]),
+            },
+            None => Params {
+                path: self.request().uri().path(),
+                params: None,
+            },
         }
+    }
+
+    /// Returns the reference to a value of `T` registered in the global storage.
+    ///
+    /// # Panics
+    /// This method will cause a panic if a value of `T` is not registered in the global storage.
+    #[inline]
+    pub fn get<T>(&self) -> &T
+    where
+        T: Send + Sync + 'static,
+    {
+        self.state.get()
+    }
+
+    /// Returns the reference to a value of `T` registered in the global storage, if possible.
+    ///
+    /// This method will return a `None` if a value of `T` is not registered in the global storage.
+    #[inline]
+    pub fn try_get<T>(&self) -> Option<&T>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.state.try_get()
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
@@ -99,10 +128,6 @@ impl Input {
             cookies.init(self.parts.request.headers()).map_err(Error::bad_request)?;
         }
         Ok(cookies.cookies())
-    }
-
-    pub(crate) fn into_parts(self) -> InputParts {
-        self.parts
     }
 }
 
@@ -135,7 +160,9 @@ impl Input {
         let prev = INPUT.with(|input| {
             let prev = input.get();
             // safety: &mut self is non-null.
-            input.set(Some(unsafe { NonNull::new_unchecked(self as *mut Input) }));
+            unsafe {
+                input.set(Some(NonNull::new_unchecked(self as *mut Input)));
+            }
             prev
         });
         let _reset = ResetOnDrop(prev);
@@ -199,26 +226,23 @@ impl DerefMut for Input {
 #[derive(Debug)]
 pub struct Params<'a> {
     path: &'a str,
-    params: &'a [(usize, usize)],
+    params: Option<&'a [(usize, usize)]>,
 }
 
 #[allow(missing_docs)]
 impl<'a> Params<'a> {
     pub fn is_empty(&self) -> bool {
-        self.params.is_empty()
+        self.params.as_ref().map_or(true, |p| p.is_empty())
     }
 
     pub fn len(&self) -> usize {
-        self.params.len()
+        self.params.as_ref().map_or(0, |p| p.len())
     }
 
     pub fn get(&self, i: usize) -> Option<&str> {
-        self.params.get(i).and_then(|&(s, e)| self.path.get(s..e))
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &'a str> + 'a {
-        let path = self.path;
-        self.params.into_iter().map(move |&(s, e)| &path[s..e])
+        self.params
+            .as_ref()
+            .and_then(|p| p.get(i).and_then(|&(s, e)| self.path.get(s..e)))
     }
 }
 

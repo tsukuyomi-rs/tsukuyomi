@@ -11,8 +11,6 @@ use error::handler::{DefaultErrorHandler, ErrorHandler};
 use modifier::Modifier;
 use router::{self, Mount, Router};
 
-scoped_thread_local!(static STATE: AppState);
-
 /// The global and shared variables used throughout the serving an HTTP application.
 pub struct AppState {
     router: Router,
@@ -28,29 +26,6 @@ impl fmt::Debug for AppState {
 }
 
 impl AppState {
-    pub(crate) fn with_set<R>(&self, f: impl FnOnce() -> R) -> R {
-        STATE.set(self, f)
-    }
-
-    #[allow(missing_docs)]
-    pub fn is_set() -> bool {
-        STATE.is_set()
-    }
-
-    #[allow(missing_docs)]
-    pub fn with_get<R>(f: impl FnOnce(&Self) -> R) -> R {
-        STATE.with(f)
-    }
-
-    #[allow(missing_docs)]
-    pub fn try_with_get<R>(f: impl FnOnce(&Self) -> R) -> Option<R> {
-        if STATE.is_set() {
-            Some(STATE.with(f))
-        } else {
-            None
-        }
-    }
-
     /// Returns the reference to `Router` contained in this value.
     pub fn router(&self) -> &Router {
         &self.router
@@ -103,32 +78,6 @@ impl App {
             modifiers: vec![],
             states: Container::new(),
         }
-    }
-
-    /// Acquire a borrow of `T` from the global storage, executes the provided function
-    /// with the borrow and get its result.
-    ///
-    /// # Panics
-    /// This function will cause a panic if the global storage is not initialize or the value
-    /// of `T` is not registered in the storage.
-    #[inline]
-    pub fn with_global<T, R>(f: impl FnOnce(&T) -> R) -> R
-    where
-        T: Send + Sync + 'static,
-    {
-        App::try_with_global(f).expect("empty state")
-    }
-
-    /// Tries to acquire a borrow of `T` from the global storage, executes the provided
-    /// function with the borrow if the borrowing succeeds and gets its result.
-    ///
-    /// This function will return a `None` if the global storage is not initialized or the value
-    /// of `T` is not registered in the storage.
-    pub fn try_with_global<T, R>(f: impl FnOnce(&T) -> R) -> Option<R>
-    where
-        T: Send + Sync + 'static,
-    {
-        AppState::try_with_get(|global| global.try_get::<T>().map(f)).and_then(|r| r)
     }
 }
 
