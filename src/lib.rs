@@ -48,11 +48,11 @@ pub mod app;
 pub mod error;
 pub mod input;
 pub mod json;
+pub mod local;
 pub mod modifier;
 pub mod output;
 pub mod router;
 pub mod server;
-pub mod test;
 
 #[doc(inline)]
 pub use app::App;

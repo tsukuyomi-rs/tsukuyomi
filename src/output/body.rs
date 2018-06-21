@@ -98,6 +98,14 @@ impl ResponseBody {
         ResponseBody(Inner::Chunked(Body::wrap_stream(stream)))
     }
 
+    pub(crate) fn content_length(&self) -> Option<usize> {
+        match self.0 {
+            Inner::Empty => Some(0),
+            Inner::Sized(ref bytes) => Some(bytes.len()),
+            _ => None,
+        }
+    }
+
     pub(crate) fn into_hyp(self) -> Body {
         match self.0 {
             Inner::Empty => Body::empty(),

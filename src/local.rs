@@ -1,4 +1,3 @@
-//! [unstable]
 //! A testing framework for Tsukuyomi.
 //!
 //! # Examples
@@ -7,9 +6,9 @@
 //! # extern crate tsukuyomi;
 //! # extern crate http;
 //! # use tsukuyomi::app::App;
-//! # use tsukuyomi::test::TestServer;
 //! # use http::{StatusCode, header};
-//! #
+//! use tsukuyomi::local::LocalServer;
+//!
 //! let app = App::builder()
 //!     .mount("/", |m| {
 //!         m.get("/hello").handle(|_| "Hello");
@@ -17,22 +16,24 @@
 //!     .finish()
 //!     .unwrap();
 //!
-//! let mut server = TestServer::new(app).unwrap();
+//! // Create a local server from an App.
+//! // The instance emulates the behavior of an HTTP service
+//! // without the low level I/O.
+//! let mut server = LocalServer::new(app).unwrap();
 //!
-//! let mut client = server.client();
+//! // Emulate an HTTP request and retrieve its response.
+//! let response = server.client()
+//!                     .get("/hello")
+//!                     .execute()
+//!                     .unwrap();
 //!
-//! let response = client.get("/hello")
-//!     .header("X-API-key", "dummy")
-//!     .body(())
-//!     .unwrap();
+//! // Do some stuff...
 //! assert_eq!(response.status(), StatusCode::OK);
 //! assert!(response.headers().contains_key(header::CONTENT_TYPE));
 //! assert_eq!(*response.body().to_bytes(), b"Hello"[..]);
 //! ```
 
 // TODO: emulates some behaviour of Hyper
-
-#![allow(missing_docs)]
 
 use futures::{Future, Poll};
 use http::header::{HeaderName, HeaderValue};
@@ -46,23 +47,27 @@ use error::CritError;
 use input::body::RequestBody;
 use output::{Data, Receive, ResponseBody};
 
+/// A local server which emulates an HTTP service without using the low-level transport.
+///
+/// This type wraps an `App` and a single-threaded Tokio runtime.
 #[derive(Debug)]
-pub struct TestServer {
+pub struct LocalServer {
     app: App,
     runtime: Runtime,
 }
 
-impl TestServer {
-    /// Creates a new instance of `TestServer` from a configured `App`.
+impl LocalServer {
+    /// Creates a new instance of `LocalServer` from a configured `App`.
     ///
     /// This function will return an error if the construction of the runtime is failed.
-    pub fn new(app: App) -> io::Result<TestServer> {
-        Ok(TestServer {
+    pub fn new(app: App) -> io::Result<LocalServer> {
+        Ok(LocalServer {
             app: app,
             runtime: Runtime::new()?,
         })
     }
 
+    /// Create a `Client` associated with this server.
     pub fn client<'a>(&'a mut self) -> Client<'a> {
         Client {
             service: self.app.new_service(),
@@ -71,6 +76,7 @@ impl TestServer {
     }
 }
 
+/// A type which emulates a connection to a peer.
 #[derive(Debug)]
 pub struct Client<'a> {
     service: AppService,
@@ -79,8 +85,10 @@ pub struct Client<'a> {
 
 macro_rules! impl_methods_for_client {
     ($(
+        $(#[$doc:meta])*
         $name:ident => $METHOD:ident,
     )*) => {$(
+        $(#[$doc])*
         #[inline]
         pub fn $name<'b, U>(&'b mut self, uri: U) -> LocalRequest<'a, 'b>
         where
@@ -92,6 +100,7 @@ macro_rules! impl_methods_for_client {
 }
 
 impl<'a> Client<'a> {
+    /// Create a `LocalRequest` associated with this client.
     pub fn request<'b, M, U>(&'b mut self, method: M, uri: U) -> LocalRequest<'a, 'b>
     where
         Method: HttpTryFrom<M>,
@@ -104,29 +113,36 @@ impl<'a> Client<'a> {
         LocalRequest {
             client: Some(self),
             request: request,
+            body: None,
         }
     }
 
     impl_methods_for_client![
+        /// Equivalent to `Client::request(Method::GET, uri)`.
         get => GET,
+        /// Equivalent to `Client::request(Method::POST, uri)`.
         post => POST,
+        /// Equivalent to `Client::request(Method::PUT, uri)`.
         put => PUT,
+        /// Equivalent to `Client::request(Method::DELETE, uri)`.
         delete => DELETE,
+        /// Equivalent to `Client::request(Method::HEAD, uri)`.
         head => HEAD,
+        /// Equivalent to `Client::request(Method::PATCH, uri)`.
         patch => PATCH,
     ];
 }
 
-/// A type representing a dummy HTTP request from a peer.
-///
-/// The signature of methods in this type are intentionally same as `request::Builder`.
+/// A type which emulates an HTTP request from a peer.
 #[derive(Debug)]
 pub struct LocalRequest<'a: 'b, 'b> {
     client: Option<&'b mut Client<'a>>,
     request: request::Builder,
+    body: Option<RequestBody>,
 }
 
 impl<'a, 'b> LocalRequest<'a, 'b> {
+    /// Modifies the value of HTTP method of this request.
     pub fn method<M>(&mut self, method: M) -> &mut LocalRequest<'a, 'b>
     where
         Method: HttpTryFrom<M>,
@@ -135,6 +151,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         self
     }
 
+    /// Modifies the value of URI of this request.
     pub fn uri<U>(&mut self, uri: U) -> &mut LocalRequest<'a, 'b>
     where
         Uri: HttpTryFrom<U>,
@@ -143,6 +160,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         self
     }
 
+    /// Inserts a header value into this request.
     pub fn header<K, V>(&mut self, key: K, value: V) -> &mut LocalRequest<'a, 'b>
     where
         HeaderName: HttpTryFrom<K>,
@@ -152,18 +170,32 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         self
     }
 
+    /// Sets a message body of this request.
+    pub fn body<T>(&mut self, body: T) -> &mut LocalRequest<'a, 'b>
+    where
+        T: Into<RequestBody>,
+    {
+        self.body = Some(body.into());
+        self
+    }
+
     fn take(&mut self) -> LocalRequest<'a, 'b> {
         LocalRequest {
             client: self.client.take(),
             request: mem::replace(&mut self.request, Request::builder()),
+            body: self.body.take(),
         }
     }
 
-    pub fn body<T>(&mut self, body: T) -> Result<Response<Data>, CritError>
-    where
-        T: Into<RequestBody>,
-    {
-        let LocalRequest { client, mut request } = self.take();
+    /// Creates an HTTP request from the current configuration and retrieve its response.
+    pub fn execute(&mut self) -> Result<Response<Data>, CritError> {
+        let LocalRequest {
+            client,
+            mut request,
+            body,
+        } = self.take();
+
+        let body = body.unwrap_or_else(|| RequestBody::from(()));
 
         let client = client.expect("This LocalRequest has already been used.");
         let request = request.body(body.into())?;

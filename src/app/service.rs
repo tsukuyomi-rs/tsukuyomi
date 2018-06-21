@@ -2,7 +2,8 @@
 
 use futures::future::lazy;
 use futures::{self, Future as _Future};
-use http::{Request, Response, StatusCode};
+use http::header::HeaderValue;
+use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
@@ -245,6 +246,18 @@ impl AppServiceFuture {
         } = input;
 
         cookies.append_to(response.headers_mut());
+
+        // append the value of Content-Length to the response header if missing.
+        if let Some(len) = response.body().content_length() {
+            response
+                .headers_mut()
+                .entry(header::CONTENT_LENGTH)?
+                .or_insert_with(|| {
+                    // safety: '0'-'9' is ascci.
+                    // TODO: more efficient
+                    unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
+                });
+        }
 
         if let Some(handler) = handler {
             debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
