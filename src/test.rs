@@ -28,15 +28,12 @@
 //! assert_eq!(response.status(), StatusCode::OK);
 //! assert!(response.headers().contains_key(header::CONTENT_TYPE));
 //! assert_eq!(*response.body().to_bytes(), b"Hello"[..]);
-//!
-//! let _ = client.shutdown().unwrap();
 //! ```
 
 // TODO: emulates some behaviour of Hyper
 
 #![allow(missing_docs)]
 
-use futures::future::poll_fn;
 use futures::{Future, Poll};
 use http::header::{HeaderName, HeaderValue};
 use http::{request, HttpTryFrom, Method, Request, Response, Uri};
@@ -118,15 +115,6 @@ impl<'a> Client<'a> {
         head => HEAD,
         patch => PATCH,
     ];
-
-    pub fn shutdown(self) -> Result<AppService, CritError> {
-        let Client { service, runtime } = self;
-        let mut service = Some(service);
-        runtime.block_on(poll_fn(move || {
-            try_ready!(service.as_mut().unwrap().poll_ready().into());
-            Ok(service.take().unwrap().into())
-        }))
-    }
 }
 
 /// A type representing a dummy HTTP request from a peer.

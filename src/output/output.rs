@@ -2,7 +2,7 @@ use http::Response;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 
-use upgrade::BoxedUpgradeHandler;
+use output::upgrade::BoxedUpgradeHandler;
 
 use super::body::ResponseBody;
 

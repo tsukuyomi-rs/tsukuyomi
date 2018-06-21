@@ -10,10 +10,10 @@ extern crate log;
 
 mod lines;
 
-use tsukuyomi::upgrade::Upgrade;
+use tsukuyomi::output::Responder;
 use tsukuyomi::{App, Input};
 
-fn index(input: &mut Input) -> tsukuyomi::Result<Upgrade> {
+fn index(input: &mut Input) -> impl Responder {
     lines::start(input, |line| {
         if !line.is_empty() {
             Some(format!(">> {}", line))

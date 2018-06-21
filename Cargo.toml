@@ -42,7 +42,7 @@ members = [
 ]
 
 [dependencies]
-hyper = { version = "0.12.1", features = ["runtime"], default-features = false }
+hyper = { version = "0.12.2", features = ["runtime"], default-features = false }
 http = "0.1.5"
 mime = "0.3.7"
 bytes = "0.4.8"

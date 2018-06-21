@@ -4,6 +4,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
+use hyper::upgrade::OnUpgrade;
 use hyperx::header::ContentType;
 use mime;
 use std::borrow::Cow;
@@ -48,6 +49,10 @@ impl RequestBody {
         ReadAll {
             state: ReadAllState::Init(self.take_body()),
         }
+    }
+
+    pub(crate) fn on_upgrade(&mut self) -> Option<OnUpgrade> {
+        self.take_body().map(|body| body.on_upgrade())
     }
 }
 

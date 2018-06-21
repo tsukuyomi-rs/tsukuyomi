@@ -3,7 +3,7 @@ use http::{header, StatusCode};
 use std::mem;
 use tokio_codec::{Framed, FramedParts, LinesCodec};
 
-use tsukuyomi::upgrade::{Upgrade, UpgradeContext};
+use tsukuyomi::output::upgrade::{Upgrade, UpgradeContext};
 use tsukuyomi::{Error, Input};
 
 fn missing_header(name: &str) -> Error {
@@ -45,9 +45,7 @@ fn build_upgrade_handler<F>(cx: UpgradeContext, handler: F) -> impl Future<Item 
 where
     F: Fn(String) -> Option<String> + Send + Sync + 'static,
 {
-    let mut parts = FramedParts::new(cx.io, LinesCodec::new());
-    parts.read_buf = cx.read_buf.into();
-
+    let parts = FramedParts::new(cx.io, LinesCodec::new());
     let (sink, stream) = Framed::from_parts(parts).split();
 
     future::lazy(|| Ok(()))

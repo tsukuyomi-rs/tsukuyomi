@@ -1,18 +1,15 @@
 //! [unstable]
 //! Components for HTTP/1.1 upgrade mechanism.
 
-pub(crate) mod service;
-
-use bytes::Bytes;
 use futures::{Future, IntoFuture};
 use http::header::{HeaderName, HeaderValue};
 use http::{header, response, HttpTryFrom, Request, Response, StatusCode, Version};
+use hyper::upgrade::Upgraded;
 use std::{fmt, mem};
 
 use error::Error;
 use input::Input;
 use output::{Output, Responder, ResponseBody};
-use server::Io;
 
 /// [unstable]
 /// A "Responder" for constructing an upgrade response.
@@ -90,15 +87,12 @@ impl UpgradeBuilder {
 #[derive(Debug)]
 pub struct UpgradeContext {
     /// The underlying IO object used in the handshake.
-    pub io: Io,
-
-    /// A buffer of the read, but not processed bytes.
-    pub read_buf: Bytes,
+    pub io: Upgraded,
 
     /// The value of "Request" received at the last request.
     pub request: Request<()>,
 
-    _priv: (),
+    pub(crate) _priv: (),
 }
 
 /// A trait representing performing a protocol upgrade.

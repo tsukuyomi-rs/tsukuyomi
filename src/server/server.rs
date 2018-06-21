@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use failure::Error;
 use futures::prelude::*;
 use http::Request;
@@ -9,12 +8,9 @@ use std::error;
 use std::mem;
 use std::sync::Arc;
 use tokio;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::runtime::{self, Runtime};
 
-use super::conn::Connection;
-use super::service::ServiceUpgradeExt;
-use super::transport::{self, Io, Listener};
+use super::transport::{self, Listener};
 
 // ==== Server ====
 
@@ -103,9 +99,8 @@ impl Builder {
         S::ReqBody: From<Body>,
         S::ResBody: Payload,
         S::Future: Send,
-        S::Service: ServiceUpgradeExt<Io> + Send,
+        S::Service: Send,
         <S::Service as Service>::Future: Send,
-        <S::Service as ServiceUpgradeExt<Io>>::Upgrade: Send,
     {
         let mut builder = mem::replace(self, Builder::new());
         Ok(Server {
@@ -140,9 +135,8 @@ where
     S::ResBody: Payload,
     S::Future: Send,
     S::InitError: Into<Box<error::Error + Send + Sync + 'static>>,
-    S::Service: ServiceUpgradeExt<Io> + Send,
+    S::Service: Send,
     <S::Service as Service>::Future: Send,
-    <S::Service as ServiceUpgradeExt<Io>>::Upgrade: Send,
 {
     /// Starts a HTTP server using a configured runtime.
     pub fn serve(self) {
@@ -170,7 +164,7 @@ where
                     let protocol = protocol.clone();
                     move |(stream, service)| {
                         let conn = protocol.serve_connection(stream, WrapService(service));
-                        Connection::new(conn)
+                        conn.with_upgrades().then(|_| Ok(()))
                     }
                 });
 
@@ -198,22 +192,5 @@ where
 
     fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
         self.0.call(request.map(From::from))
-    }
-}
-
-impl<S: Service, I: AsyncRead + AsyncWrite> ServiceUpgradeExt<I> for WrapService<S>
-where
-    S: Service + ServiceUpgradeExt<I>,
-    S::ReqBody: From<Body>,
-{
-    type Upgrade = S::Upgrade;
-    type UpgradeError = S::UpgradeError;
-
-    fn poll_ready_upgradable(&mut self) -> Poll<(), Self::UpgradeError> {
-        self.0.poll_ready_upgradable()
-    }
-
-    fn upgrade(self, io: I, read_buf: Bytes) -> Self::Upgrade {
-        self.0.upgrade(io, read_buf)
     }
 }
