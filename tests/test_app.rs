@@ -75,3 +75,43 @@ fn test_case3_post_body() {
     );
     assert_eq!(*response.body().to_bytes(), b"Hello, Tsukuyomi."[..]);
 }
+
+#[test]
+fn test_case4_modifier() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
+    use tsukuyomi::output::Output;
+
+    struct MyModifier(Arc<AtomicBool>, Arc<AtomicBool>);
+
+    impl Modifier for MyModifier {
+        fn before_handle(&self, _: &mut Input) -> BeforeHandle {
+            self.0.store(true, Ordering::SeqCst);
+            BeforeHandle::ready(Ok(()))
+        }
+
+        fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
+            self.1.store(true, Ordering::SeqCst);
+            AfterHandle::ready(Ok(output))
+        }
+    }
+
+    let flag1 = Arc::new(AtomicBool::new(false));
+    let flag2 = Arc::new(AtomicBool::new(false));
+
+    let app = App::builder()
+        .modifier(MyModifier(flag1.clone(), flag2.clone()))
+        .mount("/", |m| {
+            m.get("/").handle(|_| "dummy");
+        })
+        .finish()
+        .unwrap();
+
+    let mut server = LocalServer::new(app).unwrap();
+
+    let _ = server.client().get("/").execute().unwrap();
+
+    assert_eq!(flag1.load(Ordering::SeqCst), true);
+    assert_eq!(flag2.load(Ordering::SeqCst), true);
+}
