@@ -88,12 +88,12 @@ fn test_case4_modifier() {
     impl Modifier for MyModifier {
         fn before_handle(&self, _: &mut Input) -> BeforeHandle {
             self.0.store(true, Ordering::SeqCst);
-            BeforeHandle::ready(Ok(()))
+            BeforeHandle::ok()
         }
 
         fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
             self.1.store(true, Ordering::SeqCst);
-            AfterHandle::ready(Ok(output))
+            AfterHandle::ok(output)
         }
     }
 
