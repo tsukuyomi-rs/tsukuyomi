@@ -97,7 +97,7 @@ impl AppServiceFuture {
         use self::AppServiceFutureState::*;
 
         enum Polled {
-            BeforeHandle(Result<(), Error>),
+            BeforeHandle(Result<Option<Output>, Error>),
             Handle(Result<Output, Error>),
             AfterHandle(Result<Output, Error>),
         }
@@ -128,7 +128,14 @@ impl AppServiceFuture {
                     }
                 }
 
-                (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(())))) => {
+                (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(Some(output))))) => {
+                    if current == 0 {
+                        break Ok(output);
+                    }
+                    let modifier = &global.modifiers()[current - 1];
+                    self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
+                }
+                (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(None)))) => {
                     if let Some(modifier) = global.modifiers().get(current) {
                         self.state = BeforeHandle(modifier.before_handle(input), current + 1);
                     } else {
