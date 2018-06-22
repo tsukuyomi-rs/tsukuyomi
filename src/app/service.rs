@@ -52,7 +52,11 @@ impl AppService {
     #[allow(missing_docs)]
     pub fn dispatch_request(&mut self, request: Request<RequestBody>) -> AppServiceFuture {
         AppServiceFuture {
-            state: AppServiceFutureState::Initial(request),
+            state: AppServiceFutureState::Initial,
+            input: Some(Input {
+                parts: InputParts::new(request),
+                state: self.global.clone(),
+            }),
             global: self.global.clone(),
         }
     }
@@ -75,32 +79,21 @@ impl Service for AppService {
 #[derive(Debug)]
 pub struct AppServiceFuture {
     state: AppServiceFutureState,
+    input: Option<Input>,
     global: Arc<AppState>,
 }
 
 #[derive(Debug)]
 enum AppServiceFutureState {
-    Initial(Request<RequestBody>),
-    BeforeHandle {
-        in_flight: BeforeHandle,
-        input: Input,
-        current: usize,
-        route_id: usize,
-    },
-    Handle {
-        in_flight: Handle,
-        input: Input,
-    },
-    AfterHandle {
-        in_flight: AfterHandle,
-        input: Input,
-        current: usize,
-    },
+    Initial,
+    BeforeHandle(BeforeHandle, usize),
+    Handle(Handle),
+    AfterHandle(AfterHandle, usize),
     Done,
 }
 
-impl AppServiceFutureState {
-    fn poll_in_flight(&mut self, global: &AppState) -> Poll<Result<(Output, Input), (Error, Request<()>)>> {
+impl AppServiceFuture {
+    fn poll_in_flight(&mut self) -> Poll<Result<Output, Error>> {
         use self::AppServiceFutureState::*;
 
         enum Polled {
@@ -109,113 +102,66 @@ impl AppServiceFutureState {
             AfterHandle(Result<Output, Error>),
         }
 
+        let input = self.input.as_mut().expect("This future has already polled");
+        let global = &*self.global;
+
         let ret = loop {
-            let polled = match self {
-                Initial(..) => None,
-                BeforeHandle {
-                    ref mut in_flight,
-                    ref mut input,
-                    ..
-                } => Some(Polled::BeforeHandle(ready!(in_flight.poll_ready(input)))),
-                Handle {
-                    ref mut in_flight,
-                    ref mut input,
-                } => Some(Polled::Handle(ready!(in_flight.poll_ready(input)))),
-                AfterHandle {
-                    ref mut in_flight,
-                    ref mut input,
-                    ..
-                } => Some(Polled::AfterHandle(ready!(in_flight.poll_ready(input)))),
+            let polled = match self.state {
+                Initial => None,
+                BeforeHandle(ref mut in_flight, ..) => Some(Polled::BeforeHandle(ready!(in_flight.poll_ready(input)))),
+                Handle(ref mut in_flight) => Some(Polled::Handle(ready!(in_flight.poll_ready(input)))),
+                AfterHandle(ref mut in_flight, ..) => Some(Polled::AfterHandle(ready!(in_flight.poll_ready(input)))),
                 _ => panic!("unexpected state"),
             };
 
-            match (mem::replace(self, Done), polled) {
-                (Initial(request), None) => {
-                    let (i, params) = match global.router().recognize(request.uri().path(), request.method()) {
-                        Ok(v) => v,
-                        Err(e) => break Err((e, request.map(mem::drop))),
-                    };
-
-                    let mut input = Input::new(request, i, params);
-
+            match (mem::replace(&mut self.state, Done), polled) {
+                (Initial, None) => {
                     if let Some(modifier) = global.modifiers().get(0) {
-                        let in_flight = modifier.before_handle(&mut input);
-                        *self = BeforeHandle {
-                            in_flight: in_flight,
-                            input: input,
-                            current: 0,
-                            route_id: i,
-                        };
+                        self.state = BeforeHandle(modifier.before_handle(input), 0);
                     } else {
-                        let route = &global.router()[i];
-                        let in_flight = route.handle(&mut input);
-                        *self = Handle {
-                            in_flight: in_flight,
-                            input: input,
+                        let (i, params) = match global.router().recognize(input.uri().path(), input.method()) {
+                            Ok(v) => v,
+                            Err(err) => break Err(err),
                         };
+                        input.parts.route = Some((i, params));
+                        self.state = Handle(global.router()[i].handle(input));
                     }
                 }
 
-                (
-                    BeforeHandle {
-                        current,
-                        mut input,
-                        route_id,
-                        ..
-                    },
-                    Some(Polled::BeforeHandle(Ok(()))),
-                ) => {
+                (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(())))) => {
                     if let Some(modifier) = global.modifiers().get(current) {
-                        let in_flight = modifier.before_handle(&mut input);
-                        *self = BeforeHandle {
-                            in_flight: in_flight,
-                            input: input,
-                            current: current + 1,
-                            route_id: route_id,
-                        };
+                        self.state = BeforeHandle(modifier.before_handle(input), current + 1);
                     } else {
-                        let route = &global.router()[route_id];
-                        let in_flight = route.handle(&mut input);
-                        *self = Handle {
-                            in_flight: in_flight,
-                            input: input,
+                        let (i, params) = match global.router().recognize(input.uri().path(), input.method()) {
+                            Ok(v) => v,
+                            Err(err) => break Err(err),
                         };
+                        input.parts.route = Some((i, params));
+                        self.state = Handle(global.router()[i].handle(input));
                     }
                 }
 
-                (Handle { mut input, .. }, Some(Polled::Handle(Ok(output)))) => {
-                    let current = global.modifiers().len();
-                    if current > 0 {
-                        let modifier = &global.modifiers()[current - 1];
-                        let in_flight = modifier.after_handle(&mut input, output);
-                        *self = AfterHandle {
-                            in_flight: in_flight,
-                            input: input,
-                            current: current - 1,
-                        };
-                    } else {
-                        break Ok((output, input));
+                (Handle(..), Some(Polled::Handle(Ok(output)))) => {
+                    let current = input.state.modifiers().len();
+                    if current == 0 {
+                        break Ok(output);
                     }
+                    let modifier = &global.modifiers()[current - 1];
+                    self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
                 }
 
-                (AfterHandle { mut input, current, .. }, Some(Polled::AfterHandle(Ok(output)))) => {
-                    if current > 0 {
-                        let modifier = &global.modifiers()[current - 1];
-                        let in_flight = modifier.after_handle(&mut input, output);
-                        *self = AfterHandle {
-                            in_flight: in_flight,
-                            input: input,
-                            current: current - 1,
-                        };
-                    } else {
-                        break Ok((output, input));
+                (AfterHandle(_, current), Some(Polled::AfterHandle(Ok(output)))) => {
+                    if current == 0 {
+                        break Ok(output);
                     }
+                    let modifier = &global.modifiers()[current - 1];
+                    self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
                 }
 
-                | (BeforeHandle { input, .. }, Some(Polled::BeforeHandle(Err(err))))
-                | (Handle { input, .. }, Some(Polled::Handle(Err(err))))
-                | (AfterHandle { input, .. }, Some(Polled::AfterHandle(Err(err)))) => {
-                    break Err((err, input.into_parts().request.map(mem::drop)))
+                | (BeforeHandle(..), Some(Polled::BeforeHandle(Err(err))))
+                | (Handle(..), Some(Polled::Handle(Err(err))))
+                | (AfterHandle(..), Some(Polled::AfterHandle(Err(err)))) => {
+                    break Err(err);
                 }
 
                 _ => panic!("unexpected state"),
@@ -229,21 +175,19 @@ impl AppServiceFutureState {
 impl AppServiceFuture {
     #[allow(missing_docs)]
     pub fn poll_ready(&mut self) -> Poll<Result<Response<ResponseBody>, CritError>> {
-        match {
-            let state = &mut self.state;
-            let global = &mut self.global;
-            ready!(global.with_set(|| state.poll_in_flight(global)))
-        } {
-            Ok((out, input)) => Poll::Ready(self.handle_response(out, input.into_parts())),
-            Err((err, request)) => Poll::Ready(self.handle_error(err, request)),
+        let polled = ready!(self.poll_in_flight());
+        let input = self.input.take().expect("This future has already polled");
+        match polled {
+            Ok(output) => Poll::Ready(self.handle_response(output, input)),
+            Err(err) => Poll::Ready(self.handle_error(err, input)),
         }
     }
 
-    fn handle_response(&mut self, output: Output, input: InputParts) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_response(&mut self, output: Output, input: Input) -> Result<Response<ResponseBody>, CritError> {
         let (mut response, handler) = output.deconstruct();
         let InputParts {
             cookies, mut request, ..
-        } = input;
+        } = input.parts;
 
         cookies.append_to(response.headers_mut());
 
@@ -283,9 +227,12 @@ impl AppServiceFuture {
         Ok(response)
     }
 
-    fn handle_error(&mut self, err: Error, request: Request<()>) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_error(&mut self, err: Error, input: Input) -> Result<Response<ResponseBody>, CritError> {
+        let request = input.parts.request.map(mem::drop);
+        let global = input.state;
+
         if let Some(err) = err.as_http_error() {
-            let response = self.global.error_handler().handle_error(err, &request)?;
+            let response = global.error_handler().handle_error(err, &request)?;
             return Ok(response);
         }
         Err(err.into_critical()

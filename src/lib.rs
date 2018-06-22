@@ -22,8 +22,6 @@ extern crate hyperx;
 #[macro_use]
 extern crate log;
 extern crate mime;
-#[macro_use]
-extern crate scoped_tls;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
