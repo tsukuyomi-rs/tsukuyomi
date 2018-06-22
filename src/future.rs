@@ -89,10 +89,10 @@ impl<T, E> Into<Result<futures::Async<T>, E>> for Poll<Result<T, E>> {
     }
 }
 
-impl Into<Result<futures::Async<()>, ()>> for Poll<()> {
-    fn into(self) -> Result<futures::Async<()>, ()> {
+impl<T, E> Into<Result<futures::Async<T>, E>> for Poll<T> {
+    fn into(self) -> Result<futures::Async<T>, E> {
         match self {
-            Poll::Ready(()) => Ok(futures::Async::Ready(())),
+            Poll::Ready(v) => Ok(futures::Async::Ready(v)),
             Poll::Pending => Ok(futures::Async::NotReady),
         }
     }
@@ -122,6 +122,17 @@ pub trait Future {
     type Output;
 
     fn poll(&mut self) -> Poll<Self::Output>;
+
+    /// Wraps this value into a wrapper struct which implements `futures::Future`.
+    ///
+    /// This method is available only if the associated type is a `Result`.
+    fn compat_01(self) -> CompatFuture01<Self>
+    where
+        Self: Sized,
+        Self::Output: IsResult,
+    {
+        CompatFuture01(self)
+    }
 }
 
 impl<F> Future for F
@@ -132,6 +143,45 @@ where
 
     fn poll(&mut self) -> Poll<Self::Output> {
         futures::Future::poll(self).into()
+    }
+}
+
+pub trait IsResult: sealed::Sealed {
+    type Ok;
+    type Err;
+
+    fn into_result(self) -> Result<Self::Ok, Self::Err>;
+}
+
+impl<T, E> IsResult for Result<T, E> {
+    type Ok = T;
+    type Err = E;
+
+    #[inline(always)]
+    fn into_result(self) -> Result<Self::Ok, Self::Err> {
+        self
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+
+    impl<T, E> Sealed for Result<T, E> {}
+}
+
+#[derive(Debug)]
+pub struct CompatFuture01<F>(F);
+
+impl<F, T, E> futures::Future for CompatFuture01<F>
+where
+    F: Future,
+    F::Output: IsResult<Ok = T, Err = E>,
+{
+    type Item = T;
+    type Error = E;
+
+    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
+        self.0.poll().map(IsResult::into_result).into()
     }
 }
 
