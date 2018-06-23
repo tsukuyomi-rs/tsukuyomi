@@ -14,6 +14,7 @@ enum HandlerKind {
     AsyncWithInput(Box<Fn(&mut Input) -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for HandlerKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -29,6 +30,7 @@ pub(crate) enum Handle {
     Async(Box<Future<Output = Result<Output, Error>> + Send>),
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Handle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Handle").finish()

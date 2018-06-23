@@ -120,6 +120,7 @@ pub(crate) struct BoxedUpgradeHandler {
     inner: Box<FnMut(UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for BoxedUpgradeHandler {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("BoxedUpgradeHandler").finish()

@@ -141,6 +141,7 @@ pub struct Listener {
     tls: Option<Arc<ServerConfig>>,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Listener {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut d = f.debug_struct("Listener");
@@ -244,6 +245,7 @@ impl Handshake {
     }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for HandshakeKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {

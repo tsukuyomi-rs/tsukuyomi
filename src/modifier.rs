@@ -80,6 +80,7 @@ enum BeforeHandleState {
     Async(Box<Future<Output = Result<Option<Output>, Error>> + Send>),
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for BeforeHandleState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::BeforeHandleState::*;
@@ -153,6 +154,7 @@ enum AfterHandleState {
     Async(Box<Future<Output = Result<Output, Error>> + Send>),
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AfterHandleState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::AfterHandleState::*;

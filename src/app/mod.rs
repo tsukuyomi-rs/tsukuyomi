@@ -19,6 +19,7 @@ pub struct AppState {
     states: Container,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("AppState").field("router", &self.router).finish()
@@ -89,6 +90,7 @@ pub struct AppBuilder {
     states: Container,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppBuilder {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("AppBuilder").field("router", &self.router).finish()

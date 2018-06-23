@@ -129,12 +129,13 @@ impl AppServiceFuture {
                 }
 
                 (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(Some(output))))) => {
-                    if current == 0 {
+                    if current <= 1 {
                         break Ok(output);
                     }
-                    let modifier = &global.modifiers()[current - 1];
-                    self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
+                    let modifier = &global.modifiers()[current - 2];
+                    self.state = AfterHandle(modifier.after_handle(input, output), current - 2);
                 }
+
                 (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(None)))) => {
                     if let Some(modifier) = global.modifiers().get(current) {
                         self.state = BeforeHandle(modifier.before_handle(input), current + 1);

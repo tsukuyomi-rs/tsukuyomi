@@ -6,7 +6,7 @@ use tsukuyomi::local::LocalServer;
 use tsukuyomi::{App, Input};
 
 use futures::future::lazy;
-use http::{header, StatusCode};
+use http::{header, Response, StatusCode};
 
 #[test]
 fn test_case1_empty_routes() {
@@ -114,4 +114,162 @@ fn test_case4_modifier() {
 
     assert_eq!(flag1.load(Ordering::SeqCst), true);
     assert_eq!(flag2.load(Ordering::SeqCst), true);
+}
+
+#[test]
+fn test_case5_modifier_done_1() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
+    use tsukuyomi::output::Output;
+
+    struct MyModifier1 {
+        before: Arc<AtomicBool>,
+        after: Arc<AtomicBool>,
+    }
+
+    impl Modifier for MyModifier1 {
+        fn before_handle(&self, _: &mut Input) -> BeforeHandle {
+            self.before.store(true, Ordering::SeqCst);
+            BeforeHandle::done(Response::new(()))
+        }
+
+        fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
+            self.after.store(true, Ordering::SeqCst);
+            AfterHandle::ok(output)
+        }
+    }
+
+    struct MyModifier2 {
+        before: Arc<AtomicBool>,
+        after: Arc<AtomicBool>,
+    }
+
+    impl Modifier for MyModifier2 {
+        fn before_handle(&self, _: &mut Input) -> BeforeHandle {
+            self.before.store(true, Ordering::SeqCst);
+            BeforeHandle::ok()
+        }
+
+        fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
+            self.after.store(true, Ordering::SeqCst);
+            AfterHandle::ok(output)
+        }
+    }
+
+    let before1 = Arc::new(AtomicBool::new(false));
+    let before2 = Arc::new(AtomicBool::new(false));
+    let after1 = Arc::new(AtomicBool::new(false));
+    let after2 = Arc::new(AtomicBool::new(false));
+    let handle = Arc::new(AtomicBool::new(false));
+
+    let app = App::builder()
+        .modifier(MyModifier1 {
+            before: before1.clone(),
+            after: after1.clone(),
+        })
+        .modifier(MyModifier2 {
+            before: before2.clone(),
+            after: after2.clone(),
+        })
+        .mount("/", |m| {
+            m.get("/").handle({
+                let handle = handle.clone();
+                move |_| {
+                    handle.store(true, Ordering::SeqCst);
+                    "dummy"
+                }
+            });
+        })
+        .finish()
+        .unwrap();
+
+    let mut server = LocalServer::new(app).unwrap();
+
+    let _ = server.client().get("/").execute().unwrap();
+
+    assert_eq!(before1.load(Ordering::SeqCst), true);
+    assert_eq!(before2.load(Ordering::SeqCst), false);
+    assert_eq!(after1.load(Ordering::SeqCst), false);
+    assert_eq!(after2.load(Ordering::SeqCst), false);
+    assert_eq!(handle.load(Ordering::SeqCst), false);
+}
+
+#[test]
+fn test_case6_modifier_done_2() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
+    use tsukuyomi::output::Output;
+
+    struct MyModifier1 {
+        before: Arc<AtomicBool>,
+        after: Arc<AtomicBool>,
+    }
+
+    impl Modifier for MyModifier1 {
+        fn before_handle(&self, _: &mut Input) -> BeforeHandle {
+            self.before.store(true, Ordering::SeqCst);
+            BeforeHandle::ok()
+        }
+
+        fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
+            self.after.store(true, Ordering::SeqCst);
+            AfterHandle::ok(output)
+        }
+    }
+
+    struct MyModifier2 {
+        before: Arc<AtomicBool>,
+        after: Arc<AtomicBool>,
+    }
+
+    impl Modifier for MyModifier2 {
+        fn before_handle(&self, _: &mut Input) -> BeforeHandle {
+            self.before.store(true, Ordering::SeqCst);
+            BeforeHandle::done(Response::new(()))
+        }
+
+        fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
+            self.after.store(true, Ordering::SeqCst);
+            AfterHandle::ok(output)
+        }
+    }
+
+    let before1 = Arc::new(AtomicBool::new(false));
+    let before2 = Arc::new(AtomicBool::new(false));
+    let after1 = Arc::new(AtomicBool::new(false));
+    let after2 = Arc::new(AtomicBool::new(false));
+    let handle = Arc::new(AtomicBool::new(false));
+
+    let app = App::builder()
+        .modifier(MyModifier1 {
+            before: before1.clone(),
+            after: after1.clone(),
+        })
+        .modifier(MyModifier2 {
+            before: before2.clone(),
+            after: after2.clone(),
+        })
+        .mount("/", |m| {
+            m.get("/").handle({
+                let handle = handle.clone();
+                move |_| {
+                    handle.store(true, Ordering::SeqCst);
+                    "dummy"
+                }
+            });
+        })
+        .finish()
+        .unwrap();
+
+    let mut server = LocalServer::new(app).unwrap();
+
+    let _ = server.client().get("/").execute().unwrap();
+
+    assert_eq!(before1.load(Ordering::SeqCst), true);
+    assert_eq!(before2.load(Ordering::SeqCst), true);
+    assert_eq!(after1.load(Ordering::SeqCst), true);
+    assert_eq!(after2.load(Ordering::SeqCst), false);
+    assert_eq!(handle.load(Ordering::SeqCst), false);
 }
