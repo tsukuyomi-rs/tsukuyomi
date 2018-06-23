@@ -117,7 +117,7 @@ impl AppServiceFuture {
             match (mem::replace(&mut self.state, Done), polled) {
                 (Initial, None) => {
                     if let Some(modifier) = global.modifiers().get(0) {
-                        self.state = BeforeHandle(modifier.before_handle(input), 0);
+                        self.state = BeforeHandle(modifier.before_handle(input), 1);
                     } else {
                         let (i, params) = match global.router().recognize(input.uri().path(), input.method()) {
                             Ok(v) => v,
