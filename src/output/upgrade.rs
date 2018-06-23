@@ -117,7 +117,7 @@ where
 }
 
 pub(crate) struct BoxedUpgradeHandler {
-    inner: Box<FnMut(UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send> + Send + 'static>,
+    inner: Box<dyn FnMut(UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -144,7 +144,7 @@ where
 }
 
 impl BoxedUpgradeHandler {
-    pub(crate) fn upgrade(mut self, cx: UpgradeContext) -> Box<Future<Item = (), Error = ()> + Send + 'static> {
+    pub(crate) fn upgrade(mut self, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
         (self.inner)(cx)
     }
 }

@@ -6,7 +6,7 @@
 #![deny(unreachable_pub)]
 #![deny(unused_extern_crates)]
 #![deny(warnings)]
-// #![deny(bare_trait_objects)]
+#![deny(bare_trait_objects)]
 #![cfg_attr(feature = "nightly", feature(futures_api))]
 
 extern crate bytes;

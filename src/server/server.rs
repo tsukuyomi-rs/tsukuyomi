@@ -134,7 +134,7 @@ where
     S::ReqBody: From<Body>,
     S::ResBody: Payload,
     S::Future: Send,
-    S::InitError: Into<Box<error::Error + Send + Sync + 'static>>,
+    S::InitError: Into<Box<dyn error::Error + Send + Sync + 'static>>,
     S::Service: Send,
     <S::Service as Service>::Future: Send,
 {

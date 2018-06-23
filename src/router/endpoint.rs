@@ -9,9 +9,9 @@ use output::{Output, Responder};
 use super::uri::Uri;
 
 enum HandlerKind {
-    Ready(Box<Fn(&mut Input) -> Result<Output, Error> + Send + Sync>),
-    Async(Box<Fn() -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
-    AsyncWithInput(Box<Fn(&mut Input) -> Box<Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
+    Ready(Box<dyn Fn(&mut Input) -> Result<Output, Error> + Send + Sync>),
+    Async(Box<dyn Fn() -> Box<dyn Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
+    AsyncWithInput(Box<dyn Fn(&mut Input) -> Box<dyn Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -27,7 +27,7 @@ impl fmt::Debug for HandlerKind {
 
 pub(crate) enum Handle {
     Ready(Option<Result<Output, Error>>),
-    Async(Box<Future<Output = Result<Output, Error>> + Send>),
+    Async(Box<dyn Future<Output = Result<Output, Error>> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]

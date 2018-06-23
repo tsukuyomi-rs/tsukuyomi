@@ -5,10 +5,10 @@ pub mod handler;
 use failure::{self, Fail};
 use http::header::HeaderMap;
 use http::StatusCode;
-use std::error;
+use std::{error, fmt};
 
 /// A type alias representing a critical error.
-pub type CritError = Box<error::Error + Send + Sync + 'static>;
+pub type CritError = Box<dyn error::Error + Send + Sync + 'static>;
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -32,7 +32,7 @@ pub struct Error {
 
 #[derive(Debug)]
 enum ErrorKind {
-    Boxed(Box<HttpError>),
+    Boxed(Box<dyn HttpError>),
     Concrete(ConcreteHttpError),
     Crit(CritError),
 }
@@ -110,7 +110,7 @@ impl Error {
     /// Returns the representation as `HttpError` of this error value.
     ///
     /// If the value is a criticial error, it will return a `None`.
-    pub fn as_http_error(&self) -> Option<&HttpError> {
+    pub fn as_http_error(&self) -> Option<&dyn HttpError> {
         match self.kind {
             ErrorKind::Concrete(ref e) => Some(e),
             ErrorKind::Boxed(ref e) => Some(&**e),
@@ -126,12 +126,19 @@ impl Error {
     }
 }
 
-#[derive(Debug, Fail)]
-#[fail(display = "{}", cause)]
+#[derive(Debug)]
 struct ConcreteHttpError {
     cause: failure::Error,
     status: StatusCode,
 }
+
+impl fmt::Display for ConcreteHttpError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.cause, f)
+    }
+}
+
+impl Fail for ConcreteHttpError {}
 
 impl HttpError for ConcreteHttpError {
     fn status_code(&self) -> StatusCode {

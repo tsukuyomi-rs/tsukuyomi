@@ -92,7 +92,7 @@ impl ResponseBody {
     pub fn wrap_stream<S>(stream: S) -> ResponseBody
     where
         S: Stream + Send + 'static,
-        S::Error: Into<Box<StdError + Send + Sync + 'static>>,
+        S::Error: Into<Box<dyn StdError + Send + Sync + 'static>>,
         Chunk: From<S::Item>,
     {
         ResponseBody(Inner::Chunked(Body::wrap_stream(stream)))

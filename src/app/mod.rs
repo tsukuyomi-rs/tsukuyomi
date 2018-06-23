@@ -14,8 +14,8 @@ use router::{self, Mount, Router};
 /// The global and shared variables used throughout the serving an HTTP application.
 pub struct AppState {
     router: Router,
-    error_handler: Box<ErrorHandler + Send + Sync + 'static>,
-    modifiers: Vec<Box<Modifier + Send + Sync + 'static>>,
+    error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     states: Container,
 }
 
@@ -33,12 +33,12 @@ impl AppState {
     }
 
     /// Returns the reference to `ErrorHandler` contained in this value.
-    pub fn error_handler(&self) -> &ErrorHandler {
+    pub fn error_handler(&self) -> &dyn ErrorHandler {
         &*self.error_handler
     }
 
     /// Returns the reference to `ErrorHandler` contained in this value.
-    pub fn modifiers(&self) -> &[Box<Modifier + Send + Sync + 'static>] {
+    pub fn modifiers(&self) -> &[Box<dyn Modifier + Send + Sync + 'static>] {
         &self.modifiers
     }
 
@@ -85,8 +85,8 @@ impl App {
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
     router: router::Builder,
-    error_handler: Option<Box<ErrorHandler + Send + Sync + 'static>>,
-    modifiers: Vec<Box<Modifier + Send + Sync + 'static>>,
+    error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     states: Container,
 }
 

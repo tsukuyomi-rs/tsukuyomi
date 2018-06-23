@@ -77,7 +77,7 @@ pub struct BeforeHandle(BeforeHandleState);
 
 enum BeforeHandleState {
     Ready(Option<Result<Option<Output>, Error>>),
-    Async(Box<Future<Output = Result<Option<Output>, Error>> + Send>),
+    Async(Box<dyn Future<Output = Result<Option<Output>, Error>> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -151,7 +151,7 @@ pub struct AfterHandle(AfterHandleState);
 
 enum AfterHandleState {
     Ready(Option<Result<Output, Error>>),
-    Async(Box<Future<Output = Result<Output, Error>> + Send>),
+    Async(Box<dyn Future<Output = Result<Output, Error>> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]

@@ -95,7 +95,7 @@ impl JsonErrorHandler {
 }
 
 impl ErrorHandler for JsonErrorHandler {
-    fn handle_error(&self, e: &HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_error(&self, e: &dyn HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
         let body = json!({
             "code": e.status_code().as_u16(),
             "description": e.to_string(),
