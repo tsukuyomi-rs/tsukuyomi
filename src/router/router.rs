@@ -5,9 +5,7 @@ use std::mem;
 use std::ops::Index;
 
 use error::Error;
-use future::Future;
-use input::Input;
-use output::Responder;
+use handler::Handler;
 
 use super::endpoint::Endpoint;
 use super::recognizer::Recognizer;
@@ -129,6 +127,7 @@ impl Builder {
     ///
     /// ```
     /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::handler::Handler;
     /// # use tsukuyomi::output::Responder;
     /// # use tsukuyomi::router::Router;
     /// fn index (_: &mut Input) -> impl Responder {
@@ -141,12 +140,12 @@ impl Builder {
     ///
     /// let router = Router::builder()
     ///     .mount("/", |m| {
-    ///         m.get("/").handle(index);
+    ///         m.get("/").handle(Handler::new_ready(index));
     ///     })
     ///     .mount("/api/v1/", |m| {
-    ///         m.get("/posts/:id").handle(find_post);
-    ///         m.get("/posts").handle(all_posts);
-    ///         m.post("/posts").handle(add_post);
+    ///         m.get("/posts/:id").handle(Handler::new_ready(find_post));
+    ///         m.get("/posts").handle(Handler::new_ready(all_posts));
+    ///         m.post("/posts").handle(Handler::new_ready(add_post));
     ///     })
     ///     .finish();
     /// # assert!(router.is_ok());
@@ -336,117 +335,10 @@ impl<'a, 'b> Route<'a, 'b> {
         self
     }
 
-    /// Creates an endpoint with the current configuration and the provided handler function.
-    ///
-    /// The provided handler is *fully synchronous*, which means that the provided handler
-    /// will return a result and immediately converted into an HTTP response without polling
-    /// the asynchronous status.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::router::Router;
-    /// fn index(input: &mut Input) -> &'static str {
-    ///     "Hello, Tsukuyomi.\n"
-    /// }
-    ///
-    /// let router = Router::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/index.html").handle(index);
-    ///     })
-    ///     .finish();
-    /// # assert!(router.is_ok());
-    /// ```
-    pub fn handle<R>(self, f: impl Fn(&mut Input) -> R + Send + Sync + 'static)
-    where
-        R: Responder,
-    {
+    /// Finishes this session and registers an endpoint with given handler.
+    pub fn handle(self, handler: Handler) {
         let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
-        let endpoint = Endpoint::new_ready(uri, self.method, f);
-        self.mount.builder.endpoints.push(endpoint);
-    }
-
-    /// Creates an endpoint with the current configuration and the provided handler function.
-    ///
-    /// The provided handler is *fully asynchronous*, which means that the handler will do nothing
-    /// and immediately return a **future** which will be resolved as a value to be converted into
-    /// an HTTP response.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # extern crate futures;
-    /// # extern crate tsukuyomi;
-    /// # use tsukuyomi::error::Error;
-    /// # use tsukuyomi::router::Router;
-    /// # use futures::Future;
-    /// # use futures::future::lazy;
-    /// fn handler() -> impl Future<Item = &'static str, Error = Error> + Send + 'static {
-    ///     lazy(|| {
-    ///         Ok("Hello, Tsukuyomi.\n")
-    ///     })
-    /// }
-    ///
-    /// // uses upcoming async/await syntax
-    /// // async fn handler() -> &'static str {
-    /// //    "Hello, Tsukuyomi.\n"
-    /// // }
-    ///
-    /// let router = Router::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/posts").handle_async(handler);
-    ///     })
-    ///     .finish();
-    /// # assert!(router.is_ok());
-    /// ```
-    pub fn handle_async<R>(self, f: impl Fn() -> R + Send + Sync + 'static)
-    where
-        R: Future + Send + 'static,
-        R::Output: Responder,
-    {
-        let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
-        let endpoint = Endpoint::new_async(uri, self.method, f);
-        self.mount.builder.endpoints.push(endpoint);
-    }
-
-    /// Creates an endpoint with the current configuration and the provided handler function.
-    ///
-    /// The provided handler is *partially asynchronous*, which means that the handler will
-    /// process some tasks by using the provided reference to `Input` and return a future for
-    /// processing the remaining task.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # extern crate futures;
-    /// # extern crate tsukuyomi;
-    /// # use tsukuyomi::error::Error;
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::router::Router;
-    /// # use futures::Future;
-    /// # use futures::future::lazy;
-    /// fn handler(input: &mut Input) -> impl Future<Item = String, Error = Error> + Send + 'static {
-    ///     let query = input.uri().query().unwrap_or("<empty>").to_owned();
-    ///     lazy(move || {
-    ///         Ok(format!("query = {}", query))
-    ///     })
-    /// }
-    ///
-    /// let router = Router::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/posts").handle_async_with_input(handler);
-    ///     })
-    ///     .finish();
-    /// # assert!(router.is_ok());
-    /// ```
-    pub fn handle_async_with_input<R>(self, f: impl Fn(&mut Input) -> R + Send + Sync + 'static)
-    where
-        R: Future + Send + 'static,
-        R::Output: Responder,
-    {
-        let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
-        let endpoint = Endpoint::new_async_with_input(uri, self.method, f);
+        let endpoint = Endpoint::new(uri, self.method, handler);
         self.mount.builder.endpoints.push(endpoint);
     }
 }
@@ -465,7 +357,7 @@ mod tests {
     fn root_single_method() {
         let router = Router::builder()
             .mount("/", |m| {
-                m.get("/").handle(|_| "a");
+                m.get("/").handle(Handler::new_ready(|_| "a"));
             })
             .finish()
             .unwrap();
@@ -480,8 +372,8 @@ mod tests {
     fn root_multiple_method() {
         let router = Router::builder()
             .mount("/", |m| {
-                m.get("/").handle(|_| "a");
-                m.post("/").handle(|_| "b");
+                m.get("/").handle(Handler::new_ready(|_| "a"));
+                m.post("/").handle(Handler::new_ready(|_| "b"));
             })
             .finish()
             .unwrap();
@@ -496,7 +388,7 @@ mod tests {
     fn root_fallback_head() {
         let router = Router::builder()
             .mount("/", |m| {
-                m.get("/").handle(|_| "a");
+                m.get("/").handle(Handler::new_ready(|_| "a"));
             })
             .finish()
             .unwrap();
@@ -508,7 +400,7 @@ mod tests {
     fn root_fallback_head_disabled() {
         let router = Router::builder()
             .mount("/", |m| {
-                m.get("/").handle(|_| "a");
+                m.get("/").handle(Handler::new_ready(|_| "a"));
             })
             .fallback_head(false)
             .finish()
@@ -521,15 +413,15 @@ mod tests {
     fn mount() {
         let router = Router::builder()
             .mount("/", |m| {
-                m.get("/foo").handle(|_| "a"); // /foo
-                m.get("/bar").handle(|_| "b"); // /bar
+                m.get("/foo").handle(Handler::new_ready(|_| "a")); // /foo
+                m.get("/bar").handle(Handler::new_ready(|_| "b")); // /bar
             })
             .mount("/baz", |m| {
-                m.get("/").handle(|_| "c"); // /baz
+                m.get("/").handle(Handler::new_ready(|_| "c")); // /baz
 
                 m.mount("/", |m| {
-                    m.get("/").handle(|_| "d"); // /baz
-                    m.get("/foobar").handle(|_| "e"); // /baz/foobar
+                    m.get("/").handle(Handler::new_ready(|_| "d")); // /baz
+                    m.get("/foobar").handle(Handler::new_ready(|_| "e")); // /baz/foobar
                 });
             })
             .finish()

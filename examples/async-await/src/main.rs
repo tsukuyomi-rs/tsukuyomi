@@ -6,7 +6,7 @@ extern crate futures_await as futures;
 extern crate tsukuyomi;
 
 use futures::prelude::*;
-use tsukuyomi::{App, Error, Input};
+use tsukuyomi::{App, Error, Handler, Input};
 
 #[async]
 fn async_handler() -> tsukuyomi::Result<String> {
@@ -25,8 +25,8 @@ fn async_handler_with_input(input: &mut Input) -> impl Future<Item = String, Err
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |m| {
-            m.post("/async1").handle_async(async_handler);
-            m.post("/async2").handle_async_with_input(async_handler_with_input);
+            m.post("/async1").handle(Handler::new_fully_async(async_handler));
+            m.post("/async2").handle(Handler::new_async(async_handler_with_input));
         })
         .finish()?;
 

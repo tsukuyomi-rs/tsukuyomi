@@ -15,7 +15,7 @@
 //!
 //! ```
 //! use std::sync::atomic::{AtomicUsize, Ordering};
-//! use tsukuyomi::{App, Input};
+//! use tsukuyomi::{App, Input, Handler};
 //! use tsukuyomi::modifier::{Modifier, BeforeHandle, AfterHandle};
 //!
 //! #[derive(Default)]
@@ -30,7 +30,7 @@
 //!
 //! let app = App::builder()
 //!     .mount("/", |m| {
-//!         m.get("/").handle(|_| "Hello");
+//!         m.get("/").handle(Handler::new_ready(|_| "Hello"));
 //!     })
 //!     .modifier(RequestCounter::default())    // <--
 //!     .finish()

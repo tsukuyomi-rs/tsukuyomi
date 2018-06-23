@@ -11,7 +11,7 @@ extern crate log;
 mod lines;
 
 use tsukuyomi::output::Responder;
-use tsukuyomi::{App, Input};
+use tsukuyomi::{App, Handler, Input};
 
 fn index(input: &mut Input) -> impl Responder {
     lines::start(input, |line| {
@@ -29,7 +29,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/").handle(index);
+            r.get("/").handle(Handler::new_ready(index));
         })
         .finish()?;
 

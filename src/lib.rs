@@ -44,6 +44,7 @@ pub mod future;
 
 pub mod app;
 pub mod error;
+pub mod handler;
 pub mod input;
 pub mod json;
 pub mod local;
@@ -57,6 +58,9 @@ pub use app::App;
 
 #[doc(inline)]
 pub use error::{Error, Result};
+
+#[doc(inline)]
+pub use handler::Handler;
 
 #[doc(inline)]
 pub use input::Input;

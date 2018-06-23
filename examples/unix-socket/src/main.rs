@@ -1,7 +1,7 @@
 extern crate tsukuyomi;
 
 use tsukuyomi::server::Server;
-use tsukuyomi::App;
+use tsukuyomi::{App, Handler};
 
 fn main() -> tsukuyomi::AppResult<()> {
     let sock_path: std::path::PathBuf = std::env::args()
@@ -11,7 +11,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/").handle(|_| "Hello");
+            r.get("/").handle(Handler::new_ready(|_| "Hello"));
         })
         .finish()?;
 

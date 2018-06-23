@@ -16,7 +16,7 @@ mod schema;
 
 use dotenv::dotenv;
 use std::env;
-use tsukuyomi::App;
+use tsukuyomi::{App, Handler};
 
 fn main() -> tsukuyomi::AppResult<()> {
     dotenv()?;
@@ -26,7 +26,7 @@ fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .manage(pool)
         .mount("/posts", |r| {
-            r.get("/").handle_async(api::get_posts);
+            r.get("/").handle(Handler::new_fully_async(api::get_posts));
         })
         .finish()?;
 

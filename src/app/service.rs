@@ -12,11 +12,11 @@ use tokio;
 
 use error::{CritError, Error};
 use future::Poll;
+use handler::Handle;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
-use router::Handle;
 
 use super::{App, AppState};
 
@@ -124,7 +124,7 @@ impl AppServiceFuture {
                             Err(err) => break Err(err),
                         };
                         input.parts.route = Some((i, params));
-                        self.state = Handle(global.router()[i].handle(input));
+                        self.state = Handle(global.router()[i].handler().handle(input));
                     }
                 }
 
@@ -145,7 +145,7 @@ impl AppServiceFuture {
                             Err(err) => break Err(err),
                         };
                         input.parts.route = Some((i, params));
-                        self.state = Handle(global.router()[i].handle(input));
+                        self.state = Handle(global.router()[i].handler().handle(input));
                     }
                 }
 
