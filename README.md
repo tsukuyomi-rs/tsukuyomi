@@ -49,7 +49,7 @@ http = "0.1.6"
 extern crate tsukuyomi;
 extern crate futures;
 
-use tsukuyomi::{App, Input, Error};
+use tsukuyomi::{App, Input, Error, Handler};
 use futures::Future;
 
 // The definition of *synchronous* handler.
@@ -80,8 +80,8 @@ fn async_handler(input: &mut Input)
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |m| {
-            m.get("/").handle(handler);
-            m.get("/async").handle_async_with_input(async_handler);
+            m.get("/").handle(Handler::new_ready(handler));
+            m.get("/async").handle(Handler::new_async(async_handler));
         })
         .finish()?;
 

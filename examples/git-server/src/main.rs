@@ -15,7 +15,7 @@ mod git;
 
 use tsukuyomi::error::HttpError;
 use tsukuyomi::output::ResponseBody;
-use tsukuyomi::{App, Error, Input};
+use tsukuyomi::{App, Error, Handler, Input};
 
 use failure::{format_err, Fail};
 use futures::prelude::*;
@@ -33,10 +33,11 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/info/refs").handle_async(handle_info_refs);
+            r.get("/info/refs").handle(Handler::new_fully_async(handle_info_refs));
             r.post("/git-receive-pack")
-                .handle_async(|| handle_rpc(RpcMode::Receive));
-            r.post("/git-upload-pack").handle_async(|| handle_rpc(RpcMode::Upload));
+                .handle(Handler::new_fully_async(|| handle_rpc(RpcMode::Receive)));
+            r.post("/git-upload-pack")
+                .handle(Handler::new_fully_async(|| handle_rpc(RpcMode::Upload)));
         })
         .manage(repo)
         .finish()?;

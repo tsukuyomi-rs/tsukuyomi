@@ -10,7 +10,7 @@ use futures::prelude::*;
 
 use tsukuyomi::json::{Json, JsonErrorHandler};
 use tsukuyomi::output::HttpResponse;
-use tsukuyomi::{App, Error, Input};
+use tsukuyomi::{App, Error, Handler, Input};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -42,8 +42,8 @@ fn main() -> tsukuyomi::AppResult<()> {
 
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/").handle(get_json);
-            r.post("/").handle_async(read_json_payload);
+            r.get("/").handle(Handler::new_ready(get_json));
+            r.post("/").handle(Handler::new_fully_async(read_json_payload));
         })
         .error_handler(JsonErrorHandler::new())
         .finish()?;

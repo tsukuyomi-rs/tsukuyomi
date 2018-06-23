@@ -8,7 +8,7 @@ use askama::Template as _Template;
 use failure::SyncFailure;
 use http::{header, Response};
 use tsukuyomi::output::{Output, Responder};
-use tsukuyomi::{App, Error, Input};
+use tsukuyomi::{App, Error, Handler, Input};
 
 struct Template<T: _Template>(T);
 
@@ -39,7 +39,7 @@ fn index(_: &mut Input) -> Template<Hello> {
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |r| {
-            r.get("/:name").handle(index);
+            r.get("/:name").handle(Handler::new_ready(index));
         })
         .finish()?;
 

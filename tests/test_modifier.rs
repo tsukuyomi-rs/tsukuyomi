@@ -2,6 +2,7 @@ extern crate futures;
 extern crate http;
 extern crate tsukuyomi;
 
+use tsukuyomi::handler::Handler;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::Output;
@@ -62,12 +63,12 @@ impl Modifier for BeforeDoneModifier {
 }
 
 /// Creates a handler function which marks a function call.
-fn handler(marker: &Marker) -> impl Fn(&mut Input) -> &'static str + Send + 'static {
+fn handler(marker: &Marker) -> Handler {
     let marker = marker.clone();
-    move |_| {
+    Handler::new_ready(move |_| {
         marker.mark();
         "dummy"
-    }
+    })
 }
 
 #[test]

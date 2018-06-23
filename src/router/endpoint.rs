@@ -1,50 +1,8 @@
 use http::Method;
-use std::fmt;
 
-use error::Error;
-use future::{Future, Poll};
-use input::Input;
-use output::{Output, Responder};
+use handler::Handler;
 
 use super::uri::Uri;
-
-enum HandlerKind {
-    Ready(Box<dyn Fn(&mut Input) -> Result<Output, Error> + Send + Sync>),
-    Async(Box<dyn Fn() -> Box<dyn Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
-    AsyncWithInput(Box<dyn Fn(&mut Input) -> Box<dyn Future<Output = Result<Output, Error>> + Send> + Send + Sync>),
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for HandlerKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            HandlerKind::Ready(..) => f.debug_tuple("Ready").finish(),
-            HandlerKind::Async(..) => f.debug_tuple("Async").finish(),
-            HandlerKind::AsyncWithInput(..) => f.debug_tuple("AsyncWithInput").finish(),
-        }
-    }
-}
-
-pub(crate) enum Handle {
-    Ready(Option<Result<Output, Error>>),
-    Async(Box<dyn Future<Output = Result<Output, Error>> + Send>),
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Handle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Handle").finish()
-    }
-}
-
-impl Handle {
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Result<Output, Error>> {
-        match *self {
-            Handle::Ready(ref mut res) => Poll::Ready(res.take().expect("this future has already polled")),
-            Handle::Async(ref mut f) => input.with_set(|| f.poll()),
-        }
-    }
-}
 
 /// A type representing an endpoint.
 ///
@@ -54,50 +12,15 @@ impl Handle {
 pub struct Endpoint {
     uri: Uri,
     method: Method,
-    handler: HandlerKind,
+    handler: Handler,
 }
 
 impl Endpoint {
-    pub(super) fn new_ready<R>(
-        uri: Uri,
-        method: Method,
-        handler: impl Fn(&mut Input) -> R + Send + Sync + 'static,
-    ) -> Endpoint
-    where
-        R: Responder,
-    {
+    pub(crate) fn new(uri: Uri, method: Method, handler: Handler) -> Endpoint {
         Endpoint {
             uri: uri,
             method: method,
-            handler: HandlerKind::Ready(Box::new(move |input| handler(input).respond_to(input))),
-        }
-    }
-
-    pub(super) fn new_async<R>(uri: Uri, method: Method, handler: impl Fn() -> R + Send + Sync + 'static) -> Endpoint
-    where
-        R: Future + Send + 'static,
-        R::Output: Responder,
-    {
-        Endpoint {
-            uri: uri,
-            method: method,
-            handler: HandlerKind::Async(Box::new(move || Box::new(HandlerFuture(handler())))),
-        }
-    }
-
-    pub(super) fn new_async_with_input<R>(
-        uri: Uri,
-        method: Method,
-        handler: impl Fn(&mut Input) -> R + Send + Sync + 'static,
-    ) -> Endpoint
-    where
-        R: Future + Send + 'static,
-        R::Output: Responder,
-    {
-        Endpoint {
-            uri: uri,
-            method: method,
-            handler: HandlerKind::AsyncWithInput(Box::new(move |input| Box::new(HandlerFuture(handler(input))))),
+            handler: handler,
         }
     }
 
@@ -111,26 +34,8 @@ impl Endpoint {
         &self.method
     }
 
-    pub(crate) fn handle(&self, input: &mut Input) -> Handle {
-        match self.handler {
-            HandlerKind::Ready(ref f) => Handle::Ready(Some(f(input))),
-            HandlerKind::Async(ref f) => Handle::Async(f()),
-            HandlerKind::AsyncWithInput(ref f) => Handle::Async(f(input)),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct HandlerFuture<F>(F);
-
-impl<F> Future for HandlerFuture<F>
-where
-    F: Future,
-    F::Output: Responder,
-{
-    type Output = Result<Output, Error>;
-
-    fn poll(&mut self) -> Poll<Self::Output> {
-        self.0.poll().map(|x| Input::with_get(|input| x.respond_to(&*input)))
+    /// Returns the reference to `Handler` associated with this endpoint.
+    pub fn handler(&self) -> &Handler {
+        &self.handler
     }
 }

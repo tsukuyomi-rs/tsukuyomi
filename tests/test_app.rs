@@ -2,6 +2,7 @@ extern crate futures;
 extern crate http;
 extern crate tsukuyomi;
 
+use tsukuyomi::handler::Handler;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::{App, Input};
 
@@ -22,7 +23,7 @@ fn test_case1_empty_routes() {
 fn test_case2_single_route() {
     let app = App::builder()
         .mount("/", |m| {
-            m.get("/hello").handle(|_| "Tsukuyomi");
+            m.get("/hello").handle(Handler::new_ready(|_| "Tsukuyomi"));
         })
         .finish()
         .unwrap();
@@ -46,12 +47,12 @@ fn test_case2_single_route() {
 fn test_case3_post_body() {
     let app = App::builder()
         .mount("/", |m| {
-            m.post("/hello").handle_async(|| {
+            m.post("/hello").handle(Handler::new_fully_async(|| {
                 lazy(|| {
                     let read_all = Input::with_get(|input| input.body_mut().read_all());
                     read_all.convert_to::<String>()
                 })
-            });
+            }));
         })
         .finish()
         .unwrap();

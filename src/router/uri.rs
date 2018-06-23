@@ -3,7 +3,7 @@
 use failure::Error;
 use std::fmt;
 
-pub fn join_all<I>(prefix: I) -> Uri
+pub(super) fn join_all<I>(prefix: I) -> Uri
 where
     I: IntoIterator,
     I::Item: AsRef<Uri>,
