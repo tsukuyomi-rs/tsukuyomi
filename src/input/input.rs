@@ -18,6 +18,32 @@ thread_local! {
     static INPUT: Cell<Option<NonNull<Input>>> = Cell::new(None);
 }
 
+#[allow(missing_debug_implementations)]
+struct ResetOnDrop(Option<NonNull<Input>>);
+
+impl Drop for ResetOnDrop {
+    fn drop(&mut self) {
+        INPUT.with(|input| {
+            input.set(self.0.take());
+        })
+    }
+}
+
+fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R {
+    // safety: The value of `self: &mut Input` is always non-null.
+    let prev = INPUT.with(|input| input.replace(Some(unsafe { NonNull::new_unchecked(self_ as *mut Input) })));
+    let _reset = ResetOnDrop(prev);
+    f()
+}
+
+fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
+    let input_ptr = INPUT.with(|input| input.replace(None));
+    let _reset = ResetOnDrop(input_ptr);
+    let mut input_ptr = input_ptr.expect("Any reference to Input are not set at the current task context.");
+    // safety: The lifetime of `input_ptr` is always shorter then the borrowing of `Input` in `with_set_current()`
+    f(unsafe { input_ptr.as_mut() })
+}
+
 /// The inner parts of `Input`.
 #[derive(Debug)]
 pub(crate) struct InputParts {
@@ -39,9 +65,6 @@ impl InputParts {
 }
 
 /// Contextual information used by processes during an incoming HTTP request.
-///
-/// The values of this type are created at calling `AppService::call`, and used until the future
-/// created at its time is completed.
 #[derive(Debug)]
 pub struct Input {
     pub(crate) parts: InputParts,
@@ -49,6 +72,48 @@ pub struct Input {
 }
 
 impl Input {
+    pub(crate) fn with_set_current<R>(&mut self, f: impl FnOnce() -> R) -> R {
+        with_set_current(self, f)
+    }
+
+    /// Acquires a mutable borrow of `Input` from the current task context and executes the provided
+    /// closure with its reference.
+    ///
+    /// # Panics
+    ///
+    /// This function only work in the management of the framework and causes a panic
+    /// if any references to `Input` is not set at the current task.
+    /// Do not use this function outside of futures returned by the handler functions.
+    /// Such situations often occurs by spawning tasks by the external `Executor`
+    /// (typically calling `tokio::spawn()`).
+    ///
+    /// In additional, this function forms a (dynamic) scope to prevent the references to `Input`
+    /// violate the borrowing rule in Rust.
+    /// Duplicate borrowings such as the following code are reported as a runtime error.
+    ///
+    /// ```ignore
+    /// Input::with_current(|input| {
+    ///     some_process()
+    /// });
+    ///
+    /// fn some_process() {
+    ///     // Duplicate borrowing of `Input` occurs at this point.
+    ///     Input::with_current(|input| { ... })
+    /// }
+    /// ```
+    #[inline]
+    pub fn with_current<R>(f: impl FnOnce(&mut Self) -> R) -> R {
+        with_get_current(f)
+    }
+
+    /// Returns `true` if the reference to `Input` is set to the current task.
+    ///
+    /// * Outside of `Future` managed by the framework.
+    /// * A mutable borrow has already been acquired.
+    pub fn is_set() -> bool {
+        INPUT.with(|input| input.get().is_some())
+    }
+
     /// Returns a shared reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
         &self.parts.request
@@ -128,83 +193,6 @@ impl Input {
             cookies.init(self.parts.request.headers()).map_err(Error::bad_request)?;
         }
         Ok(cookies.cookies())
-    }
-}
-
-#[allow(missing_debug_implementations)]
-struct ResetOnDrop(Option<NonNull<Input>>);
-
-impl Drop for ResetOnDrop {
-    fn drop(&mut self) {
-        INPUT.with(|input| {
-            input.set(self.0.take());
-        })
-    }
-}
-
-/// A set of functions for accessing the reference to `Input` located at the task local storage.
-///
-/// These functions only work in `Future`s called directly in `AppServiceFuture`.
-/// Do not use these in the following situations:
-///
-/// * The outside of this framework.
-/// * Inside the futures spawned by some `Executor`s (such situation will cause by using
-///   `tokio::spawn()`).
-///
-/// The provided functions forms some dynamic scope for the borrowing the instance of `Input` on
-/// the scoped TLS.
-/// If these scopes violate the borrowing rule in Rust, a runtime error will reported or cause a
-/// panic.
-impl Input {
-    pub(crate) fn with_set<R>(&mut self, f: impl FnOnce() -> R) -> R {
-        let prev = INPUT.with(|input| {
-            let prev = input.get();
-            // safety: &mut self is non-null.
-            unsafe {
-                input.set(Some(NonNull::new_unchecked(self as *mut Input)));
-            }
-            prev
-        });
-        let _reset = ResetOnDrop(prev);
-        let res = f();
-        res
-    }
-
-    /// Returns `true` if the reference to `Input` is set to the current task.
-    ///
-    /// * Outside of `Future` managed by the framework.
-    /// * A mutable borrow has already been acquired in the higher scope.
-    pub fn is_set() -> bool {
-        INPUT.with(|input| input.get().is_some())
-    }
-
-    /// Retrieves a mutable borrow of `Input` from scoped TLS and executes the provided closure
-    /// with its reference.
-    ///
-    /// # Panics
-    /// This function will cause a panic if any reference to `Input` is not set at the current task.
-    #[inline]
-    pub fn with_get<R>(f: impl FnOnce(&mut Input) -> R) -> R {
-        Input::try_with_get(f).expect("failed to acquire a &mut Input from the current task")
-    }
-
-    /// Tries to acquire a mutable borrow of `Input` from scoped TLS and executes the provided closure
-    /// with its reference if it succeeds.
-    ///
-    /// This function will return a `None` if any reference to `Input` is not set at the current task.
-    #[inline]
-    pub fn try_with_get<R>(f: impl FnOnce(&mut Input) -> R) -> Option<R> {
-        let input_ptr = INPUT.with(|input| {
-            let input_ptr = input.get();
-            input.set(None);
-            input_ptr
-        });
-        let _reset = ResetOnDrop(input_ptr);
-
-        match input_ptr {
-            Some(mut input_ptr) => Some(unsafe { f(input_ptr.as_mut()) }),
-            None => None,
-        }
     }
 }
 

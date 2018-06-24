@@ -29,7 +29,7 @@ fn get_json(_: &mut Input) -> Json<User> {
 
 // async fn read_json_payload() -> tsukuyomi::Result<Json<User>> { ... }
 fn read_json_payload() -> impl Future<Item = Json<User>, Error = Error> + Send + 'static {
-    Input::with_get(|input| input.body_mut().read_all())
+    Input::with_current(|input| input.body_mut().read_all())
         .convert_to::<Json<User>>()
         .map(|user| {
             info!("Received: {:?}", user);

@@ -138,7 +138,7 @@ impl BeforeHandle {
         use self::BeforeHandleState::*;
         match self.0 {
             Ready(ref mut res) => Poll::Ready(res.take().expect("BeforeHandle has already polled")),
-            Async(ref mut f) => input.with_set(|| f.poll()),
+            Async(ref mut f) => input.with_set_current(|| f.poll()),
         }
     }
 }
@@ -195,7 +195,7 @@ impl AfterHandle {
         use self::AfterHandleState::*;
         match self.0 {
             Ready(ref mut res) => Poll::Ready(res.take().expect("AfterHandle has already polled")),
-            Async(ref mut f) => input.with_set(|| f.poll()),
+            Async(ref mut f) => input.with_set_current(|| f.poll()),
         }
     }
 }
