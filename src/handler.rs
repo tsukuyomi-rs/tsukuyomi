@@ -96,7 +96,7 @@ impl Handler {
     {
         Handler(HandlerKind::Async(Box::new(move |input| {
             let mut future = handler(input);
-            Box::new(move |input| input.with_set(|| future.poll()).map(|x| x.respond_to(input)))
+            Box::new(move |input| input.with_set_current(|| future.poll()).map(|x| x.respond_to(input)))
         })))
     }
 
@@ -141,7 +141,7 @@ impl Handler {
     {
         Handler(HandlerKind::Async(Box::new(move |_| {
             let mut future = handler();
-            Box::new(move |input| input.with_set(|| future.poll()).map(|x| x.respond_to(input)))
+            Box::new(move |input| input.with_set_current(|| future.poll()).map(|x| x.respond_to(input)))
         })))
     }
 

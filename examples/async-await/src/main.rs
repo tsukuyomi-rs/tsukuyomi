@@ -10,7 +10,8 @@ use tsukuyomi::{App, Error, Handler, Input};
 
 #[async]
 fn async_handler() -> tsukuyomi::Result<String> {
-    let body = await!(Input::with_get(|input| input.body_mut().read_all()).convert_to())?;
+    let read_all = Input::with_current(|input| input.body_mut().read_all());
+    let body = await!(read_all.convert_to())?;
     println!("Received: {:?}", body);
     Ok(body)
 }

@@ -47,9 +47,9 @@ fn main() -> tsukuyomi::AppResult<()> {
 
 #[async]
 fn handle_info_refs() -> tsukuyomi::Result<Response<ResponseBody>> {
-    let mode = Input::with_get(|input| validate_info_refs(input))?;
+    let mode = Input::with_current(|input| validate_info_refs(input))?;
 
-    let advertise_refs = Input::with_get(|input| input.get::<Repository>().stateless_rpc(mode).advertise_refs());
+    let advertise_refs = Input::with_current(|input| input.get::<Repository>().stateless_rpc(mode).advertise_refs());
 
     let output = await!(advertise_refs)?;
 
@@ -81,11 +81,11 @@ fn validate_info_refs(cx: &Input) -> Result<RpcMode, HandleError> {
 
 #[async]
 fn handle_rpc(mode: RpcMode) -> tsukuyomi::Result<Response<ResponseBody>> {
-    Input::with_get(|input| validate_rpc(input, mode))?;
+    Input::with_current(|input| validate_rpc(input, mode))?;
 
-    let body = Input::with_get(|input| input.body_mut().read_all().map_err(Error::critical));
+    let body = Input::with_current(|input| input.body_mut().read_all().map_err(Error::critical));
 
-    let rpc_call = Input::with_get(|input| input.get::<Repository>().stateless_rpc(mode).call(body));
+    let rpc_call = Input::with_current(|input| input.get::<Repository>().stateless_rpc(mode).call(body));
     let output = await!(rpc_call)?;
 
     Response::builder()

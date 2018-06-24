@@ -15,8 +15,8 @@ pub struct Response {
 
 impl HttpResponse for Response {}
 
-pub fn get_posts() -> impl Future<Item = Json<Response>, Error = Error> + Send + 'static {
-    Input::with_get(|input| get_conn(input.get()))
+pub fn get_posts(input: &mut Input) -> impl Future<Item = Json<Response>, Error = Error> + Send + 'static {
+    get_conn(input.get())
         .and_then(|conn| {
             run_blocking(move || {
                 use schema::posts::dsl::*;

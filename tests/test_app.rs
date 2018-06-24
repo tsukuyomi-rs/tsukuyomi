@@ -49,7 +49,7 @@ fn test_case3_post_body() {
         .mount("/", |m| {
             m.post("/hello").handle(Handler::new_fully_async(|| {
                 lazy(|| {
-                    let read_all = Input::with_get(|input| input.body_mut().read_all());
+                    let read_all = Input::with_current(|input| input.body_mut().read_all());
                     read_all.convert_to::<String>()
                 })
             }));

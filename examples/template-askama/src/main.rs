@@ -31,8 +31,8 @@ struct Hello {
     name: String,
 }
 
-fn index(_: &mut Input) -> Template<Hello> {
-    let name = Input::with_get(|input| input.params()[0].to_owned());
+fn index(input: &mut Input) -> Template<Hello> {
+    let name = input.params()[0].to_owned();
     Template(Hello { name: name })
 }
 

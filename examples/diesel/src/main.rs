@@ -26,7 +26,7 @@ fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .manage(pool)
         .mount("/posts", |r| {
-            r.get("/").handle(Handler::new_fully_async(api::get_posts));
+            r.get("/").handle(Handler::new_async(api::get_posts));
         })
         .finish()?;
 
