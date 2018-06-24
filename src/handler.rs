@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+//! Components for managing the handler functions.
 
 use std::fmt;
 
@@ -7,6 +7,7 @@ use future::{Future, Poll};
 use input::Input;
 use output::{Output, Responder};
 
+/// A type for wrapping the handler function used in the framework.
 #[derive(Debug)]
 pub struct Handler(HandlerKind);
 
@@ -145,6 +146,7 @@ impl Handler {
         })))
     }
 
+    /// Calls the underlying handler function with the provided reference to `Input`.
     pub fn handle(&self, input: &mut Input) -> Handle {
         match self.0 {
             HandlerKind::Ready(ref f) => Handle(HandleKind::Ready(Some(f(input)))),
@@ -153,6 +155,7 @@ impl Handler {
     }
 }
 
+/// A type representing the return value from `Handler::handle`.
 #[derive(Debug)]
 pub struct Handle(HandleKind);
 
@@ -169,15 +172,27 @@ impl fmt::Debug for HandleKind {
 }
 
 impl Handle {
+    /// Creates a `Handle` from an HTTP response.
     pub fn ok(output: Output) -> Handle {
         Handle(HandleKind::Ready(Some(Ok(output))))
     }
 
+    /// Creates a `Handle` from an error value.
     pub fn err<E>(err: E) -> Handle
     where
         E: Into<Error>,
     {
         Handle(HandleKind::Ready(Some(Err(err.into()))))
+    }
+
+    /// Creates a `Handle` from a future.
+    pub fn async<F>(mut future: F) -> Handle
+    where
+        F: Future<Output = Result<Output, Error>> + Send + 'static,
+    {
+        Handle(HandleKind::Async(Box::new(move |input| {
+            input.with_set_current(|| future.poll())
+        })))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Result<Output, Error>> {
