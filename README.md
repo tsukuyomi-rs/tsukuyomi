@@ -1,5 +1,7 @@
 <img src="https://github.com/ubnt-intrepid/tsukuyomi/blob/master/logo/tsukuyomi-header.png" alt="header" width="500" />
 
+---
+
 [![Crates.io](https://img.shields.io/crates/v/tsukuyomi.svg)](https://crates.io/crates/tsukuyomi)
 [![Crates.io (Downloads)](https://img.shields.io/crates/d/tsukuyomi.svg)](https://crates.io/crates/tsukuyomi)
 [![Docs.rs](https://docs.rs/tsukuyomi/badge.svg)](https://docs.rs/tsukuyomi)
