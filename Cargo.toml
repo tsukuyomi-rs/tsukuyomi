@@ -67,7 +67,7 @@ matches = "0.1.6"
 tokio-uds = "0.2.0"
 
 [features]
-default = ["tls", "session"]
-session = ["cookie/secure"]
+default = ["tls", "secure"]
+secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
 nightly = []
