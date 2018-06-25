@@ -62,6 +62,7 @@ state = "0.4"
 
 [dev-dependencies]
 matches = "0.1.6"
+time = "0.1.40"
 
 [target.'cfg(unix)'.dependencies]
 tokio-uds = "0.2.0"
