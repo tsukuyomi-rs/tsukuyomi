@@ -34,6 +34,7 @@ members = [
   "examples/diesel",
   "examples/git-server",
   "examples/json",
+  "examples/juniper",
   "examples/lines",
   "examples/routing",
   "examples/template-askama",
