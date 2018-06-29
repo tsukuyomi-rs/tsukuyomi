@@ -18,7 +18,7 @@ use tsukuyomi::output::ResponseBody;
 use tsukuyomi::{App, Error, Handler, Input};
 
 use failure::{format_err, Fail};
-use futures::prelude::*;
+use futures::prelude::{async, await, Future};
 use http::{header, Response, StatusCode};
 use serde::Deserialize;
 use std::{env, fs};
