@@ -5,7 +5,7 @@
 extern crate futures_await as futures;
 extern crate tsukuyomi;
 
-use futures::prelude::*;
+use futures::prelude::{async, await, Future};
 use tsukuyomi::{App, Error, Handler, Input};
 
 #[async]
