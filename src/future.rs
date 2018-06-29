@@ -162,13 +162,25 @@ where
     }
 }
 
+/// A helper macro for extracting the successful value from a `Poll<T>`.
 #[macro_export]
-macro_rules! ready {
+macro_rules! ready_compat {
     ($e:expr) => {{
-        use $crate::future::Poll;
-        match $e {
-            Poll::Ready(x) => x,
-            Poll::Pending => return Poll::Pending,
+        match $crate::future::Poll::from($e) {
+            $crate::future::Poll::Ready(x) => x,
+            $crate::future::Poll::Pending => return Poll::Pending,
+        }
+    }};
+}
+
+/// A helper macro for extracting the successful value from a `Poll<Result<T, E>>`.
+#[macro_export]
+macro_rules! try_ready_compat {
+    ($e:expr) => {{
+        match $crate::future::Poll::from($e) {
+            $crate::future::Poll::Ready(Ok(x)) => x,
+            $crate::future::Poll::Ready(Err(err)) => return $crate::future::Poll::Ready(Err(Into::into(err))),
+            $crate::future::Poll::Pending => return $crate::future::Poll::Pending,
         }
     }};
 }

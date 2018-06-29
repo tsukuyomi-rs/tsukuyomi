@@ -1,17 +1,19 @@
 //! Components for receiving incoming request bodies.
 
 use bytes::{Buf, Bytes, BytesMut};
-use futures::{Future, Poll, Stream};
+use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
 use hyper::upgrade::OnUpgrade;
 use hyperx::header::ContentType;
 use mime;
 use std::borrow::Cow;
-use std::mem;
+use std::marker::PhantomData;
 use std::ops::Deref;
+use std::{fmt, mem};
 
 use error::{CritError, Error};
+use future;
 use input::Input;
 
 // ==== RequestBody ====
@@ -206,17 +208,6 @@ pub struct ReadAll {
     state: ReadAllState,
 }
 
-impl ReadAll {
-    /// Creates a future from `self` that will convert the received data into a value of `T`.
-    pub fn convert_to<T>(self) -> impl Future<Item = T, Error = Error> + Send + 'static
-    where
-        T: FromData + Send + 'static,
-    {
-        self.map_err(Error::critical)
-            .and_then(|body| Input::with_current(|input| T::from_data(body, &*input)))
-    }
-}
-
 #[derive(Debug)]
 enum ReadAllState {
     Init(Option<Body>),
@@ -224,17 +215,15 @@ enum ReadAllState {
     Done,
 }
 
-impl Future for ReadAll {
-    type Item = Bytes;
-    type Error = CritError;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+impl ReadAll {
+    /// Attempts to receive the entire of message data.
+    pub fn poll_ready(&mut self) -> future::Poll<Result<Bytes, CritError>> {
         use self::ReadAllState::*;
         loop {
             match self.state {
                 Init(..) => {}
                 Receiving(ref mut body, ref mut buf) => {
-                    while let Some(chunk) = try_ready!(body.poll_data()) {
+                    while let Some(chunk) = try_ready_compat!(body.poll_data()) {
                         buf.extend_from_slice(&*chunk);
                     }
                 }
@@ -242,22 +231,79 @@ impl Future for ReadAll {
             }
 
             match mem::replace(&mut self.state, Done) {
-                Init(body) => {
-                    let body = body.ok_or_else(|| format_err!("").compat())?;
+                Init(Some(body)) => {
                     self.state = Receiving(body, BytesMut::new());
                     continue;
                 }
+                Init(None) => return future::Poll::Ready(Err(format_err!("").compat().into())),
                 Receiving(_body, buf) => {
                     // debug_assert!(body.is_end_stream());
-                    return Ok(buf.freeze().into());
+                    return future::Poll::Ready(Ok(buf.freeze()));
                 }
                 Done => unreachable!(),
             }
         }
     }
+
+    /// Creates a future from `self` that will convert the received data into a value of `T`.
+    pub fn convert_to<T>(self) -> ConvertTo<T>
+    where
+        T: FromData + 'static,
+    {
+        ConvertTo {
+            read_all: self,
+            _marker: PhantomData,
+        }
+    }
 }
 
-// ==== FromData ====
+impl Future for ReadAll {
+    type Item = Bytes;
+    type Error = CritError;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.poll_ready().into()
+    }
+}
+
+// ==== ConvertTo ====
+
+/// A future to receive the entire of message body and then convert the data into a value of `T`.
+#[must_use = "futures do nothing unless polled"]
+pub struct ConvertTo<T> {
+    read_all: ReadAll,
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> fmt::Debug for ConvertTo<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ConvertTo").field("read_all", &self.read_all).finish()
+    }
+}
+
+impl<T> ConvertTo<T>
+where
+    T: FromData,
+{
+    /// Attempts to convert the incoming message data into an value of `T`.
+    pub fn poll_ready(&mut self, input: &Input) -> future::Poll<Result<T, Error>> {
+        let data = try_ready_compat!(self.read_all.poll().map_err(Error::critical));
+        future::Poll::Ready(T::from_data(data, input))
+    }
+}
+
+impl<T> Future for ConvertTo<T>
+where
+    T: FromData,
+{
+    type Item = T;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let data = try_ready!(self.read_all.poll().map_err(Error::critical));
+        Input::with_current(|input| T::from_data(data, input)).map(Async::Ready)
+    }
+}
 
 /// A trait representing the conversion to certain type.
 pub trait FromData: Sized {

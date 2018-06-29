@@ -96,94 +96,78 @@ impl AppServiceFuture {
     fn poll_in_flight(&mut self) -> Poll<Result<Output, Error>> {
         use self::AppServiceFutureState::*;
 
-        enum Polled {
-            BeforeHandle(Result<Option<Output>, Error>),
-            Handle(Result<Output, Error>),
-            AfterHandle(Result<Output, Error>),
-        }
-
         let input = self.input.as_mut().expect("This future has already polled");
         let global = &*self.global;
 
-        let ret = loop {
-            let polled = match self.state {
+        loop {
+            let output = match self.state {
                 Initial => None,
-                BeforeHandle(ref mut in_flight, ..) => Some(Polled::BeforeHandle(ready!(in_flight.poll_ready(input)))),
-                Handle(ref mut in_flight) => Some(Polled::Handle(ready!(in_flight.poll_ready(input)))),
-                AfterHandle(ref mut in_flight, ..) => Some(Polled::AfterHandle(ready!(in_flight.poll_ready(input)))),
+                BeforeHandle(ref mut in_flight, ..) => try_ready_compat!(in_flight.poll_ready(input)),
+                Handle(ref mut in_flight) => Some(try_ready_compat!(in_flight.poll_ready(input))),
+                AfterHandle(ref mut in_flight, ..) => Some(try_ready_compat!(in_flight.poll_ready(input))),
                 _ => panic!("unexpected state"),
             };
 
-            match (mem::replace(&mut self.state, Done), polled) {
+            match (mem::replace(&mut self.state, Done), output) {
                 (Initial, None) => {
                     if let Some(modifier) = global.modifiers().get(0) {
                         self.state = BeforeHandle(modifier.before_handle(input), 1);
                     } else {
-                        let (i, params) = match global.router().recognize(input.uri().path(), input.method()) {
-                            Ok(v) => v,
-                            Err(err) => break Err(err),
-                        };
+                        let (i, params) =
+                            try_ready_compat!(global.router().recognize(input.uri().path(), input.method()));
                         input.parts.route = Some((i, params));
                         self.state = Handle(global.router()[i].handler().handle(input));
                     }
                 }
 
-                (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(Some(output))))) => {
+                (BeforeHandle(_, current), Some(output)) => {
                     if current <= 1 {
-                        break Ok(output);
+                        break Poll::Ready(Ok(output));
                     }
                     let modifier = &global.modifiers()[current - 2];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 2);
                 }
 
-                (BeforeHandle(_, current), Some(Polled::BeforeHandle(Ok(None)))) => {
+                (BeforeHandle(_, current), None) => {
                     if let Some(modifier) = global.modifiers().get(current) {
                         self.state = BeforeHandle(modifier.before_handle(input), current + 1);
                     } else {
-                        let (i, params) = match global.router().recognize(input.uri().path(), input.method()) {
-                            Ok(v) => v,
-                            Err(err) => break Err(err),
-                        };
+                        let (i, params) =
+                            try_ready_compat!(global.router().recognize(input.uri().path(), input.method()));
                         input.parts.route = Some((i, params));
                         self.state = Handle(global.router()[i].handler().handle(input));
                     }
                 }
 
-                (Handle(..), Some(Polled::Handle(Ok(output)))) => {
+                (Handle(..), Some(output)) => {
                     let current = input.state.modifiers().len();
                     if current == 0 {
-                        break Ok(output);
+                        break Poll::Ready(Ok(output));
                     }
                     let modifier = &global.modifiers()[current - 1];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
                 }
 
-                (AfterHandle(_, current), Some(Polled::AfterHandle(Ok(output)))) => {
+                (AfterHandle(_, current), Some(output)) => {
                     if current == 0 {
-                        break Ok(output);
+                        break Poll::Ready(Ok(output));
                     }
                     let modifier = &global.modifiers()[current - 1];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
-                }
-
-                | (BeforeHandle(..), Some(Polled::BeforeHandle(Err(err))))
-                | (Handle(..), Some(Polled::Handle(Err(err))))
-                | (AfterHandle(..), Some(Polled::AfterHandle(Err(err)))) => {
-                    break Err(err);
                 }
 
                 _ => panic!("unexpected state"),
             }
-        };
-
-        Poll::Ready(ret)
+        }
     }
 }
 
 impl AppServiceFuture {
     #[allow(missing_docs)]
     pub fn poll_ready(&mut self) -> Poll<Result<Response<ResponseBody>, CritError>> {
-        let polled = ready!(self.poll_in_flight());
+        let polled = ready_compat!(self.poll_in_flight());
+        self.state = AppServiceFutureState::Done;
+
         let input = self.input.take().expect("This future has already polled");
         match polled {
             Ok(output) => Poll::Ready(self.handle_response(output, input)),

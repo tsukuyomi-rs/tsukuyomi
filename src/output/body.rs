@@ -140,18 +140,13 @@ impl Receive {
             ReceiveInner::Sized(ref mut data) => Poll::Ready(Ok(Data(DataInner::Sized(
                 data.take().expect("The response body has already resolved").into(),
             )))),
-            ReceiveInner::Chunked(ref mut body, ref mut chunks) => loop {
-                match ready!(body.poll().into()) {
-                    Ok(Some(chunk)) => {
-                        chunks.push(chunk.into());
-                    }
-                    Ok(None) => {
-                        let chunks = mem::replace(chunks, vec![]);
-                        return Poll::Ready(Ok(Data(DataInner::Chunked(chunks))));
-                    }
-                    Err(err) => return Poll::Ready(Err(err.into())),
+            ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
+                while let Some(chunk) = try_ready_compat!(body.poll()) {
+                    chunks.push(chunk.into());
                 }
-            },
+                let chunks = mem::replace(chunks, vec![]);
+                Poll::Ready(Ok(Data(DataInner::Chunked(chunks))))
+            }
         }
     }
 }
