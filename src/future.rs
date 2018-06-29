@@ -7,9 +7,6 @@
 
 use futures;
 
-#[cfg(feature = "nightly")]
-use std::task as stdtask;
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Poll<T> {
     Ready(T),
@@ -94,26 +91,6 @@ impl<T, E> Into<Result<futures::Async<T>, E>> for Poll<T> {
         match self {
             Poll::Ready(v) => Ok(futures::Async::Ready(v)),
             Poll::Pending => Ok(futures::Async::NotReady),
-        }
-    }
-}
-
-#[cfg(feature = "nightly")]
-impl<T> From<stdtask::Poll<T>> for Poll<T> {
-    fn from(p: stdtask::Poll<T>) -> Poll<T> {
-        match p {
-            stdtask::Poll::Ready(v) => Poll::Ready(v),
-            stdtask::Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-#[cfg(feature = "nightly")]
-impl<T> Into<stdtask::Poll<T>> for Poll<T> {
-    fn into(self) -> stdtask::Poll<T> {
-        match self {
-            Poll::Ready(v) => stdtask::Poll::Ready(v),
-            Poll::Pending => stdtask::Poll::Pending,
         }
     }
 }
