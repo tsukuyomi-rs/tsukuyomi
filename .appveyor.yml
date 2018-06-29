@@ -32,9 +32,9 @@ test_script:
   - cargo clean
   - cargo test
   - cargo test --no-default-features
-  - if [%TOOLCHAIN%]==[nightly] (
-      cargo test --features nightly
-    )
+  #- if [%TOOLCHAIN%]==[nightly] (
+  #    cargo test --features nightly
+  #  )
   # FIXME: move examples to independent repository.
   - cargo test -p example-basic
   # - cargo test -p example-diesel

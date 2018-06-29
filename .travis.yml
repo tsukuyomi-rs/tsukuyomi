@@ -71,7 +71,7 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
-        - cargo test --features nightly
+        #- cargo test --features nightly
         # examples
         - cargo test -p example-basic
         - cargo test -p example-diesel
