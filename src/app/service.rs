@@ -1,7 +1,7 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
 use futures::future::lazy;
-use futures::{self, Future as _Future};
+use futures::{self, Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
@@ -11,7 +11,6 @@ use std::sync::Arc;
 use tokio;
 
 use error::{CritError, Error};
-use future::Poll;
 use handler::Handle;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
@@ -93,7 +92,7 @@ enum AppServiceFutureState {
 }
 
 impl AppServiceFuture {
-    fn poll_in_flight(&mut self) -> Poll<Result<Output, Error>> {
+    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
         use self::AppServiceFutureState::*;
 
         let input = self.input.as_mut().expect("This future has already polled");
@@ -102,9 +101,9 @@ impl AppServiceFuture {
         loop {
             let output = match self.state {
                 Initial => None,
-                BeforeHandle(ref mut in_flight, ..) => try_ready_compat!(in_flight.poll_ready(input)),
-                Handle(ref mut in_flight) => Some(try_ready_compat!(in_flight.poll_ready(input))),
-                AfterHandle(ref mut in_flight, ..) => Some(try_ready_compat!(in_flight.poll_ready(input))),
+                BeforeHandle(ref mut in_flight, ..) => try_ready!(in_flight.poll_ready(input)),
+                Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(input))),
+                AfterHandle(ref mut in_flight, ..) => Some(try_ready!(in_flight.poll_ready(input))),
                 _ => panic!("unexpected state"),
             };
 
@@ -113,8 +112,7 @@ impl AppServiceFuture {
                     if let Some(modifier) = global.modifiers().get(0) {
                         self.state = BeforeHandle(modifier.before_handle(input), 1);
                     } else {
-                        let (i, params) =
-                            try_ready_compat!(global.router().recognize(input.uri().path(), input.method()));
+                        let (i, params) = global.router().recognize(input.uri().path(), input.method())?;
                         input.parts.route = Some((i, params));
                         self.state = Handle(global.router()[i].handler().handle(input));
                     }
@@ -122,7 +120,7 @@ impl AppServiceFuture {
 
                 (BeforeHandle(_, current), Some(output)) => {
                     if current <= 1 {
-                        break Poll::Ready(Ok(output));
+                        break Ok(Async::Ready(output));
                     }
                     let modifier = &global.modifiers()[current - 2];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 2);
@@ -132,8 +130,7 @@ impl AppServiceFuture {
                     if let Some(modifier) = global.modifiers().get(current) {
                         self.state = BeforeHandle(modifier.before_handle(input), current + 1);
                     } else {
-                        let (i, params) =
-                            try_ready_compat!(global.router().recognize(input.uri().path(), input.method()));
+                        let (i, params) = global.router().recognize(input.uri().path(), input.method())?;
                         input.parts.route = Some((i, params));
                         self.state = Handle(global.router()[i].handler().handle(input));
                     }
@@ -142,7 +139,7 @@ impl AppServiceFuture {
                 (Handle(..), Some(output)) => {
                     let current = input.state.modifiers().len();
                     if current == 0 {
-                        break Poll::Ready(Ok(output));
+                        break Ok(Async::Ready(output));
                     }
                     let modifier = &global.modifiers()[current - 1];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
@@ -150,7 +147,7 @@ impl AppServiceFuture {
 
                 (AfterHandle(_, current), Some(output)) => {
                     if current == 0 {
-                        break Poll::Ready(Ok(output));
+                        break Ok(Async::Ready(output));
                     }
                     let modifier = &global.modifiers()[current - 1];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
@@ -164,14 +161,18 @@ impl AppServiceFuture {
 
 impl AppServiceFuture {
     #[allow(missing_docs)]
-    pub fn poll_ready(&mut self) -> Poll<Result<Response<ResponseBody>, CritError>> {
-        let polled = ready_compat!(self.poll_in_flight());
+    pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
+        let polled = match self.poll_in_flight() {
+            Ok(Async::Ready(output)) => Ok(output),
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(err) => Err(err),
+        };
         self.state = AppServiceFutureState::Done;
 
         let input = self.input.take().expect("This future has already polled");
         match polled {
-            Ok(output) => Poll::Ready(self.handle_response(output, input)),
-            Err(err) => Poll::Ready(self.handle_error(err, input)),
+            Ok(output) => self.handle_response(output, input).map(Async::Ready),
+            Err(err) => self.handle_error(err, input).map(Async::Ready),
         }
     }
 
@@ -238,7 +239,6 @@ impl futures::Future for AppServiceFuture {
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
         self.poll_ready()
-            .map_ok(|response| response.map(ResponseBody::into_hyp))
-            .into()
+            .map(|x| x.map(|response| response.map(ResponseBody::into_hyp)))
     }
 }

@@ -1,12 +1,11 @@
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Async, Poll, Stream};
 use hyper::body::{Body, Chunk};
 use std::borrow::Cow;
 use std::error::Error as StdError;
 use std::{mem, str};
 
 use error::CritError;
-use future::Poll;
 use input;
 
 /// A type representing the message body in HTTP response.
@@ -134,18 +133,18 @@ enum ReceiveInner {
 }
 
 impl Receive {
-    pub(crate) fn poll_ready(&mut self) -> Poll<Result<Data, CritError>> {
+    pub(crate) fn poll_ready(&mut self) -> Poll<Data, CritError> {
         match self.0 {
-            ReceiveInner::Empty => Poll::Ready(Ok(Data(DataInner::Empty))),
-            ReceiveInner::Sized(ref mut data) => Poll::Ready(Ok(Data(DataInner::Sized(
+            ReceiveInner::Empty => Ok(Async::Ready(Data(DataInner::Empty))),
+            ReceiveInner::Sized(ref mut data) => Ok(Async::Ready(Data(DataInner::Sized(
                 data.take().expect("The response body has already resolved").into(),
             )))),
             ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
-                while let Some(chunk) = try_ready_compat!(body.poll()) {
+                while let Some(chunk) = try_ready!(body.poll()) {
                     chunks.push(chunk.into());
                 }
                 let chunks = mem::replace(chunks, vec![]);
-                Poll::Ready(Ok(Data(DataInner::Chunked(chunks))))
+                Ok(Async::Ready(Data(DataInner::Chunked(chunks))))
             }
         }
     }

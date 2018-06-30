@@ -91,6 +91,38 @@ fn main() -> tsukuyomi::AppResult<()> {
 }
 ```
 
+## Using `futures-await`
+
+```rust
+#![feature(proc_macro, proc_macro_non_items, generators)]
+
+extern crate tsukuyomi;
+extern crate futures_await as futures;
+
+use futures::prelude::{async, await, Future};
+use tsukuyomi::{App, Input};
+
+// The definition of asynchronous handler by using futures-await.
+// Because #[async] function cannot have any references, the borrowing of `Input` is written
+// by using Input::with_current().
+#[async]
+fn handler() -> tsukuyomi::Result<String> {
+    let read_all = Input::with_current(|input| input.body_mut().read_all());
+    let message: String = await!(read_all.convert_to())?;
+    Ok(format!("Received: {}", message))
+}
+
+fn main() -> tsukuyomi::AppResult<()> {
+    let app = App::builder()
+        .mount("/", |m| {
+            m.get("/").handle(Handler::new_fully_async(handler));
+        })
+        .finish()?;
+
+    tsukuyomi::run(app);
+}
+```
+
 More examples are located in [`examples/`](examples/).
 
 If you want to experiment with these examples, try to clone this repository and run the following command:

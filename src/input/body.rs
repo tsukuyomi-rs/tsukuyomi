@@ -13,7 +13,6 @@ use std::ops::Deref;
 use std::{fmt, mem};
 
 use error::{CritError, Error};
-use future;
 use input::Input;
 
 // ==== RequestBody ====
@@ -217,13 +216,13 @@ enum ReadAllState {
 
 impl ReadAll {
     /// Attempts to receive the entire of message data.
-    pub fn poll_ready(&mut self) -> future::Poll<Result<Bytes, CritError>> {
+    pub fn poll_ready(&mut self) -> Poll<Bytes, CritError> {
         use self::ReadAllState::*;
         loop {
             match self.state {
                 Init(..) => {}
                 Receiving(ref mut body, ref mut buf) => {
-                    while let Some(chunk) = try_ready_compat!(body.poll_data()) {
+                    while let Some(chunk) = try_ready!(body.poll_data()) {
                         buf.extend_from_slice(&*chunk);
                     }
                 }
@@ -235,10 +234,10 @@ impl ReadAll {
                     self.state = Receiving(body, BytesMut::new());
                     continue;
                 }
-                Init(None) => return future::Poll::Ready(Err(format_err!("").compat().into())),
+                Init(None) => return Err(format_err!("").compat().into()),
                 Receiving(_body, buf) => {
                     // debug_assert!(body.is_end_stream());
-                    return future::Poll::Ready(Ok(buf.freeze()));
+                    return Ok(Async::Ready(buf.freeze()));
                 }
                 Done => unreachable!(),
             }
@@ -286,9 +285,9 @@ where
     T: FromData,
 {
     /// Attempts to convert the incoming message data into an value of `T`.
-    pub fn poll_ready(&mut self, input: &Input) -> future::Poll<Result<T, Error>> {
-        let data = try_ready_compat!(self.read_all.poll().map_err(Error::critical));
-        future::Poll::Ready(T::from_data(data, input))
+    pub fn poll_ready(&mut self, input: &Input) -> Poll<T, Error> {
+        let data = try_ready!(self.read_all.poll().map_err(Error::critical));
+        T::from_data(data, input).map(Async::Ready)
     }
 }
 

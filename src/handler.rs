@@ -1,9 +1,9 @@
 //! Components for managing the handler functions.
 
+use futures::{Async, Future, Poll};
 use std::fmt;
 
 use error::Error;
-use future::{Future, Poll};
 use input::Input;
 use output::{Output, Responder};
 
@@ -13,7 +13,7 @@ pub struct Handler(HandlerKind);
 
 enum HandlerKind {
     Ready(Box<dyn Fn(&mut Input) -> Result<Output, Error> + Send + Sync>),
-    Async(Box<dyn Fn(&mut Input) -> Box<dyn FnMut(&mut Input) -> Poll<Result<Output, Error>> + Send> + Send + Sync>),
+    Async(Box<dyn Fn(&mut Input) -> Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send> + Send + Sync>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -93,11 +93,15 @@ impl Handler {
     pub fn new_async<R>(handler: impl Fn(&mut Input) -> R + Send + Sync + 'static) -> Handler
     where
         R: Future + Send + 'static,
-        R::Output: Responder,
+        R::Item: Responder,
+        Error: From<R::Error>,
     {
         Handler(HandlerKind::Async(Box::new(move |input| {
             let mut future = handler(input);
-            Box::new(move |input| input.with_set_current(|| future.poll()).map(|x| x.respond_to(input)))
+            Box::new(move |input| {
+                let item = try_ready!(input.with_set_current(|| future.poll()));
+                item.respond_to(input).map(Async::Ready)
+            })
         })))
     }
 
@@ -138,11 +142,15 @@ impl Handler {
     pub fn new_fully_async<R>(handler: impl Fn() -> R + Send + Sync + 'static) -> Handler
     where
         R: Future + Send + 'static,
-        R::Output: Responder,
+        R::Item: Responder,
+        Error: From<R::Error>,
     {
         Handler(HandlerKind::Async(Box::new(move |_| {
             let mut future = handler();
-            Box::new(move |input| input.with_set_current(|| future.poll()).map(|x| x.respond_to(input)))
+            Box::new(move |input| {
+                let item = try_ready!(input.with_set_current(|| future.poll()));
+                item.respond_to(input).map(Async::Ready)
+            })
         })))
     }
 
@@ -161,7 +169,7 @@ pub struct Handle(HandleKind);
 
 enum HandleKind {
     Ready(Option<Result<Output, Error>>),
-    Async(Box<dyn FnMut(&mut Input) -> Poll<Result<Output, Error>> + Send>),
+    Async(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -188,16 +196,16 @@ impl Handle {
     /// Creates a `Handle` from a future.
     pub fn async<F>(mut future: F) -> Handle
     where
-        F: Future<Output = Result<Output, Error>> + Send + 'static,
+        F: Future<Item = Output, Error = Error> + Send + 'static,
     {
         Handle(HandleKind::Async(Box::new(move |input| {
             input.with_set_current(|| future.poll())
         })))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Result<Output, Error>> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
         match self.0 {
-            HandleKind::Ready(ref mut res) => Poll::Ready(res.take().expect("this future has already polled")),
+            HandleKind::Ready(ref mut res) => res.take().expect("this future has already polled").map(Async::Ready),
             HandleKind::Async(ref mut f) => (f)(input),
         }
     }

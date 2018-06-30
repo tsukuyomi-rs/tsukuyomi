@@ -37,10 +37,10 @@
 //!     .unwrap();
 //! ```
 
+use futures::{self, Future, Poll};
 use std::fmt;
 
 use error::Error;
-use future::{Future, Poll};
 use input::Input;
 use output::Output;
 
@@ -77,7 +77,7 @@ pub struct BeforeHandle(BeforeHandleState);
 
 enum BeforeHandleState {
     Ready(Option<Result<Option<Output>, Error>>),
-    Async(Box<dyn Future<Output = Result<Option<Output>, Error>> + Send>),
+    Async(Box<dyn Future<Item = Option<Output>, Error = Error> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -129,15 +129,17 @@ impl BeforeHandle {
     /// Creates a `BeforeHandle` from a future.
     pub fn async<F>(future: F) -> BeforeHandle
     where
-        F: Future<Output = Result<Option<Output>, Error>> + Send + 'static,
+        F: Future<Item = Option<Output>, Error = Error> + Send + 'static,
     {
         BeforeHandle(BeforeHandleState::Async(Box::new(future)))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Result<Option<Output>, Error>> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Option<Output>, Error> {
         use self::BeforeHandleState::*;
         match self.0 {
-            Ready(ref mut res) => Poll::Ready(res.take().expect("BeforeHandle has already polled")),
+            Ready(ref mut res) => res.take()
+                .expect("BeforeHandle has already polled")
+                .map(futures::Async::Ready),
             Async(ref mut f) => input.with_set_current(|| f.poll()),
         }
     }
@@ -151,7 +153,7 @@ pub struct AfterHandle(AfterHandleState);
 
 enum AfterHandleState {
     Ready(Option<Result<Output, Error>>),
-    Async(Box<dyn Future<Output = Result<Output, Error>> + Send>),
+    Async(Box<dyn Future<Item = Output, Error = Error> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -186,15 +188,17 @@ impl AfterHandle {
     /// Creates an `AfterHandle` from a future.
     pub fn async<F>(future: F) -> AfterHandle
     where
-        F: Future<Output = Result<Output, Error>> + Send + 'static,
+        F: Future<Item = Output, Error = Error> + Send + 'static,
     {
         AfterHandle(AfterHandleState::Async(Box::new(future)))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Result<Output, Error>> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
         use self::AfterHandleState::*;
         match self.0 {
-            Ready(ref mut res) => Poll::Ready(res.take().expect("AfterHandle has already polled")),
+            Ready(ref mut res) => res.take()
+                .expect("AfterHandle has already polled")
+                .map(futures::Async::Ready),
             Async(ref mut f) => input.with_set_current(|| f.poll()),
         }
     }
