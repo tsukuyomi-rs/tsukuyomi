@@ -5,7 +5,8 @@ use std::mem;
 use std::ops::Index;
 
 use error::Error;
-use handler::Handler;
+use handler::{Handle, Handler};
+use input::Input;
 
 use super::endpoint::Endpoint;
 use super::recognizer::Recognizer;
@@ -93,14 +94,19 @@ impl Router {
         self.endpoints.get(i)
     }
 
-    /// Performs the routing and returns the index of a `Route` and a list of ranges representing
-    /// the extracted value of parameters.
-    pub fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
+    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
         let (entry, params) = self.recognizer.recognize(path).ok_or_else(|| Error::not_found())?;
-        entry
+        let i = entry
             .recognize(method, &self.config)
-            .map(|i| (i, params))
-            .ok_or_else(|| Error::method_not_allowed())
+            .ok_or_else(|| Error::method_not_allowed())?;
+        Ok((i, params))
+    }
+
+    pub(crate) fn handle(&self, input: &mut Input) -> Result<Handle, Error> {
+        let (i, params) = self.recognize(input.uri().path(), input.method())?;
+        input.parts.route = Some((i, params));
+        let endpoint = &self.endpoints[i];
+        Ok(endpoint.handler().handle(input))
     }
 }
 
