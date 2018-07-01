@@ -39,6 +39,7 @@ matrix:
         - cargo test -p example-basic
         - cargo test -p example-diesel
         - cargo test -p example-json
+        - cargo test -p example-juniper
         - cargo test -p example-lines
         - cargo test -p example-routing
         - cargo test -p example-unix-socket
@@ -58,6 +59,7 @@ matrix:
         - cargo test -p example-basic
         - cargo test -p example-diesel
         - cargo test -p example-json
+        - cargo test -p example-juniper
         - cargo test -p example-lines
         - cargo test -p example-routing
         - cargo test -p example-unix-socket
@@ -72,10 +74,13 @@ matrix:
         - cargo test
         - cargo test --no-default-features
         #- cargo test --features nightly
+        # doctest
+        - cargo test -p doctest
         # examples
         - cargo test -p example-basic
         - cargo test -p example-diesel
         - cargo test -p example-json
+        - cargo test -p example-juniper
         - cargo test -p example-lines
         - cargo test -p example-routing
         - cargo test -p example-unix-socket

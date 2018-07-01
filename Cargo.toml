@@ -29,6 +29,8 @@ maintenance = { status = "actively-developed" }
 
 [workspace]
 members = [
+  "doctest",
+
   "examples/async-await",
   "examples/basic",
   "examples/diesel",

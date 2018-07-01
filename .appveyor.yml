@@ -35,6 +35,9 @@ test_script:
   #- if [%TOOLCHAIN%]==[nightly] (
   #    cargo test --features nightly
   #  )
+  - if [%TOOLCHAIN%]==[nightly] (
+      cargo test -p doctest
+    )
   # FIXME: move examples to independent repository.
   - cargo test -p example-basic
   # - cargo test -p example-diesel
