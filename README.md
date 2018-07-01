@@ -47,7 +47,7 @@ futures = "0.1.21"  # NOTE: DO NOT use 0.2.*
 http = "0.1.6"
 ```
 
-```rust
+```rust,no_run
 extern crate tsukuyomi;
 extern crate futures;
 
@@ -72,8 +72,8 @@ fn async_handler(input: &mut Input)
         })
         .inspect(|_| {
             // You can access a mutable reference to `Input` stored in
-            // the task-local storage by using Input::with_get():
-            Input::with_get(|input| {
+            // the task-local storage by using Input::with_current():
+            Input::with_current(|input| {
                 println!("[debug] path = {}", input.uri().path());
             })
         })
@@ -87,20 +87,20 @@ fn main() -> tsukuyomi::AppResult<()> {
         })
         .finish()?;
 
-    tsukuyomi::run(app);
+    tsukuyomi::run(app)
 }
 ```
 
 ## Using `futures-await`
 
-```rust
+```rust,no_run
 #![feature(proc_macro, proc_macro_non_items, generators)]
 
 extern crate tsukuyomi;
 extern crate futures_await as futures;
 
 use futures::prelude::{async, await, Future};
-use tsukuyomi::{App, Input};
+use tsukuyomi::{App, Input, Handler};
 
 // The definition of asynchronous handler by using futures-await.
 // Because #[async] function cannot have any references, the borrowing of `Input` is written
@@ -115,11 +115,11 @@ fn handler() -> tsukuyomi::Result<String> {
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |m| {
-            m.get("/").handle(Handler::new_fully_async(handler));
+            m.post("/").handle(Handler::new_fully_async(handler));
         })
         .finish()?;
 
-    tsukuyomi::run(app);
+    tsukuyomi::run(app)
 }
 ```
 
