@@ -1,6 +1,8 @@
 use failure::{self, Fail};
 use fnv::FnvHashMap;
-use http::{HttpTryFrom, Method};
+use http::header::HeaderValue;
+use http::{header, HttpTryFrom, Method, Response};
+use std::collections::HashSet;
 use std::mem;
 use std::ops::Index;
 
@@ -13,16 +15,19 @@ use super::recognizer::Recognizer;
 use super::uri::{self, Uri};
 
 // TODO: treat trailing slashes
-// TODO: fallback options
 
 #[derive(Debug)]
 struct Config {
     fallback_head: bool,
+    fallback_options: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { fallback_head: true }
+        Config {
+            fallback_head: true,
+            fallback_options: false,
+        }
     }
 }
 
@@ -31,45 +36,64 @@ impl Default for Config {
 #[derive(Debug)]
 struct RouterEntry {
     routes: FnvHashMap<Method, usize>,
+    allowed_methods: HeaderValue,
 }
 
 impl RouterEntry {
     fn builder() -> RouterEntryBuilder {
-        RouterEntryBuilder { routes: vec![] }
+        RouterEntryBuilder {
+            routes: vec![],
+            methods: HashSet::new(),
+        }
     }
 
-    fn recognize(&self, method: &Method, config: &Config) -> Option<usize> {
-        if let Some(&i) = self.routes.get(method) {
-            return Some(i);
-        }
+    fn get(&self, method: &Method) -> Option<usize> {
+        self.routes.get(method).map(|&i| i)
+    }
 
-        if config.fallback_head && *method == Method::HEAD {
-            if let Some(&i) = self.routes.get(&Method::GET) {
-                return Some(i);
-            }
-        }
-
-        None
+    fn allowed_methods(&self) -> HeaderValue {
+        self.allowed_methods.clone()
     }
 }
 
 #[derive(Debug)]
 struct RouterEntryBuilder {
     routes: Vec<(Method, usize)>,
+    methods: HashSet<Method>,
 }
 
 impl RouterEntryBuilder {
     fn push(&mut self, method: &Method, i: usize) {
         self.routes.push((method.clone(), i));
+        self.methods.insert(method.clone());
     }
 
-    fn finish(self) -> RouterEntry {
-        let routes = self.routes.into_iter().collect();
-        RouterEntry { routes: routes }
+    fn finish(self) -> Result<RouterEntry, failure::Error> {
+        let RouterEntryBuilder { routes, mut methods } = self;
+
+        methods.insert(Method::OPTIONS);
+        let allowed_methods = methods.into_iter().fold(String::new(), |mut acc, method| {
+            if !acc.is_empty() {
+                acc += ", ";
+            }
+            acc += method.as_ref();
+            acc
+        });
+
+        Ok(RouterEntry {
+            routes: routes.into_iter().collect(),
+            allowed_methods: HeaderValue::from_shared(allowed_methods.into())?,
+        })
     }
 }
 
 // ==== Router ====
+
+#[derive(Debug)]
+enum Recognize {
+    Matched(usize, Vec<(usize, usize)>),
+    Options(HeaderValue),
+}
 
 /// An HTTP router.
 #[derive(Debug)]
@@ -94,19 +118,34 @@ impl Router {
         self.endpoints.get(i)
     }
 
-    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
+    fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, Error> {
         let (entry, params) = self.recognizer.recognize(path).ok_or_else(|| Error::not_found())?;
-        let i = entry
-            .recognize(method, &self.config)
-            .ok_or_else(|| Error::method_not_allowed())?;
-        Ok((i, params))
+        match entry.get(method) {
+            Some(i) => Ok(Recognize::Matched(i, params)),
+            None if self.config.fallback_head && *method == Method::HEAD => match entry.get(&Method::GET) {
+                Some(i) => Ok(Recognize::Matched(i, params)),
+                None => Err(Error::method_not_allowed()),
+            },
+            None if self.config.fallback_options && *method == Method::OPTIONS => {
+                Ok(Recognize::Options(entry.allowed_methods()))
+            }
+            None => Err(Error::method_not_allowed()),
+        }
     }
 
     pub(crate) fn handle(&self, input: &mut Input) -> Result<Handle, Error> {
-        let (i, params) = self.recognize(input.uri().path(), input.method())?;
-        input.parts.route = Some((i, params));
-        let endpoint = &self.endpoints[i];
-        Ok(endpoint.handler().handle(input))
+        match self.recognize(input.uri().path(), input.method())? {
+            Recognize::Matched(i, params) => {
+                input.parts.route = Some((i, params));
+                let endpoint = &self.endpoints[i];
+                Ok(endpoint.handler().handle(input))
+            }
+            Recognize::Options(allowed_methods) => {
+                let mut response = Response::new(());
+                response.headers_mut().insert(header::ALLOW, allowed_methods);
+                Ok(Handle::ok(response.into()))
+            }
+        }
     }
 }
 
@@ -182,6 +221,17 @@ impl Builder {
         self
     }
 
+    /// Sets whether the fallback to default OPTIONS handler if not registered is enabled or not.
+    ///
+    /// The default value is `false`.
+    pub fn fallback_options(&mut self, enabled: bool) -> &mut Self {
+        self.modify(move |self_| {
+            self_.config.get_or_insert_with(Default::default).fallback_options = enabled;
+            Ok(())
+        });
+        self
+    }
+
     fn modify(&mut self, f: impl FnOnce(&mut Self) -> Result<(), failure::Error>) {
         if self.result.is_ok() {
             self.result = f(self);
@@ -211,7 +261,7 @@ impl Builder {
 
             let mut builder = Recognizer::builder();
             for (path, entry) in collected_routes {
-                builder.insert(path.as_ref(), entry.finish());
+                builder.insert(path.as_ref(), entry.finish()?);
             }
 
             builder.finish()?
@@ -368,7 +418,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        assert_matches!(router.recognize("/", &Method::GET), Ok((0, _)));
+        assert_matches!(router.recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
 
         assert!(router.recognize("/path/to", &Method::GET).is_err());
         assert!(router.recognize("/", &Method::POST).is_err());
@@ -384,8 +434,8 @@ mod tests {
             .finish()
             .unwrap();
 
-        assert_matches!(router.recognize("/", &Method::GET), Ok((0, _)));
-        assert_matches!(router.recognize("/", &Method::POST), Ok((1, _)));
+        assert_matches!(router.recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
+        assert_matches!(router.recognize("/", &Method::POST), Ok(Recognize::Matched(1, _)));
 
         assert!(router.recognize("/", &Method::PUT).is_err());
     }
@@ -399,7 +449,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        assert_matches!(router.recognize("/", &Method::HEAD), Ok((0, _)));
+        assert_matches!(router.recognize("/", &Method::HEAD), Ok(Recognize::Matched(0, _)));
     }
 
     #[test]
@@ -413,6 +463,38 @@ mod tests {
             .unwrap();
 
         assert!(router.recognize("/", &Method::HEAD).is_err());
+    }
+
+    #[test]
+    fn fallback_options() {
+        let router = Router::builder()
+            .mount("/path/to", |m| {
+                m.get("/foo").handle(Handler::new_ready(|_| "a"));
+                m.post("/foo").handle(Handler::new_ready(|_| "b"));
+            })
+            .fallback_options(true)
+            .finish()
+            .unwrap();
+
+        // FIXME:
+        assert_matches!(
+            router.recognize("/path/to/foo", &Method::OPTIONS),
+            Ok(Recognize::Options(_))
+        );
+    }
+
+    #[test]
+    fn fallback_options_disabled() {
+        let router = Router::builder()
+            .mount("/path/to", |m| {
+                m.get("/foo").handle(Handler::new_ready(|_| "a"));
+                m.post("/foo").handle(Handler::new_ready(|_| "b"));
+            })
+            .fallback_options(false)
+            .finish()
+            .unwrap();
+
+        assert!(router.recognize("/path/to/foo", &Method::OPTIONS).is_err());
     }
 
     #[test]
@@ -433,10 +515,13 @@ mod tests {
             .finish()
             .unwrap();
 
-        assert_matches!(router.recognize("/foo", &Method::GET), Ok((0, _)));
-        assert_matches!(router.recognize("/bar", &Method::GET), Ok((1, _)));
-        assert_matches!(router.recognize("/baz", &Method::GET), Ok((3, _)));
-        assert_matches!(router.recognize("/baz/foobar", &Method::GET), Ok((4, _)));
+        assert_matches!(router.recognize("/foo", &Method::GET), Ok(Recognize::Matched(0, _)));
+        assert_matches!(router.recognize("/bar", &Method::GET), Ok(Recognize::Matched(1, _)));
+        assert_matches!(router.recognize("/baz", &Method::GET), Ok(Recognize::Matched(3, _)));
+        assert_matches!(
+            router.recognize("/baz/foobar", &Method::GET),
+            Ok(Recognize::Matched(4, _))
+        );
 
         assert!(router.recognize("/baz/", &Method::GET).is_err());
     }
