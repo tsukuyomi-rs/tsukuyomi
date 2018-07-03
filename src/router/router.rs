@@ -14,8 +14,6 @@ use super::endpoint::Endpoint;
 use super::recognizer::Recognizer;
 use super::uri::{self, Uri};
 
-// TODO: treat trailing slashes
-
 #[derive(Debug)]
 struct Config {
     fallback_head: bool,

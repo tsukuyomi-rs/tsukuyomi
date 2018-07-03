@@ -1,5 +1,4 @@
-//! [unstable]
-//! The implementation of router used by the framework.
+//! The implementation of router.
 
 pub mod recognizer;
 
