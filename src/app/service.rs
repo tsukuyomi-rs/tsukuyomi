@@ -112,9 +112,7 @@ impl AppServiceFuture {
                     if let Some(modifier) = global.modifiers().get(0) {
                         self.state = BeforeHandle(modifier.before_handle(input), 1);
                     } else {
-                        let (i, params) = global.router().recognize(input.uri().path(), input.method())?;
-                        input.parts.route = Some((i, params));
-                        self.state = Handle(global.router()[i].handler().handle(input));
+                        self.state = Handle(global.router().handle(input)?);
                     }
                 }
 
@@ -130,9 +128,7 @@ impl AppServiceFuture {
                     if let Some(modifier) = global.modifiers().get(current) {
                         self.state = BeforeHandle(modifier.before_handle(input), current + 1);
                     } else {
-                        let (i, params) = global.router().recognize(input.uri().path(), input.method())?;
-                        input.parts.route = Some((i, params));
-                        self.state = Handle(global.router()[i].handler().handle(input));
+                        self.state = Handle(global.router().handle(input)?);
                     }
                 }
 

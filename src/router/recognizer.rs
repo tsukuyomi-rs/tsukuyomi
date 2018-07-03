@@ -1,28 +1,27 @@
-//! The implementation of route recognizer based on radix tree.
+//! The implementation of route recognizer.
 
-// The original implementation is located at https://github.com/ubnt-intrepid/susanoo
+// NOTE: The original implementation was imported from https://github.com/ubnt-intrepid/susanoo
 
 use failure::Error;
 use std::{cmp, mem, str};
 
 /// Calculate the endpoint of longest common prefix between the two slices.
-fn lcp(s1: &str, s2: &str) -> usize {
-    s1.bytes()
-        .zip(s2.bytes())
+fn lcp(s1: &[u8], s2: &[u8]) -> usize {
+    s1.into_iter()
+        .zip(s2.into_iter())
         .position(|(s1, s2)| s1 != s2)
         .unwrap_or_else(|| cmp::min(s1.len(), s2.len()))
 }
 
-fn find_wildcard_begin(path: &str, offset: usize) -> usize {
-    path.bytes()
+fn find_wildcard_begin(path: &[u8], offset: usize) -> usize {
+    path.into_iter()
         .skip(offset)
-        .position(|b| b == b':' || b == b'*')
+        .position(|&b| b == b':' || b == b'*')
         .map(|i| i + offset)
         .unwrap_or_else(|| path.len())
 }
 
-fn find_wildcard_end(path: &str, offset: usize) -> Result<usize, Error> {
-    let path = path.as_bytes();
+fn find_wildcard_end(path: &[u8], offset: usize) -> Result<usize, Error> {
     debug_assert!(path[offset] == b':' || path[offset] == b'*');
     if offset > 0 && path[offset - 1] != b'/' {
         bail!("a wildcard character (':' or '*') must be located at the next of slash");
@@ -45,13 +44,13 @@ fn find_wildcard_end(path: &str, offset: usize) -> Result<usize, Error> {
 
 #[derive(Debug, PartialEq)]
 struct Node {
-    path: String,
+    path: Vec<u8>,
     leaf: Option<usize>,
     children: Vec<Node>,
 }
 
 impl Node {
-    fn new<S: Into<String>>(path: S) -> Node {
+    fn new<S: Into<Vec<u8>>>(path: S) -> Node {
         Node {
             path: path.into(),
             leaf: None,
@@ -59,7 +58,7 @@ impl Node {
         }
     }
 
-    fn add_child<S: Into<String>>(&mut self, path: S) -> Result<&mut Node, Error> {
+    fn add_child<S: Into<Vec<u8>>>(&mut self, path: S) -> Result<&mut Node, Error> {
         let ch = Node {
             path: path.into(),
             leaf: None,
@@ -80,13 +79,13 @@ impl Node {
     }
 
     fn is_wildcard(&self) -> bool {
-        match self.path.bytes().next() {
+        match self.path.iter().next() {
             Some(b':') | Some(b'*') => true,
             _ => false,
         }
     }
 
-    fn add_path(&mut self, path: &str, value: usize) -> Result<(), Error> {
+    fn add_path(&mut self, path: &[u8], value: usize) -> Result<(), Error> {
         let mut n = self;
         let mut offset = 0;
 
@@ -107,7 +106,7 @@ impl Node {
             }
 
             // Insert the remaing path into the set of children.
-            let c = path.bytes().nth(offset);
+            let c = path.iter().nth(offset);
             match c {
                 Some(b':') | Some(b'*') => {
                     if n.children.iter().any(|ch| !ch.is_wildcard()) {
@@ -134,14 +133,14 @@ impl Node {
                     }
                     offset = end;
                 }
-                Some(c) => {
+                Some(&c) => {
                     if n.children.iter().any(|ch| ch.is_wildcard()) {
                         bail!("A wildcard node has already inserted.");
                     }
 
                     // Check if a child with the next path byte exists
                     for pos in 0..n.children.len() {
-                        if n.children[pos].path.as_bytes()[0] == c {
+                        if n.children[pos].path[0] == c {
                             n = &mut { n }.children[pos];
                             continue 'walk;
                         }
@@ -163,15 +162,19 @@ impl Node {
             }
         }
 
-        if n.children.iter().any(|ch| ch.path.starts_with('*')) {
+        if n.children.iter().any(|ch| ch.path.starts_with(b"*")) {
             bail!("catch-all conflict");
         }
 
+        if n.leaf.is_some() {
+            bail!("normal path conflict");
+        }
         n.leaf = Some(value);
+
         Ok(())
     }
 
-    fn insert_child(&mut self, path: &str, value: usize) -> Result<(), Error> {
+    fn insert_child(&mut self, path: &[u8], value: usize) -> Result<(), Error> {
         let mut pos = 0;
         let mut n = self;
 
@@ -189,11 +192,15 @@ impl Node {
             }
         }
 
+        if n.leaf.is_some() {
+            bail!("normal path conflict");
+        }
         n.leaf = Some(value);
-        return Ok(());
+
+        Ok(())
     }
 
-    fn get_value<'r, 'p>(&'r self, path: &'p str) -> Option<(usize, Vec<(usize, usize)>)> {
+    fn get_value<'r, 'p>(&'r self, path: &'p [u8]) -> Option<(usize, Vec<(usize, usize)>)> {
         let mut offset = 0;
         let mut n = self;
         let mut captures = Vec::new();
@@ -204,12 +211,12 @@ impl Node {
                     offset += n.path.len();
 
                     'inner: loop {
-                        let c = path.as_bytes()[offset];
+                        let c = path[offset];
                         for ch in &n.children {
-                            if ch.path.starts_with(':') || ch.path.starts_with('*') {
+                            if ch.path.starts_with(b":") || ch.path.starts_with(b"*") {
                                 break 'inner;
                             }
-                            if ch.path.as_bytes()[0] == c {
+                            if ch.path[0] == c {
                                 n = ch;
                                 continue 'walk;
                             }
@@ -218,11 +225,11 @@ impl Node {
                     }
 
                     n = &n.children[0];
-                    match n.path.as_bytes()[0] {
+                    match n.path[0] {
                         b':' => {
                             let span = path[offset..]
-                                .bytes()
-                                .position(|b| b == b'/')
+                                .into_iter()
+                                .position(|&b| b == b'/')
                                 .unwrap_or(path.len() - offset);
                             captures.push((offset, offset + span));
                             if span < path.len() - offset {
@@ -256,78 +263,75 @@ impl Node {
 
 /// A builder object for constructing the instance of `Recognizer`.
 #[derive(Debug)]
-pub struct Builder<T> {
+pub struct Builder {
     root: Option<Node>,
-    values: Vec<T>,
-    result: Result<(), Error>,
+    paths: Vec<String>,
 }
 
-impl<T> Builder<T> {
+impl Builder {
     /// Add a path to this builder with a value of `T`.
-    pub fn insert(&mut self, path: &str, value: T) -> &mut Self {
-        if self.result.is_ok() {
-            self.result = self.insert_inner(path, value);
-        }
-        self
-    }
-
-    fn insert_inner(&mut self, path: &str, value: T) -> Result<(), Error> {
+    pub fn push<T>(&mut self, path: T) -> Result<(), Error>
+    where
+        T: Into<String>,
+    {
+        let path = path.into();
         if !path.is_ascii() {
             bail!("The path must be a sequence of ASCII characters");
         }
 
-        let index = self.values.len();
+        let index = self.paths.len();
 
         if let Some(ref mut root) = self.root {
-            root.add_path(path, index)?;
-            self.values.push(value);
+            root.add_path(path.as_bytes(), index)?;
+            self.paths.push(path);
             return Ok(());
         }
 
-        let pos = find_wildcard_begin(path, 0);
+        let pos = find_wildcard_begin(path.as_bytes(), 0);
         self.root
             .get_or_insert(Node::new(&path[..pos]))
-            .insert_child(&path[pos..], index)?;
-        self.values.push(value);
+            .insert_child(path[pos..].as_bytes(), index)?;
+        self.paths.push(path);
 
         Ok(())
     }
 
     /// Finalize the build process and create an instance of `Recognizer`.
-    pub fn finish(&mut self) -> Result<Recognizer<T>, Error> {
-        let Builder { root, values, result } = mem::replace(self, Recognizer::builder());
-        result?;
-        Ok(Recognizer { root, values })
+    pub fn finish(&mut self) -> Recognizer {
+        let Builder { root, paths } = mem::replace(self, Recognizer::builder());
+        Recognizer { root, paths }
     }
 }
 
 /// A route recognizer based on radix tree.
 #[derive(Debug)]
-pub struct Recognizer<T> {
+pub struct Recognizer {
     root: Option<Node>,
-    values: Vec<T>,
+    paths: Vec<String>,
 }
 
-impl<T> Recognizer<T> {
+impl Recognizer {
     /// Creates an instance of builder object for constructing a value of this type.
     ///
     /// See the documentations of `Builder` for details.
-    pub fn builder() -> Builder<T> {
+    pub fn builder() -> Builder {
         Builder {
             root: None,
-            values: vec![],
-            result: Ok(()),
+            paths: vec![],
         }
+    }
+
+    #[allow(missing_docs)]
+    pub fn get(&self, i: usize) -> Option<&str> {
+        self.paths.get(i).map(|s| s.as_str())
     }
 
     /// Traverses the given path and returns a reference to registered value of "T" if matched.
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub fn recognize(&self, path: &str) -> Option<(&T, Vec<(usize, usize)>)> {
-        let (index, captures) = self.root.as_ref()?.get_value(path)?;
-        let values = &self.values[index];
-        Some((values, captures))
+    pub fn recognize(&self, path: &str) -> Option<(usize, Vec<(usize, usize)>)> {
+        self.root.as_ref()?.get_value(path.as_bytes())
     }
 }
 
@@ -340,11 +344,11 @@ mod tests {
             ($test:ident, [$($path:expr),*], $expected:expr) => {
                 #[test]
                 fn $test() {
-                    let mut builder = Recognizer::<usize>::builder();
-                    for (i, path) in [$($path),*].into_iter().enumerate() {
-                        builder.insert(path, i);
+                    let mut builder = Recognizer::builder();
+                    for &path in &[$($path),*] {
+                        builder.push(path).unwrap();
                     }
-                    let recognizer = builder.finish().unwrap();
+                    let recognizer = builder.finish();
                     assert_eq!(recognizer.root, Some($expected));
                 }
             };
@@ -355,7 +359,7 @@ mod tests {
 
         #[test]
         fn case0() {
-            let tree = Recognizer::<()>::builder().finish().unwrap();
+            let tree = Recognizer::builder().finish();
             assert_eq!(tree.root, None);
         }
 
@@ -488,57 +492,58 @@ mod tests {
 
         #[test]
         fn failcase1() {
-            assert!(
-                Recognizer::<()>::builder()
-                    .insert("/foo", ())
-                    .insert("/:id", ())
-                    .finish()
-                    .is_err()
-            );
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/foo").is_ok());
+            assert!(builder.push("/:id").is_err());
         }
 
         #[test]
         fn failcase2() {
-            assert!(
-                Recognizer::<()>::builder()
-                    .insert("/foo/", ())
-                    .insert("/foo/*path", ())
-                    .finish()
-                    .is_err()
-            );
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/foo/").is_ok());
+            assert!(builder.push("/foo/*path").is_err());
         }
 
         #[test]
         fn failcase3() {
-            assert!(
-                Recognizer::<()>::builder()
-                    .insert("/:id", ())
-                    .insert("/foo", ())
-                    .finish()
-                    .is_err()
-            );
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/:id").is_ok());
+            assert!(builder.push("/foo").is_err());
         }
 
         #[test]
         fn failcase4() {
-            assert!(
-                Recognizer::<()>::builder()
-                    .insert("/foo/*path", ())
-                    .insert("/foo/", ())
-                    .finish()
-                    .is_err()
-            );
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/foo/*path").is_ok());
+            assert!(builder.push("/foo/").is_err());
         }
 
         #[test]
         fn failcase5() {
-            assert!(
-                Recognizer::<()>::builder()
-                    .insert("/:id", ())
-                    .insert("/:name", ())
-                    .finish()
-                    .is_err()
-            );
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/:id").is_ok());
+            assert!(builder.push("/:name").is_err());
+        }
+
+        #[test]
+        fn failcase6() {
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/:id").is_ok());
+            assert!(builder.push("/*id").is_err());
+        }
+
+        #[test]
+        fn failcase7() {
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/*id").is_ok());
+            assert!(builder.push("/:id").is_err());
+        }
+
+        #[test]
+        fn failcase8() {
+            let mut builder = Recognizer::builder();
+            assert!(builder.push("/path/to").is_ok());
+            assert!(builder.push("/path/to").is_err());
         }
     }
 
@@ -547,26 +552,30 @@ mod tests {
 
         #[test]
         fn case1() {
-            let recognizer = Recognizer::<()>::builder().insert("/", ()).finish().unwrap();
-            assert_eq!(recognizer.recognize("/"), Some((&(), vec![])));
+            let mut builder = Recognizer::builder();
+            builder.push("/").unwrap();
+            let recognizer = builder.finish();
+            assert_eq!(recognizer.recognize("/"), Some((0, vec![])));
         }
 
         #[test]
         fn case2() {
-            let recognizer = Recognizer::<usize>::builder()
-                .insert("/files/:name/:id", 42usize)
-                .finish()
-                .unwrap();
+            let mut builder = Recognizer::builder();
+            builder.push("/files/:name/:id").unwrap();
+            let recognizer = builder.finish();
+
             assert_eq!(
                 recognizer.recognize("/files/readme/0"),
-                Some((&42, vec![(7, 13), (14, 15)]))
+                Some((0, vec![(7, 13), (14, 15)]))
             );
         }
 
         #[test]
         fn case3() {
-            let recognizer = Recognizer::<usize>::builder().insert("/*path", 42).finish().unwrap();
-            assert_eq!(recognizer.recognize("/path/to/readme.txt"), Some((&42, vec![(1, 19)])));
+            let mut builder = Recognizer::builder();
+            builder.push("/*path").unwrap();
+            let recognizer = builder.finish();
+            assert_eq!(recognizer.recognize("/path/to/readme.txt"), Some((0, vec![(1, 19)])));
         }
     }
 }
