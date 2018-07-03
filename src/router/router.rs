@@ -98,7 +98,8 @@ enum Recognize {
 /// An HTTP router.
 #[derive(Debug)]
 pub struct Router {
-    recognizer: Recognizer<RouterEntry>,
+    recognizer: Recognizer,
+    entries: Vec<RouterEntry>,
     endpoints: Vec<Endpoint>,
     config: Config,
 }
@@ -119,7 +120,9 @@ impl Router {
     }
 
     fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, Error> {
-        let (entry, params) = self.recognizer.recognize(path).ok_or_else(|| Error::not_found())?;
+        let (i, params) = self.recognizer.recognize(path).ok_or_else(|| Error::not_found())?;
+        let entry = &self.entries[i];
+
         match entry.get(method) {
             Some(i) => Ok(Recognize::Matched(i, params)),
             None if self.config.fallback_head && *method == Method::HEAD => match entry.get(&Method::GET) {
@@ -249,6 +252,7 @@ impl Builder {
         result?;
 
         let config = config.unwrap_or_default();
+        let mut entries = vec![];
 
         let recognizer = {
             let mut collected_routes = FnvHashMap::with_hasher(Default::default());
@@ -261,14 +265,16 @@ impl Builder {
 
             let mut builder = Recognizer::builder();
             for (path, entry) in collected_routes {
-                builder.insert(path.as_ref(), entry.finish()?);
+                builder.push(path.as_ref())?;
+                entries.push(entry.finish()?);
             }
 
-            builder.finish()?
+            builder.finish()
         };
 
         Ok(Router {
             recognizer: recognizer,
+            entries: entries,
             endpoints: endpoints,
             config: config,
         })
