@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 A next generation Web framework for Rust
 """
-version = "0.2.0-dev"
+version = "0.2.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/ubnt-intrepid/tsukuyomi.git"
@@ -20,7 +20,7 @@ include = [
 ]
 
 [package.metadata.docs.rs]
-features = ["default"]
+features = ["secure", "tls"]
 
 [badges]
 appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
@@ -45,7 +45,7 @@ members = [
 ]
 
 [dependencies]
-hyper = { version = "0.12.2", features = ["runtime"], default-features = false }
+hyper = { version = "0.12.5", features = ["runtime"], default-features = false }
 http = "0.1.5"
 mime = "0.3.7"
 bytes = "0.4.8"
@@ -71,7 +71,7 @@ time = "0.1.40"
 tokio-uds = "0.2.0"
 
 [features]
-default = ["tls", "secure"]
+default = []
 secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
 # nightly = []

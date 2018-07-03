@@ -31,20 +31,12 @@ The following features does not currently implemented but will be supported in t
 ## Getting Started
 
 Tsukuyomi requires the latest version of Rust compiler.
-The required version of minimal Rust toolchain is 1.27.
-
-You also need a nightly toolchain if you want to work with `futures-await` or upcoming async/await syntax.
+The required Rust toolchain is 1.27 or higher.
 
 ```toml
 [dependencies]
-tsukuyomi = { git = "https://github.com/ubnt-intrepid/tsukuyomi.git" }
-
-# It will be available from crates.io after releasing the next minor version.
-# tsukuyomi = "0.2"
-
-# ... and more dependencies
-futures = "0.1.21"  # NOTE: DO NOT use 0.2.*
-http = "0.1.6"
+tsukuyomi = "0.2"
+futures = "0.1.22"
 ```
 
 ```rust,no_run
@@ -54,14 +46,14 @@ extern crate futures;
 use tsukuyomi::{App, Input, Error, Handler};
 use futures::Future;
 
-// The definition of *synchronous* handler.
+// A *synchronous* handler function.
 // It will return a `Responder` which immediately convert into an HTTP response,
 // and does not need any asynchronous computation.
 fn handler(_input: &mut Input) -> &'static str {
     "Hello, Tsukuyomi.\n"
 }
 
-// The definition of *asynchronous* handler.
+// An *asynchronous* handler function.
 // It will return a `Future` representing the remaining computation in the handler.
 fn async_handler(input: &mut Input)
     -> impl Future<Item = String, Error = Error> + Send + 'static
@@ -82,8 +74,11 @@ fn async_handler(input: &mut Input)
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |m| {
-            m.get("/").handle(Handler::new_ready(handler));
-            m.get("/async").handle(Handler::new_async(async_handler));
+            m.get("/")
+             .handle(Handler::new_ready(handler));
+
+            m.post("/async")
+             .handle(Handler::new_async(async_handler));
         })
         .finish()?;
 
@@ -91,7 +86,13 @@ fn main() -> tsukuyomi::AppResult<()> {
 }
 ```
 
-## Using `futures-await`
+## Using `futures-await` (requires Nightly compiler)
+
+```toml
+[dependencies]
+tsukuyomi = "0.2"
+futures-await = "0.1"
+```
 
 ```rust,no_run
 #![feature(proc_macro, proc_macro_non_items, generators)]
@@ -102,9 +103,6 @@ extern crate futures_await as futures;
 use futures::prelude::{async, await, Future};
 use tsukuyomi::{App, Input, Handler};
 
-// The definition of asynchronous handler by using futures-await.
-// Because #[async] function cannot have any references, the borrowing of `Input` is written
-// by using Input::with_current().
 #[async]
 fn handler() -> tsukuyomi::Result<String> {
     let read_all = Input::with_current(|input| input.body_mut().read_all());
@@ -115,7 +113,8 @@ fn handler() -> tsukuyomi::Result<String> {
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |m| {
-            m.post("/").handle(Handler::new_fully_async(handler));
+            m.post("/")
+             .handle(Handler::new_fully_async(handler));
         })
         .finish()?;
 
@@ -133,7 +132,7 @@ $ cargo run -p example-basic
 
 ## Documentation
 
-* [API documentation (released)](https://docs.rs/tsukuyomi/*/tsukuyomi)
+* [API documentation (released)](https://docs.rs/tsukuyomi/0.2/tsukuyomi)
 * [API documentation (master)](https://ubnt-intrepid.github.io/tsukuyomi/tsukuyomi/index.html)
 
 ## Build Status

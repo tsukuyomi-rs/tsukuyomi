@@ -1,5 +1,10 @@
+<a name="0.2.0"></a>
+## 0.2.0 (2018-07-03)
+
+There are *too many* breaking changes compared with 0.1.x, and hence the explanation of them are omitted.
+
 <a name="0.1.4"></a>
-## 0.1.4 (2018-06-16)
+### 0.1.4 (2018-06-16)
 
 #### Bug Fixes
 
@@ -9,14 +14,14 @@
   *  rename Context with Input and move its definition into input/ ([32f8f9ea](https://github.com/ubnt-intrepid/tsukuyomi/commit/32f8f9ea98967559f1a42cc9c57df7eeb14eab98))
 
 <a name="0.1.3"></a>
-## 0.1.3 (2018-06-14)
+### 0.1.3 (2018-06-14)
 
 #### Features
 
 * **modifier:**  add the application-level middleware support ([8c3a8b34](https://github.com/ubnt-intrepid/tsukuyomi/commit/8c3a8b34ed2f557fda7e11510fa6c0d8ef9be94a))
 
 <a name="0.1.2"></a>
-## 0.1.2 (2018-06-14)
+### 0.1.2 (2018-06-14)
 
 #### Features
 
@@ -28,7 +33,7 @@
 * **session:**  re-design the session API ([9ee07f98](https://github.com/ubnt-intrepid/tsukuyomi/commit/9ee07f98ab6a8958a49d4b221eda3eaa591bcb20))
 
 <a name="0.1.1"></a>
-## 0.1.1 (2018-06-12)
+### 0.1.1 (2018-06-12)
 
 #### Bug Fixes
 
