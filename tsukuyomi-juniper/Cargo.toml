@@ -1,0 +1,19 @@
+[package]
+name = "tsukuyomi-juniper"
+version = "0.1.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[dependencies]
+tsukuyomi = { version = "0.2.0", path = ".." }
+juniper = "0.9.2"
+
+bytes = "0.4"
+failure = "0.1"
+http = "0.1.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_qs = "0.4"
+futures = "0.1.21"
+tokio-threadpool = "0.1"
+percent-encoding = "1.0"
