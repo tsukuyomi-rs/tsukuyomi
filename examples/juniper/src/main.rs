@@ -1,35 +1,55 @@
-#[macro_use]
-extern crate failure;
-extern crate http;
+#![warn(unused_extern_crates)]
+
 extern crate tsukuyomi;
 #[macro_use]
 extern crate juniper;
-#[macro_use]
-extern crate serde;
 extern crate futures;
-extern crate serde_json;
-extern crate tokio_executor;
-extern crate tokio_threadpool;
+extern crate tsukuyomi_juniper;
+#[macro_use]
+extern crate failure;
 
-mod api;
-mod schema;
+mod graphql;
 
-use std::sync::Arc;
-use tsukuyomi::{App, Handler};
+use futures::{Future, IntoFuture};
+
+use tsukuyomi::{App, Error, Handler, Input};
+use tsukuyomi_juniper::{graphiql_endpoint, GraphQLContext, GraphQLRequest, GraphQLResponse};
+
+use graphql::{Context, Mutation, Query};
 
 fn main() -> tsukuyomi::AppResult<()> {
-    let state = Arc::new(api::GraphQLState {
-        ctx: schema::Context::default(),
-        schema: schema::create_schema(),
-    });
+    let cx = GraphQLContext::new(graphql::create_schema(), Context::default(), true);
 
     let app = App::builder()
-        .manage(state)
+        .manage(cx)
         .mount("/", |m| {
-            m.get("/graphiql").handle(Handler::new_ready(api::graphiql));
-            m.post("/graphql").handle(Handler::new_async(api::graphql));
+            m.get("/graphiql")
+                .handle(graphiql_endpoint("http://127.0.0.1:4000/graphql"));
+
+            m.get("/graphql").handle(Handler::new_async(|input| {
+                let request = input
+                    .uri()
+                    .query()
+                    .ok_or_else(|| Error::bad_request(format_err!("missing query")))
+                    .and_then(GraphQLRequest::from_query);
+                request.into_future().and_then(do_execute)
+            }));
+
+            m.post("/graphql").handle(Handler::new_async(|input| {
+                let request = input.body_mut().read_all().convert_to::<GraphQLRequest>();
+                request.and_then(do_execute)
+            }));
         })
         .finish()?;
 
     tsukuyomi::run(app)
+}
+
+fn do_execute(request: GraphQLRequest) -> impl Future<Item = GraphQLResponse, Error = Error> + Send + 'static {
+    let future = Input::with_current(|input| {
+        let cx = input.get::<GraphQLContext<Query, Mutation, Context>>();
+        cx.execute(request)
+    });
+
+    future
 }

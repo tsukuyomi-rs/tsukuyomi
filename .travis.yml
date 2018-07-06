@@ -35,6 +35,8 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
+        # contrib
+        - cargo test -p tsukuyomi-juniper
         # examples
         - cargo test -p example-basic
         - cargo test -p example-diesel
@@ -46,7 +48,10 @@ matrix:
       after_success:
         - cargo fmt -- --write-mode=diff
         # - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
-        - USE_SKEPTIC=1 cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+        - |
+            cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID \
+                --packages tsukuyomi \
+                           tsukuyomi-juniper
 
     - rust: beta
       before_script:
@@ -55,6 +60,8 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
+        # contrib
+        - cargo test -p tsukuyomi-juniper
         # examples
         - cargo test -p example-basic
         - cargo test -p example-diesel
@@ -74,6 +81,8 @@ matrix:
         - cargo test
         - cargo test --no-default-features
         #- cargo test --features nightly
+        # contrib
+        - cargo test -p tsukuyomi-juniper
         # doctest
         - cargo test -p doctest
         # examples
@@ -95,6 +104,7 @@ matrix:
       script:
         - cargo clean
         - cargo doc
+        - cargo doc -p tsukuyomi-juniper
         - rm -f target/doc/.lock
       deploy:
         provider: pages

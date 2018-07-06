@@ -30,6 +30,7 @@ maintenance = { status = "actively-developed" }
 [workspace]
 members = [
   "doctest",
+  "tsukuyomi-juniper",
 
   "examples/async-await",
   "examples/basic",
