@@ -13,7 +13,7 @@ mod graphql;
 use futures::{Future, IntoFuture};
 
 use tsukuyomi::{App, Error, Handler, Input};
-use tsukuyomi_juniper::{graphiql_source, GraphQLContext, GraphQLRequest, GraphQLResponse};
+use tsukuyomi_juniper::{graphiql_endpoint, GraphQLContext, GraphQLRequest, GraphQLResponse};
 
 use graphql::{Context, Mutation, Query};
 
@@ -24,7 +24,7 @@ fn main() -> tsukuyomi::AppResult<()> {
         .manage(cx)
         .mount("/", |m| {
             m.get("/graphiql")
-                .handle(Handler::new_ready(|_| graphiql_source("http://127.0.0.1:4000/graphql")));
+                .handle(graphiql_endpoint("http://127.0.0.1:4000/graphql"));
 
             m.get("/graphql").handle(Handler::new_async(|input| {
                 let request = input

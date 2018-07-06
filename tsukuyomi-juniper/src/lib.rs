@@ -37,7 +37,7 @@ use juniper::{GraphQLType, InputValue, RootNode};
 use tsukuyomi::input::body::FromData;
 use tsukuyomi::json::Json;
 use tsukuyomi::output::{Output, Responder};
-use tsukuyomi::{Error, Input};
+use tsukuyomi::{Error, Handler, Input};
 
 /// The contextual values for executing GraphQL queries.
 pub struct GraphQLContext<Q, M, Cx>
@@ -71,9 +71,7 @@ where
     Cx: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("GraphQLContext")
-            .field("inner", &self.inner)
-            .finish()
+        f.debug_struct("GraphQLContext").field("inner", &self.inner).finish()
     }
 }
 
@@ -83,11 +81,7 @@ where
     M: GraphQLType<Context = Cx>,
 {
     /// Creates a new `GraphQLContext` from components.
-    pub fn new(
-        root_node: RootNode<'static, Q, M>,
-        context: Cx,
-        should_transit: bool,
-    ) -> GraphQLContext<Q, M, Cx> {
+    pub fn new(root_node: RootNode<'static, Q, M>, context: Cx, should_transit: bool) -> GraphQLContext<Q, M, Cx> {
         GraphQLContext {
             inner: Arc::new((root_node, context)),
             should_transit: should_transit,
@@ -114,10 +108,7 @@ where
     /// # Note
     /// This method returns a Future, but it is possible to block the curren thread during
     /// polling the result (see the documentation of `tokio_threadpool::blocking` for details.)
-    pub fn execute(
-        &self,
-        request: GraphQLRequest,
-    ) -> impl Future<Item = GraphQLResponse, Error = Error> {
+    pub fn execute(&self, request: GraphQLRequest) -> impl Future<Item = GraphQLResponse, Error = Error> {
         let cx = self.clone();
         poll_fn(move || {
             use self::GraphQLBatchRequest::*;
@@ -125,9 +116,8 @@ where
                 Single(ref request) => {
                     let response = if cx.should_transit {
                         try_ready!(
-                            tokio_threadpool::blocking(
-                                || request.execute(cx.root_node(), cx.context())
-                            ).map_err(Error::internal_server_error)
+                            tokio_threadpool::blocking(|| request.execute(cx.root_node(), cx.context()))
+                                .map_err(Error::internal_server_error)
                         )
                     } else {
                         request.execute(cx.root_node(), cx.context())
@@ -183,8 +173,7 @@ impl GraphQLRequest {
             variables: Option<String>,
         }
 
-        let params: Params =
-            serde_qs::from_str(s).map_err(|e| Error::bad_request(failure::SyncFailure::new(e)))?;
+        let params: Params = serde_qs::from_str(s).map_err(|e| Error::bad_request(failure::SyncFailure::new(e)))?;
 
         let query = percent_decode(params.query.as_bytes())
             .decode_utf8()
@@ -206,9 +195,7 @@ impl GraphQLRequest {
                 let decoded = percent_decode(variables.as_bytes())
                     .decode_utf8()
                     .map_err(Error::bad_request)?;
-                serde_json::from_str(&*decoded)
-                    .map(Some)
-                    .map_err(Error::bad_request)?
+                serde_json::from_str(&*decoded).map(Some).map_err(Error::bad_request)?
             }
             None => None,
         };
@@ -288,6 +275,17 @@ impl Responder for GraphiQLSource {
     }
 }
 
+/// Creates a handler generating the HTML source to show a GraphiQL interface.
+pub fn graphiql_endpoint(url: &str) -> Handler {
+    let source = Bytes::from(juniper::http::graphiql::graphiql_source(url));
+    Handler::new_ready(move |_| {
+        Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .body(source.clone())
+            .map_err(Error::internal_server_error)
+    })
+}
+
 #[allow(unreachable_pub)]
 #[cfg(test)]
 mod tests {
@@ -309,7 +307,7 @@ mod tests {
 
     type Cx = GraphQLContext<Database, EmptyMutation<Database>, Database>;
 
-    fn get_graphql(input: &mut Input) -> impl Future<Item = GraphQLResponse, Error = Error> {
+    fn get_graphql_handler(input: &mut Input) -> impl Future<Item = GraphQLResponse, Error = Error> + 'static {
         let request = input
             .uri()
             .query()
@@ -323,7 +321,7 @@ mod tests {
         })
     }
 
-    fn post_graphql(input: &mut Input) -> impl Future<Item = GraphQLResponse, Error = Error> {
+    fn post_graphql_handler(input: &mut Input) -> impl Future<Item = GraphQLResponse, Error = Error> + 'static {
         let request = input.body_mut().read_all().convert_to::<GraphQLRequest>();
         request.into_future().and_then(|request| {
             Input::with_current(|input| {
@@ -339,8 +337,8 @@ mod tests {
         App::builder()
             .manage(cx)
             .mount("/", |m| {
-                m.get("/").handle(Handler::new_async(get_graphql));
-                m.post("/").handle(Handler::new_async(post_graphql));
+                m.get("/").handle(Handler::new_async(get_graphql_handler));
+                m.post("/").handle(Handler::new_async(post_graphql_handler));
             })
             .finish()
     }
@@ -401,11 +399,7 @@ mod tests {
             .expect("invalid content-type")
             .to_owned();
 
-        let body = response
-            .body()
-            .to_utf8()
-            .expect("invalid data")
-            .into_owned();
+        let body = response.body().to_utf8().expect("invalid data").into_owned();
 
         http_tests::TestResponse {
             status_code,
