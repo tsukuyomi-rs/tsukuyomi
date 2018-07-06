@@ -11,11 +11,13 @@
 #[macro_use]
 extern crate futures;
 extern crate bytes;
+#[cfg_attr(test, macro_use)]
 extern crate failure;
 extern crate http;
 extern crate juniper;
 #[macro_use]
 extern crate serde;
+#[cfg_attr(test, macro_use)]
 extern crate percent_encoding;
 extern crate serde_json;
 extern crate serde_qs;
@@ -44,6 +46,7 @@ where
     M: GraphQLType<Context = Cx>,
 {
     inner: Arc<(RootNode<'static, Q, M>, Cx)>,
+    should_transit: bool,
 }
 
 impl<Q, M, Cx> Clone for GraphQLContext<Q, M, Cx>
@@ -54,10 +57,12 @@ where
     fn clone(&self) -> Self {
         GraphQLContext {
             inner: self.inner.clone(),
+            should_transit: self.should_transit,
         }
     }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl<Q, M, Cx> fmt::Debug for GraphQLContext<Q, M, Cx>
 where
     Q: GraphQLType<Context = Cx>,
@@ -78,9 +83,14 @@ where
     M: GraphQLType<Context = Cx>,
 {
     /// Creates a new `GraphQLContext` from components.
-    pub fn new(root_node: RootNode<'static, Q, M>, context: Cx) -> GraphQLContext<Q, M, Cx> {
+    pub fn new(
+        root_node: RootNode<'static, Q, M>,
+        context: Cx,
+        should_transit: bool,
+    ) -> GraphQLContext<Q, M, Cx> {
         GraphQLContext {
             inner: Arc::new((root_node, context)),
+            should_transit: should_transit,
         }
     }
 
@@ -92,6 +102,11 @@ where
     /// Returns the reference to context in this value.
     pub fn context(&self) -> &Cx {
         &self.inner.1
+    }
+
+    #[allow(missing_docs)]
+    pub fn should_transit(&self) -> bool {
+        self.should_transit
     }
 
     /// Executes an incoming GraphQL query with this context.
@@ -108,20 +123,32 @@ where
             use self::GraphQLBatchRequest::*;
             match request.0 {
                 Single(ref request) => {
-                    let response = try_ready!(
-                        tokio_threadpool::blocking(|| request.execute(cx.root_node(), cx.context()))
-                            .map_err(Error::internal_server_error)
-                    );
+                    let response = if cx.should_transit {
+                        try_ready!(
+                            tokio_threadpool::blocking(
+                                || request.execute(cx.root_node(), cx.context())
+                            ).map_err(Error::internal_server_error)
+                        )
+                    } else {
+                        request.execute(cx.root_node(), cx.context())
+                    };
                     GraphQLResponse::from_single(response).map(Async::Ready)
                 }
                 Batch(ref requests) => {
-                    let responses = try_ready!(
-                        tokio_threadpool::blocking(|| requests
+                    let responses = if cx.should_transit {
+                        try_ready!(
+                            tokio_threadpool::blocking(|| requests
+                                .iter()
+                                .map(|request| request.execute(cx.root_node(), cx.context()))
+                                .collect())
+                                .map_err(Error::internal_server_error)
+                        )
+                    } else {
+                        requests
                             .iter()
                             .map(|request| request.execute(cx.root_node(), cx.context()))
-                            .collect())
-                            .map_err(Error::internal_server_error)
-                    );
+                            .collect()
+                    };
                     GraphQLResponse::from_batch(responses).map(Async::Ready)
                 }
             }
@@ -258,5 +285,132 @@ impl Responder for GraphiQLSource {
             .body(self.0)
             .map(Into::into)
             .map_err(Error::internal_server_error)
+    }
+}
+
+#[allow(unreachable_pub)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use futures::{Future, IntoFuture};
+    use http::Response;
+    use juniper::http::tests as http_tests;
+    use juniper::tests::model::Database;
+    use juniper::{EmptyMutation, RootNode};
+    use percent_encoding::{utf8_percent_encode, QUERY_ENCODE_SET};
+    use std::cell::RefCell;
+
+    use tsukuyomi::local::{Client, LocalServer};
+    use tsukuyomi::output::Data;
+    use tsukuyomi::{App, Handler};
+
+    type Schema = RootNode<'static, Database, EmptyMutation<Database>>;
+
+    type Cx = GraphQLContext<Database, EmptyMutation<Database>, Database>;
+
+    fn get_graphql(input: &mut Input) -> impl Future<Item = GraphQLResponse, Error = Error> {
+        let request = input
+            .uri()
+            .query()
+            .ok_or_else(|| Error::bad_request(format_err!("empty query")))
+            .and_then(GraphQLRequest::from_query);
+        request.into_future().and_then(|request| {
+            Input::with_current(|input| {
+                let cx = input.get::<Cx>();
+                cx.execute(request)
+            })
+        })
+    }
+
+    fn post_graphql(input: &mut Input) -> impl Future<Item = GraphQLResponse, Error = Error> {
+        let request = input.body_mut().read_all().convert_to::<GraphQLRequest>();
+        request.into_future().and_then(|request| {
+            Input::with_current(|input| {
+                let cx = input.get::<Cx>();
+                cx.execute(request)
+            })
+        })
+    }
+
+    fn make_tsukuyomi_app() -> tsukuyomi::AppResult<App> {
+        let schema = Schema::new(Database::new(), EmptyMutation::<Database>::new());
+        let cx = GraphQLContext::new(schema, Database::new(), false);
+        App::builder()
+            .manage(cx)
+            .mount("/", |m| {
+                m.get("/").handle(Handler::new_async(get_graphql));
+                m.post("/").handle(Handler::new_async(post_graphql));
+            })
+            .finish()
+    }
+
+    struct TestTsukuyomiIntegration<'a> {
+        client: RefCell<Client<'a>>,
+    }
+
+    define_encode_set!{
+        pub DUMMY_ENCODE_SET = [QUERY_ENCODE_SET] | {'{', '}'}
+    }
+
+    fn encoded_url(url: &str) -> String {
+        utf8_percent_encode(url, DUMMY_ENCODE_SET).to_string()
+    }
+
+    impl<'a> http_tests::HTTPIntegration for TestTsukuyomiIntegration<'a> {
+        fn get(&self, url: &str) -> http_tests::TestResponse {
+            let response = self.client
+                .borrow_mut()
+                .get(encoded_url(url))
+                .execute()
+                .expect("unexpected error during handling a request");
+            make_test_response(response)
+        }
+
+        fn post(&self, url: &str, body: &str) -> http_tests::TestResponse {
+            let response = self.client
+                .borrow_mut()
+                .post(encoded_url(url))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(body.to_owned())
+                .execute()
+                .expect("unexpected error during handling a request");
+            make_test_response(response)
+        }
+    }
+
+    #[test]
+    fn test_tsukuyomi_integration() {
+        let app = make_tsukuyomi_app().expect("failed to create an App.");
+        let mut server = LocalServer::new(app).expect("failed to create LocalServer");
+        let integration = TestTsukuyomiIntegration {
+            client: RefCell::new(server.client()),
+        };
+
+        http_tests::run_http_test_suite(&integration);
+    }
+
+    fn make_test_response(response: Response<Data>) -> http_tests::TestResponse {
+        let status_code = response.status().as_u16() as i32;
+
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .expect("missing Content-Type")
+            .to_str()
+            .expect("invalid content-type")
+            .to_owned();
+
+        let body = response
+            .body()
+            .to_utf8()
+            .expect("invalid data")
+            .into_owned();
+
+        http_tests::TestResponse {
+            status_code,
+            content_type,
+            body: Some(body),
+        }
     }
 }

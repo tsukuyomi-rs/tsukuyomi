@@ -18,7 +18,7 @@ use tsukuyomi_juniper::{graphiql_source, GraphQLContext, GraphQLRequest, GraphQL
 use graphql::{Context, Mutation, Query};
 
 fn main() -> tsukuyomi::AppResult<()> {
-    let cx = GraphQLContext::new(graphql::create_schema(), Context::default());
+    let cx = GraphQLContext::new(graphql::create_schema(), Context::default(), true);
 
     let app = App::builder()
         .manage(cx)

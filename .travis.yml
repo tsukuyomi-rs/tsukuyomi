@@ -48,7 +48,10 @@ matrix:
       after_success:
         - cargo fmt -- --write-mode=diff
         # - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
-        - USE_SKEPTIC=1 cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+        - |
+            cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID \
+                --packages tsukuyomi \
+                           tsukuyomi-juniper
 
     - rust: beta
       before_script:
@@ -101,6 +104,7 @@ matrix:
       script:
         - cargo clean
         - cargo doc
+        - cargo doc -p tsukuyomi-juniper
         - rm -f target/doc/.lock
       deploy:
         provider: pages
