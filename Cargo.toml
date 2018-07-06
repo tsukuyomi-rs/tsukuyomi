@@ -31,6 +31,7 @@ maintenance = { status = "actively-developed" }
 members = [
   "codegen",
   "contrib/tsukuyomi-juniper",
+  "contrib/tsukuyomi-template",
   "doctest",
 
   "examples/async-await",

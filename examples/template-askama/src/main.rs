@@ -1,29 +1,11 @@
 extern crate tsukuyomi;
+extern crate tsukuyomi_template;
 #[macro_use]
 extern crate askama;
-extern crate failure;
-extern crate http;
 
 use askama::Template as _Template;
-use failure::SyncFailure;
-use http::{header, Response};
-use tsukuyomi::output::{Output, Responder};
-use tsukuyomi::{App, Error, Handler, Input};
-
-struct Template<T: _Template>(T);
-
-impl<T: _Template> Responder for Template<T> {
-    fn respond_to(self, _: &Input) -> Result<Output, Error> {
-        let body = self.0
-            .render()
-            .map_err(|e| Error::internal_server_error(SyncFailure::new(e)))?;
-        Response::builder()
-            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-            .body(body)
-            .map(Into::into)
-            .map_err(Error::internal_server_error)
-    }
-}
+use tsukuyomi::{App, Handler, Input};
+use tsukuyomi_template::askama::Template;
 
 #[derive(Debug, Template)]
 #[template(path = "index.html")]

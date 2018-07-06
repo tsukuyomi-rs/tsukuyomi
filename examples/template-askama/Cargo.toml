@@ -13,8 +13,7 @@ doc = false
 [dependencies]
 tsukuyomi = { path = "../.." }
 askama = "0.6"
-http = "0.1.6"
-failure = "0.1.1"
+tsukuyomi-template = { path = "../../contrib/tsukuyomi-template", features = ["askama"] }
 
 [build-dependencies]
 askama = "0.6"
