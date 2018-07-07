@@ -7,6 +7,7 @@
 #![deny(unused_extern_crates)]
 #![deny(warnings)]
 #![deny(bare_trait_objects)]
+#![cfg_attr(feature = "codegen", feature(use_extern_macros))]
 
 extern crate bytes;
 extern crate cookie;
@@ -37,6 +38,9 @@ extern crate matches;
 extern crate rustls;
 #[cfg(feature = "tls")]
 extern crate tokio_rustls;
+
+#[cfg(feature = "codegen")]
+extern crate tsukuyomi_codegen;
 
 pub mod app;
 pub mod error;
@@ -71,4 +75,10 @@ pub fn run(app: App) -> AppResult<()> {
     let server = ::server::Server::builder().finish(app)?;
     server.serve();
     Ok(())
+}
+
+#[allow(missing_docs)]
+pub mod prelude {
+    #[cfg(feature = "codegen")]
+    pub use tsukuyomi_codegen::handler;
 }
