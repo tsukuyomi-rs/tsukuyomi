@@ -8,25 +8,20 @@ use input::Input;
 use output::{Output, Responder};
 
 /// A type for wrapping the handler function used in the framework.
-#[derive(Debug)]
-pub struct Handler(HandlerKind);
-
-enum HandlerKind {
-    Ready(Box<dyn Fn(&mut Input) -> Result<Output, Error> + Send + Sync>),
-    Async(Box<dyn Fn(&mut Input) -> Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send> + Send + Sync>),
-}
+pub struct Handler(Box<dyn Fn(&mut Input) -> Handle + Send + Sync + 'static>);
 
 #[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for HandlerKind {
+impl fmt::Debug for Handler {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            HandlerKind::Ready(..) => f.debug_tuple("Ready").finish(),
-            HandlerKind::Async(..) => f.debug_tuple("Async").finish(),
-        }
+        f.debug_tuple("Handler").finish()
     }
 }
 
 impl Handler {
+    fn new(handler: impl Fn(&mut Input) -> Handle + Send + Sync + 'static) -> Handler {
+        Handler(Box::new(handler))
+    }
+
     /// Creates a `Handler` from the provided function.
     ///
     /// The provided handler is *fully synchronous*, which means that the provided handler
@@ -54,9 +49,7 @@ impl Handler {
     where
         R: Responder,
     {
-        Handler(HandlerKind::Ready(Box::new(move |input| {
-            handler(input).respond_to(input)
-        })))
+        Handler::new(move |input| Handle::ready(handler(input).respond_to(input)))
     }
 
     /// Creates a `Handler` from the provided function.
@@ -96,13 +89,13 @@ impl Handler {
         R::Item: Responder,
         Error: From<R::Error>,
     {
-        Handler(HandlerKind::Async(Box::new(move |input| {
+        Handler::new(move |input| {
             let mut future = handler(input);
-            Box::new(move |input| {
+            Handle(HandleKind::Async(Box::new(move |input| {
                 let item = try_ready!(input.with_set_current(|| future.poll()));
                 item.respond_to(input).map(Async::Ready)
-            })
-        })))
+            })))
+        })
     }
 
     /// Creates a `Handler` from the provided async function.
@@ -139,27 +132,20 @@ impl Handler {
     ///     .finish();
     /// # assert!(router.is_ok());
     /// ```
+    #[inline]
     pub fn new_fully_async<R>(handler: impl Fn() -> R + Send + Sync + 'static) -> Handler
     where
         R: Future + Send + 'static,
         R::Item: Responder,
         Error: From<R::Error>,
     {
-        Handler(HandlerKind::Async(Box::new(move |_| {
-            let mut future = handler();
-            Box::new(move |input| {
-                let item = try_ready!(input.with_set_current(|| future.poll()));
-                item.respond_to(input).map(Async::Ready)
-            })
-        })))
+        Handler::new_async(move |_| handler())
     }
 
     /// Calls the underlying handler function with the provided reference to `Input`.
+    #[inline]
     pub fn handle(&self, input: &mut Input) -> Handle {
-        match self.0 {
-            HandlerKind::Ready(ref f) => Handle(HandleKind::Ready(Some(f(input)))),
-            HandlerKind::Async(ref f) => Handle(HandleKind::Async(f(input))),
-        }
+        (self.0)(input)
     }
 }
 
@@ -182,7 +168,7 @@ impl fmt::Debug for HandleKind {
 impl Handle {
     /// Creates a `Handle` from an HTTP response.
     pub fn ok(output: Output) -> Handle {
-        Handle(HandleKind::Ready(Some(Ok(output))))
+        Handle::ready(Ok(output))
     }
 
     /// Creates a `Handle` from an error value.
@@ -190,7 +176,11 @@ impl Handle {
     where
         E: Into<Error>,
     {
-        Handle(HandleKind::Ready(Some(Err(err.into()))))
+        Handle::ready(Err(err.into()))
+    }
+
+    fn ready(result: Result<Output, Error>) -> Handle {
+        Handle(HandleKind::Ready(Some(result)))
     }
 
     /// Creates a `Handle` from a future.
