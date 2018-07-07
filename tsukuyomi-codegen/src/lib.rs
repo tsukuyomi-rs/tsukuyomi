@@ -62,17 +62,29 @@ fn detect_mode(attr: &TokenStream, _item: &syn::ItemFn) -> Result<HandlerMode, S
     attr.to_string().parse()
 }
 
-/// Modifies the signature of a free-standing function to a suitable form for using the handler.
+/// Modifies the signature of a free-standing function to a suitable form as handler function.
+///
+/// This macro generates a handler function with inserting some processes before
+/// and after the provided function, and then replaces the original function with it.
+/// The signature of generated handler functions are as follows:
+///
+/// ```ignore
+/// fn(&mut Input) -> Handle
+/// ```
 ///
 /// # Examples
+///
+/// A handler function which will immediately return a `Responder`:
 ///
 /// ```
 /// # #![feature(proc_macro, use_extern_macros)]
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
 /// # use tsukuyomi_codegen::handler;
+/// use tsukuyomi::output::Responder;
+///
 /// #[handler]
-/// fn handler() -> &'static str {
+/// fn handler() -> impl Responder {
 ///     "Hello"
 /// }
 /// ```
@@ -83,11 +95,14 @@ fn detect_mode(attr: &TokenStream, _item: &syn::ItemFn) -> Result<HandlerMode, S
 /// # extern crate tsukuyomi_codegen;
 /// # use tsukuyomi_codegen::handler;
 /// # use tsukuyomi::Input;
+/// # use tsukuyomi::output::Responder;
 /// #[handler]
 /// fn handler(input: &mut Input) -> String {
 ///     format!("path = {:?}", input.uri().path())
 /// }
 /// ```
+///
+/// A handler function which will return a `Future`:
 ///
 /// ```
 /// # #![feature(proc_macro, use_extern_macros)]
@@ -102,6 +117,8 @@ fn detect_mode(attr: &TokenStream, _item: &syn::ItemFn) -> Result<HandlerMode, S
 ///     input.body_mut().read_all().convert_to()
 /// }
 /// ```
+///
+/// Uses `futures-await`:
 ///
 /// ```
 /// # #![feature(proc_macro, use_extern_macros, proc_macro_non_items, generators)]
