@@ -21,7 +21,6 @@ extern crate serde;
 extern crate percent_encoding;
 extern crate serde_json;
 extern crate serde_qs;
-extern crate tokio_threadpool;
 extern crate tsukuyomi;
 
 use bytes::Bytes;
@@ -37,6 +36,7 @@ use juniper::{GraphQLType, InputValue, RootNode};
 use tsukuyomi::input::body::FromData;
 use tsukuyomi::json::Json;
 use tsukuyomi::output::{Output, Responder};
+use tsukuyomi::rt::blocking::blocking;
 use tsukuyomi::{Error, Handler, Input};
 
 /// The contextual values for executing GraphQL queries.
@@ -46,7 +46,6 @@ where
     M: GraphQLType<Context = Cx>,
 {
     inner: Arc<(RootNode<'static, Q, M>, Cx)>,
-    should_transit: bool,
 }
 
 impl<Q, M, Cx> Clone for GraphQLContext<Q, M, Cx>
@@ -57,7 +56,6 @@ where
     fn clone(&self) -> Self {
         GraphQLContext {
             inner: self.inner.clone(),
-            should_transit: self.should_transit,
         }
     }
 }
@@ -81,10 +79,9 @@ where
     M: GraphQLType<Context = Cx>,
 {
     /// Creates a new `GraphQLContext` from components.
-    pub fn new(root_node: RootNode<'static, Q, M>, context: Cx, should_transit: bool) -> GraphQLContext<Q, M, Cx> {
+    pub fn new(root_node: RootNode<'static, Q, M>, context: Cx) -> GraphQLContext<Q, M, Cx> {
         GraphQLContext {
             inner: Arc::new((root_node, context)),
-            should_transit: should_transit,
         }
     }
 
@@ -98,11 +95,6 @@ where
         &self.inner.1
     }
 
-    #[allow(missing_docs)]
-    pub fn should_transit(&self) -> bool {
-        self.should_transit
-    }
-
     /// Executes an incoming GraphQL query with this context.
     ///
     /// # Note
@@ -114,31 +106,20 @@ where
             use self::GraphQLBatchRequest::*;
             match request.0 {
                 Single(ref request) => {
-                    let response = if cx.should_transit {
-                        try_ready!(
-                            tokio_threadpool::blocking(|| request.execute(cx.root_node(), cx.context()))
-                                .map_err(Error::internal_server_error)
-                        )
-                    } else {
-                        request.execute(cx.root_node(), cx.context())
-                    };
+                    let response = try_ready!(
+                        blocking(|| request.execute(cx.root_node(), cx.context()))
+                            .map_err(Error::internal_server_error)
+                    );
                     GraphQLResponse::from_single(response).map(Async::Ready)
                 }
                 Batch(ref requests) => {
-                    let responses = if cx.should_transit {
-                        try_ready!(
-                            tokio_threadpool::blocking(|| requests
-                                .iter()
-                                .map(|request| request.execute(cx.root_node(), cx.context()))
-                                .collect())
-                                .map_err(Error::internal_server_error)
-                        )
-                    } else {
-                        requests
+                    let responses = try_ready!(
+                        blocking(|| requests
                             .iter()
                             .map(|request| request.execute(cx.root_node(), cx.context()))
-                            .collect()
-                    };
+                            .collect())
+                            .map_err(Error::internal_server_error)
+                    );
                     GraphQLResponse::from_batch(responses).map(Async::Ready)
                 }
             }
@@ -333,7 +314,7 @@ mod tests {
 
     fn make_tsukuyomi_app() -> tsukuyomi::AppResult<App> {
         let schema = Schema::new(Database::new(), EmptyMutation::<Database>::new());
-        let cx = GraphQLContext::new(schema, Database::new(), false);
+        let cx = GraphQLContext::new(schema, Database::new());
         App::builder()
             .manage(cx)
             .mount("/", |m| {
