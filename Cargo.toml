@@ -20,7 +20,7 @@ include = [
 ]
 
 [package.metadata.docs.rs]
-features = ["secure", "tls"]
+features = ["secure", "tls", "codegen", "extern-prelude"]
 
 [badges]
 appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
@@ -84,3 +84,6 @@ secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
 codegen = ["tsukuyomi-codegen"]
 nightly = ["tsukuyomi-codegen/nightly"]
+
+# FIXME: remove this feature as soon as the version of rustc used in docs.rs is updated
+extern-prelude = []

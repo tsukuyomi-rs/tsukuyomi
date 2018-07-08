@@ -9,10 +9,13 @@ environment:
   matrix:
     - TARGET: x86_64-pc-windows-msvc
       TOOLCHAIN: stable
+      RUSTFLAGS: "-D warnings"
     - TARGET: x86_64-pc-windows-msvc
       TOOLCHAIN: beta
+      RUSTFLAGS: "-D warnings"
     - TARGET: x86_64-pc-windows-msvc
       TOOLCHAIN: nightly
+      RUSTFLAGS: "-D warnings"
 
 matrix:
   allow_failures:
