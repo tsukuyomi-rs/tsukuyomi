@@ -44,6 +44,7 @@ members = [
   "examples/lines",
   "examples/routing",
   "examples/template-askama",
+  "examples/template-tera",
   "examples/tls",
   "examples/unix-socket",
 ]
