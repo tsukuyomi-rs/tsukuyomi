@@ -117,12 +117,9 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mode = try_quote!(detect_mode(&attr, &item));
 
     let context = Context { item: item, mode: mode };
-
     try_quote!(context.validate());
-    let inner = try_quote!(context.generate_inner());
-    let new_item = try_quote!(context.generate_new_item(inner));
 
-    quote!(#new_item).into()
+    context.generate().into_token_stream().into()
 }
 
 // ====
@@ -162,6 +159,14 @@ impl Context {
     }
 
     fn validate(&self) -> Result<(), Box<std::fmt::Display>> {
+        if self.item.unsafety.is_some() {
+            return Err(Box::new("unsafe fn is not supported."));
+        }
+
+        if self.item.abi.is_some() {
+            return Err(Box::new("The handler function cannot be used via FFI bound."));
+        }
+
         if self.num_inputs() > 1 {
             return Err(Box::new("Too many arguments"));
         }
@@ -173,7 +178,12 @@ impl Context {
         Ok(())
     }
 
-    fn generate_inner(&self) -> Result<syn::ItemFn, Box<std::fmt::Display>> {
+    fn generate(&self) -> syn::ItemFn {
+        let inner = self.generate_inner_item();
+        self.generate_new_item(inner)
+    }
+
+    fn generate_inner_item(&self) -> syn::ItemFn {
         let mut inner = self.item.clone();
 
         inner.ident = syn::Ident::new("inner", Span::call_site());
@@ -182,60 +192,48 @@ impl Context {
             inner.attrs.push(parse_quote!(#[async]));
         }
 
-        Ok(inner)
+        inner
     }
 
-    fn generate_new_item(&self, inner: syn::ItemFn) -> Result<syn::ItemFn, Box<std::fmt::Display>> {
-        let mut new_item = self.item.clone();
+    fn generate_new_item(&self, inner: syn::ItemFn) -> syn::ItemFn {
+        let vis = &self.item.vis;
+        let ident = &self.item.ident;
 
-        let input_ident: syn::Ident = if self.num_inputs() == 0 && self.mode != HandlerMode::Ready {
+        let input: syn::Ident = if self.num_inputs() == 0 && self.mode != HandlerMode::Ready {
             syn::Ident::new("_input", Span::call_site())
         } else {
             syn::Ident::new("input", Span::call_site())
         };
-        new_item.decl.inputs = Some(syn::punctuated::Pair::End(parse_quote!(
-            #input_ident: &mut ::tsukuyomi::input::Input
-        ))).into_iter()
-            .collect();
 
-        match new_item.decl.output {
-            syn::ReturnType::Default => unimplemented!(),
-            syn::ReturnType::Type(_, ref mut ty) => {
-                *ty = Box::new(parse_quote!(::tsukuyomi::handler::Handle));
-            }
-        }
+        let prelude: Option<syn::Stmt> = if self.mode == HandlerMode::AsyncAwait {
+            Some(parse_quote!(use futures::prelude::async;))
+        } else {
+            None
+        };
 
-        new_item.block = {
-            let call: syn::Expr = match self.num_inputs() {
-                0 => parse_quote!(inner()),
-                1 => parse_quote!(inner(input)),
-                _ => unreachable!(),
-            };
+        let call: syn::Expr = match self.num_inputs() {
+            0 => parse_quote!(inner()),
+            1 => parse_quote!(inner(input)),
+            _ => unreachable!(),
+        };
 
-            let body: syn::Expr = match self.mode {
-                HandlerMode::Ready => parse_quote!({
-                    ::tsukuyomi::handler::Handle::ready(
-                        ::tsukuyomi::output::Responder::respond_to(#call, input)
-                    )
-                }),
-                HandlerMode::Async | HandlerMode::AsyncAwait => parse_quote!({
-                    ::tsukuyomi::handler::Handle::async_responder(#call)
-                }),
-            };
+        let body: syn::Expr = match self.mode {
+            HandlerMode::Ready => parse_quote!({
+                ::tsukuyomi::handler::Handle::ready(
+                    ::tsukuyomi::output::Responder::respond_to(#call, input)
+                )
+            }),
+            HandlerMode::Async | HandlerMode::AsyncAwait => parse_quote!({
+                ::tsukuyomi::handler::Handle::async_responder(#call)
+            }),
+        };
 
-            let prelude: Option<syn::Stmt> = if self.mode == HandlerMode::AsyncAwait {
-                Some(parse_quote!(use futures::prelude::async;))
-            } else {
-                None
-            };
-
-            Box::new(parse_quote!({
+        parse_quote!{
+            #vis fn #ident(#input: &mut ::tsukuyomi::input::Input) -> ::tsukuyomi::handler::Handle {
                 #prelude
                 #inner
                 #body
-            }))
-        };
-
-        Ok(new_item)
+            }
+        }
     }
 }
