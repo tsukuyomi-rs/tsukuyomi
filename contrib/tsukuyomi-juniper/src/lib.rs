@@ -5,8 +5,8 @@
 #![deny(missing_debug_implementations)]
 #![deny(unreachable_pub)]
 #![deny(unused_extern_crates)]
-#![deny(warnings)]
 #![deny(bare_trait_objects)]
+#![warn(warnings)]
 
 #[macro_use]
 extern crate futures;

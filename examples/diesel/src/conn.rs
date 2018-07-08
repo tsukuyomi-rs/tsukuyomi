@@ -8,6 +8,7 @@ use tokio_executor;
 use tokio_threadpool::blocking;
 
 pub type ConnPool = Pool<ConnectionManager<SqliteConnection>>;
+#[allow(dead_code)]
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
 
 pub fn init_pool(database_url: String) -> Result<ConnPool, Error> {

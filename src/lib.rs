@@ -5,9 +5,10 @@
 #![deny(missing_debug_implementations)]
 #![deny(unreachable_pub)]
 #![deny(unused_extern_crates)]
-#![deny(warnings)]
 #![deny(bare_trait_objects)]
+#![warn(warnings)]
 #![cfg_attr(feature = "codegen", feature(use_extern_macros))]
+#![cfg_attr(feature = "extern-prelude", feature(extern_prelude))]
 
 extern crate bytes;
 extern crate cookie;
