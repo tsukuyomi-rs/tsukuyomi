@@ -4,7 +4,7 @@
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![deny(unreachable_pub)]
-#![deny(unused_extern_crates)]
+#![warn(unused_extern_crates)]
 #![deny(bare_trait_objects)]
 #![warn(warnings)]
 
