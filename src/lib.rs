@@ -28,6 +28,7 @@ extern crate serde_json;
 extern crate state;
 extern crate tokio;
 extern crate tokio_tcp;
+extern crate tokio_threadpool;
 #[cfg(unix)]
 extern crate tokio_uds;
 #[cfg(test)]
@@ -51,6 +52,7 @@ pub mod local;
 pub mod modifier;
 pub mod output;
 pub mod router;
+pub mod rt;
 pub mod server;
 
 #[doc(inline)]
