@@ -81,6 +81,7 @@ matrix:
         - cargo test
         - cargo test --no-default-features
         #- cargo test --features nightly
+        - cargo test -p tsukuyomi-codegen
         # contrib
         - cargo test -p tsukuyomi-juniper
         # doctest
@@ -104,6 +105,7 @@ matrix:
       script:
         - cargo clean
         - cargo doc
+        #- cargo doc -p tsukuyomi-codegen
         - cargo doc -p tsukuyomi-juniper
         - rm -f target/doc/.lock
       deploy:

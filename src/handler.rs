@@ -18,7 +18,8 @@ impl fmt::Debug for Handler {
 }
 
 impl Handler {
-    fn new(handler: impl Fn(&mut Input) -> Handle + Send + Sync + 'static) -> Handler {
+    #[doc(hidden)]
+    pub fn new(handler: impl Fn(&mut Input) -> Handle + Send + Sync + 'static) -> Handler {
         Handler(Box::new(handler))
     }
 
@@ -179,7 +180,8 @@ impl Handle {
         Handle::ready(Err(err.into()))
     }
 
-    fn ready(result: Result<Output, Error>) -> Handle {
+    #[doc(hidden)]
+    pub fn ready(result: Result<Output, Error>) -> Handle {
         Handle(HandleKind::Ready(Some(result)))
     }
 
@@ -190,6 +192,19 @@ impl Handle {
     {
         Handle(HandleKind::Async(Box::new(move |input| {
             input.with_set_current(|| future.poll())
+        })))
+    }
+
+    #[doc(hidden)]
+    pub fn async_responder<F>(mut future: F) -> Handle
+    where
+        F: Future + Send + 'static,
+        F::Item: Responder,
+        Error: From<F::Error>,
+    {
+        Handle(HandleKind::Async(Box::new(move |input| {
+            let x = try_ready!(input.with_set_current(|| future.poll()));
+            x.respond_to(input).map(Async::Ready)
         })))
     }
 

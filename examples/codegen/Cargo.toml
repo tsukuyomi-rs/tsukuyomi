@@ -1,0 +1,14 @@
+[package]
+name = "example-codegen"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "codegen"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = { path = "../..", features = ["codegen"] }
+futures-await = "0.1.1"
