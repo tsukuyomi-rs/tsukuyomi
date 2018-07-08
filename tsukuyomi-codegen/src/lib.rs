@@ -36,6 +36,19 @@ macro_rules! try_quote {
 /// fn(&mut Input) -> Handle
 /// ```
 ///
+/// Since the type information is not provided at the time of executing the procedural macros,
+/// it is necessary to pass the kind of return type as a parameter of attribute so that the code
+/// is appropriately generated.
+/// The following kinds are supported corresponding to the attribute of return value:
+///
+/// * `#[handler(ready)]` - immediately returns a `Responder`.
+/// * `#[handler(async)]` - returns a `Future` which will return a `Responder`.
+/// * `#[handler(await)]` - returns a `Future` which will return a `Responder`
+///                         (using `futures-await`).
+///
+/// If the argument of attribute are omitted, it estimates the appropriate kind of return type
+/// from signature of the provided function (currently, it is always mapped to `ready`.)
+///
 /// # Examples
 ///
 /// A handler function which will immediately return a `Responder`:
@@ -45,8 +58,7 @@ macro_rules! try_quote {
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
 /// # use tsukuyomi_codegen::handler;
-/// use tsukuyomi::output::Responder;
-///
+/// # use tsukuyomi::output::Responder;
 /// #[handler]
 /// fn handler() -> impl Responder {
 ///     "Hello"
@@ -77,7 +89,8 @@ macro_rules! try_quote {
 /// # use tsukuyomi::{Input, Error};
 /// # use futures::Future;
 /// #[handler(async)]
-/// fn handler(input: &mut Input) -> impl Future<Item = String, Error = Error> + Send + 'static {
+/// fn handler(input: &mut Input)
+///     -> impl Future<Item = String, Error = Error> + Send + 'static {
 ///     input.body_mut().read_all().convert_to()
 /// }
 /// ```
@@ -85,12 +98,13 @@ macro_rules! try_quote {
 /// Uses `futures-await`:
 ///
 /// ```
-/// # #![feature(proc_macro, use_extern_macros, proc_macro_non_items, generators)]
+/// #![feature(proc_macro, proc_macro_non_items, generators)]
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
-/// # extern crate futures_await as futures;
+/// extern crate futures_await as futures;
 /// # use tsukuyomi_codegen::handler;
 /// # use tsukuyomi::Error;
+///
 /// #[handler(await)]
 /// fn handler() -> Result<&'static str, Error> {
 ///     Ok("Hello")
@@ -102,10 +116,7 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     // FIXME: detect the keyword `async`
     let mode = try_quote!(detect_mode(&attr, &item));
 
-    let context = Context {
-        item: item,
-        mode: mode,
-    };
+    let context = Context { item: item, mode: mode };
 
     try_quote!(context.validate());
     let inner = try_quote!(context.generate_inner());

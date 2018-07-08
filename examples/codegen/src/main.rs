@@ -6,7 +6,7 @@ extern crate tsukuyomi;
 
 use futures::prelude::{await, Future};
 use tsukuyomi::prelude::handler;
-use tsukuyomi::{App, Error, Input, Handler};
+use tsukuyomi::{App, Error, Handler, Input};
 
 #[handler]
 fn ready_handler() -> &'static str {
