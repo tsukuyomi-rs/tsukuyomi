@@ -1,4 +1,5 @@
 use failure::Error;
+use futures::future::poll_fn;
 use futures::prelude::*;
 use http::Request;
 use hyper::body::{Body, Payload};
@@ -11,6 +12,7 @@ use tokio;
 use tokio::runtime::{self, Runtime};
 
 use super::transport::{self, Listener};
+use rt::{self, RuntimeMode};
 
 // ==== Server ====
 
@@ -163,8 +165,10 @@ where
                 let dispatch = handshake.join(service).and_then({
                     let protocol = protocol.clone();
                     move |(stream, service)| {
-                        let conn = protocol.serve_connection(stream, WrapService(service));
-                        conn.with_upgrades().then(|_| Ok(()))
+                        let mut conn = protocol.serve_connection(stream, WrapService(service)).with_upgrades();
+                        poll_fn(move || {
+                            rt::runtime::with_set_mode(RuntimeMode::ThreadPool, || conn.poll().map_err(mem::drop))
+                        })
                     }
                 });
 
