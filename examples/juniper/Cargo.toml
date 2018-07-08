@@ -11,7 +11,7 @@ doc = false
 
 [dependencies]
 tsukuyomi = { path = "../.." }
-tsukuyomi-juniper = { path = "../../tsukuyomi-juniper" }
+tsukuyomi-juniper = { path = "../../contrib/tsukuyomi-juniper" }
 juniper = "0.9.0"
 futures = "0.1.21"
 failure = { version = "0.1", features = ["derive"] }
