@@ -5,7 +5,7 @@ authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [dependencies]
-tsukuyomi = { version = "0.2.0", path = "../.." }
+tsukuyomi = { version = "0.2.1", path = "../.." }
 http = "0.1.6"
 failure = "0.1"
 serde = "1"

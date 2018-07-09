@@ -13,7 +13,7 @@ syn = { version = "0.14.4", features = ["full", "extra-traits"] }
 quote = "0.6.3"
 
 [dev-dependencies]
-tsukuyomi = { version = "0.2.0", path = ".." }
+tsukuyomi = { version = "0.2.1", path = ".." }
 futures = "0.1.21"
 futures-await = "0.1.1"
 
