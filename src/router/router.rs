@@ -396,9 +396,9 @@ impl<'a, 'b> Route<'a, 'b> {
     }
 
     /// Finishes this session and registers an endpoint with given handler.
-    pub fn handle(self, handler: Handler) {
+    pub fn handle(self, handler: impl Into<Handler>) {
         let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
-        let endpoint = Endpoint::new(uri, self.method, handler);
+        let endpoint = Endpoint::new(uri, self.method, handler.into());
         self.mount.builder.endpoints.push(endpoint);
     }
 }

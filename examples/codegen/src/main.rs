@@ -6,7 +6,7 @@ extern crate tsukuyomi;
 
 use futures::prelude::{await, Future};
 use tsukuyomi::prelude::handler;
-use tsukuyomi::{App, Error, Handler, Input};
+use tsukuyomi::{App, Error, Input};
 
 #[handler]
 fn ready_handler() -> &'static str {
@@ -28,9 +28,9 @@ fn await_handler() -> tsukuyomi::Result<String> {
 fn main() -> tsukuyomi::AppResult<()> {
     let app = App::builder()
         .mount("/", |m| {
-            m.get("/ready").handle(Handler::new(ready_handler));
-            m.post("/async").handle(Handler::new(async_handler));
-            m.post("/await").handle(Handler::new(await_handler));
+            m.get("/ready").handle(ready_handler);
+            m.post("/async").handle(async_handler);
+            m.post("/await").handle(await_handler);
         })
         .finish()?;
 

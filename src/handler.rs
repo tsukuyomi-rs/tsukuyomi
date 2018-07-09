@@ -17,6 +17,16 @@ impl fmt::Debug for Handler {
     }
 }
 
+impl<F> From<F> for Handler
+where
+    F: Fn(&mut Input) -> Handle + Send + Sync + 'static,
+{
+    #[inline(always)]
+    fn from(handler: F) -> Handler {
+        Handler::new(handler)
+    }
+}
+
 impl Handler {
     #[doc(hidden)]
     pub fn new(handler: impl Fn(&mut Input) -> Handle + Send + Sync + 'static) -> Handler {
