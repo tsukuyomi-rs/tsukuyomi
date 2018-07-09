@@ -1,4 +1,37 @@
-//! Utilities for integrating GraphQL endpoints using Juniper.
+//! Utilities to process GraphQL requests in Tsukuyomi, by using Juniper.
+//!
+//! # Examples
+//!
+//! ```
+//! # extern crate tsukuyomi;
+//! # extern crate tsukuyomi_juniper;
+//! # #[macro_use]
+//! # extern crate juniper;
+//! # use tsukuyomi::App;
+//! use tsukuyomi_juniper::{GraphQLState, AppGraphQLExt};
+//!
+//! struct Context {/* ... */}
+//! impl juniper::Context for Context {}
+//!
+//! struct Query {/* ... */}
+//! graphql_object!(Query: Context |&self| {/* ... */});
+//!
+//! struct Mutation {/* ... */}
+//! graphql_object!(Mutation: Context |&self| {/* ... */});
+//!
+//! # fn main() -> tsukuyomi::AppResult<()> {
+//! let context = Context {/* ... */};
+//! let schema = juniper::RootNode::new(Query {/*...*/}, Mutation {/*...*/});
+//!
+//! let state = GraphQLState::new(context, schema);
+//!
+//! let app = App::builder()
+//!     .graphql("/graphql", state)
+//!     .graphiql("/graphiql", "http://localhost:4000/graphql")
+//!     .finish()?;
+//! # Ok(())
+//! # }
+//! ```
 
 // #![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.1.0")]
 #![deny(missing_docs)]
@@ -14,50 +47,97 @@ extern crate bytes;
 #[macro_use]
 extern crate failure;
 extern crate http;
+extern crate hyperx;
 extern crate juniper;
+extern crate mime;
 #[macro_use]
 extern crate serde;
 #[cfg_attr(test, macro_use)]
 extern crate percent_encoding;
 extern crate serde_json;
 extern crate serde_qs;
+extern crate tokio_executor;
 extern crate tsukuyomi;
 
 use bytes::Bytes;
-use futures::{Async, Future, IntoFuture, Poll};
+use futures::future::poll_fn;
+use futures::sync::oneshot::{self, SpawnHandle};
+use futures::{Async, Future};
 use http::{header, Response, StatusCode};
+use hyperx::header::ContentType;
 use percent_encoding::percent_decode;
+use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
+use tokio_executor::Executor as _TokioExecutor;
 
 use juniper::{GraphQLType, InputValue, RootNode};
 
+use tsukuyomi::app::AppBuilder;
 use tsukuyomi::input::body::FromData;
-use tsukuyomi::json::Json;
 use tsukuyomi::output::{Output, Responder};
 use tsukuyomi::rt::blocking::blocking;
-use tsukuyomi::{Error, Handler, Input};
+use tsukuyomi::{Error, Input};
 
-#[allow(missing_docs)]
-pub trait GraphQLExecutor: private::Sealed {
+#[allow(missing_debug_implementations)]
+struct Exec(RefCell<tokio_executor::DefaultExecutor>);
+
+impl<F: Future<Item = (), Error = ()> + Send + 'static> futures::future::Executor<F> for Exec {
+    fn execute(&self, future: F) -> Result<(), futures::future::ExecuteError<F>> {
+        self.0
+            .borrow_mut()
+            .spawn(Box::new(future))
+            .expect("failed spawn a future.");
+        Ok(())
+    }
+}
+
+/// Abstraction of an executor which processes asynchronously the GraphQL requests.
+pub trait GraphQLExecutor {
+    /// The type of future which will be returned from `execute`.
     type Future: Future<Item = GraphQLResponse, Error = Error>;
 
+    /// Creates a future to process an execution of a GraphQL request.
     fn execute(&self, request: GraphQLRequest) -> Self::Future;
 }
 
-/// The contextual values for executing GraphQL queries.
-pub struct GraphQLState<Q, M, Cx>
+/// The main type containing all contextual values for processing GraphQL requests.
+#[derive(Debug)]
+pub struct GraphQLState<T, QueryT, MutationT>
 where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
 {
-    inner: Arc<(RootNode<'static, Q, M>, Cx)>,
+    inner: Arc<GraphQLStateInner<T, QueryT, MutationT>>,
 }
 
-impl<Q, M, Cx> Clone for GraphQLState<Q, M, Cx>
+struct GraphQLStateInner<T, QueryT, MutationT>
 where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
+{
+    context: T,
+    root_node: RootNode<'static, QueryT, MutationT>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl<T, QueryT, MutationT> fmt::Debug for GraphQLStateInner<T, QueryT, MutationT>
+where
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
+    T: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("GraphQLStateInner")
+            .field("context", &self.context)
+            .finish()
+    }
+}
+
+impl<T, QueryT, MutationT> Clone for GraphQLState<T, QueryT, MutationT>
+where
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
 {
     fn clone(&self) -> Self {
         GraphQLState {
@@ -66,133 +146,116 @@ where
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
-impl<Q, M, Cx> fmt::Debug for GraphQLState<Q, M, Cx>
+impl<T, QueryT, MutationT> GraphQLState<T, QueryT, MutationT>
 where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
-    RootNode<'static, Q, M>: fmt::Debug,
-    Cx: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("GraphQLState").field("inner", &self.inner).finish()
-    }
-}
-
-impl<Q, M, Cx> GraphQLState<Q, M, Cx>
-where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
 {
     /// Creates a new `GraphQLState` from components.
-    pub fn new(root_node: RootNode<'static, Q, M>, context: Cx) -> GraphQLState<Q, M, Cx> {
+    pub fn new(context: T, root_node: RootNode<'static, QueryT, MutationT>) -> GraphQLState<T, QueryT, MutationT> {
         GraphQLState {
-            inner: Arc::new((root_node, context)),
+            inner: Arc::new(GraphQLStateInner { context, root_node }),
         }
-    }
-
-    /// Returns the reference to root node in this value.
-    pub fn root_node(&self) -> &RootNode<'static, Q, M> {
-        &self.inner.0
     }
 
     /// Returns the reference to context in this value.
-    pub fn context(&self) -> &Cx {
-        &self.inner.1
+    pub fn context(&self) -> &T {
+        &self.inner.context
+    }
+
+    /// Returns the reference to root node in this value.
+    pub fn root_node(&self) -> &RootNode<'static, QueryT, MutationT> {
+        &self.inner.root_node
     }
 
     /// Create a future for processing the execution of a GraphQL request.
-    ///
-    /// # Note
-    /// This method returns a future but it wlll block the current thread during executing a GraphQL request.
-    pub fn execute(&self, request: GraphQLRequest) -> ExecuteResult<Q, M, Cx> {
-        ExecuteResult {
-            state: self.clone(),
-            request: request,
-        }
-    }
-}
-
-impl<Q, M, Cx> GraphQLExecutor for GraphQLState<Q, M, Cx>
-where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
-{
-    type Future = ExecuteResult<Q, M, Cx>;
-
     #[inline(always)]
-    fn execute(&self, request: GraphQLRequest) -> Self::Future {
-        self.execute(request)
+    pub fn execute(
+        &self,
+        request: GraphQLRequest,
+    ) -> impl Future<Item = GraphQLResponse, Error = Error> + Send + 'static
+    where
+        T: Send + Sync + 'static,
+        QueryT: Send + Sync + 'static,
+        MutationT: Send + Sync + 'static,
+        QueryT::TypeInfo: Send + Sync + 'static,
+        MutationT::TypeInfo: Send + Sync + 'static,
+    {
+        self.execute_inner(request)
+    }
+
+    fn execute_inner(&self, request: GraphQLRequest) -> SpawnHandle<GraphQLResponse, Error>
+    where
+        T: Send + Sync + 'static,
+        QueryT: Send + Sync + 'static,
+        MutationT: Send + Sync + 'static,
+        QueryT::TypeInfo: Send + Sync + 'static,
+        MutationT::TypeInfo: Send + Sync + 'static,
+    {
+        // FIXME: delays the execution of the task.
+        let state = self.clone();
+        let exec = Exec(RefCell::new(tokio_executor::DefaultExecutor::current()));
+        oneshot::spawn(
+            poll_fn(move || {
+                use self::GraphQLBatchRequest::*;
+                match request.0 {
+                    Single(ref request) => {
+                        let response = try_ready!(
+                            blocking(|| request.execute(state.root_node(), state.context()))
+                                .map_err(Error::internal_server_error)
+                        );
+                        GraphQLResponse::from_single(response).map(Async::Ready)
+                    }
+                    Batch(ref requests) => {
+                        let responses = try_ready!(
+                            blocking(|| requests
+                                .iter()
+                                .map(|request| request.execute(state.root_node(), state.context()))
+                                .collect())
+                                .map_err(Error::internal_server_error)
+                        );
+                        GraphQLResponse::from_batch(responses).map(Async::Ready)
+                    }
+                }
+            }),
+            &exec,
+        )
     }
 }
 
 mod private {
-    use super::*;
+    use super::{Error, GraphQLResponse};
+    use futures::{Future, Poll};
 
-    pub trait Sealed {}
+    // Not a public API.
+    #[doc(hidden)]
+    #[allow(missing_debug_implementations)]
+    pub struct SpawnHandle(pub super::SpawnHandle<GraphQLResponse, Error>);
 
-    impl<Q, M, Cx> Sealed for GraphQLState<Q, M, Cx>
-    where
-        Q: GraphQLType<Context = Cx>,
-        M: GraphQLType<Context = Cx>,
-    {
-    }
-}
+    impl Future for SpawnHandle {
+        type Item = GraphQLResponse;
+        type Error = Error;
 
-#[doc(hidden)]
-pub struct ExecuteResult<Q, M, Cx>
-where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
-{
-    state: GraphQLState<Q, M, Cx>,
-    request: GraphQLRequest,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl<Q, M, Cx> fmt::Debug for ExecuteResult<Q, M, Cx>
-where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
-    RootNode<'static, Q, M>: fmt::Debug,
-    Cx: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("ExecuteResult")
-            .field("state", &self.state)
-            .field("request", &self.request)
-            .finish()
-    }
-}
-impl<Q, M, Cx> Future for ExecuteResult<Q, M, Cx>
-where
-    Q: GraphQLType<Context = Cx>,
-    M: GraphQLType<Context = Cx>,
-{
-    type Item = GraphQLResponse;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        use self::GraphQLBatchRequest::*;
-        match self.request.0 {
-            Single(ref request) => {
-                let response = try_ready!(
-                    blocking(|| request.execute(self.state.root_node(), self.state.context()))
-                        .map_err(Error::internal_server_error)
-                );
-                GraphQLResponse::from_single(response).map(Async::Ready)
-            }
-            Batch(ref requests) => {
-                let responses = try_ready!(
-                    blocking(|| requests
-                        .iter()
-                        .map(|request| request.execute(self.state.root_node(), self.state.context()))
-                        .collect())
-                        .map_err(Error::internal_server_error)
-                );
-                GraphQLResponse::from_batch(responses).map(Async::Ready)
-            }
+        #[inline(always)]
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            self.0.poll()
         }
+    }
+}
+
+impl<T, QueryT, MutationT> GraphQLExecutor for GraphQLState<T, QueryT, MutationT>
+where
+    T: Send + Sync + 'static,
+    QueryT: GraphQLType<Context = T> + Send + Sync + 'static,
+    MutationT: GraphQLType<Context = T> + Send + Sync + 'static,
+    QueryT::TypeInfo: Send + Sync + 'static,
+    MutationT::TypeInfo: Send + Sync + 'static,
+{
+    type Future = private::SpawnHandle;
+
+    #[inline(always)]
+    fn execute(&self, request: GraphQLRequest) -> Self::Future {
+        private::SpawnHandle(self.execute_inner(request))
     }
 }
 
@@ -207,13 +270,20 @@ enum GraphQLBatchRequest {
     Batch(Vec<juniper::http::GraphQLRequest>),
 }
 
-impl FromData for GraphQLRequest {
-    fn from_data(data: Bytes, input: &Input) -> Result<Self, Error> {
-        FromData::from_data(data, input).map(|Json(request)| GraphQLRequest(request))
-    }
-}
-
 impl GraphQLRequest {
+    /// Creates a single GraphQL request.
+    pub fn single(request: juniper::http::GraphQLRequest) -> GraphQLRequest {
+        GraphQLRequest(GraphQLBatchRequest::Single(request))
+    }
+
+    /// Creates a batch GraphQL requests.
+    pub fn batches<I>(iter: I) -> GraphQLRequest
+    where
+        I: IntoIterator<Item = juniper::http::GraphQLRequest>,
+    {
+        GraphQLRequest(GraphQLBatchRequest::Batch(iter.into_iter().collect()))
+    }
+
     /// Parses a query string into a single GraphQL request.
     pub fn from_query(s: &str) -> Result<GraphQLRequest, Error> {
         #[derive(Debug, Deserialize)]
@@ -253,6 +323,37 @@ impl GraphQLRequest {
         let request = juniper::http::GraphQLRequest::new(query, operation_name, variables);
 
         Ok(GraphQLRequest(GraphQLBatchRequest::Single(request)))
+    }
+
+    /// Parses a query string into a set of GraphQL request.
+    ///
+    /// The provided payload must be a valid JSON data.
+    pub fn from_payload(payload: &[u8]) -> Result<GraphQLRequest, Error> {
+        serde_json::from_slice(payload)
+            .map_err(Error::bad_request)
+            .map(GraphQLRequest)
+    }
+
+    /// Returns `true` if this request is a batch request.
+    pub fn is_batch(&self) -> bool {
+        match self.0 {
+            GraphQLBatchRequest::Batch(..) => true,
+            _ => false,
+        }
+    }
+}
+
+impl FromData for GraphQLRequest {
+    fn from_data(data: Bytes, input: &Input) -> Result<Self, Error> {
+        if let Some(ContentType(mime)) = input.header()? {
+            if mime != mime::APPLICATION_JSON {
+                return Err(Error::bad_request(format_err!(
+                    "The value of Content-type is not equal to application/json"
+                )));
+            }
+        }
+
+        Self::from_payload(&*data)
     }
 }
 
@@ -306,71 +407,142 @@ impl Responder for GraphQLResponse {
     }
 }
 
-/// Generates the HTML source to show a GraphiQL interface.
-pub fn graphiql_source(url: &str) -> impl Responder {
-    GraphiQLSource(juniper::http::graphiql::graphiql_source(url))
-}
+/// Definitions of `Handler`s for serving GraphQL requests.
+pub mod endpoint {
+    use bytes::Bytes;
+    use futures::{Future, IntoFuture};
+    use http::{header, Response};
+    use juniper;
 
-#[allow(missing_debug_implementations)]
-struct GraphiQLSource(String);
+    use tsukuyomi::error::Error;
+    use tsukuyomi::handler::Handler;
+    use tsukuyomi::input::Input;
+    use tsukuyomi::output::{Output, Responder};
 
-impl Responder for GraphiQLSource {
-    fn respond_to(self, _: &Input) -> Result<Output, Error> {
-        Response::builder()
-            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-            .body(self.0)
-            .map(Into::into)
-            .map_err(Error::internal_server_error)
+    use super::{GraphQLExecutor, GraphQLRequest};
+
+    /// Generates the HTML source to show a GraphiQL interface.
+    pub fn graphiql_source(url: &str) -> impl Responder {
+        GraphiQLSource(juniper::http::graphiql::graphiql_source(url))
+    }
+
+    #[allow(missing_debug_implementations)]
+    struct GraphiQLSource(String);
+
+    impl Responder for GraphiQLSource {
+        fn respond_to(self, _: &Input) -> Result<Output, Error> {
+            Response::builder()
+                .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .body(self.0)
+                .map(Into::into)
+                .map_err(Error::internal_server_error)
+        }
+    }
+
+    /// Creates a handler generating the HTML source to show a GraphiQL interface.
+    pub fn graphiql(url: &str) -> Handler {
+        let source = Bytes::from(juniper::http::graphiql::graphiql_source(url));
+        Handler::new_ready(move |_| {
+            Response::builder()
+                .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .body(source.clone())
+                .map_err(Error::internal_server_error)
+        })
+    }
+
+    /// Creates a handler processing a GraphQL request passed as an HTTP GET request.
+    ///
+    /// The GraphQL query is represented as HTTP query string.
+    /// See [the documentation of GraphQL][get-request] for details.
+    ///
+    /// [get-request]: https://graphql.org/learn/serving-over-http/#get-request
+    pub fn graphql_get<Exec>() -> Handler
+    where
+        Exec: GraphQLExecutor + Send + Sync + 'static,
+        Exec::Future: Send + 'static,
+    {
+        Handler::new_async(|input| {
+            let request = input
+                .uri()
+                .query()
+                .ok_or_else(|| Error::bad_request(format_err!("empty query")))
+                .and_then(GraphQLRequest::from_query);
+            request.into_future().and_then(|request| {
+                Input::with_current(|input| {
+                    let cx = input.get::<Exec>();
+                    cx.execute(request)
+                })
+            })
+        })
+    }
+
+    /// Creates a handler processing a GraphQL request passed as an HTTP POST request.
+    ///
+    /// The GraphQL request is represented as a JSON payload.
+    /// See [the documentation of GraphQL][post-request] for details.
+    ///
+    /// [post-request]: https://graphql.org/learn/serving-over-http/#post-request
+    pub fn graphql_post<Exec>() -> Handler
+    where
+        Exec: GraphQLExecutor + Send + Sync + 'static,
+        Exec::Future: Send + 'static,
+    {
+        Handler::new_async(|input| {
+            let request = input.body_mut().read_all().convert_to::<GraphQLRequest>();
+            request.into_future().and_then(|request| {
+                Input::with_current(|input| {
+                    let cx = input.get::<Exec>();
+                    cx.execute(request)
+                })
+            })
+        })
     }
 }
 
-/// Creates a handler generating the HTML source to show a GraphiQL interface.
-pub fn graphiql_endpoint(url: &str) -> Handler {
-    let source = Bytes::from(juniper::http::graphiql::graphiql_source(url));
-    Handler::new_ready(move |_| {
-        Response::builder()
-            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-            .body(source.clone())
-            .map_err(Error::internal_server_error)
-    })
+/// A set of extensions for registration of GraphQL endpoints into `App`.
+pub trait AppGraphQLExt: sealed::Sealed {
+    /// Registers a set of GraphQL handlers mounted to the provided path.
+    ///
+    /// The following endpoints will be registered:
+    ///
+    /// * `GET <path>`
+    /// * `POST <path>`
+    fn graphql<T>(&mut self, path: &str, executor: T) -> &mut Self
+    where
+        T: GraphQLExecutor + Send + Sync + 'static,
+        T::Future: Send + 'static;
+
+    /// Registers a GraphiQL endpoint mounted to the provided path into this application.
+    fn graphiql(&mut self, path: &str, url: &str) -> &mut Self;
 }
 
-#[allow(missing_docs)]
-pub fn get_graphql_handler<Exec>() -> Handler
-where
-    Exec: GraphQLExecutor + Send + Sync + 'static,
-    Exec::Future: Send + 'static,
-{
-    Handler::new_async(|input| {
-        let request = input
-            .uri()
-            .query()
-            .ok_or_else(|| Error::bad_request(format_err!("empty query")))
-            .and_then(GraphQLRequest::from_query);
-        request.into_future().and_then(|request| {
-            Input::with_current(|input| {
-                let cx = input.get::<Exec>();
-                cx.execute(request)
-            })
+impl AppGraphQLExt for AppBuilder {
+    fn graphql<T>(&mut self, path: &str, executor: T) -> &mut Self
+    where
+        T: GraphQLExecutor + Send + Sync + 'static,
+        T::Future: Send + 'static,
+    {
+        self.manage(executor).mount(path, |m| {
+            m.get("/").handle(endpoint::graphql_get::<T>());
+            m.post("/").handle(endpoint::graphql_post::<T>());
         })
-    })
+    }
+
+    fn graphiql(&mut self, path: &str, url: &str) -> &mut Self {
+        self.mount(path, |m| {
+            m.get("/").handle(endpoint::graphiql(url));
+        })
+    }
 }
 
-#[allow(missing_docs)]
-pub fn post_graphql_handler<Exec>() -> Handler
-where
-    Exec: GraphQLExecutor + Send + Sync + 'static,
-    Exec::Future: Send + 'static,
-{
-    Handler::new_async(|input| {
-        let request = input.body_mut().read_all().convert_to::<GraphQLRequest>();
-        request.into_future().and_then(|request| {
-            Input::with_current(|input| {
-                let cx = input.get::<Exec>();
-                cx.execute(request)
-            })
-        })
-    })
+// TODO: impl for Mount
+
+mod sealed {
+    use tsukuyomi::app::AppBuilder;
+
+    pub trait Sealed {}
+
+    impl Sealed for AppBuilder {}
 }
 
 #[allow(unreachable_pub)]
@@ -391,18 +563,12 @@ mod tests {
 
     type Schema = RootNode<'static, Database, EmptyMutation<Database>>;
 
-    type Cx = GraphQLState<Database, EmptyMutation<Database>, Database>;
-
     fn make_tsukuyomi_app() -> tsukuyomi::AppResult<App> {
+        let context = Database::new();
         let schema = Schema::new(Database::new(), EmptyMutation::<Database>::new());
-        let cx = GraphQLState::new(schema, Database::new());
-        App::builder()
-            .manage(cx)
-            .mount("/", |m| {
-                m.get("/").handle(get_graphql_handler::<Cx>());
-                m.post("/").handle(post_graphql_handler::<Cx>());
-            })
-            .finish()
+        let state = GraphQLState::new(context, schema);
+
+        App::builder().graphql("/", state).finish()
     }
 
     struct TestTsukuyomiIntegration<'a> {
