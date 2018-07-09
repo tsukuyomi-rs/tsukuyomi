@@ -1,3 +1,9 @@
+<a name="0.2.1"></a>
+### 0.2.1 (2018-07-09)
+
+* **rt:**  add wrapped blocking API ([1a56cb2d](https://github.com/ubnt-intrepid/tsukuyomi/commit/1a56cb2d160cec49b1e5cd966c0dc7ad3ab866df))
+* **router:**  change the argument type of `Route::handle` ([8d3b2db6](https://github.com/ubnt-intrepid/tsukuyomi/commit/8d3b2db6318f0bc03fb2ee07048681aaffb77f12))
+
 <a name="0.2.0"></a>
 ## 0.2.0 (2018-07-03)
 
