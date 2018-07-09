@@ -13,12 +13,14 @@ mod graphql;
 use futures::{Future, IntoFuture};
 
 use tsukuyomi::{App, Error, Handler, Input};
-use tsukuyomi_juniper::{graphiql_endpoint, GraphQLContext, GraphQLRequest, GraphQLResponse};
+use tsukuyomi_juniper::{graphiql_endpoint, GraphQLRequest, GraphQLResponse, GraphQLState};
 
 use graphql::{Context, Mutation, Query};
 
+type Cx = GraphQLState<Query, Mutation, Context>;
+
 fn main() -> tsukuyomi::AppResult<()> {
-    let cx = GraphQLContext::new(graphql::create_schema(), Context::default());
+    let cx = GraphQLState::new(graphql::create_schema(), Context::default());
 
     let app = App::builder()
         .manage(cx)
@@ -47,7 +49,7 @@ fn main() -> tsukuyomi::AppResult<()> {
 
 fn do_execute(request: GraphQLRequest) -> impl Future<Item = GraphQLResponse, Error = Error> + Send + 'static {
     let future = Input::with_current(|input| {
-        let cx = input.get::<GraphQLContext<Query, Mutation, Context>>();
+        let cx = input.get::<Cx>();
         cx.execute(request)
     });
 
