@@ -7,7 +7,7 @@
 #![deny(unused_extern_crates)]
 #![deny(bare_trait_objects)]
 #![warn(warnings)]
-#![cfg_attr(feature = "codegen", feature(use_extern_macros))]
+// #![cfg_attr(feature = "codegen", feature(use_extern_macros))]
 #![cfg_attr(feature = "extern-prelude", feature(extern_prelude))]
 
 extern crate bytes;
@@ -78,10 +78,4 @@ pub fn run(app: App) -> AppResult<()> {
     let server = ::server::Server::builder().finish(app)?;
     server.serve();
     Ok(())
-}
-
-#[allow(missing_docs)]
-pub mod prelude {
-    #[cfg(feature = "codegen")]
-    pub use tsukuyomi_codegen::handler;
 }

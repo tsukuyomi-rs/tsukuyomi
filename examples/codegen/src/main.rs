@@ -3,10 +3,11 @@
 
 extern crate futures_await as futures;
 extern crate tsukuyomi;
+extern crate tsukuyomi_codegen;
 
 use futures::prelude::{await, Future};
-use tsukuyomi::prelude::handler;
 use tsukuyomi::{App, Error, Input};
+use tsukuyomi_codegen::handler;
 
 #[handler]
 fn ready_handler() -> &'static str {
