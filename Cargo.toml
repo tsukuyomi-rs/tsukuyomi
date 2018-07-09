@@ -20,7 +20,14 @@ include = [
 ]
 
 [package.metadata.docs.rs]
-features = ["secure", "tls", "codegen", "extern-prelude"]
+features = [
+  "secure",
+  "tls",
+  #"codegen",
+
+  # FIXME: remove it as soon as the rustc version used in docs.rs is updated
+  "extern-prelude",
+]
 
 [badges]
 appveyor = { repository = "ubnt-intrepid/tsukuyomi" }
@@ -69,7 +76,7 @@ serde = { version = "1.0.66", features = ["derive"] }
 serde_json = "1.0.20"
 state = "0.4"
 
-tsukuyomi-codegen = { version = "0.1.0", path = "codegen", optional = true }
+#tsukuyomi-codegen = { version = "0.1.0", path = "codegen", optional = true }
 
 [dev-dependencies]
 matches = "0.1.6"
@@ -82,8 +89,8 @@ tokio-uds = "0.2.0"
 default = []
 secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
-codegen = ["tsukuyomi-codegen"]
-nightly = ["tsukuyomi-codegen/nightly"]
+#codegen = ["tsukuyomi-codegen"]
+#nightly = ["tsukuyomi-codegen/nightly"]
 
-# FIXME: remove this feature as soon as the version of rustc used in docs.rs is updated
+# FIXME: remove it as soon as the rustc version used in docs.rs is updated
 extern-prelude = []
