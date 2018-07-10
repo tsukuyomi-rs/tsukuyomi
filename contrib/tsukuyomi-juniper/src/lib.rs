@@ -1,4 +1,4 @@
-//! Utilities to process GraphQL requests in Tsukuyomi, by using Juniper.
+//! A extension of Tsukuyomi web framework for supporting GraphQL serving based on Juniper.
 //!
 //! # Examples
 //!
@@ -33,7 +33,7 @@
 //! # }
 //! ```
 
-// #![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.1.0")]
 #![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![deny(unreachable_pub)]
