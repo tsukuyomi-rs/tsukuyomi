@@ -56,20 +56,15 @@ extern crate serde;
 extern crate percent_encoding;
 extern crate serde_json;
 extern crate serde_qs;
-extern crate tokio_executor;
 extern crate tsukuyomi;
 
 use bytes::Bytes;
-use futures::future::poll_fn;
-use futures::sync::oneshot::{self, SpawnHandle};
-use futures::{Async, Future};
+use futures::{Async, Future, Poll};
 use http::{header, Response, StatusCode};
 use hyperx::header::ContentType;
 use percent_encoding::percent_decode;
-use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
-use tokio_executor::Executor as _TokioExecutor;
 
 use juniper::{GraphQLType, InputValue, RootNode};
 
@@ -78,19 +73,6 @@ use tsukuyomi::input::body::FromData;
 use tsukuyomi::output::{Output, Responder};
 use tsukuyomi::rt::blocking::blocking;
 use tsukuyomi::{Error, Input};
-
-#[allow(missing_debug_implementations)]
-struct Exec(RefCell<tokio_executor::DefaultExecutor>);
-
-impl<F: Future<Item = (), Error = ()> + Send + 'static> futures::future::Executor<F> for Exec {
-    fn execute(&self, future: F) -> Result<(), futures::future::ExecuteError<F>> {
-        self.0
-            .borrow_mut()
-            .spawn(Box::new(future))
-            .expect("failed spawn a future.");
-        Ok(())
-    }
-}
 
 /// Abstraction of an executor which processes asynchronously the GraphQL requests.
 pub trait GraphQLExecutor {
@@ -169,93 +151,67 @@ where
     }
 
     /// Create a future for processing the execution of a GraphQL request.
-    #[inline(always)]
-    pub fn execute(
-        &self,
-        request: GraphQLRequest,
-    ) -> impl Future<Item = GraphQLResponse, Error = Error> + Send + 'static
-    where
-        T: Send + Sync + 'static,
-        QueryT: Send + Sync + 'static,
-        MutationT: Send + Sync + 'static,
-        QueryT::TypeInfo: Send + Sync + 'static,
-        MutationT::TypeInfo: Send + Sync + 'static,
-    {
-        self.execute_inner(request)
-    }
-
-    fn execute_inner(&self, request: GraphQLRequest) -> SpawnHandle<GraphQLResponse, Error>
-    where
-        T: Send + Sync + 'static,
-        QueryT: Send + Sync + 'static,
-        MutationT: Send + Sync + 'static,
-        QueryT::TypeInfo: Send + Sync + 'static,
-        MutationT::TypeInfo: Send + Sync + 'static,
-    {
-        // FIXME: delays the execution of the task.
-        let state = self.clone();
-        let exec = Exec(RefCell::new(tokio_executor::DefaultExecutor::current()));
-        oneshot::spawn(
-            poll_fn(move || {
-                use self::GraphQLBatchRequest::*;
-                match request.0 {
-                    Single(ref request) => {
-                        let response = try_ready!(
-                            blocking(|| request.execute(state.root_node(), state.context()))
-                                .map_err(Error::internal_server_error)
-                        );
-                        GraphQLResponse::from_single(response).map(Async::Ready)
-                    }
-                    Batch(ref requests) => {
-                        let responses = try_ready!(
-                            blocking(|| requests
-                                .iter()
-                                .map(|request| request.execute(state.root_node(), state.context()))
-                                .collect())
-                                .map_err(Error::internal_server_error)
-                        );
-                        GraphQLResponse::from_batch(responses).map(Async::Ready)
-                    }
-                }
-            }),
-            &exec,
-        )
+    pub fn execute(&self, request: GraphQLRequest) -> Execute<T, QueryT, MutationT> {
+        Execute {
+            state: self.clone(),
+            request,
+        }
     }
 }
 
-mod private {
-    use super::{Error, GraphQLResponse};
-    use futures::{Future, Poll};
+/// A `Future` representing a process to execute a GraphQL request from peer.
+#[derive(Debug)]
+pub struct Execute<T, QueryT, MutationT>
+where
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
+{
+    state: GraphQLState<T, QueryT, MutationT>,
+    request: GraphQLRequest,
+}
 
-    // Not a public API.
-    #[doc(hidden)]
-    #[allow(missing_debug_implementations)]
-    pub struct SpawnHandle(pub super::SpawnHandle<GraphQLResponse, Error>);
+impl<T, QueryT, MutationT> Future for Execute<T, QueryT, MutationT>
+where
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
+{
+    type Item = GraphQLResponse;
+    type Error = Error;
 
-    impl Future for SpawnHandle {
-        type Item = GraphQLResponse;
-        type Error = Error;
-
-        #[inline(always)]
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            self.0.poll()
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        use self::GraphQLBatchRequest::*;
+        match self.request.0 {
+            Single(ref request) => {
+                let response = try_ready!(
+                    blocking(|| request.execute(self.state.root_node(), self.state.context()))
+                        .map_err(Error::internal_server_error)
+                );
+                GraphQLResponse::from_single(response).map(Async::Ready)
+            }
+            Batch(ref requests) => {
+                let responses = try_ready!(
+                    blocking(|| requests
+                        .iter()
+                        .map(|request| request.execute(self.state.root_node(), self.state.context()))
+                        .collect())
+                        .map_err(Error::internal_server_error)
+                );
+                GraphQLResponse::from_batch(responses).map(Async::Ready)
+            }
         }
     }
 }
 
 impl<T, QueryT, MutationT> GraphQLExecutor for GraphQLState<T, QueryT, MutationT>
 where
-    T: Send + Sync + 'static,
-    QueryT: GraphQLType<Context = T> + Send + Sync + 'static,
-    MutationT: GraphQLType<Context = T> + Send + Sync + 'static,
-    QueryT::TypeInfo: Send + Sync + 'static,
-    MutationT::TypeInfo: Send + Sync + 'static,
+    QueryT: GraphQLType<Context = T>,
+    MutationT: GraphQLType<Context = T>,
 {
-    type Future = private::SpawnHandle;
+    type Future = Execute<T, QueryT, MutationT>;
 
     #[inline(always)]
     fn execute(&self, request: GraphQLRequest) -> Self::Future {
-        private::SpawnHandle(self.execute_inner(request))
+        self.execute(request)
     }
 }
 
