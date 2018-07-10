@@ -6,7 +6,7 @@ A extension of Tsukuyomi web framework for supporting GraphQL serving based on J
 version = "0.1.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT/Apache-2.0"
-documentation = "https//docs.rs/tsukuyomi-juniper/"
+documentation = "https://docs.rs/tsukuyomi-juniper/"
 readme = "README.md"
 
 include = [
