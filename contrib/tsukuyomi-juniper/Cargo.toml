@@ -1,16 +1,20 @@
 [package]
 name = "tsukuyomi-juniper"
 description = """
-Utilities to process GraphQL requests in Tsukuyomi, by using Juniper.
+A extension of Tsukuyomi web framework for supporting GraphQL serving based on Juniper.
 """
 version = "0.1.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT/Apache-2.0"
 documentation = "https//docs.rs/tsukuyomi-juniper/"
+readme = "README.md"
 
 include = [
   "src/**/*.rs",
   "Cargo.toml",
+  "README.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
 ]
 
 [dependencies]
