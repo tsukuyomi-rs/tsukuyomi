@@ -10,20 +10,13 @@ use super::uri::Uri;
 /// and some information for constructing a `Router`.
 #[derive(Debug)]
 pub struct Endpoint {
-    uri: Uri,
-    method: Method,
-    handler: Handler,
+    pub(super) uri: Uri,
+    pub(super) method: Method,
+    pub(super) scope_id: usize,
+    pub(super) handler: Handler,
 }
 
 impl Endpoint {
-    pub(crate) fn new(uri: Uri, method: Method, handler: Handler) -> Endpoint {
-        Endpoint {
-            uri: uri,
-            method: method,
-            handler: handler,
-        }
-    }
-
     /// Returns the full HTTP path of this endpoint.
     pub fn uri(&self) -> &Uri {
         &self.uri
@@ -32,6 +25,10 @@ impl Endpoint {
     /// Returns the reference to `Method` which this route allows.
     pub fn method(&self) -> &Method {
         &self.method
+    }
+
+    pub(crate) fn scope_id(&self) -> usize {
+        self.scope_id
     }
 
     /// Returns the reference to `Handler` associated with this endpoint.

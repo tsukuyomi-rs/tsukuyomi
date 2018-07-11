@@ -7,12 +7,12 @@ pub mod service;
 
 mod endpoint;
 mod router;
+mod scope;
 mod uri;
 
 #[cfg(test)]
 mod tests;
 
-use state::Container;
 use std::fmt;
 use std::sync::Arc;
 
@@ -22,6 +22,7 @@ use modifier::Modifier;
 pub use self::builder::AppBuilder;
 pub use self::endpoint::Endpoint;
 use self::router::Router;
+use self::scope::Container;
 pub use self::uri::Uri;
 
 /// The global and shared variables used throughout the serving an HTTP application.
