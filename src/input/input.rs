@@ -7,10 +7,9 @@ use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-use app::AppState;
+use app::{AppState, Endpoint};
 use error::Error;
 use input::RequestBody;
-use router::Endpoint;
 
 use super::cookie::{CookieManager, Cookies};
 

@@ -4,6 +4,13 @@ pub mod builder;
 pub mod router;
 pub mod service;
 
+mod endpoint;
+mod recognizer;
+mod uri;
+
+pub use self::endpoint::Endpoint;
+pub use self::uri::Uri;
+
 use state::Container;
 use std::fmt;
 use std::sync::Arc;

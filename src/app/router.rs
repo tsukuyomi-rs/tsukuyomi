@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use failure::{self, Fail};
 use fnv::FnvHashMap;
 use http::header::HeaderValue;
