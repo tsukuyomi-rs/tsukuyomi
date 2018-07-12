@@ -55,13 +55,6 @@ pub mod output;
 pub mod rt;
 pub mod server;
 
-#[doc(hidden)]
-#[deprecated(since = "0.2.2", note = "This module has moved to the inside of `app`.")]
-pub mod router {
-    pub use app::router::{Builder, Mount, Route, Router};
-    pub use app::{Endpoint, Uri};
-}
-
 #[doc(inline)]
 pub use app::App;
 

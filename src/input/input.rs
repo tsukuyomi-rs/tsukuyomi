@@ -140,7 +140,7 @@ impl Input {
     /// Returns the reference to a `Endpoint` matched to the incoming request.
     pub fn endpoint(&self) -> Option<&Endpoint> {
         match self.parts.route {
-            Some((i, _)) => self.state.router().get(i),
+            Some((i, _)) => self.state.get(i),
             None => None,
         }
     }
@@ -168,7 +168,7 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        self.state.get()
+        self.state.states().get()
     }
 
     /// Returns the reference to a value of `T` registered in the global storage, if possible.
@@ -179,7 +179,7 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        self.state.try_get()
+        self.state.states().try_get()
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
