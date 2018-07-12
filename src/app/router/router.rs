@@ -105,11 +105,7 @@ pub struct Router {
 impl Router {
     /// Creates a builder object for constructing a configured value of this type.
     pub fn builder() -> Builder {
-        Builder {
-            endpoints: vec![],
-            config: None,
-            result: Ok(()),
-        }
+        Builder::new()
     }
 
     /// Gets the reference to i-th `Route` contained in this router.
@@ -167,6 +163,14 @@ pub struct Builder {
 }
 
 impl Builder {
+    pub(crate) fn new() -> Builder {
+        Builder {
+            endpoints: vec![],
+            config: None,
+            result: Ok(()),
+        }
+    }
+
     /// Creates a proxy object to add some routes mounted to the provided prefix.
     ///
     /// # Examples
