@@ -37,7 +37,6 @@ maintenance = { status = "actively-developed" }
 [workspace]
 members = [
   "codegen",
-  "doctest",
 ]
 
 [dependencies]
