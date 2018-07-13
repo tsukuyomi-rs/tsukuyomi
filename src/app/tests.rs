@@ -134,3 +134,51 @@ fn mount() {
 
     assert!(app.router().recognize("/baz/", &Method::GET).is_err());
 }
+
+#[test]
+fn scope_variable() {
+    let app = App::builder()
+        .manage::<String>("G".into())
+        .mount("/s0", |m| {
+            m.mount("/s1", |m| {
+                m.set::<String>("A".into());
+            });
+        })
+        .mount("/s2", |m| {
+            m.set::<String>("B".into());
+            m.mount("/s3", |m| {
+                m.set::<String>("C".into());
+                m.mount("/s4", |_m| {});
+            }).mount("/s5", |m| {
+                m.mount("/s6", |_m| {});
+            });
+        })
+        .finish()
+        .unwrap();
+
+    {
+        let inner_string = app.states().get_inner::<String>().unwrap();
+
+        assert_eq!(inner_string.global, Some("G".into()));
+        assert_eq!(
+            inner_string.locals,
+            vec![
+                None,
+                Some("A".into()),
+                Some("B".into()),
+                Some("C".into()),
+                None,
+                None,
+                None,
+            ]
+        );
+    }
+
+    assert_eq!(app.states().get(0).map(String::as_str), Some("G"));
+    assert_eq!(app.states().get(1).map(String::as_str), Some("A"));
+    assert_eq!(app.states().get(2).map(String::as_str), Some("B"));
+    assert_eq!(app.states().get(3).map(String::as_str), Some("C"));
+    assert_eq!(app.states().get(4).map(String::as_str), Some("C"));
+    assert_eq!(app.states().get(5).map(String::as_str), Some("B"));
+    assert_eq!(app.states().get(6).map(String::as_str), Some("B"));
+}

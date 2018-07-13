@@ -167,7 +167,7 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        self.app.states().get()
+        self.try_get().expect("The value of this value is not set.")
     }
 
     /// Returns the reference to a value of `T` registered in the global storage, if possible.
@@ -178,7 +178,8 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        self.app.states().try_get()
+        let endpoint = self.endpoint()?;
+        self.app.states().get(endpoint.scope_id())
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.

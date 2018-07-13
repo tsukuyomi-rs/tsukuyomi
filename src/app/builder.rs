@@ -6,7 +6,6 @@ use std::{fmt, mem};
 use failure::{Error, Fail};
 use fnv::FnvHashMap;
 use http::{HttpTryFrom, Method};
-use state::Container;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::Handler;
@@ -14,6 +13,7 @@ use modifier::Modifier;
 
 use super::endpoint::Endpoint;
 use super::router::{Config, Recognizer, Router, RouterEntry};
+use super::scope;
 use super::uri::{self, Uri};
 use super::{App, AppState};
 
@@ -22,8 +22,9 @@ pub struct AppBuilder {
     endpoints: Vec<Endpoint>,
     error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    states: Container,
     config: Option<Config>,
+    scope: scope::Builder,
+    parents: Vec<Option<usize>>,
 
     result: Result<(), Error>,
 }
@@ -41,8 +42,9 @@ impl AppBuilder {
             endpoints: vec![],
             error_handler: None,
             modifiers: vec![],
-            states: Container::new(),
             config: None,
+            scope: scope::Container::builder(),
+            parents: vec![],
 
             result: Ok(()),
         }
@@ -86,12 +88,21 @@ impl AppBuilder {
             Ok(())
         });
 
+        let scope_id = self.create_new_scope(None);
+
         f(&mut Mount {
             builder: self,
             prefix: prefix,
+            scope_id: scope_id,
         });
 
         self
+    }
+
+    fn create_new_scope(&mut self, parent: Option<usize>) -> usize {
+        let new_scope_id = self.parents.len();
+        self.parents.push(parent);
+        new_scope_id
     }
 
     /// Sets whether the fallback to GET if the handler for HEAD is not registered is enabled or not.
@@ -142,7 +153,7 @@ impl AppBuilder {
     where
         T: Send + Sync + 'static,
     {
-        self.states.set(state);
+        self.scope.set(state, None);
         self
     }
 
@@ -154,7 +165,8 @@ impl AppBuilder {
             result,
             error_handler,
             modifiers,
-            mut states,
+            mut scope,
+            parents,
         } = mem::replace(self, AppBuilder::new());
 
         result?;
@@ -182,7 +194,7 @@ impl AppBuilder {
 
         let error_handler = error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::new()));
 
-        states.freeze();
+        let states = scope.finish(&parents[..]);
 
         let router = Router {
             recognizer: recognizer,
@@ -213,6 +225,7 @@ impl AppBuilder {
 pub struct Mount<'a> {
     builder: &'a mut AppBuilder,
     prefix: Vec<Uri>,
+    scope_id: usize,
 }
 
 macro_rules! impl_methods_for_mount {
@@ -249,18 +262,32 @@ impl<'a> Mount<'a> {
         }
     }
 
-    #[allow(missing_docs)]
-    pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) {
+    /// Create a new scope and performs some configuration with the provided function.
+    pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) -> &mut Self {
         let mut prefix = self.prefix.clone();
         self.builder.modify(|_| {
             prefix.push(Uri::from_str(base)?);
             Ok(())
         });
-        let mut mount = Mount {
+
+        let scope_id = self.builder.create_new_scope(Some(self.scope_id));
+
+        f(&mut Mount {
             builder: self.builder,
             prefix: prefix,
-        };
-        f(&mut mount);
+            scope_id: scope_id,
+        });
+
+        self
+    }
+
+    /// Adds a *scope-local* variable into the application.
+    pub fn set<T>(&mut self, value: T) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+    {
+        self.builder.scope.set(value, Some(self.scope_id));
+        self
     }
 
     impl_methods_for_mount![
@@ -327,7 +354,12 @@ impl<'a, 'b> Route<'a, 'b> {
     /// Finishes this session and registers an endpoint with given handler.
     pub fn handle(self, handler: impl Into<Handler>) {
         let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
-        let endpoint = Endpoint::new(uri, self.method, handler.into());
+        let endpoint = Endpoint {
+            uri: uri,
+            method: self.method,
+            scope_id: self.mount.scope_id,
+            handler: handler.into(),
+        };
         self.mount.builder.endpoints.push(endpoint);
     }
 }
