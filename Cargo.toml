@@ -37,23 +37,6 @@ maintenance = { status = "actively-developed" }
 [workspace]
 members = [
   "codegen",
-  "contrib/tsukuyomi-juniper",
-  "contrib/tsukuyomi-template",
-  "doctest",
-
-  "examples/async-await",
-  "examples/basic",
-  "examples/codegen",
-  "examples/diesel",
-  "examples/git-server",
-  "examples/json",
-  "examples/juniper",
-  "examples/lines",
-  "examples/routing",
-  "examples/template-askama",
-  "examples/template-tera",
-  "examples/tls",
-  "examples/unix-socket",
 ]
 
 [dependencies]
