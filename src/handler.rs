@@ -42,19 +42,21 @@ impl Handler {
     /// # Examples
     ///
     /// ```
+    /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::handler::Handler;
-    /// # use tsukuyomi::router::Router;
     /// fn index(input: &mut Input) -> &'static str {
     ///     "Hello, Tsukuyomi.\n"
     /// }
     ///
-    /// let router = Router::builder()
+    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// let app = App::builder()
     ///     .mount("/", |m| {
     ///         m.get("/index.html").handle(Handler::new_ready(index));
     ///     })
-    ///     .finish();
-    /// # assert!(router.is_ok());
+    ///     .finish()?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new_ready<R>(handler: impl Fn(&mut Input) -> R + Send + Sync + 'static) -> Handler
     where
@@ -74,10 +76,10 @@ impl Handler {
     /// ```
     /// # extern crate futures;
     /// # extern crate tsukuyomi;
+    /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::error::Error;
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::handler::Handler;
-    /// # use tsukuyomi::router::Router;
     /// # use futures::Future;
     /// # use futures::future::lazy;
     /// fn handler(input: &mut Input) -> impl Future<Item = String, Error = Error> + Send + 'static {
@@ -87,12 +89,14 @@ impl Handler {
     ///     })
     /// }
     ///
-    /// let router = Router::builder()
+    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// let app = App::builder()
     ///     .mount("/", |m| {
     ///         m.get("/posts").handle(Handler::new_async(handler));
     ///     })
-    ///     .finish();
-    /// # assert!(router.is_ok());
+    ///     .finish()?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new_async<R>(handler: impl Fn(&mut Input) -> R + Send + Sync + 'static) -> Handler
     where
@@ -120,9 +124,9 @@ impl Handler {
     /// ```
     /// # extern crate futures;
     /// # extern crate tsukuyomi;
+    /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::error::Error;
     /// # use tsukuyomi::handler::Handler;
-    /// # use tsukuyomi::router::Router;
     /// # use futures::Future;
     /// # use futures::future::lazy;
     /// fn handler() -> impl Future<Item = &'static str, Error = Error> + Send + 'static {
@@ -136,12 +140,14 @@ impl Handler {
     /// //    "Hello, Tsukuyomi.\n"
     /// // }
     ///
-    /// let router = Router::builder()
+    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// let app = App::builder()
     ///     .mount("/", |m| {
     ///         m.get("/posts").handle(Handler::new_fully_async(handler));
     ///     })
-    ///     .finish();
-    /// # assert!(router.is_ok());
+    ///     .finish()?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     pub fn new_fully_async<R>(handler: impl Fn() -> R + Send + Sync + 'static) -> Handler

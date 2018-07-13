@@ -5,12 +5,10 @@ use hyperx::header::Header;
 use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
-use std::sync::Arc;
 
-use app::AppState;
+use app::{App, Endpoint};
 use error::Error;
 use input::RequestBody;
-use router::Endpoint;
 
 use super::cookie::{CookieManager, Cookies};
 
@@ -68,7 +66,7 @@ impl InputParts {
 #[derive(Debug)]
 pub struct Input {
     pub(crate) parts: InputParts,
-    pub(crate) state: Arc<AppState>,
+    pub(crate) app: App,
 }
 
 impl Input {
@@ -141,7 +139,7 @@ impl Input {
     /// Returns the reference to a `Endpoint` matched to the incoming request.
     pub fn endpoint(&self) -> Option<&Endpoint> {
         match self.parts.route {
-            Some((i, _)) => self.state.router().get(i),
+            Some((i, _)) => self.app.endpoint(i),
             None => None,
         }
     }
@@ -169,7 +167,7 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        self.state.get()
+        self.app.states().get()
     }
 
     /// Returns the reference to a value of `T` registered in the global storage, if possible.
@@ -180,7 +178,7 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        self.state.try_get()
+        self.app.states().try_get()
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 //! The implementation of route recognizer.
 
 // NOTE: The original implementation was imported from https://github.com/ubnt-intrepid/susanoo
@@ -263,14 +265,14 @@ impl Node {
 
 /// A builder object for constructing the instance of `Recognizer`.
 #[derive(Debug)]
-pub struct Builder {
+pub(crate) struct Builder {
     root: Option<Node>,
     paths: Vec<String>,
 }
 
 impl Builder {
     /// Add a path to this builder with a value of `T`.
-    pub fn push<T>(&mut self, path: T) -> Result<(), Error>
+    pub(crate) fn push<T>(&mut self, path: T) -> Result<(), Error>
     where
         T: Into<String>,
     {
@@ -297,7 +299,7 @@ impl Builder {
     }
 
     /// Finalize the build process and create an instance of `Recognizer`.
-    pub fn finish(&mut self) -> Recognizer {
+    pub(crate) fn finish(&mut self) -> Recognizer {
         let Builder { root, paths } = mem::replace(self, Recognizer::builder());
         Recognizer { root, paths }
     }
@@ -305,7 +307,7 @@ impl Builder {
 
 /// A route recognizer based on radix tree.
 #[derive(Debug)]
-pub struct Recognizer {
+pub(crate) struct Recognizer {
     root: Option<Node>,
     paths: Vec<String>,
 }
@@ -314,23 +316,18 @@ impl Recognizer {
     /// Creates an instance of builder object for constructing a value of this type.
     ///
     /// See the documentations of `Builder` for details.
-    pub fn builder() -> Builder {
+    pub(crate) fn builder() -> Builder {
         Builder {
             root: None,
             paths: vec![],
         }
     }
 
-    #[allow(missing_docs)]
-    pub fn get(&self, i: usize) -> Option<&str> {
-        self.paths.get(i).map(|s| s.as_str())
-    }
-
     /// Traverses the given path and returns a reference to registered value of "T" if matched.
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub fn recognize(&self, path: &str) -> Option<(usize, Vec<(usize, usize)>)> {
+    pub(crate) fn recognize(&self, path: &str) -> Option<(usize, Vec<(usize, usize)>)> {
         self.root.as_ref()?.get_value(path.as_bytes())
     }
 }

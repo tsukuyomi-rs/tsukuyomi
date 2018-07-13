@@ -52,7 +52,6 @@ pub mod json;
 pub mod local;
 pub mod modifier;
 pub mod output;
-pub mod router;
 pub mod rt;
 pub mod server;
 

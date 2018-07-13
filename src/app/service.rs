@@ -7,7 +7,6 @@ use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
-use std::sync::Arc;
 use tokio;
 
 use error::{CritError, Error};
@@ -17,13 +16,27 @@ use modifier::{AfterHandle, BeforeHandle};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
-use super::{App, AppState};
+use super::router::Recognize;
+use super::App;
 
 impl App {
     /// Creates a new `AppService` to manage a session.
     pub fn new_service(&self) -> AppService {
-        AppService {
-            global: self.global.clone(),
+        AppService { app: self.clone() }
+    }
+
+    fn handle(&self, input: &mut Input) -> Result<Handle, Error> {
+        match self.router().recognize(input.uri().path(), input.method())? {
+            Recognize::Matched(i, params) => {
+                input.parts.route = Some((i, params));
+                let endpoint = self.endpoint(i).expect("invalid endpoint ID");
+                Ok(endpoint.handler().handle(input))
+            }
+            Recognize::Options(allowed_methods) => {
+                let mut response = Response::new(());
+                response.headers_mut().insert(header::ALLOW, allowed_methods);
+                Ok(Handle::ok(response.into()))
+            }
         }
     }
 }
@@ -44,7 +57,7 @@ impl NewService for App {
 /// A `Service` representation of the application, created by `App`.
 #[derive(Debug)]
 pub struct AppService {
-    global: Arc<AppState>,
+    app: App,
 }
 
 impl AppService {
@@ -54,9 +67,9 @@ impl AppService {
             state: AppServiceFutureState::Initial,
             input: Some(Input {
                 parts: InputParts::new(request),
-                state: self.global.clone(),
+                app: self.app.clone(),
             }),
-            global: self.global.clone(),
+            app: self.app.clone(),
         }
     }
 }
@@ -79,7 +92,7 @@ impl Service for AppService {
 pub struct AppServiceFuture {
     state: AppServiceFutureState,
     input: Option<Input>,
-    global: Arc<AppState>,
+    app: App,
 }
 
 #[derive(Debug)]
@@ -96,7 +109,7 @@ impl AppServiceFuture {
         use self::AppServiceFutureState::*;
 
         let input = self.input.as_mut().expect("This future has already polled");
-        let global = &*self.global;
+        let app = &self.app;
 
         loop {
             let output = match self.state {
@@ -109,10 +122,10 @@ impl AppServiceFuture {
 
             match (mem::replace(&mut self.state, Done), output) {
                 (Initial, None) => {
-                    if let Some(modifier) = global.modifiers().get(0) {
+                    if let Some(modifier) = app.modifiers().get(0) {
                         self.state = BeforeHandle(modifier.before_handle(input), 1);
                     } else {
-                        self.state = Handle(global.router().handle(input)?);
+                        self.state = Handle(app.handle(input)?);
                     }
                 }
 
@@ -120,24 +133,24 @@ impl AppServiceFuture {
                     if current <= 1 {
                         break Ok(Async::Ready(output));
                     }
-                    let modifier = &global.modifiers()[current - 2];
+                    let modifier = &app.modifiers()[current - 2];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 2);
                 }
 
                 (BeforeHandle(_, current), None) => {
-                    if let Some(modifier) = global.modifiers().get(current) {
+                    if let Some(modifier) = app.modifiers().get(current) {
                         self.state = BeforeHandle(modifier.before_handle(input), current + 1);
                     } else {
-                        self.state = Handle(global.router().handle(input)?);
+                        self.state = Handle(app.handle(input)?);
                     }
                 }
 
                 (Handle(..), Some(output)) => {
-                    let current = input.state.modifiers().len();
+                    let current = app.modifiers().len();
                     if current == 0 {
                         break Ok(Async::Ready(output));
                     }
-                    let modifier = &global.modifiers()[current - 1];
+                    let modifier = &app.modifiers()[current - 1];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
                 }
 
@@ -145,7 +158,7 @@ impl AppServiceFuture {
                     if current == 0 {
                         break Ok(Async::Ready(output));
                     }
-                    let modifier = &global.modifiers()[current - 1];
+                    let modifier = &app.modifiers()[current - 1];
                     self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
                 }
 
@@ -218,10 +231,9 @@ impl AppServiceFuture {
 
     fn handle_error(&mut self, err: Error, input: Input) -> Result<Response<ResponseBody>, CritError> {
         let request = input.parts.request.map(mem::drop);
-        let global = input.state;
 
         if let Some(err) = err.as_http_error() {
-            let response = global.error_handler().handle_error(err, &request)?;
+            let response = self.app.error_handler().handle_error(err, &request)?;
             return Ok(response);
         }
         Err(err.into_critical()
