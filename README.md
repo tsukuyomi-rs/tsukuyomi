@@ -32,7 +32,7 @@ The following features does not currently implemented but will be supported in t
 
 * [Examples](https://github.com/tsukuyomi-rs/examples)
 * [API documentation (released)](https://docs.rs/tsukuyomi/0.2/tsukuyomi)
-* [API documentation (master)](https://ubnt-intrepid.github.io/tsukuyomi/tsukuyomi/index.html)
+* [API documentation (master)](https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/index.html)
 
 ## Build Status
 
