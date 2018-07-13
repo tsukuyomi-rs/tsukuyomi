@@ -40,12 +40,12 @@ The following features does not currently implemented but will be supported in t
 |:---------:|:-------:|:---------:|
 | [![Build Status][travis-badge]][travis] | [![Build status][appveyor-badge]][appveyor] | [![Coverage Status][coveralls-badge]][coveralls] |
 
-[travis]: https://travis-ci.org/ubnt-intrepid/tsukuyomi
-[travis-badge]: https://travis-ci.org/ubnt-intrepid/tsukuyomi.svg?branch=master
+[travis]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi
+[travis-badge]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi.svg?branch=master
 [appveyor]: https://ci.appveyor.com/project/ubnt-intrepid/tsukuyomi/branch/master
 [appveyor-badge]: https://ci.appveyor.com/api/projects/status/kf8mx9k8iqfa08oj/branch/master?svg=true
-[coveralls]: https://coveralls.io/github/ubnt-intrepid/tsukuyomi?branch=master
-[coveralls-badge]: https://coveralls.io/repos/github/ubnt-intrepid/tsukuyomi/badge.svg?branch=master
+[coveralls]: https://coveralls.io/github/tsukuyomi-rs/tsukuyomi?branch=master
+[coveralls-badge]: https://coveralls.io/repos/github/tsukuyomi-rs/tsukuyomi/badge.svg?branch=master
 
 ## License
 Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE) at your option.
