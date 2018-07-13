@@ -75,13 +75,13 @@ matrix:
             git clone https://github.com/tsukuyomi-rs/examples.git ./examples --depth 1 -b 0.2.x
             echo '[patch.crates-io]' >> examples/Cargo.toml
             echo 'tsukuyomi = { path = ".." }' >> examples/Cargo.toml
-        - (cd examples; cargo test -p example-basic)
-        - (cd examples; cargo test -p example-diesel)
-        - (cd examples; cargo test -p example-json)
-        - (cd examples; cargo test -p example-juniper)
-        - (cd examples; cargo test -p example-lines)
-        - (cd examples; cargo test -p example-routing)
-        - (cd examples; cargo test -p example-unix-socket)
+        - (cd examples && cargo test -p example-basic)
+        - (cd examples && cargo test -p example-diesel)
+        - (cd examples && cargo test -p example-json)
+        - (cd examples && cargo test -p example-juniper)
+        - (cd examples && cargo test -p example-lines)
+        - (cd examples && cargo test -p example-routing)
+        - (cd examples && cargo test -p example-unix-socket)
 
     - rust: nightly-2018-07-08
       env: EXAMPLES_NIGHTLY_ONLY
@@ -91,8 +91,18 @@ matrix:
             git clone https://github.com/tsukuyomi-rs/examples.git ./examples --depth 1 -b 0.2.x
             echo '[patch.crates-io]' >> examples/Cargo.toml
             echo 'tsukuyomi = { path = ".." }' >> examples/Cargo.toml
-        - (cd examples; cargo test -p example-async-await)
-        - (cd examples; cargo test -p example-git-server)
+        - (cd examples && cargo test -p example-async-await)
+        - (cd examples && cargo test -p example-git-server)
+
+    - rust: nightly
+      env: DOCTEST
+      script:
+        - cargo clean
+        - |
+            git clone https://github.com/tsukuyomi-rs/docs.git ./docs --depth 1 -b 0.2.x
+            echo '[patch.crates-io]' >> docs/Cargo.toml
+            echo 'tsukuyomi = { path = ".." }' >> docs/Cargo.toml
+        - (cd docs && cargo test --all)
 
     - rust: stable
       env: DEPLOY_API_DOC

@@ -41,6 +41,3 @@ test_script:
   - if [%TOOLCHAIN%]==[nightly] (
       cargo test -p tsukuyomi-codegen
     )
-  - if [%TOOLCHAIN%]==[nightly] (
-      cargo test -p doctest
-    )
