@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/tsukuyomi-rs/tsukuyomi/master/tsukuyomi-header.png" alt="header" width="500" />
+<img src="https://raw.githubusercontent.com/tsukuyomi-rs/tsukuyomi/0.2/tsukuyomi-header.png" alt="header" width="500" />
 
 ---
 
