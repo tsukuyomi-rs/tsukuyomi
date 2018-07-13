@@ -36,23 +36,12 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
-        # contrib
-        - cargo test -p tsukuyomi-juniper
-        # examples
-        - cargo test -p example-basic
-        - cargo test -p example-diesel
-        - cargo test -p example-json
-        - cargo test -p example-juniper
-        - cargo test -p example-lines
-        - cargo test -p example-routing
-        - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
         # - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
         - |
             cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID \
-                --packages tsukuyomi \
-                           tsukuyomi-juniper
+                --packages tsukuyomi
 
     - rust: beta
       env: RUSTFLAGS="-D warnings"
@@ -62,16 +51,6 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
-        # contrib
-        - cargo test -p tsukuyomi-juniper
-        # examples
-        - cargo test -p example-basic
-        - cargo test -p example-diesel
-        - cargo test -p example-json
-        - cargo test -p example-juniper
-        - cargo test -p example-lines
-        - cargo test -p example-routing
-        - cargo test -p example-unix-socket
       after_success:
         - cargo fmt -- --write-mode=diff
 
@@ -85,38 +64,48 @@ matrix:
         - cargo test --no-default-features
         #- cargo test --features nightly
         - cargo test -p tsukuyomi-codegen
-        # contrib
-        - cargo test -p tsukuyomi-juniper
-        # doctest
-        - cargo test -p doctest
-        # examples
-        - cargo test -p example-basic
-        - cargo test -p example-diesel
-        - cargo test -p example-json
-        - cargo test -p example-juniper
-        - cargo test -p example-lines
-        - cargo test -p example-routing
-        - cargo test -p example-unix-socket
-        # works only on nightly channel
-        - cargo test -p example-async-await
-        - cargo test -p example-git-server
       after_success:
         - cargo fmt -- --write-mode=diff
 
     - rust: stable
-      env: DEPLOY_DOC
+      env: EXAMPLES
+      script:
+        - cargo clean
+        - |
+            git clone https://github.com/tsukuyomi-rs/examples.git ./examples --depth 1 -b 0.2.x
+            echo '[patch.crates-io]' >> examples/Cargo.toml
+            echo 'tsukuyomi = { path = ".." }' >> examples/Cargo.toml
+        - (cd examples; cargo test -p example-basic)
+        - (cd examples; cargo test -p example-diesel)
+        - (cd examples; cargo test -p example-json)
+        - (cd examples; cargo test -p example-juniper)
+        - (cd examples; cargo test -p example-lines)
+        - (cd examples; cargo test -p example-routing)
+        - (cd examples; cargo test -p example-unix-socket)
+
+    - rust: nightly-2018-07-08
+      env: EXAMPLES_NIGHTLY_ONLY
+      script:
+        - cargo clean
+        - |
+            git clone https://github.com/tsukuyomi-rs/examples.git ./examples --depth 1 -b 0.2.x
+            echo '[patch.crates-io]' >> examples/Cargo.toml
+            echo 'tsukuyomi = { path = ".." }' >> examples/Cargo.toml
+        - (cd examples; cargo test -p example-async-await)
+        - (cd examples; cargo test -p example-git-server)
+
+    - rust: stable
+      env: DEPLOY_API_DOC
       script:
         - cargo clean
         - cargo doc --features "secure tls"
         #- cargo doc -p tsukuyomi-codegen
-        - cargo doc -p tsukuyomi-juniper
-        - cargo doc -p tsukuyomi-template
         - rm -f target/doc/.lock
       deploy:
         provider: pages
         skip_cleanup: true
         github_token: $GH_TOKEN
-        repo: ubnt-intrepid/tsukuyomi
+        repo: tsukuyomi-rs/tsukuyomi
         target_branch: gh-pages
         local_dir: target/doc
         on:
