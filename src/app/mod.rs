@@ -6,12 +6,12 @@ pub mod builder;
 pub mod service;
 
 mod endpoint;
-mod recognizer;
+mod router;
 mod uri;
 
-use fnv::FnvHashMap;
-use http::header::HeaderValue;
-use http::Method;
+#[cfg(test)]
+mod tests;
+
 use state::Container;
 use std::fmt;
 use std::sync::Arc;
@@ -21,33 +21,13 @@ use modifier::Modifier;
 
 pub use self::builder::AppBuilder;
 pub use self::endpoint::Endpoint;
-use self::recognizer::Recognizer;
+use self::router::Router;
 pub use self::uri::Uri;
-
-#[derive(Debug)]
-pub struct Config {
-    pub fallback_head: bool,
-    pub fallback_options: bool,
-    _priv: (),
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            fallback_head: true,
-            fallback_options: false,
-            _priv: (),
-        }
-    }
-}
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppState {
-    recognizer: Recognizer,
-    entries: Vec<RouterEntry>,
+    router: Router,
     endpoints: Vec<Endpoint>,
-    config: Config,
-
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     states: Container,
@@ -90,22 +70,8 @@ impl App {
     pub(crate) fn states(&self) -> &Container {
         &self.inner.states
     }
-}
 
-// ==== RouterEntry ====
-
-#[derive(Debug)]
-struct RouterEntry {
-    routes: FnvHashMap<Method, usize>,
-    allowed_methods: HeaderValue,
-}
-
-impl RouterEntry {
-    fn get(&self, method: &Method) -> Option<usize> {
-        self.routes.get(method).map(|&i| i)
-    }
-
-    fn allowed_methods(&self) -> HeaderValue {
-        self.allowed_methods.clone()
+    fn router(&self) -> &Router {
+        &self.inner.router
     }
 }

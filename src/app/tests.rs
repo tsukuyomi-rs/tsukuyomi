@@ -1,11 +1,12 @@
+use super::router::Recognize;
 use super::*;
-
 use handler::Handler;
+use http::Method;
 
 #[test]
 fn empty() {
     let app = App::builder().finish().unwrap();
-    assert!(app.recognize("/", &Method::GET).is_err());
+    assert!(app.router().recognize("/", &Method::GET).is_err());
 }
 
 #[test]
@@ -17,10 +18,10 @@ fn root_single_method() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
+    assert_matches!(app.router().recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
 
-    assert!(app.recognize("/path/to", &Method::GET).is_err());
-    assert!(app.recognize("/", &Method::POST).is_err());
+    assert!(app.router().recognize("/path/to", &Method::GET).is_err());
+    assert!(app.router().recognize("/", &Method::POST).is_err());
 }
 
 #[test]
@@ -33,10 +34,10 @@ fn root_multiple_method() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
-    assert_matches!(app.recognize("/", &Method::POST), Ok(Recognize::Matched(1, _)));
+    assert_matches!(app.router().recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
+    assert_matches!(app.router().recognize("/", &Method::POST), Ok(Recognize::Matched(1, _)));
 
-    assert!(app.recognize("/", &Method::PUT).is_err());
+    assert!(app.router().recognize("/", &Method::PUT).is_err());
 }
 
 #[test]
@@ -48,7 +49,7 @@ fn root_fallback_head() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::HEAD), Ok(Recognize::Matched(0, _)));
+    assert_matches!(app.router().recognize("/", &Method::HEAD), Ok(Recognize::Matched(0, _)));
 }
 
 #[test]
@@ -61,7 +62,7 @@ fn root_fallback_head_disabled() {
         .finish()
         .unwrap();
 
-    assert!(app.recognize("/", &Method::HEAD).is_err());
+    assert!(app.router().recognize("/", &Method::HEAD).is_err());
 }
 
 #[test]
@@ -77,7 +78,7 @@ fn fallback_options() {
 
     // FIXME:
     assert_matches!(
-        app.recognize("/path/to/foo", &Method::OPTIONS),
+        app.router().recognize("/path/to/foo", &Method::OPTIONS),
         Ok(Recognize::Options(_))
     );
 }
@@ -93,7 +94,7 @@ fn fallback_options_disabled() {
         .finish()
         .unwrap();
 
-    assert!(app.recognize("/path/to/foo", &Method::OPTIONS).is_err());
+    assert!(app.router().recognize("/path/to/foo", &Method::OPTIONS).is_err());
 }
 
 #[test]
@@ -114,10 +115,22 @@ fn mount() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.recognize("/foo", &Method::GET), Ok(Recognize::Matched(0, _)));
-    assert_matches!(app.recognize("/bar", &Method::GET), Ok(Recognize::Matched(1, _)));
-    assert_matches!(app.recognize("/baz", &Method::GET), Ok(Recognize::Matched(3, _)));
-    assert_matches!(app.recognize("/baz/foobar", &Method::GET), Ok(Recognize::Matched(4, _)));
+    assert_matches!(
+        app.router().recognize("/foo", &Method::GET),
+        Ok(Recognize::Matched(0, _))
+    );
+    assert_matches!(
+        app.router().recognize("/bar", &Method::GET),
+        Ok(Recognize::Matched(1, _))
+    );
+    assert_matches!(
+        app.router().recognize("/baz", &Method::GET),
+        Ok(Recognize::Matched(3, _))
+    );
+    assert_matches!(
+        app.router().recognize("/baz/foobar", &Method::GET),
+        Ok(Recognize::Matched(4, _))
+    );
 
-    assert!(app.recognize("/baz/", &Method::GET).is_err());
+    assert!(app.router().recognize("/baz/", &Method::GET).is_err());
 }

@@ -1,13 +1,9 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
-
 use futures::future::lazy;
 use futures::{self, Async, Future, Poll};
 use http::header::HeaderValue;
-use http::{header, Method, Request, Response, StatusCode};
+use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
@@ -20,13 +16,8 @@ use modifier::{AfterHandle, BeforeHandle};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
+use super::router::Recognize;
 use super::App;
-
-#[derive(Debug)]
-enum Recognize {
-    Matched(usize, Vec<(usize, usize)>),
-    Options(HeaderValue),
-}
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -34,28 +25,11 @@ impl App {
         AppService { app: self.clone() }
     }
 
-    fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, Error> {
-        let (i, params) = self.inner.recognizer.recognize(path).ok_or_else(|| Error::not_found())?;
-        let entry = &self.inner.entries[i];
-
-        match entry.get(method) {
-            Some(i) => Ok(Recognize::Matched(i, params)),
-            None if self.inner.config.fallback_head && *method == Method::HEAD => match entry.get(&Method::GET) {
-                Some(i) => Ok(Recognize::Matched(i, params)),
-                None => Err(Error::method_not_allowed()),
-            },
-            None if self.inner.config.fallback_options && *method == Method::OPTIONS => {
-                Ok(Recognize::Options(entry.allowed_methods()))
-            }
-            None => Err(Error::method_not_allowed()),
-        }
-    }
-
     fn handle(&self, input: &mut Input) -> Result<Handle, Error> {
-        match self.recognize(input.uri().path(), input.method())? {
+        match self.router().recognize(input.uri().path(), input.method())? {
             Recognize::Matched(i, params) => {
                 input.parts.route = Some((i, params));
-                let endpoint = &self.inner.endpoints[i];
+                let endpoint = self.endpoint(i).expect("invalid endpoint ID");
                 Ok(endpoint.handler().handle(input))
             }
             Recognize::Options(allowed_methods) => {

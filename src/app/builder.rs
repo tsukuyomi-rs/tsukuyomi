@@ -5,19 +5,17 @@ use std::{fmt, mem};
 
 use failure::{Error, Fail};
 use fnv::FnvHashMap;
-use http::header::HeaderValue;
 use http::{HttpTryFrom, Method};
 use state::Container;
-use std::collections::HashSet;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::Handler;
 use modifier::Modifier;
 
 use super::endpoint::Endpoint;
-use super::recognizer::Recognizer;
+use super::router::{Config, Recognizer, Router, RouterEntry};
 use super::uri::{self, Uri};
-use super::{App, AppState, Config, RouterEntry};
+use super::{App, AppState};
 
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
@@ -169,7 +167,7 @@ impl AppBuilder {
             for (i, endpoint) in endpoints.iter().enumerate() {
                 collected_routes
                     .entry(endpoint.uri())
-                    .or_insert_with(RouterEntryBuilder::new)
+                    .or_insert_with(RouterEntry::builder)
                     .push(endpoint.method(), i);
             }
 
@@ -186,12 +184,16 @@ impl AppBuilder {
 
         states.freeze();
 
+        let router = Router {
+            recognizer: recognizer,
+            entries: entries,
+            config: config,
+        };
+
         Ok(App {
             inner: Arc::new(AppState {
-                recognizer: recognizer,
-                entries: entries,
+                router: router,
                 endpoints: endpoints,
-                config: config,
                 error_handler: error_handler,
                 modifiers: modifiers,
                 states: states,
@@ -327,43 +329,5 @@ impl<'a, 'b> Route<'a, 'b> {
         let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
         let endpoint = Endpoint::new(uri, self.method, handler.into());
         self.mount.builder.endpoints.push(endpoint);
-    }
-}
-
-#[derive(Debug)]
-struct RouterEntryBuilder {
-    routes: Vec<(Method, usize)>,
-    methods: HashSet<Method>,
-}
-
-impl RouterEntryBuilder {
-    fn new() -> RouterEntryBuilder {
-        RouterEntryBuilder {
-            routes: vec![],
-            methods: HashSet::new(),
-        }
-    }
-
-    fn push(&mut self, method: &Method, i: usize) {
-        self.routes.push((method.clone(), i));
-        self.methods.insert(method.clone());
-    }
-
-    fn finish(self) -> Result<RouterEntry, Error> {
-        let RouterEntryBuilder { routes, mut methods } = self;
-
-        methods.insert(Method::OPTIONS);
-        let allowed_methods = methods.into_iter().fold(String::new(), |mut acc, method| {
-            if !acc.is_empty() {
-                acc += ", ";
-            }
-            acc += method.as_ref();
-            acc
-        });
-
-        Ok(RouterEntry {
-            routes: routes.into_iter().collect(),
-            allowed_methods: HeaderValue::from_shared(allowed_methods.into())?,
-        })
     }
 }
