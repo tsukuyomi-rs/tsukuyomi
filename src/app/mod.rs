@@ -52,18 +52,15 @@ impl App {
         AppBuilder::new()
     }
 
-    /// Gets the reference to i-th `Endpoint`.
-    pub fn endpoint(&self, i: usize) -> Option<&Endpoint> {
+    pub(crate) fn endpoint(&self, i: usize) -> Option<&Endpoint> {
         self.inner.endpoints.get(i)
     }
 
-    /// Returns the reference to `ErrorHandler` contained in this value.
-    pub fn error_handler(&self) -> &dyn ErrorHandler {
+    pub(crate) fn error_handler(&self) -> &dyn ErrorHandler {
         &*self.inner.error_handler
     }
 
-    /// Returns the reference to `ErrorHandler` contained in this value.
-    pub fn modifiers(&self) -> &[Box<dyn Modifier + Send + Sync + 'static>] {
+    pub(crate) fn modifiers(&self) -> &[Box<dyn Modifier + Send + Sync + 'static>] {
         &self.inner.modifiers
     }
 
