@@ -1,4 +1,4 @@
-use super::router::Recognize;
+use super::router::{Recognize, RecognizeErrorKind};
 use super::*;
 use handler::Handler;
 use http::Method;
@@ -6,7 +6,10 @@ use http::Method;
 #[test]
 fn empty() {
     let app = App::builder().finish().unwrap();
-    assert!(app.router().recognize("/", &Method::GET).is_err());
+    assert_matches!(
+        app.router().recognize("/", &Method::GET),
+        Err(RecognizeErrorKind::NotFound)
+    );
 }
 
 #[test]
@@ -18,10 +21,19 @@ fn root_single_method() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.router().recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
+    assert_matches!(
+        app.router().recognize("/", &Method::GET),
+        Ok(Recognize { endpoint_id: 0, .. })
+    );
 
-    assert!(app.router().recognize("/path/to", &Method::GET).is_err());
-    assert!(app.router().recognize("/", &Method::POST).is_err());
+    assert_matches!(
+        app.router().recognize("/path/to", &Method::GET),
+        Err(RecognizeErrorKind::NotFound)
+    );
+    assert_matches!(
+        app.router().recognize("/", &Method::POST),
+        Err(RecognizeErrorKind::MethodNotAllowed)
+    );
 }
 
 #[test]
@@ -34,10 +46,19 @@ fn root_multiple_method() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.router().recognize("/", &Method::GET), Ok(Recognize::Matched(0, _)));
-    assert_matches!(app.router().recognize("/", &Method::POST), Ok(Recognize::Matched(1, _)));
+    assert_matches!(
+        app.router().recognize("/", &Method::GET),
+        Ok(Recognize { endpoint_id: 0, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/", &Method::POST),
+        Ok(Recognize { endpoint_id: 1, .. })
+    );
 
-    assert!(app.router().recognize("/", &Method::PUT).is_err());
+    assert_matches!(
+        app.router().recognize("/", &Method::PUT),
+        Err(RecognizeErrorKind::MethodNotAllowed)
+    );
 }
 
 #[test]
@@ -49,7 +70,10 @@ fn root_fallback_head() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.router().recognize("/", &Method::HEAD), Ok(Recognize::Matched(0, _)));
+    assert_matches!(
+        app.router().recognize("/", &Method::HEAD),
+        Ok(Recognize { endpoint_id: 0, .. })
+    );
 }
 
 #[test]
@@ -62,7 +86,10 @@ fn root_fallback_head_disabled() {
         .finish()
         .unwrap();
 
-    assert!(app.router().recognize("/", &Method::HEAD).is_err());
+    assert_matches!(
+        app.router().recognize("/", &Method::HEAD),
+        Err(RecognizeErrorKind::MethodNotAllowed)
+    );
 }
 
 #[test]
@@ -76,10 +103,9 @@ fn fallback_options() {
         .finish()
         .unwrap();
 
-    // FIXME:
     assert_matches!(
         app.router().recognize("/path/to/foo", &Method::OPTIONS),
-        Ok(Recognize::Options(_))
+        Err(RecognizeErrorKind::FallbackOptions { .. })
     );
 }
 
@@ -94,7 +120,10 @@ fn fallback_options_disabled() {
         .finish()
         .unwrap();
 
-    assert!(app.router().recognize("/path/to/foo", &Method::OPTIONS).is_err());
+    assert_matches!(
+        app.router().recognize("/path/to/foo", &Method::OPTIONS),
+        Err(RecognizeErrorKind::MethodNotAllowed)
+    );
 }
 
 #[test]
@@ -117,22 +146,25 @@ fn mount() {
 
     assert_matches!(
         app.router().recognize("/foo", &Method::GET),
-        Ok(Recognize::Matched(0, _))
+        Ok(Recognize { endpoint_id: 0, .. })
     );
     assert_matches!(
         app.router().recognize("/bar", &Method::GET),
-        Ok(Recognize::Matched(1, _))
+        Ok(Recognize { endpoint_id: 1, .. })
     );
     assert_matches!(
         app.router().recognize("/baz", &Method::GET),
-        Ok(Recognize::Matched(3, _))
+        Ok(Recognize { endpoint_id: 3, .. })
     );
     assert_matches!(
         app.router().recognize("/baz/foobar", &Method::GET),
-        Ok(Recognize::Matched(4, _))
+        Ok(Recognize { endpoint_id: 4, .. })
     );
 
-    assert!(app.router().recognize("/baz/", &Method::GET).is_err());
+    assert_matches!(
+        app.router().recognize("/baz/", &Method::GET),
+        Err(RecognizeErrorKind::NotFound)
+    );
 }
 
 #[test]

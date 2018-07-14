@@ -16,28 +16,13 @@ use modifier::{AfterHandle, BeforeHandle};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
-use super::router::Recognize;
+use super::router::RecognizeErrorKind;
 use super::App;
 
 impl App {
     /// Creates a new `AppService` to manage a session.
     pub fn new_service(&self) -> AppService {
         AppService { app: self.clone() }
-    }
-
-    fn handle(&self, input: &mut Input) -> Result<Handle, Error> {
-        match self.router().recognize(input.uri().path(), input.method())? {
-            Recognize::Matched(i, params) => {
-                input.parts.route = Some((i, params));
-                let endpoint = self.endpoint(i).expect("invalid endpoint ID");
-                Ok(endpoint.handler().handle(input))
-            }
-            Recognize::Options(allowed_methods) => {
-                let mut response = Response::new(());
-                response.headers_mut().insert(header::ALLOW, allowed_methods);
-                Ok(Handle::ok(response.into()))
-            }
-        }
     }
 }
 
@@ -64,12 +49,10 @@ impl AppService {
     #[allow(missing_docs)]
     pub fn dispatch_request(&mut self, request: Request<RequestBody>) -> AppServiceFuture {
         AppServiceFuture {
-            state: AppServiceFutureState::Initial,
-            input: Some(Input {
-                parts: InputParts::new(request),
-                app: self.app.clone(),
-            }),
+            request: Some(request),
+            parts: None,
             app: self.app.clone(),
+            pipeline: Pipeline::Start,
         }
     }
 }
@@ -90,106 +73,151 @@ impl Service for AppService {
 #[must_use = "futures do nothing unless polled"]
 #[derive(Debug)]
 pub struct AppServiceFuture {
-    state: AppServiceFutureState,
-    input: Option<Input>,
+    pipeline: Pipeline,
+    request: Option<Request<RequestBody>>,
+    parts: Option<InputParts>,
     app: App,
 }
 
 #[derive(Debug)]
-enum AppServiceFutureState {
-    Initial,
-    BeforeHandle(BeforeHandle, usize),
+enum Pipeline {
+    Start,
+    Recognized,
+    BeforeHandle { in_flight: BeforeHandle, current: usize },
     Handle(Handle),
-    AfterHandle(AfterHandle, usize),
+    AfterHandle { in_flight: AfterHandle, current: usize },
     Done,
 }
 
-impl AppServiceFuture {
-    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
-        use self::AppServiceFutureState::*;
+#[derive(Debug)]
+enum PipelineErrorKind {
+    Recognize(RecognizeErrorKind),
+    Http(Error),
+}
 
-        let input = self.input.as_mut().expect("This future has already polled");
-        let app = &self.app;
+impl From<Error> for PipelineErrorKind {
+    fn from(err: Error) -> Self {
+        PipelineErrorKind::Http(err)
+    }
+}
+
+impl AppServiceFuture {
+    fn poll_pipeline(&mut self) -> Poll<Output, PipelineErrorKind> {
+        use self::Pipeline::*;
+
+        macro_rules! input {
+            () => {
+                Input {
+                    request: self.request
+                        .as_mut()
+                        .expect("This future has already polled"),
+                    parts: self.parts.as_mut().expect("This future has already polled"),
+                    app: &self.app,
+                }
+            };
+        }
 
         loop {
-            let output = match self.state {
-                Initial => None,
-                BeforeHandle(ref mut in_flight, ..) => try_ready!(in_flight.poll_ready(input)),
-                Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(input))),
-                AfterHandle(ref mut in_flight, ..) => Some(try_ready!(in_flight.poll_ready(input))),
-                _ => panic!("unexpected state"),
+            let output = match self.pipeline {
+                Start | Recognized => None,
+                BeforeHandle { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
+                Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
+                AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
+                Done => panic!("unexpected state"),
             };
 
-            match (mem::replace(&mut self.state, Done), output) {
-                (Initial, None) => {
-                    if let Some(modifier) = app.modifiers().get(0) {
-                        self.state = BeforeHandle(modifier.before_handle(input), 1);
-                    } else {
-                        self.state = Handle(app.handle(input)?);
-                    }
+            self.pipeline = match (mem::replace(&mut self.pipeline, Done), output) {
+                (Start, None) => {
+                    let request = self.request.as_ref().expect("This future has already polled");
+                    let recognize = self.app
+                        .router()
+                        .recognize(request.uri().path(), request.method())
+                        .map_err(PipelineErrorKind::Recognize)?;
+                    self.parts = Some(InputParts::new(recognize));
+                    Recognized
                 }
 
-                (BeforeHandle(_, current), Some(output)) => {
-                    if current <= 1 {
+                (Recognized, None) => match self.app.modifiers().get(0) {
+                    Some(modifier) => BeforeHandle {
+                        in_flight: modifier.before_handle(&mut input!()),
+                        current: 1,
+                    },
+                    None => {
+                        let mut input = input!();
+                        let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
+                        Handle(endpoint.handler().handle(&mut input))
+                    }
+                },
+
+                (BeforeHandle { current, .. }, Some(output)) => {
+                    if current < 2 {
                         break Ok(Async::Ready(output));
                     }
-                    let modifier = &app.modifiers()[current - 2];
-                    self.state = AfterHandle(modifier.after_handle(input, output), current - 2);
-                }
-
-                (BeforeHandle(_, current), None) => {
-                    if let Some(modifier) = app.modifiers().get(current) {
-                        self.state = BeforeHandle(modifier.before_handle(input), current + 1);
-                    } else {
-                        self.state = Handle(app.handle(input)?);
+                    let current = current - 2;
+                    let modifier = &self.app.modifiers()[current];
+                    AfterHandle {
+                        in_flight: modifier.after_handle(&mut input!(), output),
+                        current: current,
                     }
                 }
+                (BeforeHandle { current, .. }, None) => match self.app.modifiers().get(current) {
+                    Some(modifier) => BeforeHandle {
+                        in_flight: modifier.before_handle(&mut input!()),
+                        current: current + 1,
+                    },
+                    None => {
+                        let mut input = input!();
+                        let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
+                        Handle(endpoint.handler().handle(&mut input))
+                    }
+                },
 
                 (Handle(..), Some(output)) => {
-                    let current = app.modifiers().len();
-                    if current == 0 {
+                    if self.app.modifiers().is_empty() {
                         break Ok(Async::Ready(output));
                     }
-                    let modifier = &app.modifiers()[current - 1];
-                    self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
+                    let current = self.app.modifiers().len() - 1;
+                    let modifier = &self.app.modifiers()[current];
+                    AfterHandle {
+                        in_flight: modifier.after_handle(&mut input!(), output),
+                        current: current,
+                    }
                 }
 
-                (AfterHandle(_, current), Some(output)) => {
+                (AfterHandle { current, .. }, Some(output)) => {
                     if current == 0 {
                         break Ok(Async::Ready(output));
                     }
-                    let modifier = &app.modifiers()[current - 1];
-                    self.state = AfterHandle(modifier.after_handle(input, output), current - 1);
+                    let current = current - 1;
+                    let modifier = &self.app.modifiers()[current];
+                    AfterHandle {
+                        in_flight: modifier.after_handle(&mut input!(), output),
+                        current: current,
+                    }
                 }
 
                 _ => panic!("unexpected state"),
             }
         }
     }
-}
 
-impl AppServiceFuture {
     #[allow(missing_docs)]
     pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
-        let polled = match self.poll_in_flight() {
-            Ok(Async::Ready(output)) => Ok(output),
+        match self.poll_pipeline() {
+            Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
             Ok(Async::NotReady) => return Ok(Async::NotReady),
-            Err(err) => Err(err),
-        };
-        self.state = AppServiceFutureState::Done;
-
-        let input = self.input.take().expect("This future has already polled");
-        match polled {
-            Ok(output) => self.handle_response(output, input).map(Async::Ready),
-            Err(err) => self.handle_error(err, input).map(Async::Ready),
+            Err(err) => {
+                self.pipeline = Pipeline::Done;
+                self.handle_error(err).map(Async::Ready)
+            }
         }
     }
 
-    fn handle_response(&mut self, output: Output, input: Input) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_response(&mut self, output: Output) -> Result<Response<ResponseBody>, CritError> {
         let (mut response, handler) = output.deconstruct();
-        let InputParts {
-            cookies, mut request, ..
-        } = input.parts;
+
+        let parts = self.parts.take().expect("This future has already polled");
+        let InputParts { cookies, .. } = parts;
 
         cookies.append_to(response.headers_mut());
 
@@ -208,6 +236,7 @@ impl AppServiceFuture {
         if let Some(handler) = handler {
             debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
 
+            let mut request = self.request.take().expect("This future has already polled.");
             let on_upgrade = request
                 .body_mut()
                 .on_upgrade()
@@ -229,10 +258,27 @@ impl AppServiceFuture {
         Ok(response)
     }
 
-    fn handle_error(&mut self, err: Error, input: Input) -> Result<Response<ResponseBody>, CritError> {
-        let request = input.parts.request.map(mem::drop);
+    fn handle_error(&mut self, err: PipelineErrorKind) -> Result<Response<ResponseBody>, CritError> {
+        match err {
+            PipelineErrorKind::Recognize(RecognizeErrorKind::NotFound) => self.handle_http_error(Error::not_found()),
+            PipelineErrorKind::Recognize(RecognizeErrorKind::MethodNotAllowed) => {
+                self.handle_http_error(Error::method_not_allowed())
+            }
+            PipelineErrorKind::Recognize(RecognizeErrorKind::FallbackOptions { entry_id: i, .. }) => {
+                let entry = self.app.router().entry(i).expect("invalid entry ID");
+                let response = entry.fallback_options_response();
+                Ok(response.map(Into::into))
+            }
+            PipelineErrorKind::Http(err) => self.handle_http_error(err),
+        }
+    }
 
+    fn handle_http_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
         if let Some(err) = err.as_http_error() {
+            let request = self.request
+                .take()
+                .expect("This future has already polled")
+                .map(mem::drop);
             let response = self.app.error_handler().handle_error(err, &request)?;
             return Ok(response);
         }
