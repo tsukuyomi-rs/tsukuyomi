@@ -6,6 +6,7 @@ use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
 
+use app::router::Recognize;
 use app::{App, Endpoint};
 use error::Error;
 use input::RequestBody;
@@ -13,11 +14,11 @@ use input::RequestBody;
 use super::cookie::{CookieManager, Cookies};
 
 thread_local! {
-    static INPUT: Cell<Option<NonNull<Input>>> = Cell::new(None);
+    static INPUT: Cell<Option<NonNull<Input<'static>>>> = Cell::new(None);
 }
 
 #[allow(missing_debug_implementations)]
-struct ResetOnDrop(Option<NonNull<Input>>);
+struct ResetOnDrop(Option<NonNull<Input<'static>>>);
 
 impl Drop for ResetOnDrop {
     fn drop(&mut self) {
@@ -29,7 +30,10 @@ impl Drop for ResetOnDrop {
 
 fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R {
     // safety: The value of `self: &mut Input` is always non-null.
-    let prev = INPUT.with(|input| input.replace(Some(unsafe { NonNull::new_unchecked(self_ as *mut Input) })));
+    let prev = INPUT.with(|input| {
+        let ptr = self_ as *mut Input as *mut () as *mut Input<'static>;
+        input.replace(Some(unsafe { NonNull::new_unchecked(ptr) }))
+    });
     let _reset = ResetOnDrop(prev);
     f()
 }
@@ -45,17 +49,15 @@ fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
 /// The inner parts of `Input`.
 #[derive(Debug)]
 pub(crate) struct InputParts {
-    pub(crate) request: Request<RequestBody>,
-    pub(crate) route: Option<(usize, Vec<(usize, usize)>)>,
+    pub(crate) recognize: Recognize,
     pub(crate) cookies: CookieManager,
     _priv: (),
 }
 
 impl InputParts {
-    pub(crate) fn new(request: Request<RequestBody>) -> InputParts {
+    pub(crate) fn new(recognize: Recognize) -> InputParts {
         InputParts {
-            request: request.map(Into::into),
-            route: None,
+            recognize,
             cookies: CookieManager::new(),
             _priv: (),
         }
@@ -64,12 +66,13 @@ impl InputParts {
 
 /// Contextual information used by processes during an incoming HTTP request.
 #[derive(Debug)]
-pub struct Input {
-    pub(crate) parts: InputParts,
-    pub(crate) app: App,
+pub struct Input<'task> {
+    pub(crate) request: &'task mut Request<RequestBody>,
+    pub(crate) parts: &'task mut InputParts,
+    pub(crate) app: &'task App,
 }
 
-impl Input {
+impl<'task> Input<'task> {
     pub(crate) fn with_set_current<R>(&mut self, f: impl FnOnce() -> R) -> R {
         with_set_current(self, f)
     }
@@ -100,7 +103,7 @@ impl Input {
     /// }
     /// ```
     #[inline]
-    pub fn with_current<R>(f: impl FnOnce(&mut Self) -> R) -> R {
+    pub fn with_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
         with_get_current(f)
     }
 
@@ -114,12 +117,12 @@ impl Input {
 
     /// Returns a shared reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
-        &self.parts.request
+        self.request
     }
 
     /// Returns a mutable reference to the value of `Request` contained in this context.
     pub fn request_mut(&mut self) -> &mut Request<RequestBody> {
-        &mut self.parts.request
+        self.request
     }
 
     /// Parses a header field in the request to a value of `H`.
@@ -137,24 +140,17 @@ impl Input {
     }
 
     /// Returns the reference to a `Endpoint` matched to the incoming request.
-    pub fn endpoint(&self) -> Option<&Endpoint> {
-        match self.parts.route {
-            Some((i, _)) => self.app.endpoint(i),
-            None => None,
-        }
+    pub fn endpoint(&self) -> &Endpoint {
+        let Recognize { endpoint_id: i, .. } = self.parts.recognize;
+        self.app.endpoint(i).expect("invalid endpoint ID")
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Params {
-        match self.parts.route {
-            Some((_, ref params)) => Params {
-                path: self.request().uri().path(),
-                params: Some(&params[..]),
-            },
-            None => Params {
-                path: self.request().uri().path(),
-                params: None,
-            },
+        let Recognize { ref params, .. } = self.parts.recognize;
+        Params {
+            path: self.request().uri().path(),
+            params: Some(&params[..]),
         }
     }
 
@@ -178,7 +174,7 @@ impl Input {
     where
         T: Send + Sync + 'static,
     {
-        let endpoint = self.endpoint()?;
+        let endpoint = self.endpoint();
         self.app.states().get(endpoint.scope_id())
     }
 
@@ -189,13 +185,13 @@ impl Input {
     pub fn cookies(&mut self) -> Result<Cookies, Error> {
         let cookies = &mut self.parts.cookies;
         if !cookies.is_init() {
-            cookies.init(self.parts.request.headers()).map_err(Error::bad_request)?;
+            cookies.init(self.request.headers()).map_err(Error::bad_request)?;
         }
         Ok(cookies.cookies())
     }
 }
 
-impl Deref for Input {
+impl<'task> Deref for Input<'task> {
     type Target = Request<RequestBody>;
 
     fn deref(&self) -> &Self::Target {
@@ -203,7 +199,7 @@ impl Deref for Input {
     }
 }
 
-impl DerefMut for Input {
+impl<'task> DerefMut for Input<'task> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.request_mut()
     }
@@ -211,13 +207,13 @@ impl DerefMut for Input {
 
 #[allow(missing_docs)]
 #[derive(Debug)]
-pub struct Params<'a> {
-    path: &'a str,
-    params: Option<&'a [(usize, usize)]>,
+pub struct Params<'input> {
+    path: &'input str,
+    params: Option<&'input [(usize, usize)]>,
 }
 
 #[allow(missing_docs)]
-impl<'a> Params<'a> {
+impl<'input> Params<'input> {
     pub fn is_empty(&self) -> bool {
         self.params.as_ref().map_or(true, |p| p.is_empty())
     }
@@ -233,7 +229,7 @@ impl<'a> Params<'a> {
     }
 }
 
-impl<'a> Index<usize> for Params<'a> {
+impl<'input> Index<usize> for Params<'input> {
     type Output = str;
 
     fn index(&self, i: usize) -> &Self::Output {

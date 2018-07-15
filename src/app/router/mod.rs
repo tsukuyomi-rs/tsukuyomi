@@ -3,10 +3,8 @@ mod recognizer;
 use failure;
 use fnv::FnvHashMap;
 use http::header::HeaderValue;
-use http::Method;
+use http::{header, Method, Response};
 use std::collections::HashSet;
-
-use error::Error;
 
 pub(super) use self::recognizer::Recognizer;
 
@@ -28,9 +26,16 @@ impl Default for Config {
 }
 
 #[derive(Debug)]
-pub(super) enum Recognize {
-    Matched(usize, Vec<(usize, usize)>),
-    Options(HeaderValue),
+pub(crate) struct Recognize {
+    pub(crate) endpoint_id: usize,
+    pub(crate) params: Vec<(usize, usize)>,
+}
+
+#[derive(Debug)]
+pub(super) enum RecognizeErrorKind {
+    NotFound,
+    MethodNotAllowed,
+    FallbackOptions { entry_id: usize },
 }
 
 #[derive(Debug)]
@@ -41,21 +46,27 @@ pub(super) struct Router {
 }
 
 impl Router {
-    pub(super) fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, Error> {
-        let (i, params) = self.recognizer.recognize(path).ok_or_else(|| Error::not_found())?;
+    pub(super) fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, RecognizeErrorKind> {
+        let (i, params) = self.recognizer
+            .recognize(path)
+            .ok_or_else(|| RecognizeErrorKind::NotFound)?;
         let entry = &self.entries[i];
 
-        match entry.get(method) {
-            Some(i) => Ok(Recognize::Matched(i, params)),
-            None if self.config.fallback_head && *method == Method::HEAD => match entry.get(&Method::GET) {
-                Some(i) => Ok(Recognize::Matched(i, params)),
-                None => Err(Error::method_not_allowed()),
+        match entry.routes.get(method) {
+            Some(&i) => Ok(Recognize { endpoint_id: i, params }),
+            None if self.config.fallback_head && *method == Method::HEAD => match entry.routes.get(&Method::GET) {
+                Some(&i) => Ok(Recognize { endpoint_id: i, params }),
+                None => Err(RecognizeErrorKind::MethodNotAllowed),
             },
             None if self.config.fallback_options && *method == Method::OPTIONS => {
-                Ok(Recognize::Options(entry.allowed_methods()))
+                Err(RecognizeErrorKind::FallbackOptions { entry_id: i })
             }
-            None => Err(Error::method_not_allowed()),
+            None => Err(RecognizeErrorKind::MethodNotAllowed),
         }
+    }
+
+    pub(super) fn entry(&self, id: usize) -> Option<&RouterEntry> {
+        self.entries.get(id)
     }
 }
 
@@ -73,12 +84,12 @@ impl RouterEntry {
         }
     }
 
-    fn get(&self, method: &Method) -> Option<usize> {
-        self.routes.get(method).map(|&i| i)
-    }
-
-    fn allowed_methods(&self) -> HeaderValue {
-        self.allowed_methods.clone()
+    pub(super) fn fallback_options_response(&self) -> Response<()> {
+        let mut response = Response::new(());
+        response
+            .headers_mut()
+            .insert(header::ALLOW, self.allowed_methods.clone());
+        response
     }
 }
 

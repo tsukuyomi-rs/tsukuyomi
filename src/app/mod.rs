@@ -6,7 +6,7 @@ pub mod builder;
 pub mod service;
 
 mod endpoint;
-mod router;
+pub(crate) mod router;
 mod scope;
 mod uri;
 
@@ -57,7 +57,7 @@ impl App {
         self.inner.endpoints.get(i)
     }
 
-    pub(crate) fn error_handler(&self) -> &dyn ErrorHandler {
+    pub(crate) fn error_handler(&self) -> &(dyn ErrorHandler + Send + Sync + 'static) {
         &*self.inner.error_handler
     }
 
