@@ -13,6 +13,7 @@ mod uri;
 #[cfg(test)]
 mod tests;
 
+use state::Container;
 use std::fmt;
 use std::sync::Arc;
 
@@ -22,8 +23,20 @@ use modifier::Modifier;
 pub use self::builder::AppBuilder;
 pub use self::endpoint::Endpoint;
 use self::router::Router;
-use self::scope::Container;
+use self::scope::ScopedContainer;
 pub use self::uri::Uri;
+
+#[derive(Debug)]
+struct ScopeData {
+    parent: Option<usize>,
+    prefix: Option<Uri>,
+}
+
+impl ScopeData {
+    fn parent(&self) -> Option<usize> {
+        self.parent
+    }
+}
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppState {
@@ -31,13 +44,18 @@ struct AppState {
     endpoints: Vec<Endpoint>,
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    states: Container,
+    container: Container,
+    container_scoped: ScopedContainer,
+    scopes: Vec<ScopeData>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("AppState").finish()
+        f.debug_struct("AppState")
+            .field("endpoints", &self.endpoints)
+            .field("scopes", &self.scopes)
+            .finish()
     }
 }
 
@@ -65,8 +83,14 @@ impl App {
         &self.inner.modifiers
     }
 
-    pub(crate) fn states(&self) -> &Container {
-        &self.inner.states
+    pub(crate) fn get<T>(&self, scope_id: impl Into<Option<usize>>) -> Option<&T>
+    where
+        T: Send + Sync + 'static,
+    {
+        scope_id
+            .into()
+            .and_then(|id| self.inner.container_scoped.get(id))
+            .or_else(|| self.inner.container.try_get())
     }
 
     fn router(&self) -> &Router {

@@ -28,13 +28,13 @@
 //!     }
 //! }
 //!
+//! # fn main() -> tsukuyomi::AppResult<()> {
 //! let app = App::builder()
-//!     .mount("/", |m| {
-//!         m.get("/").handle(Handler::new_ready(|_| "Hello"));
-//!     })
+//!     .route(("/", Handler::new_ready(|_| "Hello")))
 //!     .modifier(RequestCounter::default())    // <--
-//!     .finish()
-//!     .unwrap();
+//!     .finish()?;
+//! # Ok(())
+//! # }
 //! ```
 
 use futures::{self, Future, Poll};

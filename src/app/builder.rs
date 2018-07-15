@@ -4,8 +4,9 @@ use std::sync::Arc;
 use std::{fmt, mem};
 
 use failure::{Error, Fail};
-use fnv::FnvHashMap;
 use http::{HttpTryFrom, Method};
+use indexmap::map::IndexMap;
+use state::Container;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::Handler;
@@ -13,18 +14,19 @@ use modifier::Modifier;
 
 use super::endpoint::Endpoint;
 use super::router::{Config, Recognizer, Router, RouterEntry};
-use super::scope;
+use super::scope::{self, ScopedContainer};
 use super::uri::{self, Uri};
-use super::{App, AppState};
+use super::{App, AppState, ScopeData};
 
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
-    endpoints: Vec<Endpoint>,
+    endpoints: Vec<EndpointBuilder>,
+    scopes: Vec<ScopeData>,
+    config: Config,
     error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    config: Option<Config>,
-    scope: scope::Builder,
-    parents: Vec<Option<usize>>,
+    container: Container,
+    container_scoped: scope::Builder,
 
     result: Result<(), Error>,
 }
@@ -32,7 +34,12 @@ pub struct AppBuilder {
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppBuilder {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("AppBuilder").finish()
+        f.debug_struct("AppBuilder")
+            .field("endpoints", &self.endpoints)
+            .field("scopes", &self.scopes)
+            .field("config", &self.config)
+            .field("result", &self.result)
+            .finish()
     }
 }
 
@@ -40,69 +47,126 @@ impl AppBuilder {
     pub(super) fn new() -> AppBuilder {
         AppBuilder {
             endpoints: vec![],
+            scopes: vec![],
+            config: Default::default(),
             error_handler: None,
             modifiers: vec![],
-            config: None,
-            scope: scope::Container::builder(),
-            parents: vec![],
+            container: Container::new(),
+            container_scoped: ScopedContainer::builder(),
 
             result: Ok(()),
         }
     }
 
-    /// Creates a proxy object to add some routes mounted to the provided prefix.
+    fn modify(&mut self, f: impl FnOnce(&mut Self) -> Result<(), Error>) {
+        if self.result.is_ok() {
+            self.result = f(self);
+        }
+    }
+
+    /// Adds a route into the global scope.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate tsukuyomi;
+    /// # extern crate http;
+    /// # use tsukuyomi::app::App;
+    /// # use tsukuyomi::app::builder::Route;
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::handler::Handle;
+    /// # use http::Method;
+    /// fn handler(_: &mut Input) -> Handle {
+    ///     // ...
+    /// # unimplemented!()
+    /// }
+    /// fn submit(_: &mut Input) -> Handle {
+    ///     // ...
+    /// # unimplemented!()
+    /// }
+    ///
+    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// let app = App::builder()
+    ///     .route(("/", handler))
+    ///     .route(("/", Method::POST, submit))
+    ///     .route(|r: &mut Route| {
+    ///         r.uri("/submit");
+    ///         r.method(Method::POST);
+    ///         r.handler(submit);
+    ///     })
+    ///     .finish()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn route(&mut self, config: impl RouteConfig) -> &mut Self {
+        self.route_inner(None, config);
+        self
+    }
+
+    fn route_inner(&mut self, scope_id: impl Into<Option<usize>>, config: impl RouteConfig) {
+        let mut endpoint = EndpointBuilder {
+            scope_id: scope_id.into(),
+            uri: Uri::new(),
+            method: Method::GET,
+            handler: None,
+        };
+        config.configure(&mut Route {
+            builder: self,
+            endpoint: &mut endpoint,
+        });
+        self.endpoints.push(endpoint);
+    }
+
+    /// Creates and configure a scope with the provided prefix and function.
     ///
     /// # Examples
     ///
     /// ```
     /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::handler::Handler;
-    /// # use tsukuyomi::output::Responder;
-    /// fn index (_: &mut Input) -> impl Responder {
+    /// # use tsukuyomi::handler::Handle;
+    /// fn get_post(_: &mut Input) -> Handle {
     ///     // ...
-    /// #   "index"
+    /// # unimplemented!()
     /// }
-    /// # fn find_post (_:&mut Input) -> &'static str { "a" }
-    /// # fn all_posts (_:&mut Input) -> &'static str { "a" }
-    /// # fn add_post (_:&mut Input) -> &'static str { "a" }
+    /// fn add_post(_: &mut Input) -> Handle {
+    ///     // ...
+    /// # unimplemented!()
+    /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
     /// let app = App::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/").handle(Handler::new_ready(index));
-    ///     })
-    ///     .mount("/api/v1/", |m| {
-    ///         m.get("/posts/:id").handle(Handler::new_ready(find_post));
-    ///         m.get("/posts").handle(Handler::new_ready(all_posts));
-    ///         m.post("/posts").handle(Handler::new_ready(add_post));
+    ///     .mount("/api/v1", |m| {
+    ///         m.route(("/posts/:id", get_post));
+    ///         m.route(("/posts", "POST", add_post));
     ///     })
     ///     .finish()?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) -> &mut Self {
-        let mut prefix = vec![];
-        self.modify(|_| {
-            prefix.push(Uri::from_str(base)?);
-            Ok(())
-        });
+    pub fn mount(&mut self, prefix: &str, f: impl FnOnce(&mut Scope)) -> &mut Self {
+        self.scope(|scope| {
+            scope.prefix(prefix);
+            f(scope);
+        })
+    }
 
-        let scope_id = self.create_new_scope(None);
-
-        f(&mut Mount {
-            builder: self,
-            prefix: prefix,
-            scope_id: scope_id,
-        });
-
+    // TODO: expose as a public API
+    fn scope(&mut self, f: impl FnOnce(&mut Scope)) -> &mut Self {
+        self.scope_inner(None, f);
         self
     }
 
-    fn create_new_scope(&mut self, parent: Option<usize>) -> usize {
-        let new_scope_id = self.parents.len();
-        self.parents.push(parent);
-        new_scope_id
+    fn scope_inner(&mut self, parent: impl Into<Option<usize>>, f: impl FnOnce(&mut Scope)) {
+        let scope_id = self.scopes.len();
+        self.scopes.push(ScopeData {
+            parent: parent.into(),
+            prefix: None,
+        });
+        f(&mut Scope {
+            builder: self,
+            scope_id: scope_id,
+        });
     }
 
     /// Sets whether the fallback to GET if the handler for HEAD is not registered is enabled or not.
@@ -110,7 +174,7 @@ impl AppBuilder {
     /// The default value is `true`.
     pub fn fallback_head(&mut self, enabled: bool) -> &mut Self {
         self.modify(move |self_| {
-            self_.config.get_or_insert_with(Default::default).fallback_head = enabled;
+            self_.config.fallback_head = enabled;
             Ok(())
         });
         self
@@ -121,7 +185,7 @@ impl AppBuilder {
     /// The default value is `false`.
     pub fn fallback_options(&mut self, enabled: bool) -> &mut Self {
         self.modify(move |self_| {
-            self_.config.get_or_insert_with(Default::default).fallback_options = enabled;
+            self_.config.fallback_options = enabled;
             Ok(())
         });
         self
@@ -146,14 +210,11 @@ impl AppBuilder {
     }
 
     /// Sets a value of `T` to the global storage.
-    ///
-    /// If a value of provided type has already set, this method drops `state` immediately
-    /// and does not provide any affects to the global storage.
-    pub fn manage<T>(&mut self, state: T) -> &mut Self
+    pub fn set<T>(&mut self, state: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
-        self.scope.set(state, None);
+        self.container.set(state);
         self
     }
 
@@ -165,119 +226,108 @@ impl AppBuilder {
             result,
             error_handler,
             modifiers,
-            mut scope,
-            parents,
+            mut container,
+            mut container_scoped,
+            scopes,
         } = mem::replace(self, AppBuilder::new());
 
         result?;
 
-        let config = config.unwrap_or_default();
-        let mut entries = vec![];
+        // finalize endpoints based on the created scope information.
+        let endpoints: Vec<Endpoint> = endpoints
+            .into_iter()
+            .map(|e| e.finish(&scopes))
+            .collect::<Result<_, _>>()?;
 
-        let recognizer = {
-            let mut collected_routes = FnvHashMap::with_hasher(Default::default());
-            for (i, endpoint) in endpoints.iter().enumerate() {
-                collected_routes
-                    .entry(endpoint.uri())
-                    .or_insert_with(RouterEntry::builder)
-                    .push(endpoint.method(), i);
-            }
-
-            let mut builder = Recognizer::builder();
-            for (path, entry) in collected_routes {
-                builder.push(path.as_ref())?;
-                entries.push(entry.finish()?);
-            }
-
-            builder.finish()
-        };
-
-        let error_handler = error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::new()));
-
-        let states = scope.finish(&parents[..]);
-
+        // create a router
+        let (recognizer, entries) = build_recognizer(&endpoints)?;
         let router = Router {
             recognizer: recognizer,
             entries: entries,
             config: config,
         };
 
+        // finalize error handler.
+        let error_handler = error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::new()));
+
+        // finalize global/scope-local storages.
+        container.freeze();
+        let parents: Vec<_> = scopes.iter().map(|scope| scope.parent()).collect();
+        let container_scoped = container_scoped.finish(&parents[..]);
+
         Ok(App {
             inner: Arc::new(AppState {
-                router: router,
                 endpoints: endpoints,
+                router: router,
                 error_handler: error_handler,
                 modifiers: modifiers,
-                states: states,
+                container,
+                container_scoped,
+                scopes,
             }),
         })
     }
-
-    fn modify(&mut self, f: impl FnOnce(&mut Self) -> Result<(), Error>) {
-        if self.result.is_ok() {
-            self.result = f(self);
-        }
-    }
 }
 
-/// A proxy object for adding routes with the certain prefix.
+fn build_recognizer(endpoints: &[Endpoint]) -> Result<(Recognizer, Vec<RouterEntry>), Error> {
+    let mut entries = vec![];
+
+    let mut collected_routes = IndexMap::new();
+    for (i, endpoint) in endpoints.iter().enumerate() {
+        collected_routes
+            .entry(endpoint.uri.clone())
+            .or_insert_with(RouterEntry::builder)
+            .push(&endpoint.method, i)?;
+    }
+
+    let mut builder = Recognizer::builder();
+    for (path, entry) in collected_routes {
+        builder.push(path.as_ref())?;
+        entries.push(entry.finish()?);
+    }
+
+    let recognizer = builder.finish();
+
+    Ok((recognizer, entries))
+}
+
+// ==== Scope ====
+
+/// A proxy object for configuration of a scope.
 #[derive(Debug)]
-pub struct Mount<'a> {
+pub struct Scope<'a> {
     builder: &'a mut AppBuilder,
-    prefix: Vec<Uri>,
     scope_id: usize,
 }
 
-macro_rules! impl_methods_for_mount {
-    ($(
-        $(#[$doc:meta])*
-        $name:ident => $METHOD:ident,
-    )*) => {$(
-        $(#[$doc])*
-        #[inline]
-        pub fn $name<'b>(&'b mut self, path: &str) -> Route<'a, 'b>
-        where
-            'a: 'b,
-        {
-            self.route(path, Method::$METHOD)
+impl<'a> Scope<'a> {
+    fn prefix(&mut self, prefix: &str) -> &mut Self {
+        if self.builder.result.is_ok() {
+            match Uri::from_str(prefix) {
+                Ok(prefix) => self.builder.scopes[self.scope_id].prefix = Some(prefix),
+                Err(err) => self.builder.result = Err(err.into()),
+            }
         }
-    )*};
-}
-
-impl<'a> Mount<'a> {
-    /// Adds a route with the provided path, method and handler.
-    pub fn route<'b>(&'b mut self, path: &str, method: Method) -> Route<'a, 'b>
-    where
-        'a: 'b,
-    {
-        let mut suffix = Uri::new();
-        self.builder.modify(|_| {
-            suffix = Uri::from_str(path)?;
-            Ok(())
-        });
-        Route {
-            mount: self,
-            suffix: suffix,
-            method: method,
-        }
+        self
     }
 
-    /// Create a new scope and performs some configuration with the provided function.
-    pub fn mount(&mut self, base: &str, f: impl FnOnce(&mut Mount)) -> &mut Self {
-        let mut prefix = self.prefix.clone();
-        self.builder.modify(|_| {
-            prefix.push(Uri::from_str(base)?);
-            Ok(())
-        });
+    /// Adds a route into the current scope, with the provided configuration.
+    pub fn route(&mut self, config: impl RouteConfig) -> &mut Self {
+        self.builder.route_inner(self.scope_id, config);
+        self
+    }
 
-        let scope_id = self.builder.create_new_scope(Some(self.scope_id));
+    /// Create a new sub-scope and configure it with the provided function.
+    pub fn mount(&mut self, prefix: &str, f: impl FnOnce(&mut Scope)) -> &mut Self {
+        self.scope(|scope| {
+            scope.prefix(prefix);
+            f(scope)
+        })
+    }
 
-        f(&mut Mount {
-            builder: self.builder,
-            prefix: prefix,
-            scope_id: scope_id,
-        });
-
+    // TODO: expose as a public API.
+    fn scope(&mut self, f: impl FnOnce(&mut Scope)) -> &mut Self {
+        self.builder.scope_inner(self.scope_id, f);
         self
     }
 
@@ -286,80 +336,122 @@ impl<'a> Mount<'a> {
     where
         T: Send + Sync + 'static,
     {
-        self.builder.scope.set(value, Some(self.scope_id));
+        self.builder.container_scoped.set(value, self.scope_id);
         self
     }
-
-    impl_methods_for_mount![
-        /// Equivalent to `mount.route(path, Method::GET)`.
-        get => GET,
-
-        /// Equivalent to `mount.route(path, Method::POST)`.
-        post => POST,
-
-        /// Equivalent to `mount.route(path, Method::PUT)`.
-        put => PUT,
-
-        /// Equivalent to `mount.route(path, Method::DELETE)`.
-        delete => DELETE,
-
-        /// Equivalent to `mount.route(path, Method::HEAD)`.
-        head => HEAD,
-
-        /// Equivalent to `mount.route(path, Method::OPTIONS)`.
-        options => OPTIONS,
-
-        /// Equivalent to `mount.route(path, Method::PATCH)`.
-        patch => PATCH,
-    ];
 }
 
-/// A proxy object for creating an endpoint from a handler function.
+// ==== Route ====
+
+/// A proxy object for creating an endpoint.
 #[derive(Debug)]
-pub struct Route<'a: 'b, 'b> {
-    mount: &'b mut Mount<'a>,
-    suffix: Uri,
-    method: Method,
+pub struct Route<'a> {
+    builder: &'a mut AppBuilder,
+    endpoint: &'a mut EndpointBuilder,
 }
 
-impl<'a, 'b> Route<'a, 'b> {
-    /// Modifies the HTTP method associated with this endpoint.
+impl<'a> Route<'a> {
+    /// Modifies the HTTP method of this route.
     pub fn method<M>(&mut self, method: M) -> &mut Self
     where
         Method: HttpTryFrom<M>,
         <Method as HttpTryFrom<M>>::Error: Fail,
     {
-        self.mount.builder.modify({
-            let m = &mut self.method;
-            move |_| {
-                *m = Method::try_from(method)?;
-                Ok(())
+        if self.builder.result.is_ok() {
+            match Method::try_from(method) {
+                Ok(method) => self.endpoint.method = method,
+                Err(err) => self.builder.result = Err(Error::from(err.into())),
             }
-        });
+        }
         self
     }
 
-    /// Modifies the suffix URI of this endpoint.
-    pub fn path(&mut self, path: &str) -> &mut Self {
-        self.mount.builder.modify({
-            let suffix = &mut self.suffix;
-            move |_| {
-                *suffix = Uri::from_str(path)?;
-                Ok(())
+    /// Modifies the URI of this route.
+    pub fn uri(&mut self, uri: &str) -> &mut Self {
+        if self.builder.result.is_ok() {
+            match Uri::from_str(uri) {
+                Ok(uri) => self.endpoint.uri = uri,
+                Err(err) => self.builder.result = Err(err),
             }
-        });
+        }
         self
     }
 
-    /// Finishes this session and registers an endpoint with given handler.
-    pub fn handle(self, handler: impl Into<Handler>) {
-        let uri = uri::join_all(self.mount.prefix.iter().chain(Some(&self.suffix)));
-        let endpoint = Endpoint {
+    /// Sets a `Handler` to this route.
+    pub fn handler(&mut self, handler: impl Into<Handler>) -> &mut Self {
+        self.endpoint.handler = Some(handler.into());
+        self
+    }
+}
+
+#[derive(Debug)]
+struct EndpointBuilder {
+    scope_id: Option<usize>,
+    uri: Uri,
+    method: Method,
+    handler: Option<Handler>,
+}
+
+impl EndpointBuilder {
+    fn finish(self, scopes: &[ScopeData]) -> Result<Endpoint, Error> {
+        let mut uris = vec![self.uri.clone()];
+
+        let mut current = self.scope_id;
+        while let Some(scope) = current.and_then(|i| scopes.get(i)) {
+            uris.extend(scope.prefix.clone());
+            current = scope.parent;
+        }
+
+        let uri = uri::join_all(uris.into_iter().rev());
+
+        let handler = self.handler
+            .ok_or_else(|| format_err!("default handler is not supported"))?;
+
+        Ok(Endpoint {
             uri: uri,
             method: self.method,
-            scope_id: self.mount.scope_id,
-            handler: handler.into(),
-        };
-        self.mount.builder.endpoints.push(endpoint);
+            scope_id: self.scope_id,
+            handler,
+        })
+    }
+}
+
+/// Trait representing a set of configuration for setting a route.
+pub trait RouteConfig {
+    /// Applies this configuration to the provided `Route`.
+    fn configure(self, route: &mut Route);
+}
+
+impl<F> RouteConfig for F
+where
+    F: FnOnce(&mut Route),
+{
+    fn configure(self, route: &mut Route) {
+        self(route);
+    }
+}
+
+impl<A, B> RouteConfig for (A, B)
+where
+    A: AsRef<str>,
+    B: Into<Handler>,
+{
+    fn configure(self, route: &mut Route) {
+        route.uri(self.0.as_ref());
+        route.handler(self.1);
+    }
+}
+
+impl<A, B, C> RouteConfig for (A, B, C)
+where
+    A: AsRef<str>,
+    Method: HttpTryFrom<B>,
+    C: Into<Handler>,
+    <Method as HttpTryFrom<B>>::Error: Fail,
+{
+    fn configure(self, route: &mut Route) {
+        route.uri(self.0.as_ref());
+        route.method(self.1);
+        route.handler(self.2);
     }
 }
