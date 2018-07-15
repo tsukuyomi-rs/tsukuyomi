@@ -4,7 +4,7 @@ use failure;
 use fnv::FnvHashMap;
 use http::header::HeaderValue;
 use http::{header, Method, Response};
-use std::collections::HashSet;
+use indexmap::set::IndexSet;
 
 pub(super) use self::recognizer::Recognizer;
 
@@ -80,7 +80,7 @@ impl RouterEntry {
     pub(super) fn builder() -> RouterEntryBuilder {
         RouterEntryBuilder {
             routes: vec![],
-            methods: HashSet::new(),
+            methods: IndexSet::new(),
         }
     }
 
@@ -96,13 +96,17 @@ impl RouterEntry {
 #[derive(Debug)]
 pub(super) struct RouterEntryBuilder {
     routes: Vec<(Method, usize)>,
-    methods: HashSet<Method>,
+    methods: IndexSet<Method>,
 }
 
 impl RouterEntryBuilder {
-    pub(super) fn push(&mut self, method: &Method, i: usize) {
+    pub(super) fn push(&mut self, method: &Method, i: usize) -> Result<(), failure::Error> {
+        if self.methods.contains(method) {
+            bail!("Duplicate URI and method");
+        }
         self.routes.push((method.clone(), i));
         self.methods.insert(method.clone());
+        Ok(())
     }
 
     pub(super) fn finish(self) -> Result<RouterEntry, failure::Error> {

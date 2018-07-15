@@ -9,7 +9,7 @@ use tsukuyomi::local::LocalServer;
 use tsukuyomi::{App, Input};
 
 use futures::future::lazy;
-use http::{header, StatusCode};
+use http::{header, Method, StatusCode};
 
 #[test]
 fn test_case1_empty_routes() {
@@ -25,7 +25,7 @@ fn test_case1_empty_routes() {
 fn test_case2_single_route() {
     let app = App::builder()
         .mount("/", |m| {
-            m.get("/hello").handle(Handler::new_ready(|_| "Tsukuyomi"));
+            m.route(("/hello", Handler::new_ready(|_| "Tsukuyomi")));
         })
         .finish()
         .unwrap();
@@ -48,14 +48,16 @@ fn test_case2_single_route() {
 #[test]
 fn test_case3_post_body() {
     let app = App::builder()
-        .mount("/", |m| {
-            m.post("/hello").handle(Handler::new_fully_async(|| {
+        .route((
+            "/hello",
+            Method::POST,
+            Handler::new_fully_async(|| {
                 lazy(|| {
                     let read_all = Input::with_current(|input| input.body_mut().read_all());
                     read_all.convert_to::<String>()
                 })
-            }));
-        })
+            }),
+        ))
         .finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
@@ -87,8 +89,9 @@ fn test_case4_cookie() {
     let expires_in = time::now() + Duration::days(7);
 
     let app = App::builder()
-        .mount("/", |m| {
-            m.get("/login").handle(Handler::new_ready({
+        .route((
+            "/login",
+            Handler::new_ready({
                 move |input| -> tsukuyomi::Result<_> {
                     #[cfg_attr(rustfmt, rustfmt_skip)]
                     let cookie = Cookie::build("session", "dummy_session_id")
@@ -98,14 +101,15 @@ fn test_case4_cookie() {
                     input.cookies()?.add(cookie);
                     Ok("Logged in")
                 }
-            }));
-
-            m.get("/logout")
-                .handle(Handler::new_ready(move |input| -> tsukuyomi::Result<_> {
-                    input.cookies()?.remove(Cookie::named("session"));
-                    Ok("Logged out")
-                }));
-        })
+            }),
+        ))
+        .route((
+            "/logout",
+            Handler::new_ready(move |input| -> tsukuyomi::Result<_> {
+                input.cookies()?.remove(Cookie::named("session"));
+                Ok("Logged out")
+            }),
+        ))
         .finish()
         .unwrap();
 

@@ -78,9 +78,7 @@ fn single_empty_modifier() {
     let handle = Marker::default();
 
     let app = App::builder()
-        .mount("/", |m| {
-            m.get("/").handle(handler(&handle));
-        })
+        .route(("/", handler(&handle)))
         .modifier(EmptyModifier {
             before: before.clone(),
             after: after.clone(),
@@ -104,9 +102,7 @@ fn single_before_done_modifier() {
     let handle = Marker::default();
 
     let app = App::builder()
-        .mount("/", |m| {
-            m.get("/").handle(handler(&handle));
-        })
+        .route(("/", handler(&handle)))
         .modifier(BeforeDoneModifier {
             before: before.clone(),
             after: after.clone(),
@@ -134,9 +130,7 @@ fn multiple_empty_modifier() {
     let handle = Marker::default();
 
     let app = App::builder()
-        .mount("/", |m| {
-            m.get("/").handle(handler(&handle));
-        })
+        .route(("/", handler(&handle)))
         .modifier(EmptyModifier {
             before: before1.clone(),
             after: after1.clone(),
@@ -174,9 +168,7 @@ fn empty_and_before_done_modifier_1() {
     let handle = Marker::default();
 
     let app = App::builder()
-        .mount("/", |m| {
-            m.get("/").handle(handler(&handle));
-        })
+        .route(("/", handler(&handle)))
         .modifier(EmptyModifier {
             before: before1.clone(),
             after: after1.clone(),
@@ -208,9 +200,7 @@ fn empty_and_before_done_modifier_2() {
     let handle = Marker::default();
 
     let app = App::builder()
-        .mount("/", |m| {
-            m.get("/").handle(handler(&handle));
-        })
+        .route(("/", handler(&handle)))
         .modifier(BeforeDoneModifier {
             before: before1.clone(),
             after: after1.clone(),

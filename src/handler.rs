@@ -51,9 +51,7 @@ impl Handler {
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
     /// let app = App::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/index.html").handle(Handler::new_ready(index));
-    ///     })
+    ///     .route(("/index.html", Handler::new_ready(index)))
     ///     .finish()?;
     /// # Ok(())
     /// # }
@@ -91,9 +89,7 @@ impl Handler {
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
     /// let app = App::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/posts").handle(Handler::new_async(handler));
-    ///     })
+    ///     .route(("/posts", Handler::new_async(handler)))
     ///     .finish()?;
     /// # Ok(())
     /// # }
@@ -142,9 +138,7 @@ impl Handler {
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
     /// let app = App::builder()
-    ///     .mount("/", |m| {
-    ///         m.get("/posts").handle(Handler::new_fully_async(handler));
-    ///     })
+    ///     .route(("/posts", Handler::new_fully_async(handler)))
     ///     .finish()?;
     /// # Ok(())
     /// # }

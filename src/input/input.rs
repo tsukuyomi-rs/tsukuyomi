@@ -175,7 +175,7 @@ impl<'task> Input<'task> {
         T: Send + Sync + 'static,
     {
         let endpoint = self.endpoint();
-        self.app.states().get(endpoint.scope_id())
+        self.app.get(endpoint.scope_id())
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.

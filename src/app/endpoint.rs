@@ -12,7 +12,7 @@ use super::uri::Uri;
 pub struct Endpoint {
     pub(super) uri: Uri,
     pub(super) method: Method,
-    pub(super) scope_id: usize,
+    pub(super) scope_id: Option<usize>,
     pub(super) handler: Handler,
 }
 
@@ -27,7 +27,7 @@ impl Endpoint {
         &self.method
     }
 
-    pub(crate) fn scope_id(&self) -> usize {
+    pub(crate) fn scope_id(&self) -> Option<usize> {
         self.scope_id
     }
 
