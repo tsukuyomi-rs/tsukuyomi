@@ -118,19 +118,83 @@ fn route_fallback_options_disabled() {
     );
 }
 
-// TODO: more test cases
 #[test]
-fn mount_smoke() {
+fn global_prefix() {
     let app = App::builder()
-        .mount("/", |m| {
-            m.route(("/foo", dummy_handler)); // /foo
-            m.route(("/bar", dummy_handler)); // /bar
-        })
-        .mount("/baz", |m| {
-            m.route(("/", dummy_handler)); // /baz
+        .prefix("/api")
+        .route(("/a", dummy_handler))
+        .route(("/b", dummy_handler))
+        .finish()
+        .unwrap();
 
-            m.mount("/", |m| {
-                m.route(("/foobar", dummy_handler)); // /baz/foobar
+    assert_matches!(
+        app.router().recognize("/api/a", &Method::GET),
+        Ok(Recognize { endpoint_id: 0, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/api/b", &Method::GET),
+        Ok(Recognize { endpoint_id: 1, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/a", &Method::GET),
+        Err(RecognizeErrorKind::NotFound)
+    );
+}
+
+#[test]
+fn scope_simple() {
+    use app::builder::Scope;
+
+    let app = App::builder()
+        .scope(|s: &mut Scope| {
+            s.route(("/a", dummy_handler));
+            s.route(("/b", dummy_handler));
+        })
+        .route(("/foo", dummy_handler))
+        .scope(|s: &mut Scope| {
+            s.prefix("/c");
+            s.route(("/d", dummy_handler));
+            s.route(("/e", dummy_handler));
+        })
+        .finish()
+        .unwrap();
+
+    assert_matches!(
+        app.router().recognize("/a", &Method::GET),
+        Ok(Recognize { endpoint_id: 0, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/b", &Method::GET),
+        Ok(Recognize { endpoint_id: 1, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/foo", &Method::GET),
+        Ok(Recognize { endpoint_id: 2, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/c/d", &Method::GET),
+        Ok(Recognize { endpoint_id: 3, .. })
+    );
+    assert_matches!(
+        app.router().recognize("/c/e", &Method::GET),
+        Ok(Recognize { endpoint_id: 4, .. })
+    );
+}
+
+#[test]
+fn scope_nested() {
+    use app::builder::Scope;
+
+    let app = App::builder()
+        .scope(|s: &mut Scope| {
+            s.route(("/foo", dummy_handler)); // /foo
+            s.route(("/bar", dummy_handler)); // /bar
+        })
+        .mount("/baz", |s| {
+            s.route(("/", dummy_handler)); // /baz
+
+            s.scope(|s: &mut Scope| {
+                s.route(("/foobar", dummy_handler)); // /baz/foobar
             });
         })
         .route(("/hoge", dummy_handler)) // /hoge
@@ -185,11 +249,12 @@ fn scope_variable() {
         .finish()
         .unwrap();
 
-    assert_eq!(app.get(0).map(String::as_str), Some("G"));
-    assert_eq!(app.get(1).map(String::as_str), Some("A"));
-    assert_eq!(app.get(2).map(String::as_str), Some("B"));
-    assert_eq!(app.get(3).map(String::as_str), Some("C"));
-    assert_eq!(app.get(4).map(String::as_str), Some("C"));
-    assert_eq!(app.get(5).map(String::as_str), Some("B"));
-    assert_eq!(app.get(6).map(String::as_str), Some("B"));
+    assert_eq!(app.get(ScopeId::Global).map(String::as_str), Some("G"));
+    assert_eq!(app.get(ScopeId::Scope(0)).map(String::as_str), Some("G"));
+    assert_eq!(app.get(ScopeId::Scope(1)).map(String::as_str), Some("A"));
+    assert_eq!(app.get(ScopeId::Scope(2)).map(String::as_str), Some("B"));
+    assert_eq!(app.get(ScopeId::Scope(3)).map(String::as_str), Some("C"));
+    assert_eq!(app.get(ScopeId::Scope(4)).map(String::as_str), Some("C"));
+    assert_eq!(app.get(ScopeId::Scope(5)).map(String::as_str), Some("B"));
+    assert_eq!(app.get(ScopeId::Scope(6)).map(String::as_str), Some("B"));
 }
