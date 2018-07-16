@@ -1,7 +1,5 @@
 //! The definition of components for constructing the HTTP applications.
 
-#![allow(missing_docs)]
-
 pub mod builder;
 pub mod service;
 
@@ -26,14 +24,29 @@ use self::router::Router;
 use self::scope::ScopedContainer;
 pub use self::uri::Uri;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum ScopeId {
+    Scope(usize),
+    Global,
+}
+
+impl ScopeId {
+    fn local_id(self) -> Option<usize> {
+        match self {
+            ScopeId::Scope(id) => Some(id),
+            ScopeId::Global => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ScopeData {
-    parent: Option<usize>,
+    parent: ScopeId,
     prefix: Option<Uri>,
 }
 
 impl ScopeData {
-    fn parent(&self) -> Option<usize> {
+    fn parent(&self) -> ScopeId {
         self.parent
     }
 }
@@ -83,14 +96,17 @@ impl App {
         &self.inner.modifiers
     }
 
-    pub(crate) fn get<T>(&self, scope_id: impl Into<Option<usize>>) -> Option<&T>
+    pub(crate) fn get<T>(&self, id: ScopeId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        scope_id
-            .into()
-            .and_then(|id| self.inner.container_scoped.get(id))
-            .or_else(|| self.inner.container.try_get())
+        match id {
+            ScopeId::Scope(id) => self.inner
+                .container_scoped
+                .get(id)
+                .or_else(|| self.inner.container.try_get()),
+            ScopeId::Global => self.inner.container.try_get(),
+        }
     }
 
     fn router(&self) -> &Router {

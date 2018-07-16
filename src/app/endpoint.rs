@@ -3,6 +3,7 @@ use http::Method;
 use handler::Handler;
 
 use super::uri::Uri;
+use super::ScopeId;
 
 /// A type representing an endpoint.
 ///
@@ -12,7 +13,7 @@ use super::uri::Uri;
 pub struct Endpoint {
     pub(super) uri: Uri,
     pub(super) method: Method,
-    pub(super) scope_id: Option<usize>,
+    pub(super) scope_id: ScopeId,
     pub(super) handler: Handler,
 }
 
@@ -27,7 +28,7 @@ impl Endpoint {
         &self.method
     }
 
-    pub(crate) fn scope_id(&self) -> Option<usize> {
+    pub(crate) fn scope_id(&self) -> ScopeId {
         self.scope_id
     }
 
