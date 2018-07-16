@@ -127,7 +127,7 @@ impl BeforeHandle {
     }
 
     /// Creates a `BeforeHandle` from a future.
-    pub fn async<F>(future: F) -> BeforeHandle
+    pub fn wrap_future<F>(future: F) -> BeforeHandle
     where
         F: Future<Item = Option<Output>, Error = Error> + Send + 'static,
     {
@@ -186,7 +186,7 @@ impl AfterHandle {
     }
 
     /// Creates an `AfterHandle` from a future.
-    pub fn async<F>(future: F) -> AfterHandle
+    pub fn wrap_future<F>(future: F) -> AfterHandle
     where
         F: Future<Item = Output, Error = Error> + Send + 'static,
     {
