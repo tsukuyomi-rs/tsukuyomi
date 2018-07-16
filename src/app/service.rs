@@ -120,7 +120,10 @@ impl AppServiceFuture {
         loop {
             let output = match self.pipeline {
                 Start | Recognized => None,
-                BeforeHandle { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
+                BeforeHandle { ref mut in_flight, .. } => {
+                    try_ready!(in_flight.poll_ready(&mut input!()));
+                    None
+                }
                 Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 Done => panic!("unexpected state"),
@@ -149,17 +152,6 @@ impl AppServiceFuture {
                     }
                 },
 
-                (BeforeHandle { current, .. }, Some(output)) => {
-                    if current < 2 {
-                        break Ok(Async::Ready(output));
-                    }
-                    let current = current - 2;
-                    let modifier = &self.app.modifiers()[current];
-                    AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        current: current,
-                    }
-                }
                 (BeforeHandle { current, .. }, None) => match self.app.modifiers().get(current) {
                     Some(modifier) => BeforeHandle {
                         in_flight: modifier.before_handle(&mut input!()),

@@ -76,8 +76,8 @@ pub trait Modifier {
 pub struct BeforeHandle(BeforeHandleState);
 
 enum BeforeHandleState {
-    Ready(Option<Result<Option<Output>, Error>>),
-    Async(Box<dyn Future<Item = Option<Output>, Error = Error> + Send>),
+    Ready(Option<Result<(), Error>>),
+    Async(Box<dyn Future<Item = (), Error = Error> + Send>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -92,7 +92,7 @@ impl fmt::Debug for BeforeHandleState {
 }
 
 impl BeforeHandle {
-    fn ready(res: Result<Option<Output>, Error>) -> BeforeHandle {
+    fn ready(res: Result<(), Error>) -> BeforeHandle {
         BeforeHandle(BeforeHandleState::Ready(Some(res)))
     }
 
@@ -100,19 +100,7 @@ impl BeforeHandle {
     ///
     /// When this value is received, the framework continues the subsequent processes.
     pub fn ok() -> BeforeHandle {
-        BeforeHandle::ready(Ok(None))
-    }
-
-    /// Creates a `BeforeHandle` with the value of an `Output`.
-    ///
-    /// When this value is received, the framework cancels all processes of remaining modifiers
-    /// and the handler of endpoint, and then shifts to the calling `after_handle()` of the
-    /// (already applied) modifiers.
-    pub fn done<T>(output: T) -> BeforeHandle
-    where
-        T: Into<Output>,
-    {
-        BeforeHandle::ready(Ok(Some(output.into())))
+        BeforeHandle::ready(Ok(()))
     }
 
     /// Creates a `BeforeHandle` with an error value.
@@ -129,12 +117,12 @@ impl BeforeHandle {
     /// Creates a `BeforeHandle` from a future.
     pub fn wrap_future<F>(future: F) -> BeforeHandle
     where
-        F: Future<Item = Option<Output>, Error = Error> + Send + 'static,
+        F: Future<Item = (), Error = Error> + Send + 'static,
     {
         BeforeHandle(BeforeHandleState::Async(Box::new(future)))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Option<Output>, Error> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<(), Error> {
         use self::BeforeHandleState::*;
         match self.0 {
             Ready(ref mut res) => res.take()
