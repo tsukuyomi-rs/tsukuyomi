@@ -158,9 +158,15 @@ impl AppBuilder {
 
     fn new_scope(&mut self, parent: ScopeId, config: impl ScopeConfig) {
         let id = ScopeId::Scope(self.scopes.len());
+        let mut chain = parent
+            .local_id()
+            .map_or_else(Default::default, |id| self.scopes[id].chain.clone());
+        chain.push(id);
         self.scopes.push(ScopeData {
             parent: parent,
             prefix: None,
+            chain: chain,
+            modifiers: vec![],
         });
 
         config.configure(&mut Scope { builder: self, id });
@@ -232,12 +238,16 @@ impl AppBuilder {
     }
 
     /// Sets the instance to an error handler into this builder.
-    pub fn modifier<M>(&mut self, modifier: M) -> &mut Self
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
+    pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
         self.modifiers.push(Box::new(modifier));
         self
+    }
+
+    fn add_modifier(&mut self, id: ScopeId, modifier: impl Modifier + Send + Sync + 'static) {
+        match id {
+            ScopeId::Global => self.modifiers.push(Box::new(modifier)),
+            ScopeId::Scope(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
+        }
     }
 
     /// Sets a value of `T` to the global storage.
@@ -398,6 +408,12 @@ impl<'a> Scope<'a> {
     /// Modifies the prefix URI of current scope.
     pub fn prefix(&mut self, prefix: &str) -> &mut Self {
         self.builder.set_prefix(prefix, self.id);
+        self
+    }
+
+    #[allow(missing_docs)]
+    pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
+        self.builder.add_modifier(self.id, modifier);
         self
     }
 }

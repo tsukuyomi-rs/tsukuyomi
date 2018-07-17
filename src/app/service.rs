@@ -6,7 +6,7 @@ use http::header::HeaderValue;
 use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
-use std::mem;
+use std::{iter, mem, vec};
 use tokio;
 
 use error::{CritError, Error};
@@ -17,7 +17,7 @@ use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
 use super::router::RecognizeErrorKind;
-use super::App;
+use super::{App, ModifierId};
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -83,9 +83,15 @@ pub struct AppServiceFuture {
 enum Pipeline {
     Start,
     Recognized,
-    BeforeHandle { in_flight: BeforeHandle, current: usize },
+    BeforeHandle {
+        in_flight: BeforeHandle,
+        chain: vec::IntoIter<ModifierId>,
+    },
     Handle(Handle),
-    AfterHandle { in_flight: AfterHandle, current: usize },
+    AfterHandle {
+        in_flight: AfterHandle,
+        chain: iter::Rev<vec::IntoIter<ModifierId>>,
+    },
     Done,
 }
 
@@ -102,6 +108,11 @@ impl From<Error> for PipelineErrorKind {
 }
 
 impl AppServiceFuture {
+    fn collect_modifier_ids(&self) -> Vec<ModifierId> {
+        let parts = self.parts.as_ref().expect("The instance of InputParts does not exist.");
+        self.app.collect_modifier_ids(parts.recognize.endpoint_id)
+    }
+
     fn poll_pipeline(&mut self) -> Poll<Output, PipelineErrorKind> {
         use self::Pipeline::*;
 
@@ -120,7 +131,10 @@ impl AppServiceFuture {
         loop {
             let output = match self.pipeline {
                 Start | Recognized => None,
-                BeforeHandle { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
+                BeforeHandle { ref mut in_flight, .. } => {
+                    try_ready!(in_flight.poll_ready(&mut input!()));
+                    None
+                }
                 Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 Done => panic!("unexpected state"),
@@ -137,34 +151,32 @@ impl AppServiceFuture {
                     Recognized
                 }
 
-                (Recognized, None) => match self.app.modifiers().get(0) {
-                    Some(modifier) => BeforeHandle {
-                        in_flight: modifier.before_handle(&mut input!()),
-                        current: 1,
-                    },
-                    None => {
-                        let mut input = input!();
-                        let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
-                        Handle(endpoint.handler().handle(&mut input))
-                    }
-                },
-
-                (BeforeHandle { current, .. }, Some(output)) => {
-                    if current < 2 {
-                        break Ok(Async::Ready(output));
-                    }
-                    let current = current - 2;
-                    let modifier = &self.app.modifiers()[current];
-                    AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        current: current,
+                (Recognized, None) => {
+                    let mut chain = self.collect_modifier_ids().into_iter();
+                    match chain.next() {
+                        Some(id) => {
+                            let modifier = self.app.modifier(id).expect("invalid modifier ID");
+                            BeforeHandle {
+                                in_flight: modifier.before_handle(&mut input!()),
+                                chain: chain,
+                            }
+                        }
+                        None => {
+                            let mut input = input!();
+                            let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
+                            Handle(endpoint.handler().handle(&mut input))
+                        }
                     }
                 }
-                (BeforeHandle { current, .. }, None) => match self.app.modifiers().get(current) {
-                    Some(modifier) => BeforeHandle {
-                        in_flight: modifier.before_handle(&mut input!()),
-                        current: current + 1,
-                    },
+
+                (BeforeHandle { mut chain, .. }, None) => match chain.next() {
+                    Some(id) => {
+                        let modifier = self.app.modifier(id).expect("invalid modifier ID");
+                        BeforeHandle {
+                            in_flight: modifier.before_handle(&mut input!()),
+                            chain: chain,
+                        }
+                    }
                     None => {
                         let mut input = input!();
                         let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
@@ -173,28 +185,29 @@ impl AppServiceFuture {
                 },
 
                 (Handle(..), Some(output)) => {
-                    if self.app.modifiers().is_empty() {
-                        break Ok(Async::Ready(output));
-                    }
-                    let current = self.app.modifiers().len() - 1;
-                    let modifier = &self.app.modifiers()[current];
-                    AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        current: current,
+                    let mut chain = self.collect_modifier_ids().into_iter().rev();
+                    match chain.next() {
+                        Some(id) => {
+                            let modifier = &self.app.modifier(id).expect("invalid modifier ID");
+                            AfterHandle {
+                                in_flight: modifier.after_handle(&mut input!(), output),
+                                chain: chain,
+                            }
+                        }
+                        None => break Ok(Async::Ready(output)),
                     }
                 }
 
-                (AfterHandle { current, .. }, Some(output)) => {
-                    if current == 0 {
-                        break Ok(Async::Ready(output));
+                (AfterHandle { mut chain, .. }, Some(output)) => match chain.next() {
+                    Some(id) => {
+                        let modifier = &self.app.modifier(id).expect("invalid modifier ID");
+                        AfterHandle {
+                            in_flight: modifier.after_handle(&mut input!(), output),
+                            chain: chain,
+                        }
                     }
-                    let current = current - 1;
-                    let modifier = &self.app.modifiers()[current];
-                    AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        current: current,
-                    }
-                }
+                    None => break Ok(Async::Ready(output)),
+                },
 
                 _ => panic!("unexpected state"),
             }

@@ -196,7 +196,7 @@ impl Handle {
     }
 
     /// Creates a `Handle` from a future.
-    pub fn async<F>(mut future: F) -> Handle
+    pub fn wrap_future<F>(mut future: F) -> Handle
     where
         F: Future<Item = Output, Error = Error> + Send + 'static,
     {
