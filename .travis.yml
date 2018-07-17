@@ -58,6 +58,7 @@ matrix:
       env: RUSTFLAGS="-D warnings"
       before_script:
         - rustup component add rustfmt-preview
+        - rustup component add clippy-preview
       script:
         - cargo clean
         - cargo test
@@ -66,6 +67,7 @@ matrix:
         - cargo test -p tsukuyomi-codegen
       after_success:
         - cargo fmt -- --write-mode=diff
+        - cargo clippy
 
     # FIXME: enable before releasing 0.3.0
     # - rust: stable
