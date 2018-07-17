@@ -12,6 +12,7 @@ use error::Error;
 use input::RequestBody;
 
 use super::cookie::{CookieManager, Cookies};
+use super::local_map::LocalMap;
 
 thread_local! {
     static INPUT: Cell<Option<NonNull<Input<'static>>>> = Cell::new(None);
@@ -51,6 +52,7 @@ fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
 pub(crate) struct InputParts {
     pub(crate) recognize: Recognize,
     pub(crate) cookies: CookieManager,
+    pub(crate) locals: LocalMap,
     _priv: (),
 }
 
@@ -59,6 +61,7 @@ impl InputParts {
         InputParts {
             recognize,
             cookies: CookieManager::new(),
+            locals: LocalMap::new(),
             _priv: (),
         }
     }
@@ -174,8 +177,7 @@ impl<'task> Input<'task> {
     where
         T: Send + Sync + 'static,
     {
-        let endpoint = self.endpoint();
-        self.app.get(endpoint.scope_id())
+        self.app.get(self.endpoint().scope_id())
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
@@ -188,6 +190,16 @@ impl<'task> Input<'task> {
             cookies.init(self.request.headers()).map_err(Error::bad_request)?;
         }
         Ok(cookies.cookies())
+    }
+
+    #[allow(missing_docs)]
+    pub fn locals(&self) -> &LocalMap {
+        &self.parts.locals
+    }
+
+    #[allow(missing_docs)]
+    pub fn locals_mut(&mut self) -> &mut LocalMap {
+        &mut self.parts.locals
     }
 }
 

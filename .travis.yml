@@ -63,7 +63,7 @@ matrix:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
-        #- cargo test --features nightly
+        - cargo test --features nightly
         - cargo test -p tsukuyomi-codegen
       after_success:
         - cargo fmt -- --write-mode=diff

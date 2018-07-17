@@ -1,6 +1,7 @@
 //! Components for parsing incoming HTTP requests.
 
 pub mod body;
+pub mod local_map;
 
 mod cookie;
 mod input;
