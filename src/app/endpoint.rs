@@ -1,6 +1,9 @@
 use http::Method;
+use std::fmt;
 
-use handler::Handler;
+use handler::{Handle, Handler};
+use input::Input;
+use pipeline::{Pipeline, PipelineHandler};
 
 use super::uri::Uri;
 use super::ScopeId;
@@ -9,12 +12,23 @@ use super::ScopeId;
 ///
 /// The value of this type contains a `Handler` to handle the accepted HTTP request,
 /// and some information for constructing a `Router`.
-#[derive(Debug)]
 pub struct Endpoint {
     pub(super) uri: Uri,
     pub(super) method: Method,
     pub(super) scope_id: ScopeId,
-    pub(super) handler: Handler,
+    pub(super) pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
+    pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for Endpoint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Endpoint")
+            .field("uri", &self.uri)
+            .field("method", &self.method)
+            .field("scope_id", &self.scope_id)
+            .finish()
+    }
 }
 
 impl Endpoint {
@@ -32,8 +46,11 @@ impl Endpoint {
         self.scope_id
     }
 
-    /// Returns the reference to `Handler` associated with this endpoint.
-    pub fn handler(&self) -> &Handler {
-        &self.handler
+    pub(crate) fn apply_pipeline(&self, input: &mut Input, pos: usize) -> Option<Pipeline> {
+        self.pipelines.get(pos).map(|pipeline| pipeline.handle(input))
+    }
+
+    pub(crate) fn apply_handler(&self, input: &mut Input) -> Handle {
+        self.handler.handle(input)
     }
 }

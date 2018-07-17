@@ -2,162 +2,153 @@
 
 use futures::{Async, Future, Poll};
 use std::fmt;
+use std::sync::Arc;
 
 use error::Error;
 use input::Input;
 use output::{Output, Responder};
 
-/// A type for wrapping the handler function used in the framework.
-pub struct Handler(Box<dyn Fn(&mut Input) -> Handle + Send + Sync + 'static>);
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Handler {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_tuple("Handler").finish()
-    }
+/// A trait representing handler functions.
+pub trait Handler {
+    /// Applies an incoming request to this handler.
+    fn handle(&self, input: &mut Input) -> Handle;
 }
 
-impl<F> From<F> for Handler
+impl<F> Handler for F
 where
-    F: Fn(&mut Input) -> Handle + Send + Sync + 'static,
+    F: Fn(&mut Input) -> Handle,
 {
-    #[inline(always)]
-    fn from(handler: F) -> Handler {
-        Handler::new(handler)
+    #[inline]
+    fn handle(&self, input: &mut Input) -> Handle {
+        (*self)(input)
     }
 }
 
-impl Handler {
-    #[doc(hidden)]
-    pub fn new(handler: impl Fn(&mut Input) -> Handle + Send + Sync + 'static) -> Handler {
-        Handler(Box::new(handler))
+impl<H> Handler for Arc<H>
+where
+    H: Handler,
+{
+    #[inline]
+    fn handle(&self, input: &mut Input) -> Handle {
+        (**self).handle(input)
     }
+}
 
-    /// Creates a `Handler` from the provided function.
-    ///
-    /// The provided handler is *fully synchronous*, which means that the provided handler
-    /// will return a result and immediately converted into an HTTP response without polling
-    /// the asynchronous status.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use tsukuyomi::app::App;
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::handler::Handler;
-    /// fn index(input: &mut Input) -> &'static str {
-    ///     "Hello, Tsukuyomi.\n"
-    /// }
-    ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
-    /// let app = App::builder()
-    ///     .route(("/index.html", Handler::new_ready(index)))
-    ///     .finish()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn new_ready<R>(handler: impl Fn(&mut Input) -> R + Send + Sync + 'static) -> Handler
+/// Create an instance of `Handler` from the provided function.
+///
+/// The provided handler is *synchronous*, which means that the provided handler
+/// will return a result and immediately converted into an HTTP response without polling
+/// the asynchronous status.
+///
+/// # Examples
+///
+/// ```
+/// # use tsukuyomi::app::App;
+/// # use tsukuyomi::input::Input;
+/// # use tsukuyomi::handler::ready_handler;
+/// fn index(input: &mut Input) -> &'static str {
+///     "Hello, Tsukuyomi.\n"
+/// }
+///
+/// # fn main() -> tsukuyomi::AppResult<()> {
+/// let app = App::builder()
+///     .route(("/index.html", ready_handler(index)))
+///     .finish()?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn ready_handler<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+where
+    R: Responder,
+{
+    #[allow(missing_debug_implementations)]
+    struct ReadyHandler<T>(T);
+
+    impl<T, R> Handler for ReadyHandler<T>
     where
+        T: Fn(&mut Input) -> R,
         R: Responder,
     {
-        Handler::new(move |input| Handle::ready(handler(input).respond_to(input)))
+        fn handle(&self, input: &mut Input) -> Handle {
+            Handle::ready((self.0)(input).respond_to(input))
+        }
     }
 
-    /// Creates a `Handler` from the provided function.
-    ///
-    /// The provided handler is *partially asynchronous*, which means that the handler will
-    /// process some tasks by using the provided reference to `Input` and return a future for
-    /// processing the remaining task.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # extern crate futures;
-    /// # extern crate tsukuyomi;
-    /// # use tsukuyomi::app::App;
-    /// # use tsukuyomi::error::Error;
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::handler::Handler;
-    /// # use futures::Future;
-    /// # use futures::future::lazy;
-    /// fn handler(input: &mut Input) -> impl Future<Item = String, Error = Error> + Send + 'static {
-    ///     let query = input.uri().query().unwrap_or("<empty>").to_owned();
-    ///     lazy(move || {
-    ///         Ok(format!("query = {}", query))
-    ///     })
-    /// }
-    ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
-    /// let app = App::builder()
-    ///     .route(("/posts", Handler::new_async(handler)))
-    ///     .finish()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn new_async<R>(handler: impl Fn(&mut Input) -> R + Send + Sync + 'static) -> Handler
+    ReadyHandler(f)
+}
+
+/// Create an instance of `Handler` from the provided function.
+///
+/// The provided handler is *asynchronous*, which means that the handler will
+/// process some tasks by using the provided reference to `Input` and return a future for
+/// processing the remaining task.
+///
+/// # Examples
+///
+/// ```
+/// # extern crate futures;
+/// # extern crate tsukuyomi;
+/// # use tsukuyomi::app::App;
+/// # use tsukuyomi::error::Error;
+/// # use tsukuyomi::input::Input;
+/// # use futures::Future;
+/// # use futures::future::lazy;
+/// # use tsukuyomi::handler::async_handler;
+/// fn handler(input: &mut Input)
+///     -> impl Future<Item = String, Error = Error> + Send + 'static
+/// {
+///     let query = input.uri().query().unwrap_or("<empty>").to_owned();
+///     lazy(move || {
+///         Ok(format!("query = {}", query))
+///     })
+/// }
+///
+/// # fn main() -> tsukuyomi::AppResult<()> {
+/// let app = App::builder()
+///     .route(("/posts", async_handler(handler)))
+///     .finish()?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn async_handler<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+where
+    R: Future + Send + 'static,
+    R::Item: Responder,
+    Error: From<R::Error>,
+{
+    #[allow(missing_debug_implementations)]
+    struct AsyncHandler<T>(T);
+
+    impl<T, R> Handler for AsyncHandler<T>
     where
+        T: Fn(&mut Input) -> R,
         R: Future + Send + 'static,
         R::Item: Responder,
         Error: From<R::Error>,
     {
-        Handler::new(move |input| {
-            let mut future = handler(input);
+        fn handle(&self, input: &mut Input) -> Handle {
+            let mut future = (self.0)(input);
             Handle(HandleKind::Async(Box::new(move |input| {
                 let item = try_ready!(input.with_set_current(|| future.poll()));
                 item.respond_to(input).map(Async::Ready)
             })))
-        })
+        }
     }
 
-    /// Creates a `Handler` from the provided async function.
-    ///
-    /// The provided handler is *fully asynchronous*, which means that the handler will do nothing
-    /// and immediately return a **future** which will be resolved as a value to be converted into
-    /// an HTTP response.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # extern crate futures;
-    /// # extern crate tsukuyomi;
-    /// # use tsukuyomi::app::App;
-    /// # use tsukuyomi::error::Error;
-    /// # use tsukuyomi::handler::Handler;
-    /// # use futures::Future;
-    /// # use futures::future::lazy;
-    /// fn handler() -> impl Future<Item = &'static str, Error = Error> + Send + 'static {
-    ///     lazy(|| {
-    ///         Ok("Hello, Tsukuyomi.\n")
-    ///     })
-    /// }
-    ///
-    /// // uses upcoming async/await syntax
-    /// // async fn handler() -> &'static str {
-    /// //    "Hello, Tsukuyomi.\n"
-    /// // }
-    ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
-    /// let app = App::builder()
-    ///     .route(("/posts", Handler::new_fully_async(handler)))
-    ///     .finish()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    pub fn new_fully_async<R>(handler: impl Fn() -> R + Send + Sync + 'static) -> Handler
-    where
-        R: Future + Send + 'static,
-        R::Item: Responder,
-        Error: From<R::Error>,
-    {
-        Handler::new_async(move |_| handler())
-    }
+    AsyncHandler(f)
+}
 
-    /// Calls the underlying handler function with the provided reference to `Input`.
-    #[inline]
-    pub fn handle(&self, input: &mut Input) -> Handle {
-        (self.0)(input)
-    }
+/// Create an `Handler` from the provided function.
+///
+/// This function is equivalent to `async_handler(move |_| f())`.
+#[inline(always)]
+pub fn fully_async_handler<R>(f: impl Fn() -> R) -> impl Handler
+where
+    R: Future + Send + 'static,
+    R::Item: Responder,
+    Error: From<R::Error>,
+{
+    async_handler(move |_| f())
 }
 
 /// A type representing the return value from `Handler::handle`.

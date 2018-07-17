@@ -11,6 +11,7 @@ use state::Container;
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::Handler;
 use modifier::Modifier;
+use pipeline::PipelineHandler;
 
 use super::endpoint::Endpoint;
 use super::router::{Config, Recognizer, Router, RouterEntry};
@@ -108,12 +109,7 @@ impl AppBuilder {
     }
 
     fn new_route(&mut self, scope_id: ScopeId, config: impl RouteConfig) {
-        let mut endpoint = EndpointBuilder {
-            scope_id: scope_id,
-            uri: Uri::new(),
-            method: Method::GET,
-            handler: None,
-        };
+        let mut endpoint = EndpointBuilder::new(scope_id);
         config.configure(&mut Route {
             builder: self,
             endpoint: &mut endpoint,
@@ -485,22 +481,90 @@ impl<'a> Route<'a> {
         self
     }
 
+    /// Register a `PipelineHandler` to this route.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate http;
+    /// # extern crate tsukuyomi;
+    /// # use http::Method;
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::app::App;
+    /// # use tsukuyomi::app::builder::Route;
+    /// use tsukuyomi::pipeline::Pipeline;
+    ///
+    /// fn accept(_: &mut Input) -> Pipeline {
+    ///     // ...
+    /// #   unimplemented!()
+    /// }
+    ///
+    /// fn authorize(_: &mut Input) -> Pipeline {
+    ///     // ...
+    /// #   unimplemented!()
+    /// }
+    ///
+    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// let app = App::builder()
+    ///     .route(|route: &mut Route| {
+    ///         route.uri("/posts/new");
+    ///         route.method(Method::POST);
+    ///
+    ///         route.pipeline(accept);
+    ///         route.pipeline(authorize);
+    ///         // ...
+    ///
+    ///         route.handler(|_: &mut Input| {
+    ///             // ...
+    /// #           unimplemented!()
+    ///         });
+    ///     })
+    ///     .finish()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn pipeline(&mut self, pipeline: impl PipelineHandler + Send + Sync + 'static) -> &mut Self {
+        self.endpoint.pipelines.push(Box::new(pipeline));
+        self
+    }
+
     /// Sets a `Handler` to this route.
-    pub fn handler(&mut self, handler: impl Into<Handler>) -> &mut Self {
-        self.endpoint.handler = Some(handler.into());
+    pub fn handler(&mut self, handler: impl Handler + Send + Sync + 'static) -> &mut Self {
+        self.endpoint.handler = Some(Box::new(handler));
         self
     }
 }
 
-#[derive(Debug)]
 struct EndpointBuilder {
     scope_id: ScopeId,
     uri: Uri,
     method: Method,
-    handler: Option<Handler>,
+    pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
+    handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for EndpointBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("EndpointBuilder")
+            .field("scope_id", &self.scope_id)
+            .field("uri", &self.uri)
+            .field("method", &self.method)
+            .finish()
+    }
 }
 
 impl EndpointBuilder {
+    fn new(scope_id: ScopeId) -> EndpointBuilder {
+        EndpointBuilder {
+            scope_id: scope_id,
+            uri: Uri::new(),
+            method: Method::GET,
+            pipelines: vec![],
+            handler: None,
+        }
+    }
+
     fn finish(self, prefix: &Option<Uri>, scopes: &[ScopeData]) -> Result<Endpoint, Error> {
         let mut uris = vec![&self.uri];
 
@@ -520,6 +584,7 @@ impl EndpointBuilder {
             uri: uri,
             method: self.method,
             scope_id: self.scope_id,
+            pipelines: self.pipelines,
             handler,
         })
     }
@@ -543,7 +608,7 @@ where
 impl<A, B> RouteConfig for (A, B)
 where
     A: AsRef<str>,
-    B: Into<Handler>,
+    B: Handler + Send + Sync + 'static,
 {
     fn configure(self, route: &mut Route) {
         route.uri(self.0.as_ref());
@@ -555,7 +620,7 @@ impl<A, B, C> RouteConfig for (A, B, C)
 where
     A: AsRef<str>,
     Method: HttpTryFrom<B>,
-    C: Into<Handler>,
+    C: Handler + Send + Sync + 'static,
     <Method as HttpTryFrom<B>>::Error: Fail,
 {
     fn configure(self, route: &mut Route) {

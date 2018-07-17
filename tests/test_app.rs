@@ -1,14 +1,12 @@
 extern crate cookie;
-extern crate futures;
 extern crate http;
 extern crate time;
 extern crate tsukuyomi;
 
-use tsukuyomi::handler::Handler;
+use tsukuyomi::handler;
 use tsukuyomi::local::LocalServer;
-use tsukuyomi::{App, Input};
+use tsukuyomi::App;
 
-use futures::future::lazy;
 use http::{header, Method, StatusCode};
 
 #[test]
@@ -25,7 +23,7 @@ fn test_case1_empty_routes() {
 fn test_case2_single_route() {
     let app = App::builder()
         .mount("/", |m| {
-            m.route(("/hello", Handler::new_ready(|_| "Tsukuyomi")));
+            m.route(("/hello", handler::ready_handler(|_| "Tsukuyomi")));
         })
         .finish()
         .unwrap();
@@ -51,12 +49,7 @@ fn test_case3_post_body() {
         .route((
             "/hello",
             Method::POST,
-            Handler::new_fully_async(|| {
-                lazy(|| {
-                    let read_all = Input::with_current(|input| input.body_mut().read_all());
-                    read_all.convert_to::<String>()
-                })
-            }),
+            handler::async_handler(|input| input.body_mut().read_all().convert_to::<String>()),
         ))
         .finish()
         .unwrap();
@@ -91,7 +84,7 @@ fn test_case4_cookie() {
     let app = App::builder()
         .route((
             "/login",
-            Handler::new_ready({
+            handler::ready_handler({
                 move |input| -> tsukuyomi::Result<_> {
                     #[cfg_attr(rustfmt, rustfmt_skip)]
                     let cookie = Cookie::build("session", "dummy_session_id")
@@ -105,7 +98,7 @@ fn test_case4_cookie() {
         ))
         .route((
             "/logout",
-            Handler::new_ready(move |input| -> tsukuyomi::Result<_> {
+            handler::ready_handler(move |input| -> tsukuyomi::Result<_> {
                 input.cookies()?.remove(Cookie::named("session"));
                 Ok("Logged out")
             }),
