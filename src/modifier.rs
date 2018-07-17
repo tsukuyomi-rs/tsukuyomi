@@ -1,15 +1,7 @@
-//! Components for supporting modifiers.
+//! Definition of `Modifier` and supplemental components.
 //!
-//! The main trait for supporting the middlewares is `Modifier`.
-//! This trait is used to insert some processes before and/or after calling the handler recognized by the
-//! router.
-//!
-//! NOTE:
-//! The purpose of abstraction by using `Modifier` is to provide a *basic* extension for HTTP
-//! usage.
-//! If you want to do more complex management (such as connection-level logging, load balancing),
-//! consider wrapping the instance of `App` and implements `Service` for adding the features from
-//! the outside.
+//! The purpose of `Modifier` is to insert some processes before and after
+//! applying `Handler` in a certain scope.
 //!
 //! # Examples
 //!
@@ -31,7 +23,7 @@
 //! # fn main() -> tsukuyomi::AppResult<()> {
 //! let app = App::builder()
 //!     .route(("/", Handler::new_ready(|_| "Hello")))
-//!     .modifier(RequestCounter::default())    // <--
+//!     .modifier(RequestCounter::default())
 //!     .finish()?;
 //! # Ok(())
 //! # }
@@ -46,9 +38,7 @@ use output::Output;
 
 /// A trait representing a `Modifier`.
 ///
-/// A modifier inserts the process before and after calling a handler associated with an endpoint
-/// matched to the incoming request, and performs some preprecess independent on the certain route
-/// or modifies its response before sending to the peer.
+/// See the module level documentation for details.
 pub trait Modifier {
     /// Performs the process before calling the handler.
     ///

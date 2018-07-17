@@ -237,7 +237,7 @@ impl AppBuilder {
         self
     }
 
-    /// Sets the instance to an error handler into this builder.
+    /// Register a `Modifier` into the global scope.
     pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
         self.modifiers.push(Box::new(modifier));
         self
@@ -411,7 +411,7 @@ impl<'a> Scope<'a> {
         self
     }
 
-    #[allow(missing_docs)]
+    /// Register a `Modifier` into the current scope.
     pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
         self.builder.add_modifier(self.id, modifier);
         self
