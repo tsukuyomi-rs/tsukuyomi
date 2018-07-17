@@ -180,10 +180,12 @@ impl LocalMap {
         match self.inner.entry(key.type_id()) {
             hash_map::Entry::Occupied(entry) => Entry::Occupied(OccupiedEntry {
                 inner: entry,
+                #[cfg_attr(tarpaulin, skip)]
                 _marker: PhantomData,
             }),
             hash_map::Entry::Vacant(entry) => Entry::Vacant(VacantEntry {
                 inner: entry,
+                #[cfg_attr(tarpaulin, skip)]
                 _marker: PhantomData,
             }),
         }
@@ -316,6 +318,61 @@ mod tests {
         assert_eq!(map.get(&KEY).map(String::as_str), Some("bar"));
 
         assert_eq!(map.remove(&KEY), Some("bar".into()));
+        assert!(!map.contains_key(&KEY));
+    }
+
+    #[test]
+    fn entry_or_insert() {
+        let mut map = LocalMap::new();
+
+        local_key!(static KEY: String);
+
+        map.entry(&KEY).or_insert("foo".into());
+        assert_eq!(map.get(&KEY).map(String::as_str), Some("foo"));
+
+        map.entry(&KEY).or_insert("bar".into());
+        assert_eq!(map.get(&KEY).map(String::as_str), Some("foo"));
+    }
+
+    #[test]
+    fn entry_and_modify() {
+        let mut map = LocalMap::new();
+
+        local_key!(static KEY: String);
+
+        map.entry(&KEY).and_modify(|s| {
+            *s += "foo";
+        });
+        assert!(!map.contains_key(&KEY));
+
+        map.insert(&KEY, "foo".into());
+
+        map.entry(&KEY).and_modify(|s| {
+            *s += "bar";
+        });
+        assert_eq!(map.get(&KEY).map(String::as_str), Some("foobar"));
+
+        map.entry(&KEY).and_modify(|s| {
+            *s += "baz";
+        });
+        assert_eq!(map.get(&KEY).map(String::as_str), Some("foobarbaz"));
+    }
+
+    #[test]
+    fn occupied_entry() {
+        let mut map = LocalMap::new();
+
+        local_key!(static KEY: String);
+
+        map.insert(&KEY, "foo".into());
+
+        if let Entry::Occupied(mut entry) = map.entry(&KEY) {
+            assert_eq!(entry.get(), "foo");
+            assert_eq!(entry.insert("bar".into()), "foo");
+            assert_eq!(entry.get(), "bar");
+            assert_eq!(entry.remove(), "bar");
+        }
+
         assert!(!map.contains_key(&KEY));
     }
 }
