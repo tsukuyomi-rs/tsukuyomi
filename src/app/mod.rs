@@ -39,10 +39,25 @@ impl ScopeId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ModifierId(ScopeId, usize);
+
 struct ScopeData {
     parent: ScopeId,
     prefix: Option<Uri>,
+    chain: Vec<ScopeId>,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for ScopeData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ScopeData")
+            .field("parent", &self.parent)
+            .field("prefix", &self.prefix)
+            .field("chain", &self.chain)
+            .finish()
+    }
 }
 
 impl ScopeData {
@@ -92,8 +107,12 @@ impl App {
         &*self.inner.error_handler
     }
 
-    pub(crate) fn modifiers(&self) -> &[Box<dyn Modifier + Send + Sync + 'static>] {
-        &self.inner.modifiers
+    pub(crate) fn modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
+        let ModifierId(scope_id, pos) = id;
+        match scope_id {
+            ScopeId::Scope(id) => self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m),
+            ScopeId::Global => self.inner.modifiers.get(pos).map(|m| &**m),
+        }
     }
 
     pub(crate) fn get<T>(&self, id: ScopeId) -> Option<&T>
@@ -111,5 +130,27 @@ impl App {
 
     fn router(&self) -> &Router {
         &self.inner.router
+    }
+
+    fn scope_data(&self, id: ScopeId) -> Option<&ScopeData> {
+        self.inner.scopes.get(id.local_id()?)
+    }
+
+    fn collect_modifier_ids(&self, endpoint_id: usize) -> Vec<ModifierId> {
+        // FIXME: optimize
+        let mut chain: Vec<_> = (0..self.inner.modifiers.len())
+            .map(|pos| ModifierId(ScopeId::Global, pos))
+            .collect();
+
+        let endpoint = self.endpoint(endpoint_id).expect("invalid endpoint id");
+        if let Some(scope) = self.scope_data(endpoint.scope_id()) {
+            for &id in &scope.chain {
+                if let Some(scope) = self.scope_data(id) {
+                    chain.extend((0..scope.modifiers.len()).map(|pos| ModifierId(id, pos)))
+                }
+            }
+        }
+
+        chain
     }
 }

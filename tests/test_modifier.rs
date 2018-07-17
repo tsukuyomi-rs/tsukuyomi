@@ -2,86 +2,67 @@ extern crate futures;
 extern crate http;
 extern crate tsukuyomi;
 
-use tsukuyomi::handler::Handler;
+use tsukuyomi::handler::Handle;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::Output;
-use tsukuyomi::{App, Input};
+use tsukuyomi::{App, Error, Input};
 
 use http::Response;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-#[derive(Default, Clone)]
-struct Marker(Arc<AtomicUsize>);
-
-impl Marker {
-    fn mark(&self) {
-        self.0.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn count(&self) -> usize {
-        self.0.load(Ordering::SeqCst)
-    }
+struct MarkModifier<T1, T2>
+where
+    T1: Fn(&mut Vec<&'static str>) -> Result<(), Error>,
+    T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
+{
+    marker: Arc<Mutex<Vec<&'static str>>>,
+    before: T1,
+    after: T2,
 }
 
-/// A modifier which marks the method calls and does not anything else.
-struct EmptyModifier {
-    before: Marker,
-    after: Marker,
-}
-
-impl Modifier for EmptyModifier {
+impl<T1, T2> Modifier for MarkModifier<T1, T2>
+where
+    T1: Fn(&mut Vec<&'static str>) -> Result<(), Error>,
+    T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
+{
     fn before_handle(&self, _: &mut Input) -> BeforeHandle {
-        self.before.mark();
-        BeforeHandle::ok()
+        match (self.before)(&mut *self.marker.lock().unwrap()) {
+            Ok(()) => BeforeHandle::ok(),
+            Err(err) => BeforeHandle::err(err),
+        }
     }
 
-    fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
-        self.after.mark();
-        AfterHandle::ok(output)
-    }
-}
-
-/// A modifier which marks the method calls and returns a `done(output)` when `before_handle()`
-/// called.
-struct BeforeDoneModifier {
-    before: Marker,
-    after: Marker,
-}
-
-impl Modifier for BeforeDoneModifier {
-    fn before_handle(&self, _: &mut Input) -> BeforeHandle {
-        self.before.mark();
-        BeforeHandle::done(Response::new(()))
-    }
-
-    fn after_handle(&self, _: &mut Input, output: Output) -> AfterHandle {
-        self.after.mark();
-        AfterHandle::ok(output)
+    fn after_handle(&self, _: &mut Input, _: Output) -> AfterHandle {
+        match (self.after)(&mut *self.marker.lock().unwrap()) {
+            Ok(output) => AfterHandle::ok(output),
+            Err(err) => AfterHandle::err(err),
+        }
     }
 }
 
-/// Creates a handler function which marks a function call.
-fn handler(marker: &Marker) -> Handler {
-    let marker = marker.clone();
-    Handler::new_ready(move |_| {
-        marker.mark();
-        "dummy"
-    })
-}
-
 #[test]
-fn single_empty_modifier() {
-    let before = Marker::default();
-    let after = Marker::default();
-    let handle = Marker::default();
+fn global_modifier() {
+    let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::builder()
-        .route(("/", handler(&handle)))
-        .modifier(EmptyModifier {
-            before: before.clone(),
-            after: after.clone(),
+        .route(("/", {
+            let marker = marker.clone();
+            move |_: &mut Input| {
+                marker.lock().unwrap().push("H");
+                Handle::ok(Response::new(()).into())
+            }
+        }))
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B");
+                Ok(())
+            },
+            after: |m| {
+                m.push("A");
+                Ok(Response::new(()).into())
+            },
         })
         .finish()
         .unwrap();
@@ -89,23 +70,31 @@ fn single_empty_modifier() {
     let mut server = LocalServer::new(app).unwrap();
 
     let _ = server.client().get("/").execute().unwrap();
-
-    assert_eq!(before.count(), 1);
-    assert_eq!(after.count(), 1);
-    assert_eq!(handle.count(), 1);
+    assert_eq!(*marker.lock().unwrap(), vec!["B", "H", "A"]);
 }
 
 #[test]
-fn single_before_done_modifier() {
-    let before = Marker::default();
-    let after = Marker::default();
-    let handle = Marker::default();
+fn global_modifier_error_on_before() {
+    let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::builder()
-        .route(("/", handler(&handle)))
-        .modifier(BeforeDoneModifier {
-            before: before.clone(),
-            after: after.clone(),
+        .route(("/", {
+            let marker = marker.clone();
+            move |_: &mut Input| {
+                marker.lock().unwrap().push("H");
+                Handle::ok(Response::new(()).into())
+            }
+        }))
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B");
+                Err(Error::not_found())
+            },
+            after: |m| {
+                m.push("A");
+                Ok(Response::new(()).into())
+            },
         })
         .finish()
         .unwrap();
@@ -113,35 +102,42 @@ fn single_before_done_modifier() {
     let mut server = LocalServer::new(app).unwrap();
 
     let _ = server.client().get("/").execute().unwrap();
-
-    assert_eq!(before.count(), 1);
-    assert_eq!(after.count(), 0);
-    assert_eq!(handle.count(), 0);
+    assert_eq!(*marker.lock().unwrap(), vec!["B"]);
 }
 
 #[test]
-fn multiple_empty_modifier() {
-    let before1 = Marker::default();
-    let before2 = Marker::default();
-    let before3 = Marker::default();
-    let after1 = Marker::default();
-    let after2 = Marker::default();
-    let after3 = Marker::default();
-    let handle = Marker::default();
+fn global_modifiers() {
+    let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::builder()
-        .route(("/", handler(&handle)))
-        .modifier(EmptyModifier {
-            before: before1.clone(),
-            after: after1.clone(),
+        .route(("/", {
+            let marker = marker.clone();
+            move |_: &mut Input| {
+                marker.lock().unwrap().push("H");
+                Handle::ok(Response::new(()).into())
+            }
+        }))
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B1");
+                Ok(())
+            },
+            after: |m| {
+                m.push("A1");
+                Ok(Response::new(()).into())
+            },
         })
-        .modifier(EmptyModifier {
-            before: before2.clone(),
-            after: after2.clone(),
-        })
-        .modifier(EmptyModifier {
-            before: before3.clone(),
-            after: after3.clone(),
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B2");
+                Ok(())
+            },
+            after: |m| {
+                m.push("A2");
+                Ok(Response::new(()).into())
+            },
         })
         .finish()
         .unwrap();
@@ -149,76 +145,108 @@ fn multiple_empty_modifier() {
     let mut server = LocalServer::new(app).unwrap();
 
     let _ = server.client().get("/").execute().unwrap();
-
-    assert_eq!(before1.count(), 1);
-    assert_eq!(before2.count(), 1);
-    assert_eq!(before3.count(), 1);
-    assert_eq!(after1.count(), 1);
-    assert_eq!(after2.count(), 1);
-    assert_eq!(after3.count(), 1);
-    assert_eq!(handle.count(), 1);
+    assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }
 
 #[test]
-fn empty_and_before_done_modifier_1() {
-    let before1 = Marker::default();
-    let before2 = Marker::default();
-    let after1 = Marker::default();
-    let after2 = Marker::default();
-    let handle = Marker::default();
+fn scoped_modifier() {
+    let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::builder()
-        .route(("/", handler(&handle)))
-        .modifier(EmptyModifier {
-            before: before1.clone(),
-            after: after1.clone(),
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B1");
+                Ok(())
+            },
+            after: |m| {
+                m.push("A1");
+                Ok(Response::new(()).into())
+            },
         })
-        .modifier(BeforeDoneModifier {
-            before: before2.clone(),
-            after: after2.clone(),
+        .mount("/path1", |s| {
+            s.modifier(MarkModifier {
+                marker: marker.clone(),
+                before: |m| {
+                    m.push("B2");
+                    Ok(())
+                },
+                after: |m| {
+                    m.push("A2");
+                    Ok(Response::new(()).into())
+                },
+            });
+            s.route(("/", {
+                let marker = marker.clone();
+                move |_: &mut Input| {
+                    marker.lock().unwrap().push("H1");
+                    Handle::ok(Response::new(()).into())
+                }
+            }));
+        })
+        .route(("/path2", {
+            let marker = marker.clone();
+            move |_: &mut Input| {
+                marker.lock().unwrap().push("H2");
+                Handle::ok(Response::new(()).into())
+            }
+        }))
+        .finish()
+        .unwrap();
+
+    let mut server = LocalServer::new(app).unwrap();
+
+    let _ = server.client().get("/path1").execute().unwrap();
+    assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
+
+    marker.lock().unwrap().clear();
+    let _ = server.client().get("/path2").execute().unwrap();
+    assert_eq!(*marker.lock().unwrap(), vec!["B1", "H2", "A1"]);
+}
+
+#[test]
+fn nested_modifiers() {
+    let marker = Arc::new(Mutex::new(vec![]));
+
+    let app = App::builder()
+        .mount("/path", |s| {
+            s.modifier(MarkModifier {
+                marker: marker.clone(),
+                before: |m| {
+                    m.push("B1");
+                    Ok(())
+                },
+                after: |m| {
+                    m.push("A1");
+                    Ok(Response::new(()).into())
+                },
+            });
+            s.mount("/to", |s| {
+                s.modifier(MarkModifier {
+                    marker: marker.clone(),
+                    before: |m| {
+                        m.push("B2");
+                        Ok(())
+                    },
+                    after: |m| {
+                        m.push("A2");
+                        Ok(Response::new(()).into())
+                    },
+                });
+                s.route(("/", {
+                    let marker = marker.clone();
+                    move |_: &mut Input| {
+                        marker.lock().unwrap().push("H");
+                        Handle::ok(Response::new(()).into())
+                    }
+                }));
+            });
         })
         .finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/").execute().unwrap();
-
-    assert_eq!(before1.count(), 1);
-    assert_eq!(before2.count(), 1);
-    assert_eq!(after1.count(), 1);
-    assert_eq!(after2.count(), 0);
-    assert_eq!(handle.count(), 0);
-}
-
-#[test]
-fn empty_and_before_done_modifier_2() {
-    let before1 = Marker::default();
-    let before2 = Marker::default();
-    let after1 = Marker::default();
-    let after2 = Marker::default();
-    let handle = Marker::default();
-
-    let app = App::builder()
-        .route(("/", handler(&handle)))
-        .modifier(BeforeDoneModifier {
-            before: before1.clone(),
-            after: after1.clone(),
-        })
-        .modifier(EmptyModifier {
-            before: before2.clone(),
-            after: after2.clone(),
-        })
-        .finish()
-        .unwrap();
-
-    let mut server = LocalServer::new(app).unwrap();
-
-    let _ = server.client().get("/").execute().unwrap();
-
-    assert_eq!(before1.count(), 1);
-    assert_eq!(before2.count(), 0);
-    assert_eq!(after1.count(), 0);
-    assert_eq!(after2.count(), 0);
-    assert_eq!(handle.count(), 0);
+    let _ = server.client().get("/path/to").execute().unwrap();
+    assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }
