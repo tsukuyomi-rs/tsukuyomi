@@ -15,6 +15,7 @@ use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
+use pipeline::Pipeline;
 
 use super::router::RecognizeErrorKind;
 use super::{App, ModifierId};
@@ -49,10 +50,10 @@ impl AppService {
     #[allow(missing_docs)]
     pub fn dispatch_request(&mut self, request: Request<RequestBody>) -> AppServiceFuture {
         AppServiceFuture {
+            app: self.app.clone(),
             request: Some(request),
             parts: None,
-            app: self.app.clone(),
-            pipeline: Pipeline::Start,
+            status: AppServiceFutureStatus::Start,
         }
     }
 }
@@ -73,19 +74,23 @@ impl Service for AppService {
 #[must_use = "futures do nothing unless polled"]
 #[derive(Debug)]
 pub struct AppServiceFuture {
-    pipeline: Pipeline,
+    app: App,
     request: Option<Request<RequestBody>>,
     parts: Option<InputParts>,
-    app: App,
+    status: AppServiceFutureStatus,
 }
 
 #[derive(Debug)]
-enum Pipeline {
+enum AppServiceFutureStatus {
     Start,
     Recognized,
     BeforeHandle {
         in_flight: BeforeHandle,
         chain: vec::IntoIter<ModifierId>,
+    },
+    Pipeline {
+        in_flight: Pipeline,
+        current: usize,
     },
     Handle(Handle),
     AfterHandle {
@@ -96,14 +101,14 @@ enum Pipeline {
 }
 
 #[derive(Debug)]
-enum PipelineErrorKind {
+enum InFlightErrorKind {
     Recognize(RecognizeErrorKind),
     Http(Error),
 }
 
-impl From<Error> for PipelineErrorKind {
+impl From<Error> for InFlightErrorKind {
     fn from(err: Error) -> Self {
-        PipelineErrorKind::Http(err)
+        InFlightErrorKind::Http(err)
     }
 }
 
@@ -113,8 +118,8 @@ impl AppServiceFuture {
         self.app.collect_modifier_ids(parts.recognize.endpoint_id)
     }
 
-    fn poll_pipeline(&mut self) -> Poll<Output, PipelineErrorKind> {
-        use self::Pipeline::*;
+    fn poll_in_flight(&mut self) -> Poll<Output, InFlightErrorKind> {
+        use self::AppServiceFutureStatus::*;
 
         macro_rules! input {
             () => {
@@ -129,24 +134,25 @@ impl AppServiceFuture {
         }
 
         loop {
-            let output = match self.pipeline {
+            let output = match self.status {
                 Start | Recognized => None,
                 BeforeHandle { ref mut in_flight, .. } => {
                     try_ready!(in_flight.poll_ready(&mut input!()));
                     None
                 }
+                Pipeline { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
                 Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 Done => panic!("unexpected state"),
             };
 
-            self.pipeline = match (mem::replace(&mut self.pipeline, Done), output) {
+            self.status = match (mem::replace(&mut self.status, Done), output) {
                 (Start, None) => {
                     let request = self.request.as_ref().expect("This future has already polled");
                     let recognize = self.app
                         .router()
                         .recognize(request.uri().path(), request.method())
-                        .map_err(PipelineErrorKind::Recognize)?;
+                        .map_err(InFlightErrorKind::Recognize)?;
                     self.parts = Some(InputParts::new(recognize));
                     Recognized
                 }
@@ -164,7 +170,13 @@ impl AppServiceFuture {
                         None => {
                             let mut input = input!();
                             let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
-                            Handle(endpoint.handler().handle(&mut input))
+                            match endpoint.apply_pipeline(&mut input, 0) {
+                                Some(pipeline) => Pipeline {
+                                    in_flight: pipeline,
+                                    current: 1,
+                                },
+                                None => Handle(endpoint.apply_handler(&mut input)),
+                            }
                         }
                     }
                 }
@@ -180,9 +192,41 @@ impl AppServiceFuture {
                     None => {
                         let mut input = input!();
                         let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
-                        Handle(endpoint.handler().handle(&mut input))
+                        match endpoint.apply_pipeline(&mut input, 0) {
+                            Some(pipeline) => Pipeline {
+                                in_flight: pipeline,
+                                current: 1,
+                            },
+                            None => Handle(endpoint.apply_handler(&mut input)),
+                        }
                     }
                 },
+
+                (Pipeline { .. }, Some(output)) => {
+                    let mut chain = self.collect_modifier_ids().into_iter().rev();
+                    match chain.next() {
+                        Some(id) => {
+                            let modifier = &self.app.modifier(id).expect("invalid modifier ID");
+                            AfterHandle {
+                                in_flight: modifier.after_handle(&mut input!(), output),
+                                chain: chain,
+                            }
+                        }
+                        None => break Ok(Async::Ready(output)),
+                    }
+                },
+
+                (Pipeline { current, .. }, None) => {
+                    let mut input = input!();
+                    let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
+                    match endpoint.apply_pipeline(&mut input, current) {
+                        Some(pipeline) => Pipeline {
+                            in_flight: pipeline,
+                            current: current + 1,
+                        },
+                        None => Handle(endpoint.apply_handler(&mut input)),
+                    }
+                }
 
                 (Handle(..), Some(output)) => {
                     let mut chain = self.collect_modifier_ids().into_iter().rev();
@@ -216,11 +260,11 @@ impl AppServiceFuture {
 
     #[allow(missing_docs)]
     pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
-        match self.poll_pipeline() {
+        match self.poll_in_flight() {
             Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(err) => {
-                self.pipeline = Pipeline::Done;
+                self.status = AppServiceFutureStatus::Done;
                 self.handle_error(err).map(Async::Ready)
             }
         }
@@ -271,18 +315,18 @@ impl AppServiceFuture {
         Ok(response)
     }
 
-    fn handle_error(&mut self, err: PipelineErrorKind) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_error(&mut self, err: InFlightErrorKind) -> Result<Response<ResponseBody>, CritError> {
         match err {
-            PipelineErrorKind::Recognize(RecognizeErrorKind::NotFound) => self.handle_http_error(Error::not_found()),
-            PipelineErrorKind::Recognize(RecognizeErrorKind::MethodNotAllowed) => {
+            InFlightErrorKind::Recognize(RecognizeErrorKind::NotFound) => self.handle_http_error(Error::not_found()),
+            InFlightErrorKind::Recognize(RecognizeErrorKind::MethodNotAllowed) => {
                 self.handle_http_error(Error::method_not_allowed())
             }
-            PipelineErrorKind::Recognize(RecognizeErrorKind::FallbackOptions { entry_id: i, .. }) => {
+            InFlightErrorKind::Recognize(RecognizeErrorKind::FallbackOptions { entry_id: i, .. }) => {
                 let entry = self.app.router().entry(i).expect("invalid entry ID");
                 let response = entry.fallback_options_response();
                 Ok(response.map(Into::into))
             }
-            PipelineErrorKind::Http(err) => self.handle_http_error(err),
+            InFlightErrorKind::Http(err) => self.handle_http_error(err),
         }
     }
 

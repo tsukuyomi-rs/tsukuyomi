@@ -6,12 +6,12 @@
 //! # extern crate tsukuyomi;
 //! # extern crate http;
 //! # use tsukuyomi::app::App;
-//! # use tsukuyomi::handler::Handler;
+//! # use tsukuyomi::handler;
 //! # use http::{StatusCode, header};
 //! use tsukuyomi::local::LocalServer;
 //!
 //! let app = App::builder()
-//!     .route(("/hello", Handler::new_ready(|_| "Hello")))
+//!     .route(("/hello", handler::ready_handler(|_| "Hello")))
 //!     .finish()
 //!     .unwrap();
 //!
