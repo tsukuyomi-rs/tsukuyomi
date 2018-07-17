@@ -17,7 +17,7 @@ use super::endpoint::Endpoint;
 use super::router::{Config, Recognizer, Router, RouterEntry};
 use super::scope::{self, ScopedContainer};
 use super::uri::{self, Uri};
-use super::{App, AppState, ScopeData, ScopeId};
+use super::{App, AppState, ModifierId, ScopeData, ScopeId};
 
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
@@ -31,6 +31,25 @@ pub struct AppBuilder {
     prefix: Option<Uri>,
 
     result: Result<(), Error>,
+}
+
+struct EndpointBuilder {
+    scope_id: ScopeId,
+    uri: Uri,
+    method: Method,
+    pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
+    handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for EndpointBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("EndpointBuilder")
+            .field("scope_id", &self.scope_id)
+            .field("uri", &self.uri)
+            .field("method", &self.method)
+            .finish()
+    }
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -109,7 +128,13 @@ impl AppBuilder {
     }
 
     fn new_route(&mut self, scope_id: ScopeId, config: impl RouteConfig) {
-        let mut endpoint = EndpointBuilder::new(scope_id);
+        let mut endpoint = EndpointBuilder {
+            scope_id: scope_id,
+            uri: Uri::new(),
+            method: Method::GET,
+            pipelines: vec![],
+            handler: None,
+        };
         config.configure(&mut Route {
             builder: self,
             endpoint: &mut endpoint,
@@ -307,7 +332,40 @@ impl AppBuilder {
         // finalize endpoints based on the created scope information.
         let endpoints: Vec<Endpoint> = endpoints
             .into_iter()
-            .map(|e| e.finish(&prefix, &scopes))
+            .map(|e| -> Result<Endpoint, Error> {
+                let mut uris = vec![&e.uri];
+                let mut current = e.scope_id.local_id();
+                while let Some(scope) = current.and_then(|i| scopes.get(i)) {
+                    uris.extend(&scope.prefix);
+                    current = scope.parent.local_id();
+                }
+                uris.extend(prefix.as_ref());
+                let uri = uri::join_all(uris.into_iter().rev());
+
+                let handler = e.handler
+                    .ok_or_else(|| format_err!("default handler is not supported"))?;
+
+                // calculate the modifier identifiers.
+                let mut modifier_ids: Vec<_> = (0..modifiers.len())
+                    .map(|pos| ModifierId(ScopeId::Global, pos))
+                    .collect();
+                if let Some(scope) = e.scope_id.local_id().and_then(|id| scopes.get(id)) {
+                    for &id in &scope.chain {
+                        if let Some(scope) = id.local_id().and_then(|id| scopes.get(id)) {
+                            modifier_ids.extend((0..scope.modifiers.len()).map(|pos| ModifierId(id, pos)));
+                        }
+                    }
+                }
+
+                Ok(Endpoint {
+                    uri: uri,
+                    method: e.method,
+                    scope_id: e.scope_id,
+                    pipelines: e.pipelines,
+                    modifier_ids,
+                    handler,
+                })
+            })
             .collect::<Result<_, _>>()?;
 
         // create a router
@@ -532,61 +590,6 @@ impl<'a> Route<'a> {
     pub fn handler(&mut self, handler: impl Handler + Send + Sync + 'static) -> &mut Self {
         self.endpoint.handler = Some(Box::new(handler));
         self
-    }
-}
-
-struct EndpointBuilder {
-    scope_id: ScopeId,
-    uri: Uri,
-    method: Method,
-    pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
-    handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for EndpointBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("EndpointBuilder")
-            .field("scope_id", &self.scope_id)
-            .field("uri", &self.uri)
-            .field("method", &self.method)
-            .finish()
-    }
-}
-
-impl EndpointBuilder {
-    fn new(scope_id: ScopeId) -> EndpointBuilder {
-        EndpointBuilder {
-            scope_id: scope_id,
-            uri: Uri::new(),
-            method: Method::GET,
-            pipelines: vec![],
-            handler: None,
-        }
-    }
-
-    fn finish(self, prefix: &Option<Uri>, scopes: &[ScopeData]) -> Result<Endpoint, Error> {
-        let mut uris = vec![&self.uri];
-
-        let mut current = self.scope_id.local_id();
-        while let Some(scope) = current.and_then(|i| scopes.get(i)) {
-            uris.extend(&scope.prefix);
-            current = scope.parent.local_id();
-        }
-        uris.extend(prefix.as_ref());
-
-        let uri = uri::join_all(uris.into_iter().rev());
-
-        let handler = self.handler
-            .ok_or_else(|| format_err!("default handler is not supported"))?;
-
-        Ok(Endpoint {
-            uri: uri,
-            method: self.method,
-            scope_id: self.scope_id,
-            pipelines: self.pipelines,
-            handler,
-        })
     }
 }
 
