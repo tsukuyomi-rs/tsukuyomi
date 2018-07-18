@@ -30,43 +30,42 @@ matrix:
             - cmake
             - zlib1g-dev
       before_script:
-        - rustup component add rustfmt-preview
         - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || echo "cargo-tarpauling is installed."
       script:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
       after_success:
-        - cargo fmt -- --write-mode=diff
-        # - bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
-        - |
-            cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID \
-                --packages tsukuyomi
+        - cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --packages tsukuyomi
 
     - rust: beta
       env: RUSTFLAGS="-D warnings"
-      before_script:
-        - rustup component add rustfmt-preview
       script:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
-      after_success:
-        - cargo fmt -- --write-mode=diff
 
     - rust: nightly
-      env: RUSTFLAGS="-D warnings"
-      before_script:
-        - rustup component add rustfmt-preview
-        - rustup component add clippy-preview
       script:
         - cargo clean
         - cargo test
         - cargo test --no-default-features
         - cargo test --features nightly
         - cargo test -p tsukuyomi-codegen
-      after_success:
+
+    - rust: stable
+      env: RUSTFMT
+      before_script:
+        - rustup component add rustfmt-preview
+      script:
         - cargo fmt -- --write-mode=diff
+
+    - rust: nightly
+      env: CLIPPY
+      before_script:
+        - rustup component add clippy-preview
+      script:
+        - cargo clean
         - cargo clippy
 
     # FIXME: enable before releasing 0.3.0

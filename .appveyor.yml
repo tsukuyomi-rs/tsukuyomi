@@ -10,12 +10,13 @@ environment:
     - TARGET: x86_64-pc-windows-msvc
       TOOLCHAIN: stable
       RUSTFLAGS: "-D warnings"
+
     - TARGET: x86_64-pc-windows-msvc
       TOOLCHAIN: beta
       RUSTFLAGS: "-D warnings"
+
     - TARGET: x86_64-pc-windows-msvc
       TOOLCHAIN: nightly
-      RUSTFLAGS: "-D warnings"
 
 matrix:
   allow_failures:
@@ -35,9 +36,9 @@ test_script:
   - cargo clean
   - cargo test
   - cargo test --no-default-features
-  #- if [%TOOLCHAIN%]==[nightly] (
-  #    cargo test --features nightly
-  #  )
+  - if [%TOOLCHAIN%]==[nightly] (
+      cargo test --features nightly
+    )
   - if [%TOOLCHAIN%]==[nightly] (
       cargo test -p tsukuyomi-codegen
     )

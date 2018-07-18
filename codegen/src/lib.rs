@@ -1,6 +1,6 @@
 //! Code generation support for Tsukuyomi.
 
-#![feature(proc_macro, use_extern_macros)]
+#![feature(use_extern_macros)]
 
 extern crate proc_macro;
 extern crate proc_macro2;
