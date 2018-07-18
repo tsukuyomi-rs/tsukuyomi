@@ -378,43 +378,40 @@ impl AppBuilder {
 
         // create a router
         let (recognizer, routes) = {
-            let mut collected_routes = IndexMap::<Uri, (ScopeId, IndexMap<Method, usize>)>::new();
+            let mut collected_routes = IndexMap::<Uri, IndexMap<Method, usize>>::new();
             for (i, endpoint) in endpoints.iter().enumerate() {
-                let &mut (id, ref mut methods) = collected_routes
+                let methods = collected_routes
                     .entry(endpoint.uri.clone())
-                    .or_insert_with(|| (endpoint.scope_id(), IndexMap::<Method, usize>::new()));
-                if endpoint.scope_id() != id {
-                    bail!("All routes with the same URI must belong to the same scope.");
-                }
+                    .or_insert_with(IndexMap::<Method, usize>::new);
+
                 if methods.contains_key(endpoint.method()) {
                     bail!("Adding routes with duplicate URI and method is currenly not supported.");
                 }
+
                 methods.insert(endpoint.method().clone(), i);
             }
 
             let mut recognizer = Recognizer::builder();
             let mut routes = vec![];
-            let mut fallback_endpoints = vec![];
-            for (uri, (scope_id, mut methods)) in collected_routes {
+            for (uri, mut methods) in collected_routes {
                 if let Some(ref mut f) = options_handler {
                     let m = methods.keys().cloned().chain(Some(Method::OPTIONS)).collect();
                     methods.entry(Method::OPTIONS).or_insert_with(|| {
-                        fallback_endpoints.push(Endpoint {
+                        let id = endpoints.len();
+                        endpoints.push(Endpoint {
                             uri: uri.clone(),
                             method: Method::OPTIONS,
-                            scope_id,
+                            scope_id: ScopeId::Global,
                             pipelines: vec![],
                             handler: (f)(m),
                         });
-                        endpoints.len() + fallback_endpoints.len() - 1
+                        id
                     });
                 }
 
                 recognizer.push(uri.as_ref())?;
                 routes.push(methods);
             }
-
-            endpoints.extend(fallback_endpoints);
 
             (recognizer.finish(), routes)
         };
