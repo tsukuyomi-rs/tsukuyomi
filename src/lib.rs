@@ -15,7 +15,6 @@ extern crate bytes;
 extern crate cookie;
 #[macro_use]
 extern crate failure;
-extern crate fnv;
 #[macro_use]
 extern crate futures;
 extern crate http;

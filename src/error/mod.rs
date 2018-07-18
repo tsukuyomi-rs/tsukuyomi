@@ -124,6 +124,11 @@ impl Error {
             _ => None,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn status_code(&self) -> Option<StatusCode> {
+        self.as_http_error().map(|e| e.status_code())
+    }
 }
 
 #[derive(Debug)]

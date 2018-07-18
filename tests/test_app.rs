@@ -140,3 +140,39 @@ fn test_case4_cookie() {
     let response = server.client().get("/logout").execute().unwrap();
     assert!(!response.headers().contains_key(header::SET_COOKIE));
 }
+
+#[test]
+fn test_case_5_default_options() {
+    let app = App::builder()
+        .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
+        .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
+        .finish()
+        .unwrap();
+    let mut server = LocalServer::new(app).unwrap();
+
+    let response = server.client().request(Method::OPTIONS, "/path").execute().unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::ALLOW).map(|v| v.as_bytes()),
+        Some(&b"GET, POST, OPTIONS"[..])
+    );
+    assert_eq!(
+        response.headers().get(header::CONTENT_LENGTH).map(|v| v.as_bytes()),
+        Some(&b"0"[..])
+    );
+}
+
+#[test]
+fn test_case_5_disable_default_options() {
+    let app = App::builder()
+        .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
+        .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
+        .default_options(None)
+        .finish()
+        .unwrap();
+    let mut server = LocalServer::new(app).unwrap();
+
+    let response = server.client().request(Method::OPTIONS, "/path").execute().unwrap();
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}

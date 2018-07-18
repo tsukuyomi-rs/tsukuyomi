@@ -3,21 +3,24 @@
 use std::sync::Arc;
 use std::{fmt, mem};
 
+use bytes::BytesMut;
 use failure::{Error, Fail};
-use http::{HttpTryFrom, Method};
+use http::header::HeaderValue;
+use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 use state::Container;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
-use handler::Handler;
+use handler::{Handle, Handler};
+use input::Input;
 use modifier::Modifier;
 use pipeline::PipelineHandler;
 
 use super::endpoint::Endpoint;
-use super::router::{Config, Recognizer, Router, RouterEntry};
+use super::recognizer::Recognizer;
 use super::scope::{self, ScopedContainer};
 use super::uri::{self, Uri};
-use super::{App, AppState, ModifierId, ScopeData, ScopeId};
+use super::{App, AppState, Config, ModifierId, ScopeData, ScopeId};
 
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
@@ -29,6 +32,7 @@ pub struct AppBuilder {
     container: Container,
     container_scoped: scope::Builder,
     prefix: Option<Uri>,
+    options_handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static>>>,
 
     result: Result<(), Error>,
 }
@@ -76,6 +80,7 @@ impl AppBuilder {
             container: Container::new(),
             container_scoped: ScopedContainer::builder(),
             prefix: None,
+            options_handler: Some(Box::new(default_options_handler)),
 
             result: Ok(()),
         }
@@ -187,6 +192,7 @@ impl AppBuilder {
             parent: parent,
             prefix: None,
             chain: chain,
+            modifier_ids: vec![],
             modifiers: vec![],
         });
 
@@ -238,14 +244,15 @@ impl AppBuilder {
         self
     }
 
-    /// Sets whether the fallback to default OPTIONS handler if not registered is enabled or not.
+    /// Specifies whether to use the fallback OPTIONS handlers if the handler is not set.
     ///
-    /// The default value is `false`.
-    pub fn fallback_options(&mut self, enabled: bool) -> &mut Self {
-        self.modify(move |self_| {
-            self_.config.fallback_options = enabled;
-            Ok(())
-        });
+    /// If a function is provided, the builder creates the instances of handler function by using the provided
+    /// function for each registered route, and then specifies them to each route as OPTIONS handlers.
+    pub fn default_options(
+        &mut self,
+        handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static> + 'static>>,
+    ) -> &mut Self {
+        self.options_handler = handler;
         self
     }
 
@@ -323,14 +330,28 @@ impl AppBuilder {
             modifiers,
             mut container,
             mut container_scoped,
-            scopes,
+            mut scopes,
             prefix,
+            mut options_handler,
         } = mem::replace(self, AppBuilder::new());
 
         result?;
 
+        for i in 0..scopes.len() {
+            // calculate the modifier identifiers.
+            let mut modifier_ids: Vec<_> = (0..modifiers.len())
+                .map(|pos| ModifierId(ScopeId::Global, pos))
+                .collect();
+            for &id in &scopes[i].chain {
+                if let Some(scope) = id.local_id().and_then(|id| scopes.get(id)) {
+                    modifier_ids.extend((0..scope.modifiers.len()).map(|pos| ModifierId(id, pos)));
+                }
+            }
+            scopes[i].modifier_ids = modifier_ids;
+        }
+
         // finalize endpoints based on the created scope information.
-        let endpoints: Vec<Endpoint> = endpoints
+        let mut endpoints: Vec<Endpoint> = endpoints
             .into_iter()
             .map(|e| -> Result<Endpoint, Error> {
                 let mut uris = vec![&e.uri];
@@ -345,35 +366,57 @@ impl AppBuilder {
                 let handler = e.handler
                     .ok_or_else(|| format_err!("default handler is not supported"))?;
 
-                // calculate the modifier identifiers.
-                let mut modifier_ids: Vec<_> = (0..modifiers.len())
-                    .map(|pos| ModifierId(ScopeId::Global, pos))
-                    .collect();
-                if let Some(scope) = e.scope_id.local_id().and_then(|id| scopes.get(id)) {
-                    for &id in &scope.chain {
-                        if let Some(scope) = id.local_id().and_then(|id| scopes.get(id)) {
-                            modifier_ids.extend((0..scope.modifiers.len()).map(|pos| ModifierId(id, pos)));
-                        }
-                    }
-                }
-
                 Ok(Endpoint {
                     uri: uri,
                     method: e.method,
                     scope_id: e.scope_id,
                     pipelines: e.pipelines,
-                    modifier_ids,
                     handler,
                 })
             })
             .collect::<Result<_, _>>()?;
 
         // create a router
-        let (recognizer, entries) = build_recognizer(&endpoints)?;
-        let router = Router {
-            recognizer: recognizer,
-            entries: entries,
-            config: config,
+        let (recognizer, routes) = {
+            let mut collected_routes = IndexMap::<Uri, (ScopeId, IndexMap<Method, usize>)>::new();
+            for (i, endpoint) in endpoints.iter().enumerate() {
+                let &mut (id, ref mut methods) = collected_routes
+                    .entry(endpoint.uri.clone())
+                    .or_insert_with(|| (endpoint.scope_id(), IndexMap::<Method, usize>::new()));
+                if endpoint.scope_id() != id {
+                    bail!("All routes with the same URI must belong to the same scope.");
+                }
+                if methods.contains_key(endpoint.method()) {
+                    bail!("Adding routes with duplicate URI and method is currenly not supported.");
+                }
+                methods.insert(endpoint.method().clone(), i);
+            }
+
+            let mut recognizer = Recognizer::builder();
+            let mut routes = vec![];
+            let mut fallback_endpoints = vec![];
+            for (uri, (scope_id, mut methods)) in collected_routes {
+                if let Some(ref mut f) = options_handler {
+                    let m = methods.keys().cloned().chain(Some(Method::OPTIONS)).collect();
+                    methods.entry(Method::OPTIONS).or_insert_with(|| {
+                        fallback_endpoints.push(Endpoint {
+                            uri: uri.clone(),
+                            method: Method::OPTIONS,
+                            scope_id,
+                            pipelines: vec![],
+                            handler: (f)(m),
+                        });
+                        endpoints.len() + fallback_endpoints.len() - 1
+                    });
+                }
+
+                recognizer.push(uri.as_ref())?;
+                routes.push(methods);
+            }
+
+            endpoints.extend(fallback_endpoints);
+
+            (recognizer.finish(), routes)
         };
 
         // finalize error handler.
@@ -387,7 +430,9 @@ impl AppBuilder {
         Ok(App {
             inner: Arc::new(AppState {
                 endpoints: endpoints,
-                router: router,
+                recognizer,
+                routes,
+                config,
                 error_handler: error_handler,
                 modifiers: modifiers,
                 container,
@@ -396,28 +441,6 @@ impl AppBuilder {
             }),
         })
     }
-}
-
-fn build_recognizer(endpoints: &[Endpoint]) -> Result<(Recognizer, Vec<RouterEntry>), Error> {
-    let mut entries = vec![];
-
-    let mut collected_routes = IndexMap::new();
-    for (i, endpoint) in endpoints.iter().enumerate() {
-        collected_routes
-            .entry(endpoint.uri.clone())
-            .or_insert_with(RouterEntry::builder)
-            .push(&endpoint.method, i)?;
-    }
-
-    let mut builder = Recognizer::builder();
-    for (path, entry) in collected_routes {
-        builder.push(path.as_ref())?;
-        entries.push(entry.finish()?);
-    }
-
-    let recognizer = builder.finish();
-
-    Ok((recognizer, entries))
 }
 
 // ==== Scope ====
@@ -631,4 +654,28 @@ where
         route.method(self.1);
         route.handler(self.2);
     }
+}
+
+// ====
+
+fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static> {
+    let allowed_methods = {
+        let bytes = methods
+            .into_iter()
+            .enumerate()
+            .fold(BytesMut::new(), |mut acc, (i, m)| {
+                if i > 0 {
+                    acc.extend_from_slice(b", ");
+                }
+                acc.extend_from_slice(m.as_str().as_bytes());
+                acc
+            });
+        unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+    };
+
+    Box::new(move |_: &mut Input| -> Handle {
+        let mut response = Response::new(());
+        response.headers_mut().insert(header::ALLOW, allowed_methods.clone());
+        Handle::ready(Ok(response.into()))
+    })
 }

@@ -4,25 +4,49 @@ pub mod builder;
 pub mod service;
 
 mod endpoint;
-pub(crate) mod router;
+mod recognizer;
 mod scope;
 mod uri;
 
 #[cfg(test)]
 mod tests;
 
+use http::Method;
+use indexmap::IndexMap;
 use state::Container;
 use std::fmt;
 use std::sync::Arc;
 
 use error::handler::ErrorHandler;
+use error::Error;
 use modifier::Modifier;
 
 pub use self::builder::AppBuilder;
 pub use self::endpoint::Endpoint;
-use self::router::Router;
+use self::recognizer::Recognizer;
 use self::scope::ScopedContainer;
 pub use self::uri::Uri;
+
+#[derive(Debug)]
+struct Config {
+    fallback_head: bool,
+    _priv: (),
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            fallback_head: true,
+            _priv: (),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Recognize {
+    pub(crate) endpoint_id: usize,
+    pub(crate) params: Vec<(usize, usize)>,
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ScopeId {
@@ -46,6 +70,7 @@ struct ScopeData {
     parent: ScopeId,
     prefix: Option<Uri>,
     chain: Vec<ScopeId>,
+    modifier_ids: Vec<ModifierId>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
@@ -68,7 +93,9 @@ impl ScopeData {
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppState {
-    router: Router,
+    recognizer: Recognizer,
+    routes: Vec<IndexMap<Method, usize>>,
+    config: Config,
     endpoints: Vec<Endpoint>,
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
@@ -128,7 +155,17 @@ impl App {
         }
     }
 
-    fn router(&self) -> &Router {
-        &self.inner.router
+    fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, Error> {
+        let (i, params) = self.inner.recognizer.recognize(path).ok_or_else(Error::not_found)?;
+
+        let methods = &self.inner.routes[i];
+        match methods.get(method) {
+            Some(&i) => Ok(Recognize { endpoint_id: i, params }),
+            None if self.inner.config.fallback_head && *method == Method::HEAD => match methods.get(&Method::GET) {
+                Some(&i) => Ok(Recognize { endpoint_id: i, params }),
+                None => Err(Error::method_not_allowed()),
+            },
+            None => Err(Error::method_not_allowed()),
+        }
     }
 }

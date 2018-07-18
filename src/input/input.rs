@@ -6,8 +6,7 @@ use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
 
-use app::router::Recognize;
-use app::{App, Endpoint};
+use app::{App, Endpoint, Recognize};
 use error::Error;
 use input::RequestBody;
 
