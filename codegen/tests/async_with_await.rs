@@ -1,4 +1,4 @@
-#![feature(proc_macro)]
+#![feature(use_extern_macros)]
 #![feature(proc_macro_non_items, generators)]
 
 extern crate futures_await as futures;
@@ -10,6 +10,10 @@ use futures::prelude::await;
 use tsukuyomi::{Error, Handler};
 use tsukuyomi_codegen::handler;
 
+fn assert_impl<T: Handler>(t: T) {
+    drop(t);
+}
+
 #[handler(await)]
 fn handler() -> Result<&'static str, Error> {
     await!(future::ok::<(), Error>(()))?;
@@ -18,5 +22,5 @@ fn handler() -> Result<&'static str, Error> {
 
 #[test]
 fn main() {
-    let _ = Handler::new(handler);
+    assert_impl(handler);
 }

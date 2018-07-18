@@ -1,4 +1,4 @@
-#![feature(proc_macro)]
+#![feature(use_extern_macros)]
 
 extern crate futures;
 extern crate tsukuyomi;
@@ -8,6 +8,10 @@ use futures::{future, Future};
 use tsukuyomi::{Error, Handler};
 use tsukuyomi_codegen::handler;
 
+fn assert_impl<T: Handler>(t: T) {
+    drop(t);
+}
+
 #[handler(async)]
 fn handler() -> impl Future<Item = &'static str, Error = Error> + Send + 'static {
     future::ok("Hello")
@@ -15,5 +19,5 @@ fn handler() -> impl Future<Item = &'static str, Error = Error> + Send + 'static
 
 #[test]
 fn main() {
-    let _ = Handler::new(handler);
+    assert_impl(handler);
 }
