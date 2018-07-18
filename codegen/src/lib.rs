@@ -54,11 +54,12 @@ macro_rules! try_quote {
 /// A handler function which will immediately return a `Responder`:
 ///
 /// ```
-/// # #![feature(proc_macro, use_extern_macros)]
+/// # #![feature(use_extern_macros)]
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
 /// # use tsukuyomi_codegen::handler;
 /// # use tsukuyomi::output::Responder;
+///
 /// #[handler]
 /// fn handler() -> impl Responder {
 ///     "Hello"
@@ -66,12 +67,13 @@ macro_rules! try_quote {
 /// ```
 ///
 /// ```
-/// # #![feature(proc_macro, use_extern_macros)]
+/// #![feature(use_extern_macros)]
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
 /// # use tsukuyomi_codegen::handler;
 /// # use tsukuyomi::Input;
 /// # use tsukuyomi::output::Responder;
+///
 /// #[handler]
 /// fn handler(input: &mut Input) -> String {
 ///     format!("path = {:?}", input.uri().path())
@@ -81,13 +83,14 @@ macro_rules! try_quote {
 /// A handler function which will return a `Future`:
 ///
 /// ```
-/// # #![feature(proc_macro, use_extern_macros)]
+/// #![feature(use_extern_macros)]
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
 /// # extern crate futures;
 /// # use tsukuyomi_codegen::handler;
 /// # use tsukuyomi::{Input, Error};
 /// # use futures::Future;
+///
 /// #[handler(async)]
 /// fn handler(input: &mut Input)
 ///     -> impl Future<Item = String, Error = Error> + Send + 'static {
@@ -98,7 +101,8 @@ macro_rules! try_quote {
 /// Uses `futures-await`:
 ///
 /// ```
-/// #![feature(proc_macro, proc_macro_non_items, generators)]
+/// #![feature(use_extern_macros)]
+/// #![feature(proc_macro_non_items, generators)]
 /// # extern crate tsukuyomi;
 /// # extern crate tsukuyomi_codegen;
 /// extern crate futures_await as futures;

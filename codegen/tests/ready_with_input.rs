@@ -1,10 +1,14 @@
-#![feature(proc_macro)]
+#![feature(use_extern_macros)]
 
 extern crate tsukuyomi;
 extern crate tsukuyomi_codegen;
 
 use tsukuyomi::{Handler, Input};
 use tsukuyomi_codegen::handler;
+
+fn assert_impl<T: Handler>(t: T) {
+    drop(t);
+}
 
 #[handler]
 fn handler(_: &mut Input) -> &'static str {
@@ -13,5 +17,5 @@ fn handler(_: &mut Input) -> &'static str {
 
 #[test]
 fn main() {
-    let _ = Handler::new(handler);
+    assert_impl(handler);
 }
