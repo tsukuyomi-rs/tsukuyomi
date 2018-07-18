@@ -73,6 +73,8 @@ tokio-uds = "0.2.0"
 default = []
 secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
+nightly = []
+
 #codegen = ["tsukuyomi-codegen"]
 #nightly = ["tsukuyomi-codegen/nightly"]
 

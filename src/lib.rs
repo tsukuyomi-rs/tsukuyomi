@@ -9,6 +9,7 @@
 #![warn(warnings)]
 // #![cfg_attr(feature = "codegen", feature(use_extern_macros))]
 #![cfg_attr(feature = "extern-prelude", feature(extern_prelude))]
+#![cfg_attr(feature = "nightly", feature(macro_vis_matcher))]
 
 extern crate bytes;
 extern crate cookie;
