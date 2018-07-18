@@ -17,8 +17,7 @@ use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 use pipeline::Pipeline;
 
-use super::router::RecognizeErrorKind;
-use super::App;
+use super::{App, ScopeId};
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -91,37 +90,43 @@ enum AppServiceFutureStatus {
     Done,
 }
 
-#[derive(Debug)]
-enum InFlightErrorKind {
-    Recognize(RecognizeErrorKind),
-    Http(Error),
-}
-
-impl From<Error> for InFlightErrorKind {
-    fn from(err: Error) -> Self {
-        InFlightErrorKind::Http(err)
-    }
-}
-
 impl AppServiceFuture {
     fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
         let parts = self.parts.as_ref()?;
-        let modifier_ids = &self.app.endpoint(parts.recognize.endpoint_id)?.modifier_ids;
-        let id = modifier_ids.get(pos)?;
-        app.modifier(*id)
+        let scope_id = &self.app.endpoint(parts.recognize.endpoint_id)?.scope_id();
+        match scope_id {
+            ScopeId::Global => app.inner.modifiers.get(pos).map(|m| &**m),
+            ScopeId::Scope(id) => {
+                let modifier_ids = &self.app.inner.scopes.get(*id)?.modifier_ids;
+                let id = modifier_ids.get(pos)?;
+                app.modifier(*id)
+            }
+        }
     }
 
     fn get_modifier_rev<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
         let parts = self.parts.as_ref()?;
-        let modifier_ids = &self.app.endpoint(parts.recognize.endpoint_id)?.modifier_ids;
-        if modifier_ids.len() < pos + 1 {
-            return None;
+        let scope_id = &self.app.endpoint(parts.recognize.endpoint_id)?.scope_id();
+        match scope_id {
+            ScopeId::Global => {
+                let modifiers = &app.inner.modifiers;
+                if modifiers.len() < pos + 1 {
+                    return None;
+                }
+                modifiers.get(modifiers.len() - pos - 1).map(|m| &**m)
+            }
+            ScopeId::Scope(id) => {
+                let modifier_ids = &self.app.inner.scopes.get(*id)?.modifier_ids;
+                if modifier_ids.len() < pos + 1 {
+                    return None;
+                }
+                let &id = modifier_ids.get(modifier_ids.len() - pos - 1)?;
+                app.modifier(id)
+            }
         }
-        let &id = modifier_ids.get(modifier_ids.len() - pos - 1)?;
-        app.modifier(id)
     }
 
-    fn poll_in_flight(&mut self) -> Poll<Output, InFlightErrorKind> {
+    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
         use self::AppServiceFutureStatus::*;
 
         macro_rules! input {
@@ -152,10 +157,7 @@ impl AppServiceFuture {
             self.status = match (mem::replace(&mut self.status, Done), output) {
                 (Start, None) => {
                     let request = self.request.as_ref().expect("This future has already polled");
-                    let recognize = self.app
-                        .router()
-                        .recognize(request.uri().path(), request.method())
-                        .map_err(InFlightErrorKind::Recognize)?;
+                    let recognize = self.app.recognize(request.uri().path(), request.method())?;
                     self.parts = Some(InputParts::new(recognize));
                     Recognized
                 }
@@ -294,22 +296,7 @@ impl AppServiceFuture {
         Ok(response)
     }
 
-    fn handle_error(&mut self, err: InFlightErrorKind) -> Result<Response<ResponseBody>, CritError> {
-        match err {
-            InFlightErrorKind::Recognize(RecognizeErrorKind::NotFound) => self.handle_http_error(Error::not_found()),
-            InFlightErrorKind::Recognize(RecognizeErrorKind::MethodNotAllowed) => {
-                self.handle_http_error(Error::method_not_allowed())
-            }
-            InFlightErrorKind::Recognize(RecognizeErrorKind::FallbackOptions { entry_id: i, .. }) => {
-                let entry = self.app.router().entry(i).expect("invalid entry ID");
-                let response = entry.fallback_options_response();
-                Ok(response.map(Into::into))
-            }
-            InFlightErrorKind::Http(err) => self.handle_http_error(err),
-        }
-    }
-
-    fn handle_http_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
         if let Some(err) = err.as_http_error() {
             let request = self.request
                 .take()

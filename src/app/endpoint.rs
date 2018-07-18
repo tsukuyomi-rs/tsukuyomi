@@ -6,7 +6,7 @@ use input::Input;
 use pipeline::{Pipeline, PipelineHandler};
 
 use super::uri::Uri;
-use super::{ModifierId, ScopeId};
+use super::ScopeId;
 
 /// A type representing an endpoint.
 ///
@@ -16,7 +16,6 @@ pub struct Endpoint {
     pub(super) uri: Uri,
     pub(super) method: Method,
     pub(super) scope_id: ScopeId,
-    pub(super) modifier_ids: Vec<ModifierId>,
     pub(super) pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
     pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
 }
@@ -28,7 +27,6 @@ impl fmt::Debug for Endpoint {
             .field("uri", &self.uri)
             .field("method", &self.method)
             .field("scope_id", &self.scope_id)
-            .field("modifier_ids", &self.modifier_ids)
             .finish()
     }
 }
