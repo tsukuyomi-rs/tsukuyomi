@@ -10,12 +10,12 @@ use std::mem;
 use tokio;
 
 use error::{CritError, Error};
+use filter::Filtering;
 use handler::Handle;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
-use pipeline::Pipeline;
 
 use super::{App, ScopeId};
 
@@ -84,7 +84,7 @@ enum AppServiceFutureStatus {
     Start,
     Recognized,
     BeforeHandle { in_flight: BeforeHandle, next: usize },
-    Pipeline { in_flight: Pipeline, next: usize },
+    Filtering { in_flight: Filtering, next: usize },
     Handle(Handle),
     AfterHandle { in_flight: AfterHandle, next: usize },
     Done,
@@ -148,7 +148,7 @@ impl AppServiceFuture {
                     try_ready!(in_flight.poll_ready(&mut input!()));
                     None
                 }
-                Pipeline { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
+                Filtering { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
                 Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 Done => panic!("unexpected state"),
@@ -170,11 +170,8 @@ impl AppServiceFuture {
                     None => {
                         let mut input = input!();
                         let endpoint = input.endpoint_in(&self.app);
-                        match endpoint.apply_pipeline(&mut input, 0) {
-                            Some(pipeline) => Pipeline {
-                                in_flight: pipeline,
-                                next: 1,
-                            },
+                        match endpoint.apply_filter(&mut input, 0) {
+                            Some(in_flight) => Filtering { in_flight, next: 1 },
                             None => Handle(endpoint.apply_handler(&mut input)),
                         }
                     }
@@ -188,17 +185,14 @@ impl AppServiceFuture {
                     None => {
                         let mut input = input!();
                         let endpoint = input.endpoint_in(&self.app);
-                        match endpoint.apply_pipeline(&mut input, 0) {
-                            Some(pipeline) => Pipeline {
-                                in_flight: pipeline,
-                                next: 1,
-                            },
+                        match endpoint.apply_filter(&mut input, 0) {
+                            Some(in_flight) => Filtering { in_flight, next: 1 },
                             None => Handle(endpoint.apply_handler(&mut input)),
                         }
                     }
                 },
 
-                (Pipeline { .. }, Some(output)) => match self.get_modifier_rev(0, &self.app) {
+                (Filtering { .. }, Some(output)) => match self.get_modifier_rev(0, &self.app) {
                     Some(modifier) => AfterHandle {
                         in_flight: modifier.after_handle(&mut input!(), output),
                         next: 1,
@@ -206,11 +200,11 @@ impl AppServiceFuture {
                     None => break Ok(Async::Ready(output)),
                 },
 
-                (Pipeline { next, .. }, None) => {
+                (Filtering { next, .. }, None) => {
                     let mut input = input!();
-                    let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
-                    match endpoint.apply_pipeline(&mut input, next) {
-                        Some(in_flight) => Pipeline {
+                    let endpoint = input.endpoint_in(&self.app);
+                    match endpoint.apply_filter(&mut input, next) {
+                        Some(in_flight) => Filtering {
                             in_flight,
                             next: next + 1,
                         },
