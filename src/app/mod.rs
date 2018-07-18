@@ -131,26 +131,4 @@ impl App {
     fn router(&self) -> &Router {
         &self.inner.router
     }
-
-    fn scope_data(&self, id: ScopeId) -> Option<&ScopeData> {
-        self.inner.scopes.get(id.local_id()?)
-    }
-
-    fn collect_modifier_ids(&self, endpoint_id: usize) -> Vec<ModifierId> {
-        // FIXME: optimize
-        let mut chain: Vec<_> = (0..self.inner.modifiers.len())
-            .map(|pos| ModifierId(ScopeId::Global, pos))
-            .collect();
-
-        let endpoint = self.endpoint(endpoint_id).expect("invalid endpoint id");
-        if let Some(scope) = self.scope_data(endpoint.scope_id()) {
-            for &id in &scope.chain {
-                if let Some(scope) = self.scope_data(id) {
-                    chain.extend((0..scope.modifiers.len()).map(|pos| ModifierId(id, pos)))
-                }
-            }
-        }
-
-        chain
-    }
 }

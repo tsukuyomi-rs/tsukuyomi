@@ -144,8 +144,12 @@ impl<'task> Input<'task> {
 
     /// Returns the reference to a `Endpoint` matched to the incoming request.
     pub fn endpoint(&self) -> &Endpoint {
+        self.endpoint_in(self.app)
+    }
+
+    pub(crate) fn endpoint_in<'a>(&self, app: &'a App) -> &'a Endpoint {
         let Recognize { endpoint_id: i, .. } = self.parts.recognize;
-        self.app.endpoint(i).expect("invalid endpoint ID")
+        app.endpoint(i).expect("invalid endpoint ID")
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.

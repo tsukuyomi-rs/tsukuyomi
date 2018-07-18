@@ -27,17 +27,11 @@ where
     T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
 {
     fn before_handle(&self, _: &mut Input) -> BeforeHandle {
-        match (self.before)(&mut *self.marker.lock().unwrap()) {
-            Ok(()) => BeforeHandle::ok(),
-            Err(err) => BeforeHandle::err(err),
-        }
+        (self.before)(&mut *self.marker.lock().unwrap()).into()
     }
 
     fn after_handle(&self, _: &mut Input, _: Output) -> AfterHandle {
-        match (self.after)(&mut *self.marker.lock().unwrap()) {
-            Ok(output) => AfterHandle::ok(output),
-            Err(err) => AfterHandle::err(err),
-        }
+        (self.after)(&mut *self.marker.lock().unwrap()).into()
     }
 }
 

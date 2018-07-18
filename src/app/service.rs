@@ -6,19 +6,19 @@ use http::header::HeaderValue;
 use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
-use std::{iter, mem, vec};
+use std::mem;
 use tokio;
 
 use error::{CritError, Error};
 use handler::Handle;
 use input::{Input, InputParts, RequestBody};
-use modifier::{AfterHandle, BeforeHandle};
+use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 use pipeline::Pipeline;
 
 use super::router::RecognizeErrorKind;
-use super::{App, ModifierId};
+use super::App;
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -84,19 +84,10 @@ pub struct AppServiceFuture {
 enum AppServiceFutureStatus {
     Start,
     Recognized,
-    BeforeHandle {
-        in_flight: BeforeHandle,
-        chain: vec::IntoIter<ModifierId>,
-    },
-    Pipeline {
-        in_flight: Pipeline,
-        current: usize,
-    },
+    BeforeHandle { in_flight: BeforeHandle, next: usize },
+    Pipeline { in_flight: Pipeline, next: usize },
     Handle(Handle),
-    AfterHandle {
-        in_flight: AfterHandle,
-        chain: iter::Rev<vec::IntoIter<ModifierId>>,
-    },
+    AfterHandle { in_flight: AfterHandle, next: usize },
     Done,
 }
 
@@ -113,9 +104,21 @@ impl From<Error> for InFlightErrorKind {
 }
 
 impl AppServiceFuture {
-    fn collect_modifier_ids(&self) -> Vec<ModifierId> {
-        let parts = self.parts.as_ref().expect("The instance of InputParts does not exist.");
-        self.app.collect_modifier_ids(parts.recognize.endpoint_id)
+    fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
+        let parts = self.parts.as_ref()?;
+        let modifier_ids = &self.app.endpoint(parts.recognize.endpoint_id)?.modifier_ids;
+        let id = modifier_ids.get(pos)?;
+        app.modifier(*id)
+    }
+
+    fn get_modifier_rev<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
+        let parts = self.parts.as_ref()?;
+        let modifier_ids = &self.app.endpoint(parts.recognize.endpoint_id)?.modifier_ids;
+        if modifier_ids.len() < pos + 1 {
+            return None;
+        }
+        let &id = modifier_ids.get(modifier_ids.len() - pos - 1)?;
+        app.modifier(id)
     }
 
     fn poll_in_flight(&mut self) -> Poll<Output, InFlightErrorKind> {
@@ -157,99 +160,75 @@ impl AppServiceFuture {
                     Recognized
                 }
 
-                (Recognized, None) => {
-                    let mut chain = self.collect_modifier_ids().into_iter();
-                    match chain.next() {
-                        Some(id) => {
-                            let modifier = self.app.modifier(id).expect("invalid modifier ID");
-                            BeforeHandle {
-                                in_flight: modifier.before_handle(&mut input!()),
-                                chain: chain,
-                            }
-                        }
-                        None => {
-                            let mut input = input!();
-                            let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
-                            match endpoint.apply_pipeline(&mut input, 0) {
-                                Some(pipeline) => Pipeline {
-                                    in_flight: pipeline,
-                                    current: 1,
-                                },
-                                None => Handle(endpoint.apply_handler(&mut input)),
-                            }
-                        }
-                    }
-                }
-
-                (BeforeHandle { mut chain, .. }, None) => match chain.next() {
-                    Some(id) => {
-                        let modifier = self.app.modifier(id).expect("invalid modifier ID");
-                        BeforeHandle {
-                            in_flight: modifier.before_handle(&mut input!()),
-                            chain: chain,
-                        }
-                    }
+                (Recognized, None) => match self.get_modifier(0, &self.app) {
+                    Some(modifier) => BeforeHandle {
+                        in_flight: modifier.before_handle(&mut input!()),
+                        next: 1,
+                    },
                     None => {
                         let mut input = input!();
-                        let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
+                        let endpoint = input.endpoint_in(&self.app);
                         match endpoint.apply_pipeline(&mut input, 0) {
                             Some(pipeline) => Pipeline {
                                 in_flight: pipeline,
-                                current: 1,
+                                next: 1,
                             },
                             None => Handle(endpoint.apply_handler(&mut input)),
                         }
                     }
                 },
 
-                (Pipeline { .. }, Some(output)) => {
-                    let mut chain = self.collect_modifier_ids().into_iter().rev();
-                    match chain.next() {
-                        Some(id) => {
-                            let modifier = &self.app.modifier(id).expect("invalid modifier ID");
-                            AfterHandle {
-                                in_flight: modifier.after_handle(&mut input!(), output),
-                                chain: chain,
-                            }
+                (BeforeHandle { next, .. }, None) => match self.get_modifier(next, &self.app) {
+                    Some(modifier) => BeforeHandle {
+                        in_flight: modifier.before_handle(&mut input!()),
+                        next: next + 1,
+                    },
+                    None => {
+                        let mut input = input!();
+                        let endpoint = input.endpoint_in(&self.app);
+                        match endpoint.apply_pipeline(&mut input, 0) {
+                            Some(pipeline) => Pipeline {
+                                in_flight: pipeline,
+                                next: 1,
+                            },
+                            None => Handle(endpoint.apply_handler(&mut input)),
                         }
-                        None => break Ok(Async::Ready(output)),
                     }
                 },
 
-                (Pipeline { current, .. }, None) => {
+                (Pipeline { .. }, Some(output)) => match self.get_modifier_rev(0, &self.app) {
+                    Some(modifier) => AfterHandle {
+                        in_flight: modifier.after_handle(&mut input!(), output),
+                        next: 1,
+                    },
+                    None => break Ok(Async::Ready(output)),
+                },
+
+                (Pipeline { next, .. }, None) => {
                     let mut input = input!();
                     let endpoint = self.app.endpoint(input.parts.recognize.endpoint_id).expect("");
-                    match endpoint.apply_pipeline(&mut input, current) {
-                        Some(pipeline) => Pipeline {
-                            in_flight: pipeline,
-                            current: current + 1,
+                    match endpoint.apply_pipeline(&mut input, next) {
+                        Some(in_flight) => Pipeline {
+                            in_flight,
+                            next: next + 1,
                         },
                         None => Handle(endpoint.apply_handler(&mut input)),
                     }
                 }
 
-                (Handle(..), Some(output)) => {
-                    let mut chain = self.collect_modifier_ids().into_iter().rev();
-                    match chain.next() {
-                        Some(id) => {
-                            let modifier = &self.app.modifier(id).expect("invalid modifier ID");
-                            AfterHandle {
-                                in_flight: modifier.after_handle(&mut input!(), output),
-                                chain: chain,
-                            }
-                        }
-                        None => break Ok(Async::Ready(output)),
-                    }
-                }
+                (Handle(..), Some(output)) => match self.get_modifier_rev(0, &self.app) {
+                    Some(modifier) => AfterHandle {
+                        in_flight: modifier.after_handle(&mut input!(), output),
+                        next: 1,
+                    },
+                    None => break Ok(Async::Ready(output)),
+                },
 
-                (AfterHandle { mut chain, .. }, Some(output)) => match chain.next() {
-                    Some(id) => {
-                        let modifier = &self.app.modifier(id).expect("invalid modifier ID");
-                        AfterHandle {
-                            in_flight: modifier.after_handle(&mut input!(), output),
-                            chain: chain,
-                        }
-                    }
+                (AfterHandle { next, .. }, Some(output)) => match self.get_modifier_rev(next, &self.app) {
+                    Some(modifier) => AfterHandle {
+                        in_flight: modifier.after_handle(&mut input!(), output),
+                        next: next + 1,
+                    },
                     None => break Ok(Async::Ready(output)),
                 },
 
