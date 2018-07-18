@@ -1,9 +1,9 @@
 use http::Method;
 use std::fmt;
 
+use filter::{Filter, Filtering};
 use handler::{Handle, Handler};
 use input::Input;
-use pipeline::{Pipeline, PipelineHandler};
 
 use super::uri::Uri;
 use super::ScopeId;
@@ -16,7 +16,7 @@ pub struct Endpoint {
     pub(super) uri: Uri,
     pub(super) method: Method,
     pub(super) scope_id: ScopeId,
-    pub(super) pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
+    pub(super) filters: Vec<Box<dyn Filter + Send + Sync + 'static>>,
     pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
 }
 
@@ -46,8 +46,8 @@ impl Endpoint {
         self.scope_id
     }
 
-    pub(crate) fn apply_pipeline(&self, input: &mut Input, pos: usize) -> Option<Pipeline> {
-        self.pipelines.get(pos).map(|pipeline| pipeline.handle(input))
+    pub(crate) fn apply_filter(&self, input: &mut Input, pos: usize) -> Option<Filtering> {
+        self.filters.get(pos).map(|filter| filter.apply(input))
     }
 
     pub(crate) fn apply_handler(&self, input: &mut Input) -> Handle {

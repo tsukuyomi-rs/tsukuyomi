@@ -11,10 +11,10 @@ use indexmap::map::IndexMap;
 use state::Container;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
+use filter::Filter;
 use handler::{Handle, Handler};
 use input::Input;
 use modifier::Modifier;
-use pipeline::PipelineHandler;
 
 use super::endpoint::Endpoint;
 use super::recognizer::Recognizer;
@@ -41,7 +41,7 @@ struct EndpointBuilder {
     scope_id: ScopeId,
     uri: Uri,
     method: Method,
-    pipelines: Vec<Box<dyn PipelineHandler + Send + Sync + 'static>>,
+    filters: Vec<Box<dyn Filter + Send + Sync + 'static>>,
     handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
 }
 
@@ -137,7 +137,7 @@ impl AppBuilder {
             scope_id: scope_id,
             uri: Uri::new(),
             method: Method::GET,
-            pipelines: vec![],
+            filters: vec![],
             handler: None,
         };
         config.configure(&mut Route {
@@ -370,7 +370,7 @@ impl AppBuilder {
                     uri: uri,
                     method: e.method,
                     scope_id: e.scope_id,
-                    pipelines: e.pipelines,
+                    filters: e.filters,
                     handler,
                 })
             })
@@ -378,43 +378,40 @@ impl AppBuilder {
 
         // create a router
         let (recognizer, routes) = {
-            let mut collected_routes = IndexMap::<Uri, (ScopeId, IndexMap<Method, usize>)>::new();
+            let mut collected_routes = IndexMap::<Uri, IndexMap<Method, usize>>::new();
             for (i, endpoint) in endpoints.iter().enumerate() {
-                let &mut (id, ref mut methods) = collected_routes
+                let methods = collected_routes
                     .entry(endpoint.uri.clone())
-                    .or_insert_with(|| (endpoint.scope_id(), IndexMap::<Method, usize>::new()));
-                if endpoint.scope_id() != id {
-                    bail!("All routes with the same URI must belong to the same scope.");
-                }
+                    .or_insert_with(IndexMap::<Method, usize>::new);
+
                 if methods.contains_key(endpoint.method()) {
                     bail!("Adding routes with duplicate URI and method is currenly not supported.");
                 }
+
                 methods.insert(endpoint.method().clone(), i);
             }
 
             let mut recognizer = Recognizer::builder();
             let mut routes = vec![];
-            let mut fallback_endpoints = vec![];
-            for (uri, (scope_id, mut methods)) in collected_routes {
+            for (uri, mut methods) in collected_routes {
                 if let Some(ref mut f) = options_handler {
                     let m = methods.keys().cloned().chain(Some(Method::OPTIONS)).collect();
                     methods.entry(Method::OPTIONS).or_insert_with(|| {
-                        fallback_endpoints.push(Endpoint {
+                        let id = endpoints.len();
+                        endpoints.push(Endpoint {
                             uri: uri.clone(),
                             method: Method::OPTIONS,
-                            scope_id,
-                            pipelines: vec![],
+                            scope_id: ScopeId::Global,
+                            filters: vec![],
                             handler: (f)(m),
                         });
-                        endpoints.len() + fallback_endpoints.len() - 1
+                        id
                     });
                 }
 
                 recognizer.push(uri.as_ref())?;
                 routes.push(methods);
             }
-
-            endpoints.extend(fallback_endpoints);
 
             (recognizer.finish(), routes)
         };
@@ -562,7 +559,7 @@ impl<'a> Route<'a> {
         self
     }
 
-    /// Register a `PipelineHandler` to this route.
+    /// Register a `Filter` to this route.
     ///
     /// # Examples
     ///
@@ -573,14 +570,14 @@ impl<'a> Route<'a> {
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::app::builder::Route;
-    /// use tsukuyomi::pipeline::Pipeline;
+    /// use tsukuyomi::filter::Filtering;
     ///
-    /// fn accept(_: &mut Input) -> Pipeline {
+    /// fn accept(_: &mut Input) ->Filtering {
     ///     // ...
     /// #   unimplemented!()
     /// }
     ///
-    /// fn authorize(_: &mut Input) -> Pipeline {
+    /// fn authorize(_: &mut Input) -> Filtering {
     ///     // ...
     /// #   unimplemented!()
     /// }
@@ -591,8 +588,8 @@ impl<'a> Route<'a> {
     ///         route.uri("/posts/new");
     ///         route.method(Method::POST);
     ///
-    ///         route.pipeline(accept);
-    ///         route.pipeline(authorize);
+    ///         route.filter(accept);
+    ///         route.filter(authorize);
     ///         // ...
     ///
     ///         route.handler(|_: &mut Input| {
@@ -604,8 +601,8 @@ impl<'a> Route<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn pipeline(&mut self, pipeline: impl PipelineHandler + Send + Sync + 'static) -> &mut Self {
-        self.endpoint.pipelines.push(Box::new(pipeline));
+    pub fn filter(&mut self, filter: impl Filter + Send + Sync + 'static) -> &mut Self {
+        self.endpoint.filters.push(Box::new(filter));
         self
     }
 
