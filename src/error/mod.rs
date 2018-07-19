@@ -57,7 +57,7 @@ impl Error {
         Error {
             kind: ErrorKind::Concrete(ConcreteHttpError {
                 cause: cause.into(),
-                status: status,
+                status,
             }),
         }
     }

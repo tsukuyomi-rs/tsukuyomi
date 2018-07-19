@@ -1,7 +1,9 @@
 #![allow(missing_docs)]
+#![cfg_attr(feature = "cargo-clippy", allow(new_without_default_derive, should_implement_trait))]
 
 use failure::Error;
 use std::fmt;
+use std::str::FromStr;
 
 pub(super) fn join_all<I>(prefix: I) -> Uri
 where
@@ -11,7 +13,7 @@ where
     let mut uri = String::new();
     for p in prefix {
         if p.as_ref().0 != "/" {
-            uri = format!("{}{}", uri.trim_right_matches("/"), p.as_ref());
+            uri = format!("{}{}", uri.trim_right_matches('/'), p.as_ref());
         }
     }
 
@@ -32,6 +34,14 @@ impl Uri {
 
     pub fn from_str(s: &str) -> Result<Uri, Error> {
         normalize_uri(s).map(Uri)
+    }
+}
+
+impl FromStr for Uri {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Uri, Error> {
+        Uri::from_str(s)
     }
 }
 
@@ -58,7 +68,7 @@ fn normalize_uri(mut s: &str) -> Result<String, Error> {
         bail!("The URI is not ASCII");
     }
 
-    if !s.starts_with("/") {
+    if !s.starts_with('/') {
         bail!("invalid URI")
     }
 
@@ -67,12 +77,12 @@ fn normalize_uri(mut s: &str) -> Result<String, Error> {
     }
 
     let mut has_trailing_slash = false;
-    if s.ends_with("/") {
+    if s.ends_with('/') {
         has_trailing_slash = true;
         s = &s[..s.len() - 1];
     }
 
-    for segment in s[1..].split("/") {
+    for segment in s[1..].split('/') {
         if segment.is_empty() {
             bail!("empty segment");
         }

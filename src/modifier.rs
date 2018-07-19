@@ -66,6 +66,7 @@ pub struct BeforeHandle(BeforeHandleState);
 // MEMO:
 // The internal type should be replaced with `Option<Result<Output, Error>>`.
 // Currently, it is represented as `Result<T, E>` due to the restriction of `futures`.
+#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum BeforeHandleState {
     Ready(Option<Result<Option<Output>, Error>>),
     Polling(Box<dyn FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static>),
@@ -125,6 +126,7 @@ impl BeforeHandle {
 #[derive(Debug)]
 pub struct AfterHandle(AfterHandleState);
 
+#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum AfterHandleState {
     Ready(Option<Result<Output, Error>>),
     Polling(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static>),

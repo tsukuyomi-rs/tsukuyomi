@@ -30,6 +30,7 @@ pub struct AppBuilder {
     state: Container,
     scoped_state: container::Builder,
     prefix: Option<Uri>,
+    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
     options_handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static>>>,
 
     result: Result<(), Error>,
@@ -151,7 +152,7 @@ impl AppBuilder {
 
     fn new_route(&mut self, scope_id: ScopeId, config: impl RouteConfig) {
         let mut route = RouteBuilder {
-            scope_id: scope_id,
+            scope_id,
             uri: Uri::new(),
             method: Method::GET,
             modifiers: vec![],
@@ -265,6 +266,7 @@ impl AppBuilder {
     ///
     /// If a function is provided, the builder creates the instances of handler function by using the provided
     /// function for each registered route, and then specifies them to each route as OPTIONS handlers.
+    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
     pub fn default_options(
         &mut self,
         handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static> + 'static>>,
@@ -328,12 +330,12 @@ impl AppBuilder {
         if self.result.is_err() {
             return;
         }
-        match Uri::from_str(prefix) {
+        match prefix.parse() {
             Ok(prefix) => match id {
                 ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
                 ScopeId::Global => self.prefix = Some(prefix),
             },
-            Err(err) => self.result = Err(err.into()),
+            Err(err) => self.result = Err(err),
         }
     }
 
@@ -374,7 +376,7 @@ impl AppBuilder {
                     .ok_or_else(|| format_err!("default handler is not supported"))?;
 
                 // calculate the modifier identifiers.
-                let mut modifier_ids: Vec<_> = (0..modifiers.len()).map(|pos| ModifierId::Global(pos)).collect();
+                let mut modifier_ids: Vec<_> = (0..modifiers.len()).map(ModifierId::Global).collect();
                 if let Some(scope) = route.scope_id.local_id().and_then(|id| scopes.get(id)) {
                     for (id, scope) in scope
                         .chain
@@ -427,7 +429,7 @@ impl AppBuilder {
                             method: Method::OPTIONS,
                             modifiers: vec![],
                             handler: (f)(m),
-                            modifier_ids: (0..modifiers.len()).map(|i| ModifierId::Global(i)).collect(),
+                            modifier_ids: (0..modifiers.len()).map(ModifierId::Global).collect(),
                         });
                         id
                     });
@@ -585,7 +587,7 @@ impl<'a> Route<'a> {
     /// Modifies the URI of this route.
     pub fn uri(&mut self, uri: &str) -> &mut Self {
         if self.builder.result.is_ok() {
-            match Uri::from_str(uri) {
+            match uri.parse() {
                 Ok(uri) => self.route.uri = uri,
                 Err(err) => self.builder.result = Err(err),
             }

@@ -32,7 +32,7 @@ impl RequestBody {
 
     /// Takes away the instance of raw message body if exists.
     pub fn forget(&mut self) {
-        self.take_body().map(mem::drop);
+        let _ = self.take_body();
     }
 
     /// Returns 'true' if the instance of raw message body has already taken away.
@@ -126,7 +126,7 @@ impl body::Payload for Payload {
     }
 
     fn content_length(&self) -> Option<u64> {
-        self.0.as_ref().map_or(None, |bd| bd.content_length())
+        self.0.as_ref().and_then(|bd| bd.content_length())
     }
 }
 
@@ -261,7 +261,7 @@ impl Future for ReadAll {
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.poll_ready().into()
+        self.poll_ready()
     }
 }
 

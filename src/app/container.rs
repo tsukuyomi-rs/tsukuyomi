@@ -29,7 +29,7 @@ impl<T> TypedScopedValue<T> {
         locals.push(Some(value));
 
         TypedScopedValue {
-            locals: locals,
+            locals,
             forward_ids: vec![],
         }
     }
@@ -111,6 +111,7 @@ impl dyn ScopedValue + Send + Sync + 'static {
         TypeId::of::<T>() == self.type_id()
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
     fn downcast_ref<T: Send + Sync + 'static>(&self) -> Option<&TypedScopedValue<T>> {
         if self.is::<T>() {
             unsafe { Some(&*(self as *const dyn ScopedValue as *const TypedScopedValue<T>)) }
@@ -119,6 +120,7 @@ impl dyn ScopedValue + Send + Sync + 'static {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
     fn downcast_mut<T: Send + Sync + 'static>(&mut self) -> Option<&mut TypedScopedValue<T>> {
         if self.is::<T>() {
             unsafe { Some(&mut *(self as *mut dyn ScopedValue as *mut TypedScopedValue<T>)) }
@@ -150,7 +152,7 @@ impl Hasher for IdentHash {
     }
 
     fn write_u8(&mut self, i: u8) {
-        self.0 = (self.0 << 8) | (i as u64);
+        self.0 = (self.0 << 8) | u64::from(i);
     }
 
     fn write_u64(&mut self, i: u64) {

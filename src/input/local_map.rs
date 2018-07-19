@@ -82,7 +82,7 @@ impl Hasher for IdentHasher {
     }
 
     fn write_u8(&mut self, i: u8) {
-        self.0 = (self.0 << 8) | (i as u64);
+        self.0 = (self.0 << 8) | u64::from(i);
     }
 
     fn write_u64(&mut self, i: u64) {
