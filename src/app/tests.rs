@@ -21,7 +21,7 @@ fn empty() {
 fn route_single_method() {
     let app = App::builder().route(("/", dummy_handler)).finish().unwrap();
 
-    assert_matches!(app.recognize("/", &Method::GET), Ok(Recognize { endpoint_id: 0, .. }));
+    assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
 
     assert_matches!(
         app.recognize("/path/to", &Method::GET),
@@ -41,8 +41,8 @@ fn route_multiple_method() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::GET), Ok(Recognize { endpoint_id: 0, .. }));
-    assert_matches!(app.recognize("/", &Method::POST), Ok(Recognize { endpoint_id: 1, .. }));
+    assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
+    assert_matches!(app.recognize("/", &Method::POST), Ok((1, ..)));
 
     assert_matches!(
         app.recognize("/", &Method::PUT),
@@ -54,7 +54,7 @@ fn route_multiple_method() {
 fn route_fallback_head_enabled() {
     let app = App::builder().route(("/", dummy_handler)).finish().unwrap();
 
-    assert_matches!(app.recognize("/", &Method::HEAD), Ok(Recognize { endpoint_id: 0, .. }));
+    assert_matches!(app.recognize("/", &Method::HEAD), Ok((0, ..)));
 }
 
 #[test]
@@ -80,14 +80,8 @@ fn route_fallback_options_enabled() {
         .finish()
         .unwrap();
 
-    assert_matches!(
-        app.recognize("/", &Method::OPTIONS),
-        Ok(Recognize { endpoint_id: 3, .. })
-    );
-    assert_matches!(
-        app.recognize("/options", &Method::OPTIONS),
-        Ok(Recognize { endpoint_id: 2, .. })
-    );
+    assert_matches!(app.recognize("/", &Method::OPTIONS), Ok((3, ..)));
+    assert_matches!(app.recognize("/options", &Method::OPTIONS), Ok((2, ..)));
 }
 
 #[test]
@@ -114,14 +108,8 @@ fn global_prefix() {
         .finish()
         .unwrap();
 
-    assert_matches!(
-        app.recognize("/api/a", &Method::GET),
-        Ok(Recognize { endpoint_id: 0, .. })
-    );
-    assert_matches!(
-        app.recognize("/api/b", &Method::GET),
-        Ok(Recognize { endpoint_id: 1, .. })
-    );
+    assert_matches!(app.recognize("/api/a", &Method::GET), Ok((0, ..)));
+    assert_matches!(app.recognize("/api/b", &Method::GET), Ok((1, ..)));
     assert_matches!(
         app.recognize("/a", &Method::GET),
         Err(ref e) if e.status_code() == Some(StatusCode::NOT_FOUND)
@@ -146,20 +134,11 @@ fn scope_simple() {
         .finish()
         .unwrap();
 
-    assert_matches!(app.recognize("/a", &Method::GET), Ok(Recognize { endpoint_id: 0, .. }));
-    assert_matches!(app.recognize("/b", &Method::GET), Ok(Recognize { endpoint_id: 1, .. }));
-    assert_matches!(
-        app.recognize("/foo", &Method::GET),
-        Ok(Recognize { endpoint_id: 2, .. })
-    );
-    assert_matches!(
-        app.recognize("/c/d", &Method::GET),
-        Ok(Recognize { endpoint_id: 3, .. })
-    );
-    assert_matches!(
-        app.recognize("/c/e", &Method::GET),
-        Ok(Recognize { endpoint_id: 4, .. })
-    );
+    assert_matches!(app.recognize("/a", &Method::GET), Ok((0, ..)));
+    assert_matches!(app.recognize("/b", &Method::GET), Ok((1, ..)));
+    assert_matches!(app.recognize("/foo", &Method::GET), Ok((2, ..)));
+    assert_matches!(app.recognize("/c/d", &Method::GET), Ok((3, ..)));
+    assert_matches!(app.recognize("/c/e", &Method::GET), Ok((4, ..)));
 }
 
 #[test]
@@ -182,26 +161,11 @@ fn scope_nested() {
         .finish()
         .unwrap();
 
-    assert_matches!(
-        app.recognize("/foo", &Method::GET),
-        Ok(Recognize { endpoint_id: 0, .. })
-    );
-    assert_matches!(
-        app.recognize("/bar", &Method::GET),
-        Ok(Recognize { endpoint_id: 1, .. })
-    );
-    assert_matches!(
-        app.recognize("/baz", &Method::GET),
-        Ok(Recognize { endpoint_id: 2, .. })
-    );
-    assert_matches!(
-        app.recognize("/baz/foobar", &Method::GET),
-        Ok(Recognize { endpoint_id: 3, .. })
-    );
-    assert_matches!(
-        app.recognize("/hoge", &Method::GET),
-        Ok(Recognize { endpoint_id: 4, .. })
-    );
+    assert_matches!(app.recognize("/foo", &Method::GET), Ok((0, ..)));
+    assert_matches!(app.recognize("/bar", &Method::GET), Ok((1, ..)));
+    assert_matches!(app.recognize("/baz", &Method::GET), Ok((2, ..)));
+    assert_matches!(app.recognize("/baz/foobar", &Method::GET), Ok((3, ..)));
+    assert_matches!(app.recognize("/hoge", &Method::GET), Ok((4, ..)));
 
     assert_matches!(
         app.recognize("/baz/", &Method::GET),
@@ -209,36 +173,48 @@ fn scope_nested() {
     );
 }
 
+
 #[test]
 fn scope_variable() {
     let app = App::builder()
         .set::<String>("G".into())
+        .route(("/rg", dummy_handler))
         .mount("/s0", |m| {
+            m.route(("/r0", dummy_handler));
             m.mount("/s1", |m| {
                 m.set::<String>("A".into());
+                m.route(("/r1", dummy_handler));
             });
         })
         .mount("/s2", |m| {
             m.set::<String>("B".into());
+            m.route(("/r2", dummy_handler));
             m.mount("/s3", |m| {
                 m.set::<String>("C".into());
-                m.mount("/s4", |_m| {});
+                m.route(("/r3", dummy_handler));
+                m.mount("/s4", |m| {
+                    m.route(("/r4", dummy_handler));
+                });
             }).mount("/s5", |m| {
-                m.mount("/s6", |_m| {});
+                m.route(("/r5", dummy_handler));
+                m.mount("/s6", |m| {
+                    m.route(("/r6", dummy_handler));
+                });
             });
         })
         .finish()
         .unwrap();
 
-    assert_eq!(app.get(ScopeId::Global).map(String::as_str), Some("G"));
-    assert_eq!(app.get(ScopeId::Scope(0)).map(String::as_str), Some("G"));
-    assert_eq!(app.get(ScopeId::Scope(1)).map(String::as_str), Some("A"));
-    assert_eq!(app.get(ScopeId::Scope(2)).map(String::as_str), Some("B"));
-    assert_eq!(app.get(ScopeId::Scope(3)).map(String::as_str), Some("C"));
-    assert_eq!(app.get(ScopeId::Scope(4)).map(String::as_str), Some("C"));
-    assert_eq!(app.get(ScopeId::Scope(5)).map(String::as_str), Some("B"));
-    assert_eq!(app.get(ScopeId::Scope(6)).map(String::as_str), Some("B"));
+    assert_eq!(app.get(RouteId(ScopeId::Global, 0)).map(String::as_str), Some("G"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(0), 1)).map(String::as_str), Some("G"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(1), 2)).map(String::as_str), Some("A"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(2), 3)).map(String::as_str), Some("B"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(3), 4)).map(String::as_str), Some("C"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(4), 5)).map(String::as_str), Some("C"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(5), 6)).map(String::as_str), Some("B"));
+    assert_eq!(app.get(RouteId(ScopeId::Local(6), 7)).map(String::as_str), Some("B"));
 }
+
 
 #[test]
 fn failcase_duplicate_uri_and_method() {

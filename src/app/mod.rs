@@ -3,9 +3,8 @@
 pub mod builder;
 pub mod service;
 
-mod endpoint;
+mod container;
 mod recognizer;
-mod scope;
 mod uri;
 
 #[cfg(test)]
@@ -19,12 +18,13 @@ use std::sync::Arc;
 
 use error::handler::ErrorHandler;
 use error::Error;
+use handler::Handler;
 use modifier::Modifier;
 
-pub use self::builder::AppBuilder;
-pub use self::endpoint::Endpoint;
+use self::container::ScopedContainer;
 use self::recognizer::Recognizer;
-use self::scope::ScopedContainer;
+
+pub use self::builder::AppBuilder;
 pub use self::uri::Uri;
 
 #[derive(Debug)]
@@ -42,23 +42,17 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct Recognize {
-    pub(crate) endpoint_id: usize,
-    pub(crate) params: Vec<(usize, usize)>,
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ScopeId {
-    Scope(usize),
     Global,
+    Local(usize),
 }
 
 impl ScopeId {
     fn local_id(self) -> Option<usize> {
         match self {
-            ScopeId::Scope(id) => Some(id),
             ScopeId::Global => None,
+            ScopeId::Local(id) => Some(id),
         }
     }
 }
@@ -70,10 +64,13 @@ pub(crate) enum ModifierId {
     Route(usize, usize),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct RouteId(ScopeId, usize);
+
 struct ScopeData {
+    id: ScopeId,
     parent: ScopeId,
     prefix: Option<Uri>,
-    chain: Vec<ScopeId>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
@@ -81,38 +78,58 @@ struct ScopeData {
 impl fmt::Debug for ScopeData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ScopeData")
+            .field("id", &self.id)
             .field("parent", &self.parent)
             .field("prefix", &self.prefix)
-            .field("chain", &self.chain)
             .finish()
     }
 }
 
-impl ScopeData {
-    fn parent(&self) -> ScopeId {
-        self.parent
+struct RouteData {
+    id: RouteId,
+    uri: Uri,
+    method: Method,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    handler: Box<dyn Handler + Send + Sync + 'static>,
+    modifier_ids: Vec<ModifierId>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for RouteData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RouteData")
+            .field("id", &self.id)
+            .field("uri", &self.uri)
+            .field("method", &self.method)
+            .field("modifier_ids", &self.modifier_ids)
+            .finish()
     }
 }
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppState {
+    routes: Vec<RouteData>,
+    scopes: Vec<ScopeData>,
+
     recognizer: Recognizer,
-    routes: Vec<IndexMap<Method, usize>>,
+    route_ids: Vec<IndexMap<Method, usize>>,
     config: Config,
-    endpoints: Vec<Endpoint>,
+
+    state: Container,
+    scoped_state: ScopedContainer,
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    container: Container,
-    container_scoped: ScopedContainer,
-    scopes: Vec<ScopeData>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("AppState")
-            .field("endpoints", &self.endpoints)
+            .field("routes", &self.routes)
             .field("scopes", &self.scopes)
+            .field("recognizer", &self.recognizer)
+            .field("route_ids", &self.route_ids)
+            .field("config", &self.config)
             .finish()
     }
 }
@@ -129,43 +146,42 @@ impl App {
         AppBuilder::new()
     }
 
-    pub(crate) fn endpoint(&self, i: usize) -> Option<&Endpoint> {
-        self.inner.endpoints.get(i)
+    fn route(&self, id: RouteId) -> Option<&RouteData> {
+        let RouteId(_, pos) = id;
+        self.inner.routes.get(pos)
     }
 
-    pub(crate) fn error_handler(&self) -> &(dyn ErrorHandler + Send + Sync + 'static) {
+    fn error_handler(&self) -> &(dyn ErrorHandler + Send + Sync + 'static) {
         &*self.inner.error_handler
     }
 
-    pub(crate) fn modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
+    fn modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
         match id {
             ModifierId::Global(pos) => self.inner.modifiers.get(pos).map(|m| &**m),
             ModifierId::Scope(id, pos) => self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m),
-            ModifierId::Route(id, pos) => self.inner.endpoints.get(id)?.modifiers.get(pos).map(|m| &**m),
+            ModifierId::Route(id, pos) => self.inner.routes.get(id)?.modifiers.get(pos).map(|m| &**m),
         }
     }
 
-    pub(crate) fn get<T>(&self, id: ScopeId) -> Option<&T>
+    pub(crate) fn get<T>(&self, id: RouteId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
+        let RouteId(id, ..) = id;
         match id {
-            ScopeId::Scope(id) => self.inner
-                .container_scoped
-                .get(id)
-                .or_else(|| self.inner.container.try_get()),
-            ScopeId::Global => self.inner.container.try_get(),
+            ScopeId::Local(id) => self.inner.scoped_state.get(id).or_else(|| self.inner.state.try_get()),
+            ScopeId::Global => self.inner.state.try_get(),
         }
     }
 
-    fn recognize(&self, path: &str, method: &Method) -> Result<Recognize, Error> {
+    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
         let (i, params) = self.inner.recognizer.recognize(path).ok_or_else(Error::not_found)?;
 
-        let methods = &self.inner.routes[i];
+        let methods = &self.inner.route_ids[i];
         match methods.get(method) {
-            Some(&i) => Ok(Recognize { endpoint_id: i, params }),
+            Some(&i) => Ok((i, params)),
             None if self.inner.config.fallback_head && *method == Method::HEAD => match methods.get(&Method::GET) {
-                Some(&i) => Ok(Recognize { endpoint_id: i, params }),
+                Some(&i) => Ok((i, params)),
                 None => Err(Error::method_not_allowed()),
             },
             None => Err(Error::method_not_allowed()),

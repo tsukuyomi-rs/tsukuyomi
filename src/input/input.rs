@@ -6,7 +6,7 @@ use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
 
-use app::{App, Endpoint};
+use app::{App, RouteId};
 use error::Error;
 use input::RequestBody;
 
@@ -49,7 +49,7 @@ fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
 /// The inner parts of `Input`.
 #[derive(Debug)]
 pub(crate) struct InputParts {
-    pub(crate) endpoint_id: usize,
+    pub(crate) route: RouteId,
     pub(crate) params: Vec<(usize, usize)>,
     pub(crate) cookies: CookieManager,
     pub(crate) locals: LocalMap,
@@ -57,9 +57,9 @@ pub(crate) struct InputParts {
 }
 
 impl InputParts {
-    pub(crate) fn new(endpoint_id: usize, params: Vec<(usize, usize)>) -> InputParts {
+    pub(crate) fn new(route: RouteId, params: Vec<(usize, usize)>) -> InputParts {
         InputParts {
-            endpoint_id,
+            route,
             params,
             cookies: CookieManager::new(),
             locals: LocalMap::new(),
@@ -143,11 +143,6 @@ impl<'task> Input<'task> {
         }
     }
 
-    /// Returns the reference to a `Endpoint` matched to the incoming request.
-    pub fn endpoint(&self) -> &Endpoint {
-        self.app.endpoint(self.parts.endpoint_id).expect("invalid endpoint ID")
-    }
-
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Params {
         Params {
@@ -176,7 +171,7 @@ impl<'task> Input<'task> {
     where
         T: Send + Sync + 'static,
     {
-        self.app.get(self.endpoint().scope_id())
+        self.app.get(self.parts.route)
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
