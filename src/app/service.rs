@@ -16,8 +16,7 @@ use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
-use super::endpoint::Endpoint;
-use super::{App, Recognize};
+use super::{App, RouteData};
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -89,13 +88,12 @@ enum AppServiceFutureStatus {
 }
 
 impl AppServiceFuture {
-    fn endpoint<'a>(&self, app: &'a App) -> Option<&'a Endpoint> {
-        let parts = self.parts.as_ref()?;
-        app.endpoint(parts.endpoint_id)
+    fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
+        app.modifier(*self.get_route(&self.app)?.modifier_ids.get(pos)?)
     }
 
-    fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
-        app.modifier(*self.endpoint(&self.app)?.modifier_ids.get(pos)?)
+    fn get_route<'a>(&self, app: &'a App) -> Option<&'a RouteData> {
+        app.route(self.parts.as_ref()?.route)
     }
 
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
@@ -152,12 +150,13 @@ impl AppServiceFuture {
                 (Start, Polled::Empty) => {
                     {
                         let request = self.request.as_ref().expect("This future has already polled");
-                        let Recognize { endpoint_id, params } =
-                            match self.app.recognize(request.uri().path(), request.method()) {
-                                Ok(r) => r,
-                                Err(e) => break Err(e),
-                            };
-                        self.parts = Some(InputParts::new(endpoint_id, params));
+                        let (pos, params) = match self.app.recognize(request.uri().path(), request.method()) {
+                            Ok(r) => r,
+                            Err(e) => break Err(e),
+                        };
+                        let route_id = self.app.inner.routes[pos].id;
+                        debug_assert_eq!(route_id.1, pos);
+                        self.parts = Some(InputParts::new(route_id, params));
                     }
 
                     match self.get_modifier(0, &self.app) {
@@ -165,7 +164,7 @@ impl AppServiceFuture {
                             in_flight: modifier.before_handle(&mut input!()),
                             pos: 0,
                         },
-                        None => match self.endpoint(&self.app) {
+                        None => match self.get_route(&self.app) {
                             Some(endpoint) => Handle {
                                 in_flight: endpoint.handler.handle(&mut input!()),
                                 pos: 0,
@@ -191,7 +190,7 @@ impl AppServiceFuture {
                             in_flight: modifier.before_handle(&mut input!()),
                             pos: pos + 1,
                         },
-                        None => match self.endpoint(&self.app) {
+                        None => match self.get_route(&self.app) {
                             Some(endpoint) => Handle {
                                 in_flight: endpoint.handler.handle(&mut input!()),
                                 pos: pos + 1,
