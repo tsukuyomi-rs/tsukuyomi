@@ -110,24 +110,53 @@ impl AppServiceFuture {
             };
         }
 
-        loop {
-            let output = match self.status {
-                Start | Recognized => None,
-                BeforeHandle { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
-                Handle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
-                AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
+        macro_rules! ready {
+            ($e:expr) => {
+                match $e {
+                    Ok(::futures::Async::Ready(x)) => Ok(x),
+                    Ok(::futures::Async::NotReady) => return Ok(::futures::Async::NotReady),
+                    Err(e) => Err(e),
+                }
+            };
+        }
+
+        enum Polled {
+            BeforeHandle(Option<Result<Output, Error>>),
+            Handle(Result<Output, Error>),
+            AfterHandle(Result<Output, Error>),
+            Empty,
+        }
+
+        let result = loop {
+            let polled = match self.status {
+                Start | Recognized => Polled::Empty,
+                BeforeHandle { ref mut in_flight, .. } => {
+                    // FIXME: use result.transpose()
+                    Polled::BeforeHandle(match ready!(in_flight.poll_ready(&mut input!())) {
+                        Ok(Some(x)) => Some(Ok(x)),
+                        Ok(None) => None,
+                        Err(e) => Some(Err(e)),
+                    })
+                }
+                Handle { ref mut in_flight, .. } => Polled::Handle(ready!(in_flight.poll_ready(&mut input!()))),
+                AfterHandle { ref mut in_flight, .. } => {
+                    Polled::AfterHandle(ready!(in_flight.poll_ready(&mut input!())))
+                }
                 Done => panic!("unexpected state"),
             };
 
-            self.status = match (mem::replace(&mut self.status, Done), output) {
-                (Start, None) => {
+            self.status = match (mem::replace(&mut self.status, Done), polled) {
+                (Start, Polled::Empty) => {
                     let request = self.request.as_ref().expect("This future has already polled");
-                    let recognize = self.app.recognize(request.uri().path(), request.method())?;
+                    let recognize = match self.app.recognize(request.uri().path(), request.method()) {
+                        Ok(recognize) => recognize,
+                        Err(e) => break Err(e),
+                    };
                     self.parts = Some(InputParts::new(recognize));
                     Recognized
                 }
 
-                (Recognized, None) => match self.get_modifier(0, &self.app) {
+                (Recognized, Polled::Empty) => match self.get_modifier(0, &self.app) {
                     Some(modifier) => BeforeHandle {
                         in_flight: modifier.before_handle(&mut input!()),
                         pos: 0,
@@ -142,46 +171,60 @@ impl AppServiceFuture {
                     }
                 },
 
-                (BeforeHandle { pos, .. }, None) => match self.get_modifier(pos + 1, &self.app) {
-                    Some(modifier) => BeforeHandle {
-                        in_flight: modifier.before_handle(&mut input!()),
-                        pos: pos + 1,
+                (BeforeHandle { pos, .. }, Polled::BeforeHandle(result)) => match result {
+                    Some(result) => match pos.checked_sub(1) {
+                        Some(pos) => match self.get_modifier(pos, &self.app) {
+                            Some(modifier) => AfterHandle {
+                                in_flight: modifier.after_handle(&mut input!(), result),
+                                pos: pos,
+                            },
+                            None => break result,
+                        },
+                        None => break result,
                     },
-                    None => {
-                        let mut input = input!();
-                        let endpoint = input.endpoint_in(&self.app);
-                        Handle {
-                            in_flight: endpoint.handler.handle(&mut input),
+                    None => match self.get_modifier(pos + 1, &self.app) {
+                        Some(modifier) => BeforeHandle {
+                            in_flight: modifier.before_handle(&mut input!()),
                             pos: pos + 1,
+                        },
+                        None => {
+                            let mut input = input!();
+                            let endpoint = input.endpoint_in(&self.app);
+                            Handle {
+                                in_flight: endpoint.handler.handle(&mut input),
+                                pos: pos + 1,
+                            }
                         }
-                    }
+                    },
                 },
 
-                (Handle { pos, .. }, Some(output)) => match pos.checked_sub(1) {
+                (Handle { pos, .. }, Polled::Handle(result)) => match pos.checked_sub(1) {
                     Some(pos) => match self.get_modifier(pos, &self.app) {
                         Some(modifier) => AfterHandle {
-                            in_flight: modifier.after_handle(&mut input!(), output),
+                            in_flight: modifier.after_handle(&mut input!(), result),
                             pos: pos,
                         },
-                        None => break Ok(Async::Ready(output)),
+                        None => break result,
                     },
-                    None => break Ok(Async::Ready(output)),
+                    None => break result,
                 },
 
-                (AfterHandle { pos, .. }, Some(output)) => match pos.checked_sub(1) {
+                (AfterHandle { pos, .. }, Polled::AfterHandle(result)) => match pos.checked_sub(1) {
                     Some(pos) => match self.get_modifier(pos, &self.app) {
                         Some(modifier) => AfterHandle {
-                            in_flight: modifier.after_handle(&mut input!(), output),
+                            in_flight: modifier.after_handle(&mut input!(), result),
                             pos: pos,
                         },
-                        None => break Ok(Async::Ready(output)),
+                        None => break result,
                     },
-                    None => break Ok(Async::Ready(output)),
+                    None => break result,
                 },
 
                 _ => panic!("unexpected state"),
             }
-        }
+        };
+
+        result.map(Async::Ready)
     }
 
     #[allow(missing_docs)]

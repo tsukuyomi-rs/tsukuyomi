@@ -52,8 +52,8 @@ pub trait Modifier {
     ///
     /// By default, this method does nothing and immediately return the provided `Output`.
     #[allow(unused_variables)]
-    fn after_handle(&self, input: &mut Input, output: Output) -> AfterHandle {
-        AfterHandle::ready(Ok(output))
+    fn after_handle(&self, input: &mut Input, result: Result<Output, Error>) -> AfterHandle {
+        AfterHandle::ready(result)
     }
 }
 
