@@ -1,4 +1,4 @@
-//! Components for managing the handler functions.
+//! `Handler` and supplemental components.
 
 use futures::{Async, Future, Poll};
 use std::fmt;

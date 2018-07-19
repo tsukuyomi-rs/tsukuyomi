@@ -67,6 +67,12 @@ pub use handler::Handler;
 #[doc(inline)]
 pub use input::Input;
 
+#[doc(inline)]
+pub use modifier::Modifier;
+
+#[doc(inline)]
+pub use output::{Output, Responder};
+
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///
 /// This typed is intended to be used as the return type of `main()`.

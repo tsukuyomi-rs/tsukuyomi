@@ -1,4 +1,4 @@
-//! Definition of `Modifier` and supplemental components.
+//! `Modifier` and supplemental components.
 //!
 //! The purpose of `Modifier` is to insert some processes before and after
 //! applying `Handler` in a certain scope.

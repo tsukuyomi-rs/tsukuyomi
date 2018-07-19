@@ -153,7 +153,7 @@ impl AppBuilder {
     fn new_route(&mut self, scope_id: ScopeId, config: impl RouteConfig) {
         let mut route = RouteBuilder {
             scope_id,
-            uri: Uri::new(),
+            uri: Uri::root(),
             method: Method::GET,
             modifiers: vec![],
             handler: None,
