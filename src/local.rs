@@ -45,7 +45,7 @@ use app::App;
 use error::CritError;
 use input::body::RequestBody;
 use output::{Data, Receive, ResponseBody};
-use rt::{self, RuntimeMode};
+use server::blocking::{with_set_mode, RuntimeMode};
 
 /// A local server which emulates an HTTP service without using the low-level transport.
 ///
@@ -201,7 +201,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         let request = request.body(body)?;
 
         let future = client.service.dispatch_request(request);
-        rt::runtime::with_set_mode(RuntimeMode::CurrentThread, || {
+        with_set_mode(RuntimeMode::CurrentThread, || {
             client.runtime.block_on(TestResponseFuture::Initial(future))
         })
     }
