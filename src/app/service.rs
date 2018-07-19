@@ -10,14 +10,13 @@ use std::mem;
 use tokio;
 
 use error::{CritError, Error};
-use filter::Filtering;
 use handler::Handle;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
-use super::{App, ScopeId};
+use super::App;
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -83,47 +82,17 @@ pub struct AppServiceFuture {
 enum AppServiceFutureStatus {
     Start,
     Recognized,
-    BeforeHandle { in_flight: BeforeHandle, next: usize },
-    Filtering { in_flight: Filtering, next: usize },
-    Handle(Handle),
-    AfterHandle { in_flight: AfterHandle, next: usize },
+    BeforeHandle { in_flight: BeforeHandle, pos: usize },
+    Handle { in_flight: Handle, pos: usize },
+    AfterHandle { in_flight: AfterHandle, pos: usize },
     Done,
 }
 
 impl AppServiceFuture {
     fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
         let parts = self.parts.as_ref()?;
-        let scope_id = &self.app.endpoint(parts.recognize.endpoint_id)?.scope_id();
-        match scope_id {
-            ScopeId::Global => app.inner.modifiers.get(pos).map(|m| &**m),
-            ScopeId::Scope(id) => {
-                let modifier_ids = &self.app.inner.scopes.get(*id)?.modifier_ids;
-                let id = modifier_ids.get(pos)?;
-                app.modifier(*id)
-            }
-        }
-    }
-
-    fn get_modifier_rev<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
-        let parts = self.parts.as_ref()?;
-        let scope_id = &self.app.endpoint(parts.recognize.endpoint_id)?.scope_id();
-        match scope_id {
-            ScopeId::Global => {
-                let modifiers = &app.inner.modifiers;
-                if modifiers.len() < pos + 1 {
-                    return None;
-                }
-                modifiers.get(modifiers.len() - pos - 1).map(|m| &**m)
-            }
-            ScopeId::Scope(id) => {
-                let modifier_ids = &self.app.inner.scopes.get(*id)?.modifier_ids;
-                if modifier_ids.len() < pos + 1 {
-                    return None;
-                }
-                let &id = modifier_ids.get(modifier_ids.len() - pos - 1)?;
-                app.modifier(id)
-            }
-        }
+        let &id = self.app.endpoint(parts.recognize.endpoint_id)?.modifier_ids.get(pos)?;
+        app.modifier(id)
     }
 
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
@@ -144,12 +113,8 @@ impl AppServiceFuture {
         loop {
             let output = match self.status {
                 Start | Recognized => None,
-                BeforeHandle { ref mut in_flight, .. } => {
-                    try_ready!(in_flight.poll_ready(&mut input!()));
-                    None
-                }
-                Filtering { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
-                Handle(ref mut in_flight) => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
+                BeforeHandle { ref mut in_flight, .. } => try_ready!(in_flight.poll_ready(&mut input!())),
+                Handle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 AfterHandle { ref mut in_flight, .. } => Some(try_ready!(in_flight.poll_ready(&mut input!()))),
                 Done => panic!("unexpected state"),
             };
@@ -165,65 +130,51 @@ impl AppServiceFuture {
                 (Recognized, None) => match self.get_modifier(0, &self.app) {
                     Some(modifier) => BeforeHandle {
                         in_flight: modifier.before_handle(&mut input!()),
-                        next: 1,
+                        pos: 0,
                     },
                     None => {
                         let mut input = input!();
                         let endpoint = input.endpoint_in(&self.app);
-                        match endpoint.apply_filter(&mut input, 0) {
-                            Some(in_flight) => Filtering { in_flight, next: 1 },
-                            None => Handle(endpoint.apply_handler(&mut input)),
+                        Handle {
+                            in_flight: endpoint.handler.handle(&mut input),
+                            pos: 0,
                         }
                     }
                 },
 
-                (BeforeHandle { next, .. }, None) => match self.get_modifier(next, &self.app) {
+                (BeforeHandle { pos, .. }, None) => match self.get_modifier(pos + 1, &self.app) {
                     Some(modifier) => BeforeHandle {
                         in_flight: modifier.before_handle(&mut input!()),
-                        next: next + 1,
+                        pos: pos + 1,
                     },
                     None => {
                         let mut input = input!();
                         let endpoint = input.endpoint_in(&self.app);
-                        match endpoint.apply_filter(&mut input, 0) {
-                            Some(in_flight) => Filtering { in_flight, next: 1 },
-                            None => Handle(endpoint.apply_handler(&mut input)),
+                        Handle {
+                            in_flight: endpoint.handler.handle(&mut input),
+                            pos: pos + 1,
                         }
                     }
                 },
 
-                (Filtering { .. }, Some(output)) => match self.get_modifier_rev(0, &self.app) {
-                    Some(modifier) => AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        next: 1,
-                    },
-                    None => break Ok(Async::Ready(output)),
-                },
-
-                (Filtering { next, .. }, None) => {
-                    let mut input = input!();
-                    let endpoint = input.endpoint_in(&self.app);
-                    match endpoint.apply_filter(&mut input, next) {
-                        Some(in_flight) => Filtering {
-                            in_flight,
-                            next: next + 1,
+                (Handle { pos, .. }, Some(output)) => match pos.checked_sub(1) {
+                    Some(pos) => match self.get_modifier(pos, &self.app) {
+                        Some(modifier) => AfterHandle {
+                            in_flight: modifier.after_handle(&mut input!(), output),
+                            pos: pos,
                         },
-                        None => Handle(endpoint.apply_handler(&mut input)),
-                    }
-                }
-
-                (Handle(..), Some(output)) => match self.get_modifier_rev(0, &self.app) {
-                    Some(modifier) => AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        next: 1,
+                        None => break Ok(Async::Ready(output)),
                     },
                     None => break Ok(Async::Ready(output)),
                 },
 
-                (AfterHandle { next, .. }, Some(output)) => match self.get_modifier_rev(next, &self.app) {
-                    Some(modifier) => AfterHandle {
-                        in_flight: modifier.after_handle(&mut input!(), output),
-                        next: next + 1,
+                (AfterHandle { pos, .. }, Some(output)) => match pos.checked_sub(1) {
+                    Some(pos) => match self.get_modifier(pos, &self.app) {
+                        Some(modifier) => AfterHandle {
+                            in_flight: modifier.after_handle(&mut input!(), output),
+                            pos: pos,
+                        },
+                        None => break Ok(Async::Ready(output)),
                     },
                     None => break Ok(Async::Ready(output)),
                 },

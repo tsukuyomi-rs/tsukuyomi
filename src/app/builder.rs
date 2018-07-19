@@ -11,7 +11,6 @@ use indexmap::map::IndexMap;
 use state::Container;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
-use filter::Filter;
 use handler::{Handle, Handler};
 use input::Input;
 use modifier::Modifier;
@@ -41,7 +40,7 @@ struct EndpointBuilder {
     scope_id: ScopeId,
     uri: Uri,
     method: Method,
-    filters: Vec<Box<dyn Filter + Send + Sync + 'static>>,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
 }
 
@@ -137,7 +136,7 @@ impl AppBuilder {
             scope_id: scope_id,
             uri: Uri::new(),
             method: Method::GET,
-            filters: vec![],
+            modifiers: vec![],
             handler: None,
         };
         config.configure(&mut Route {
@@ -192,7 +191,6 @@ impl AppBuilder {
             parent: parent,
             prefix: None,
             chain: chain,
-            modifier_ids: vec![],
             modifiers: vec![],
         });
 
@@ -330,30 +328,18 @@ impl AppBuilder {
             modifiers,
             mut container,
             mut container_scoped,
-            mut scopes,
+            scopes,
             prefix,
             mut options_handler,
         } = mem::replace(self, AppBuilder::new());
 
         result?;
 
-        for i in 0..scopes.len() {
-            // calculate the modifier identifiers.
-            let mut modifier_ids: Vec<_> = (0..modifiers.len())
-                .map(|pos| ModifierId(ScopeId::Global, pos))
-                .collect();
-            for &id in &scopes[i].chain {
-                if let Some(scope) = id.local_id().and_then(|id| scopes.get(id)) {
-                    modifier_ids.extend((0..scope.modifiers.len()).map(|pos| ModifierId(id, pos)));
-                }
-            }
-            scopes[i].modifier_ids = modifier_ids;
-        }
-
         // finalize endpoints based on the created scope information.
         let mut endpoints: Vec<Endpoint> = endpoints
             .into_iter()
-            .map(|e| -> Result<Endpoint, Error> {
+            .enumerate()
+            .map(|(e_id, e)| -> Result<Endpoint, Error> {
                 let mut uris = vec![&e.uri];
                 let mut current = e.scope_id.local_id();
                 while let Some(scope) = current.and_then(|i| scopes.get(i)) {
@@ -366,11 +352,25 @@ impl AppBuilder {
                 let handler = e.handler
                     .ok_or_else(|| format_err!("default handler is not supported"))?;
 
+                // calculate the modifier identifiers.
+                let mut modifier_ids: Vec<_> = (0..modifiers.len()).map(|pos| ModifierId::Global(pos)).collect();
+                if let Some(scope) = e.scope_id.local_id().and_then(|id| scopes.get(id)) {
+                    for (id, scope) in scope
+                        .chain
+                        .iter()
+                        .filter_map(|&id| id.local_id().and_then(|id| scopes.get(id).map(|scope| (id, scope))))
+                    {
+                        modifier_ids.extend((0..scope.modifiers.len()).map(|pos| ModifierId::Scope(id, pos)));
+                    }
+                }
+                modifier_ids.extend((0..e.modifiers.len()).map(|pos| ModifierId::Route(e_id, pos)));
+
                 Ok(Endpoint {
                     uri: uri,
                     method: e.method,
                     scope_id: e.scope_id,
-                    filters: e.filters,
+                    modifier_ids,
+                    modifiers: e.modifiers,
                     handler,
                 })
             })
@@ -402,8 +402,9 @@ impl AppBuilder {
                             uri: uri.clone(),
                             method: Method::OPTIONS,
                             scope_id: ScopeId::Global,
-                            filters: vec![],
+                            modifiers: vec![],
                             handler: (f)(m),
+                            modifier_ids: (0..modifiers.len()).map(|i| ModifierId::Global(i)).collect(),
                         });
                         id
                     });
@@ -559,50 +560,9 @@ impl<'a> Route<'a> {
         self
     }
 
-    /// Register a `Filter` to this route.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # extern crate http;
-    /// # extern crate tsukuyomi;
-    /// # use http::Method;
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::app::App;
-    /// # use tsukuyomi::app::builder::Route;
-    /// use tsukuyomi::filter::Filtering;
-    ///
-    /// fn accept(_: &mut Input) ->Filtering {
-    ///     // ...
-    /// #   unimplemented!()
-    /// }
-    ///
-    /// fn authorize(_: &mut Input) -> Filtering {
-    ///     // ...
-    /// #   unimplemented!()
-    /// }
-    ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
-    /// let app = App::builder()
-    ///     .route(|route: &mut Route| {
-    ///         route.uri("/posts/new");
-    ///         route.method(Method::POST);
-    ///
-    ///         route.filter(accept);
-    ///         route.filter(authorize);
-    ///         // ...
-    ///
-    ///         route.handler(|_: &mut Input| {
-    ///             // ...
-    /// #           unimplemented!()
-    ///         });
-    ///     })
-    ///     .finish()?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn filter(&mut self, filter: impl Filter + Send + Sync + 'static) -> &mut Self {
-        self.endpoint.filters.push(Box::new(filter));
+    /// Register a `Modifier` to this route.
+    pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
+        self.endpoint.modifiers.push(Box::new(modifier));
         self
     }
 

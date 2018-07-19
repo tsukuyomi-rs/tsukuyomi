@@ -47,7 +47,6 @@ extern crate tsukuyomi_codegen;
 
 pub mod app;
 pub mod error;
-pub mod filter;
 pub mod handler;
 pub mod input;
 pub mod json;

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 struct MarkModifier<T1, T2>
 where
-    T1: Fn(&mut Vec<&'static str>) -> Result<(), Error>,
+    T1: Fn(&mut Vec<&'static str>) -> Result<Option<Output>, Error>,
     T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
 {
     marker: Arc<Mutex<Vec<&'static str>>>,
@@ -23,7 +23,7 @@ where
 
 impl<T1, T2> Modifier for MarkModifier<T1, T2>
 where
-    T1: Fn(&mut Vec<&'static str>) -> Result<(), Error>,
+    T1: Fn(&mut Vec<&'static str>) -> Result<Option<Output>, Error>,
     T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
 {
     fn before_handle(&self, _: &mut Input) -> BeforeHandle {
@@ -51,7 +51,7 @@ fn global_modifier() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A");
@@ -115,7 +115,7 @@ fn global_modifiers() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B1");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A1");
@@ -126,7 +126,7 @@ fn global_modifiers() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B2");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A2");
@@ -151,7 +151,7 @@ fn scoped_modifier() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B1");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A1");
@@ -163,7 +163,7 @@ fn scoped_modifier() {
                 marker: marker.clone(),
                 before: |m| {
                     m.push("B2");
-                    Ok(())
+                    Ok(None)
                 },
                 after: |m| {
                     m.push("A2");
@@ -208,7 +208,7 @@ fn nested_modifiers() {
                 marker: marker.clone(),
                 before: |m| {
                     m.push("B1");
-                    Ok(())
+                    Ok(None)
                 },
                 after: |m| {
                     m.push("A1");
@@ -220,7 +220,7 @@ fn nested_modifiers() {
                     marker: marker.clone(),
                     before: |m| {
                         m.push("B2");
-                        Ok(())
+                        Ok(None)
                     },
                     after: |m| {
                         m.push("A2");

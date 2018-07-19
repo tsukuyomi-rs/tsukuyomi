@@ -1,12 +1,11 @@
 use http::Method;
 use std::fmt;
 
-use filter::{Filter, Filtering};
-use handler::{Handle, Handler};
-use input::Input;
+use handler::Handler;
+use modifier::Modifier;
 
 use super::uri::Uri;
-use super::ScopeId;
+use super::{ModifierId, ScopeId};
 
 /// A type representing an endpoint.
 ///
@@ -16,8 +15,9 @@ pub struct Endpoint {
     pub(super) uri: Uri,
     pub(super) method: Method,
     pub(super) scope_id: ScopeId,
-    pub(super) filters: Vec<Box<dyn Filter + Send + Sync + 'static>>,
+    pub(super) modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
+    pub(super) modifier_ids: Vec<ModifierId>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -27,6 +27,7 @@ impl fmt::Debug for Endpoint {
             .field("uri", &self.uri)
             .field("method", &self.method)
             .field("scope_id", &self.scope_id)
+            .field("modifier_ids", &self.modifier_ids)
             .finish()
     }
 }
@@ -44,13 +45,5 @@ impl Endpoint {
 
     pub(crate) fn scope_id(&self) -> ScopeId {
         self.scope_id
-    }
-
-    pub(crate) fn apply_filter(&self, input: &mut Input, pos: usize) -> Option<Filtering> {
-        self.filters.get(pos).map(|filter| filter.apply(input))
-    }
-
-    pub(crate) fn apply_handler(&self, input: &mut Input) -> Handle {
-        self.handler.handle(input)
     }
 }
