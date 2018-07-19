@@ -27,7 +27,7 @@ impl Upgrade {
             .status(StatusCode::SWITCHING_PROTOCOLS)
             .header(header::CONNECTION, "Upgrade")
             .header(header::UPGRADE, name);
-        UpgradeBuilder { response: response }
+        UpgradeBuilder { response }
     }
 }
 
@@ -45,7 +45,7 @@ impl Responder for Upgrade {
             .map_err(Error::internal_server_error)?;
 
         Ok(Output {
-            response: response,
+            response,
             upgrade: Some(self.handler),
         })
     }

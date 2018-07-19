@@ -78,6 +78,7 @@ pub struct AppServiceFuture {
     status: AppServiceFutureStatus,
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 #[derive(Debug)]
 enum AppServiceFutureStatus {
     Start,
@@ -121,6 +122,7 @@ impl AppServiceFuture {
             };
         }
 
+        #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
         enum Polled {
             BeforeHandle(Option<Result<Output, Error>>),
             Handle(Result<Output, Error>),
@@ -179,7 +181,7 @@ impl AppServiceFuture {
                         Some(pos) => match self.get_modifier(pos, &self.app) {
                             Some(modifier) => AfterHandle {
                                 in_flight: modifier.after_handle(&mut input!(), result),
-                                pos: pos,
+                                pos,
                             },
                             None => break result,
                         },
@@ -204,7 +206,7 @@ impl AppServiceFuture {
                     Some(pos) => match self.get_modifier(pos, &self.app) {
                         Some(modifier) => AfterHandle {
                             in_flight: modifier.after_handle(&mut input!(), result),
-                            pos: pos,
+                            pos,
                         },
                         None => break result,
                     },
@@ -215,7 +217,7 @@ impl AppServiceFuture {
                     Some(pos) => match self.get_modifier(pos, &self.app) {
                         Some(modifier) => AfterHandle {
                             in_flight: modifier.after_handle(&mut input!(), result),
-                            pos: pos,
+                            pos,
                         },
                         None => break result,
                     },
@@ -233,7 +235,7 @@ impl AppServiceFuture {
     pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
         match self.poll_in_flight() {
             Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => {
                 self.status = AppServiceFutureStatus::Done;
                 self.handle_error(err).map(Async::Ready)
@@ -275,7 +277,7 @@ impl AppServiceFuture {
                 on_upgrade.map_err(|_| error!("")).and_then(|upgraded| {
                     let cx = UpgradeContext {
                         io: upgraded,
-                        request: request,
+                        request,
                         _priv: (),
                     };
                     handler.upgrade(cx)

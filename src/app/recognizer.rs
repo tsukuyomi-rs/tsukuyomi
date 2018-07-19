@@ -108,7 +108,7 @@ impl Node {
             }
 
             // Insert the remaing path into the set of children.
-            let c = path.iter().nth(offset);
+            let c = path.get(offset);
             match c {
                 Some(b':') | Some(b'*') => {
                     if n.children.iter().any(|ch| !ch.is_wildcard()) {
@@ -127,7 +127,7 @@ impl Node {
 
                     // Find the end position of wildcard segment.
                     let end = find_wildcard_end(path, offset)?;
-                    if &path[offset..end] != &n.path[..] {
+                    if path[offset..end] != n.path[..] {
                         bail!("wildcard conflict");
                     }
                     if end == path.len() {
@@ -180,7 +180,7 @@ impl Node {
         let mut pos = 0;
         let mut n = self;
 
-        'walk: while pos < path.len() {
+        while pos < path.len() {
             // Insert a wildcard node
             let i = find_wildcard_end(path, pos)?;
             n = { n }.add_child(&path[pos..i])?;
@@ -209,49 +209,61 @@ impl Node {
 
         'walk: loop {
             if path.len() > offset + n.path.len() {
-                if &path[offset..offset + n.path.len()] == &n.path[..] {
+                if path[offset..offset + n.path.len()] == n.path[..] {
                     offset += n.path.len();
 
-                    'inner: loop {
-                        let c = path[offset];
-                        for ch in &n.children {
-                            if ch.path.starts_with(b":") || ch.path.starts_with(b"*") {
-                                break 'inner;
-                            }
-                            if ch.path[0] == c {
-                                n = ch;
-                                continue 'walk;
-                            }
-                        }
-                        return None;
+                    enum Kind {
+                        Param,
+                        Segment(usize),
                     }
 
-                    n = &n.children[0];
-                    match n.path[0] {
-                        b':' => {
-                            let span = path[offset..]
-                                .into_iter()
-                                .position(|&b| b == b'/')
-                                .unwrap_or(path.len() - offset);
-                            captures.push((offset, offset + span));
-                            if span < path.len() - offset {
-                                if !n.children.is_empty() {
-                                    offset += span;
-                                    n = &n.children[0];
-                                    continue 'walk;
-                                }
-                                return None;
+                    let ch_kind = n.children
+                        .iter()
+                        .enumerate()
+                        .filter_map({
+                            let pred = path[offset];
+                            move |(pos, ch)| match ch.path.get(0)? {
+                                b':' | b'*' => Some(Kind::Param),
+                                &c if c == pred => Some(Kind::Segment(pos)),
+                                _ => None,
                             }
-                            break 'walk;
+                        })
+                        .next()?;
+
+                    match ch_kind {
+                        Kind::Param => {
+                            n = &n.children[0];
+                            match n.path[0] {
+                                b':' => {
+                                    let span = path[offset..]
+                                        .into_iter()
+                                        .position(|&b| b == b'/')
+                                        .unwrap_or(path.len() - offset);
+                                    captures.push((offset, offset + span));
+                                    if span < path.len() - offset {
+                                        if !n.children.is_empty() {
+                                            offset += span;
+                                            n = &n.children[0];
+                                            continue 'walk;
+                                        }
+                                        return None;
+                                    }
+                                    break 'walk;
+                                }
+                                b'*' => {
+                                    captures.push((offset, path.len()));
+                                    break 'walk;
+                                }
+                                _ => unreachable!("invalid node type"),
+                            }
                         }
-                        b'*' => {
-                            captures.push((offset, path.len()));
-                            break 'walk;
+                        Kind::Segment(pos) => {
+                            n = &n.children[pos];
+                            continue 'walk;
                         }
-                        _ => unreachable!("invalid node type"),
                     }
                 }
-            } else if &path[offset..] == &n.path[..] {
+            } else if path[offset..] == n.path[..] {
                 break 'walk;
             }
 

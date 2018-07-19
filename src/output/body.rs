@@ -137,7 +137,7 @@ impl Receive {
         match self.0 {
             ReceiveInner::Empty => Ok(Async::Ready(Data(DataInner::Empty))),
             ReceiveInner::Sized(ref mut data) => Ok(Async::Ready(Data(DataInner::Sized(
-                data.take().expect("The response body has already resolved").into(),
+                data.take().expect("The response body has already resolved"),
             )))),
             ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
                 while let Some(chunk) = try_ready!(body.poll()) {
@@ -176,7 +176,7 @@ impl Data {
         !self.is_sized()
     }
 
-    pub fn len(&self) -> Option<usize> {
+    pub fn content_length(&self) -> Option<usize> {
         match self.0 {
             DataInner::Empty => Some(0),
             DataInner::Sized(ref data) => Some(data.len()),

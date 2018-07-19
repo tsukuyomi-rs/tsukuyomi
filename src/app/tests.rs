@@ -173,7 +173,6 @@ fn scope_nested() {
     );
 }
 
-
 #[test]
 fn scope_variable() {
     let app = App::builder()
@@ -214,7 +213,6 @@ fn scope_variable() {
     assert_eq!(app.get(RouteId(ScopeId::Local(5), 6)).map(String::as_str), Some("B"));
     assert_eq!(app.get(RouteId(ScopeId::Local(6), 7)).map(String::as_str), Some("B"));
 }
-
 
 #[test]
 fn failcase_duplicate_uri_and_method() {

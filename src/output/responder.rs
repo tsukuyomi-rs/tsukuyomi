@@ -5,7 +5,7 @@ use error::Error;
 use input::Input;
 
 use super::body::ResponseBody;
-use super::output::Output;
+use super::Output;
 
 /// A trait representing the conversion to an HTTP response.
 pub trait Responder {
@@ -18,7 +18,7 @@ where
     T: Responder,
 {
     fn respond_to(self, cx: &Input) -> Result<Output, Error> {
-        self.ok_or_else(|| Error::not_found())?.respond_to(cx)
+        self.ok_or_else(Error::not_found)?.respond_to(cx)
     }
 }
 

@@ -26,7 +26,7 @@ impl CookieManager {
     pub(crate) fn init(&mut self, h: &HeaderMap) -> Result<(), Error> {
         for raw in h.get_all(header::COOKIE) {
             let raw_s = raw.to_str()?;
-            for s in raw_s.split(";").map(|s| s.trim()) {
+            for s in raw_s.split(';').map(|s| s.trim()) {
                 let cookie = Cookie::parse_encoded(s)?.into_owned();
                 self.jar.add_original(cookie);
             }

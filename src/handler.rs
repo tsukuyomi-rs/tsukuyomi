@@ -155,6 +155,7 @@ where
 #[derive(Debug)]
 pub struct Handle(HandleKind);
 
+#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum HandleKind {
     Ready(Option<Result<Output, Error>>),
     Async(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send>),

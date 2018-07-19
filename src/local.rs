@@ -62,13 +62,13 @@ impl LocalServer {
     /// This function will return an error if the construction of the runtime is failed.
     pub fn new(app: App) -> io::Result<LocalServer> {
         Ok(LocalServer {
-            app: app,
+            app,
             runtime: Runtime::new()?,
         })
     }
 
     /// Create a `Client` associated with this server.
-    pub fn client<'a>(&'a mut self) -> Client<'a> {
+    pub fn client(&mut self) -> Client {
         Client {
             service: self.app.new_service(),
             runtime: &mut self.runtime,
@@ -112,7 +112,7 @@ impl<'a> Client<'a> {
 
         LocalRequest {
             client: Some(self),
-            request: request,
+            request,
             body: None,
         }
     }
@@ -198,7 +198,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         let body = body.unwrap_or_else(|| RequestBody::from(()));
 
         let client = client.expect("This LocalRequest has already been used.");
-        let request = request.body(body.into())?;
+        let request = request.body(body)?;
 
         let future = client.service.dispatch_request(request);
         rt::runtime::with_set_mode(RuntimeMode::CurrentThread, || {
@@ -207,6 +207,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 #[derive(Debug)]
 enum TestResponseFuture {
     Initial(AppServiceFuture),
@@ -226,9 +227,9 @@ impl Future for TestResponseFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
             let polled = match *self {
-                TestResponseFuture::Initial(ref mut f) => Some(Polled::Response(try_ready!(f.poll_ready().into()))),
+                TestResponseFuture::Initial(ref mut f) => Some(Polled::Response(try_ready!(f.poll_ready()))),
                 TestResponseFuture::Receive(ref mut res) => {
-                    Some(Polled::Received(try_ready!(res.body_mut().poll_ready().into())))
+                    Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))
                 }
                 _ => unreachable!("unexpected state"),
             };
