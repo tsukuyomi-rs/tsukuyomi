@@ -6,7 +6,7 @@ use std::cell::Cell;
 use std::ops::{Deref, DerefMut, Index};
 use std::ptr::NonNull;
 
-use app::{App, Endpoint, Recognize};
+use app::{App, Endpoint};
 use error::Error;
 use input::RequestBody;
 
@@ -49,16 +49,18 @@ fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
 /// The inner parts of `Input`.
 #[derive(Debug)]
 pub(crate) struct InputParts {
-    pub(crate) recognize: Recognize,
+    pub(crate) endpoint_id: usize,
+    pub(crate) params: Vec<(usize, usize)>,
     pub(crate) cookies: CookieManager,
     pub(crate) locals: LocalMap,
     _priv: (),
 }
 
 impl InputParts {
-    pub(crate) fn new(recognize: Recognize) -> InputParts {
+    pub(crate) fn new(endpoint_id: usize, params: Vec<(usize, usize)>) -> InputParts {
         InputParts {
-            recognize,
+            endpoint_id,
+            params,
             cookies: CookieManager::new(),
             locals: LocalMap::new(),
             _priv: (),
@@ -143,20 +145,14 @@ impl<'task> Input<'task> {
 
     /// Returns the reference to a `Endpoint` matched to the incoming request.
     pub fn endpoint(&self) -> &Endpoint {
-        self.endpoint_in(self.app)
-    }
-
-    pub(crate) fn endpoint_in<'a>(&self, app: &'a App) -> &'a Endpoint {
-        let Recognize { endpoint_id: i, .. } = self.parts.recognize;
-        app.endpoint(i).expect("invalid endpoint ID")
+        self.app.endpoint(self.parts.endpoint_id).expect("invalid endpoint ID")
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Params {
-        let Recognize { ref params, .. } = self.parts.recognize;
         Params {
-            path: self.request().uri().path(),
-            params: Some(&params[..]),
+            path: self.request.uri().path(),
+            params: Some(&self.parts.params[..]),
         }
     }
 

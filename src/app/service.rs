@@ -16,7 +16,8 @@ use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
 
-use super::App;
+use super::endpoint::Endpoint;
+use super::{App, Recognize};
 
 impl App {
     /// Creates a new `AppService` to manage a session.
@@ -81,7 +82,6 @@ pub struct AppServiceFuture {
 #[derive(Debug)]
 enum AppServiceFutureStatus {
     Start,
-    Recognized,
     BeforeHandle { in_flight: BeforeHandle, pos: usize },
     Handle { in_flight: Handle, pos: usize },
     AfterHandle { in_flight: AfterHandle, pos: usize },
@@ -89,10 +89,13 @@ enum AppServiceFutureStatus {
 }
 
 impl AppServiceFuture {
-    fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
+    fn endpoint<'a>(&self, app: &'a App) -> Option<&'a Endpoint> {
         let parts = self.parts.as_ref()?;
-        let &id = self.app.endpoint(parts.recognize.endpoint_id)?.modifier_ids.get(pos)?;
-        app.modifier(id)
+        app.endpoint(parts.endpoint_id)
+    }
+
+    fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
+        app.modifier(*self.endpoint(&self.app)?.modifier_ids.get(pos)?)
     }
 
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
@@ -129,7 +132,7 @@ impl AppServiceFuture {
 
         let result = loop {
             let polled = match self.status {
-                Start | Recognized => Polled::Empty,
+                Start => Polled::Empty,
                 BeforeHandle { ref mut in_flight, .. } => {
                     // FIXME: use result.transpose()
                     Polled::BeforeHandle(match ready!(in_flight.poll_ready(&mut input!())) {
@@ -147,29 +150,30 @@ impl AppServiceFuture {
 
             self.status = match (mem::replace(&mut self.status, Done), polled) {
                 (Start, Polled::Empty) => {
-                    let request = self.request.as_ref().expect("This future has already polled");
-                    let recognize = match self.app.recognize(request.uri().path(), request.method()) {
-                        Ok(recognize) => recognize,
-                        Err(e) => break Err(e),
-                    };
-                    self.parts = Some(InputParts::new(recognize));
-                    Recognized
-                }
-
-                (Recognized, Polled::Empty) => match self.get_modifier(0, &self.app) {
-                    Some(modifier) => BeforeHandle {
-                        in_flight: modifier.before_handle(&mut input!()),
-                        pos: 0,
-                    },
-                    None => {
-                        let mut input = input!();
-                        let endpoint = input.endpoint_in(&self.app);
-                        Handle {
-                            in_flight: endpoint.handler.handle(&mut input),
-                            pos: 0,
-                        }
+                    {
+                        let request = self.request.as_ref().expect("This future has already polled");
+                        let Recognize { endpoint_id, params } =
+                            match self.app.recognize(request.uri().path(), request.method()) {
+                                Ok(r) => r,
+                                Err(e) => break Err(e),
+                            };
+                        self.parts = Some(InputParts::new(endpoint_id, params));
                     }
-                },
+
+                    match self.get_modifier(0, &self.app) {
+                        Some(modifier) => BeforeHandle {
+                            in_flight: modifier.before_handle(&mut input!()),
+                            pos: 0,
+                        },
+                        None => match self.endpoint(&self.app) {
+                            Some(endpoint) => Handle {
+                                in_flight: endpoint.handler.handle(&mut input!()),
+                                pos: 0,
+                            },
+                            None => panic!(""),
+                        },
+                    }
+                }
 
                 (BeforeHandle { pos, .. }, Polled::BeforeHandle(result)) => match result {
                     Some(result) => match pos.checked_sub(1) {
@@ -187,14 +191,13 @@ impl AppServiceFuture {
                             in_flight: modifier.before_handle(&mut input!()),
                             pos: pos + 1,
                         },
-                        None => {
-                            let mut input = input!();
-                            let endpoint = input.endpoint_in(&self.app);
-                            Handle {
-                                in_flight: endpoint.handler.handle(&mut input),
+                        None => match self.endpoint(&self.app) {
+                            Some(endpoint) => Handle {
+                                in_flight: endpoint.handler.handle(&mut input!()),
                                 pos: pos + 1,
-                            }
-                        }
+                            },
+                            None => panic!(""),
+                        },
                     },
                 },
 
