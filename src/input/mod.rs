@@ -1,4 +1,4 @@
-//! Components for parsing incoming HTTP requests.
+//! Components for parsing incoming HTTP requests and accessing the global or request-local data.
 
 pub mod body;
 pub mod local_map;
@@ -124,12 +124,12 @@ impl<'task> Input<'task> {
         Ok(cookies.cookies())
     }
 
-    #[allow(missing_docs)]
+    /// Returns a reference to `LocalMap` for managing request-local data.
     pub fn locals(&self) -> &LocalMap {
         &self.parts.locals
     }
 
-    #[allow(missing_docs)]
+    /// Returns a mutable reference to `LocalMap` for managing request-local data.
     pub fn locals_mut(&mut self) -> &mut LocalMap {
         &mut self.parts.locals
     }

@@ -1,4 +1,4 @@
-//! Implementation of the request-local and typed storage.
+//! Components for managing request-local data.
 
 use std::any::TypeId;
 use std::collections::hash_map::{self, HashMap};
