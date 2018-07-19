@@ -5,7 +5,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use error::Error;
-use input::Input;
+use input::{self, Input};
 use output::{Output, Responder};
 
 /// A trait representing handler functions.
@@ -129,7 +129,7 @@ where
         fn handle(&self, input: &mut Input) -> Handle {
             let mut future = (self.0)(input);
             Handle(HandleKind::Async(Box::new(move |input| {
-                let item = try_ready!(input.with_set_current(|| future.poll()));
+                let item = try_ready!(input::with_set_current(input, || future.poll()));
                 item.respond_to(input).map(Async::Ready)
             })))
         }
@@ -193,7 +193,7 @@ impl Handle {
         F: Future<Item = Output, Error = Error> + Send + 'static,
     {
         Handle(HandleKind::Async(Box::new(move |input| {
-            input.with_set_current(|| future.poll())
+            input::with_set_current(input, || future.poll())
         })))
     }
 
@@ -205,7 +205,7 @@ impl Handle {
         Error: From<F::Error>,
     {
         Handle(HandleKind::Async(Box::new(move |input| {
-            let x = try_ready!(input.with_set_current(|| future.poll()));
+            let x = try_ready!(input::with_set_current(input, || future.poll()));
             x.respond_to(input).map(Async::Ready)
         })))
     }

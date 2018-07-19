@@ -10,6 +10,8 @@ mod params;
 // re-exports
 pub use self::body::RequestBody;
 pub use self::cookie::Cookies;
+pub(crate) use self::global::with_set_current;
+pub use self::global::{is_set_current, with_get_current};
 pub use self::params::Params;
 
 // ====
@@ -55,48 +57,6 @@ pub struct Input<'task> {
 }
 
 impl<'task> Input<'task> {
-    pub(crate) fn with_set_current<R>(&mut self, f: impl FnOnce() -> R) -> R {
-        global::with_set_current(self, f)
-    }
-
-    /// Acquires a mutable borrow of `Input` from the current task context and executes the provided
-    /// closure with its reference.
-    ///
-    /// # Panics
-    ///
-    /// This function only work in the management of the framework and causes a panic
-    /// if any references to `Input` is not set at the current task.
-    /// Do not use this function outside of futures returned by the handler functions.
-    /// Such situations often occurs by spawning tasks by the external `Executor`
-    /// (typically calling `tokio::spawn()`).
-    ///
-    /// In additional, this function forms a (dynamic) scope to prevent the references to `Input`
-    /// violate the borrowing rule in Rust.
-    /// Duplicate borrowings such as the following code are reported as a runtime error.
-    ///
-    /// ```ignore
-    /// Input::with_current(|input| {
-    ///     some_process()
-    /// });
-    ///
-    /// fn some_process() {
-    ///     // Duplicate borrowing of `Input` occurs at this point.
-    ///     Input::with_current(|input| { ... })
-    /// }
-    /// ```
-    #[inline]
-    pub fn with_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
-        global::with_get_current(f)
-    }
-
-    /// Returns `true` if the reference to `Input` is set to the current task.
-    ///
-    /// * Outside of `Future` managed by the framework.
-    /// * A mutable borrow has already been acquired.
-    pub fn is_set() -> bool {
-        global::is_set_current()
-    }
-
     /// Returns a shared reference to the value of `Request` contained in this context.
     pub fn request(&self) -> &Request<RequestBody> {
         self.request

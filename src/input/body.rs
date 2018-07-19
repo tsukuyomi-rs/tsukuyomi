@@ -13,7 +13,7 @@ use std::ops::Deref;
 use std::{fmt, mem};
 
 use error::{CritError, Error};
-use input::Input;
+use input::{self, Input};
 
 // ==== RequestBody ====
 
@@ -300,7 +300,7 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let data = try_ready!(self.read_all.poll().map_err(Error::critical));
-        Input::with_current(|input| T::from_data(data, input)).map(Async::Ready)
+        input::with_get_current(|input| T::from_data(data, input)).map(Async::Ready)
     }
 }
 
