@@ -2,6 +2,7 @@ extern crate futures;
 extern crate http;
 extern crate tsukuyomi;
 
+use tsukuyomi::app::builder::Route;
 use tsukuyomi::handler::Handle;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
@@ -13,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 struct MarkModifier<T1, T2>
 where
-    T1: Fn(&mut Vec<&'static str>) -> Result<(), Error>,
+    T1: Fn(&mut Vec<&'static str>) -> Result<Option<Output>, Error>,
     T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
 {
     marker: Arc<Mutex<Vec<&'static str>>>,
@@ -23,14 +24,14 @@ where
 
 impl<T1, T2> Modifier for MarkModifier<T1, T2>
 where
-    T1: Fn(&mut Vec<&'static str>) -> Result<(), Error>,
+    T1: Fn(&mut Vec<&'static str>) -> Result<Option<Output>, Error>,
     T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
 {
     fn before_handle(&self, _: &mut Input) -> BeforeHandle {
         (self.before)(&mut *self.marker.lock().unwrap()).into()
     }
 
-    fn after_handle(&self, _: &mut Input, _: Output) -> AfterHandle {
+    fn after_handle(&self, _: &mut Input, _: Result<Output, Error>) -> AfterHandle {
         (self.after)(&mut *self.marker.lock().unwrap()).into()
     }
 }
@@ -51,7 +52,7 @@ fn global_modifier() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A");
@@ -115,7 +116,7 @@ fn global_modifiers() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B1");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A1");
@@ -126,7 +127,7 @@ fn global_modifiers() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B2");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A2");
@@ -151,7 +152,7 @@ fn scoped_modifier() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B1");
-                Ok(())
+                Ok(None)
             },
             after: |m| {
                 m.push("A1");
@@ -163,7 +164,7 @@ fn scoped_modifier() {
                 marker: marker.clone(),
                 before: |m| {
                     m.push("B2");
-                    Ok(())
+                    Ok(None)
                 },
                 after: |m| {
                     m.push("A2");
@@ -208,7 +209,7 @@ fn nested_modifiers() {
                 marker: marker.clone(),
                 before: |m| {
                     m.push("B1");
-                    Ok(())
+                    Ok(None)
                 },
                 after: |m| {
                     m.push("A1");
@@ -220,7 +221,7 @@ fn nested_modifiers() {
                     marker: marker.clone(),
                     before: |m| {
                         m.push("B2");
-                        Ok(())
+                        Ok(None)
                     },
                     after: |m| {
                         m.push("A2");
@@ -230,10 +231,84 @@ fn nested_modifiers() {
                 s.route(("/", {
                     let marker = marker.clone();
                     move |_: &mut Input| {
-                        marker.lock().unwrap().push("H");
+                        marker.lock().unwrap().push("H1");
                         Handle::ok(Response::new(()).into())
                     }
                 }));
+
+                s.mount("/a", |s| {
+                    s.modifier(MarkModifier {
+                        marker: marker.clone(),
+                        before: |m| {
+                            m.push("B3");
+                            Ok(Some(Response::new(()).into()))
+                        },
+                        after: |m| {
+                            m.push("A3");
+                            Ok(Response::new(()).into())
+                        },
+                    });
+                    s.route(("/", {
+                        let marker = marker.clone();
+                        move |_: &mut Input| {
+                            marker.lock().unwrap().push("H2");
+                            Handle::ok(Response::new(()).into())
+                        }
+                    }));
+                });
+            });
+        })
+        .finish()
+        .unwrap();
+
+    let mut server = LocalServer::new(app).unwrap();
+
+    let _ = server.client().get("/path/to").execute().unwrap();
+    assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
+
+    marker.lock().unwrap().clear();
+    let _ = server.client().get("/path/to/a").execute().unwrap();
+    assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "B3", "A2", "A1"]);
+}
+
+#[test]
+fn route_modifiers() {
+    let marker = Arc::new(Mutex::new(vec![]));
+
+    let app = App::builder()
+        .mount("/path", |s| {
+            s.modifier(MarkModifier {
+                marker: marker.clone(),
+                before: |m| {
+                    m.push("B1");
+                    Ok(None)
+                },
+                after: |m| {
+                    m.push("A1");
+                    Ok(Response::new(()).into())
+                },
+            });
+            s.mount("/to", |s| {
+                s.route(|r: &mut Route| {
+                    r.uri("/");
+                    r.modifier(MarkModifier {
+                        marker: marker.clone(),
+                        before: |m| {
+                            m.push("B2");
+                            Ok(None)
+                        },
+                        after: |m| {
+                            m.push("A2");
+                            Ok(Response::new(()).into())
+                        },
+                    });
+
+                    let marker = marker.clone();
+                    r.handler(move |_: &mut Input| {
+                        marker.lock().unwrap().push("H");
+                        Handle::ok(Response::new(()).into())
+                    });
+                });
             });
         })
         .finish()

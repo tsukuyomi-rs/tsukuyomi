@@ -16,7 +16,7 @@
 //! impl Modifier for RequestCounter {
 //!     fn before_handle(&self, _: &mut Input) -> BeforeHandle {
 //!        self.0.fetch_add(1, Ordering::SeqCst);
-//!        BeforeHandle::ready(Ok(()))
+//!        BeforeHandle::ready(Ok(None))
 //!     }
 //! }
 //!
@@ -45,15 +45,15 @@ pub trait Modifier {
     /// By default, this method does nothing.
     #[allow(unused_variables)]
     fn before_handle(&self, input: &mut Input) -> BeforeHandle {
-        BeforeHandle::ready(Ok(()))
+        BeforeHandle::ready(Ok(None))
     }
 
     /// Modifies the returned value from a handler.
     ///
     /// By default, this method does nothing and immediately return the provided `Output`.
     #[allow(unused_variables)]
-    fn after_handle(&self, input: &mut Input, output: Output) -> AfterHandle {
-        AfterHandle::ready(Ok(output))
+    fn after_handle(&self, input: &mut Input, result: Result<Output, Error>) -> AfterHandle {
+        AfterHandle::ready(result)
     }
 }
 
@@ -63,9 +63,12 @@ pub trait Modifier {
 #[derive(Debug)]
 pub struct BeforeHandle(BeforeHandleState);
 
+// MEMO:
+// The internal type should be replaced with `Option<Result<Output, Error>>`.
+// Currently, it is represented as `Result<T, E>` due to the restriction of `futures`.
 enum BeforeHandleState {
-    Ready(Option<Result<(), Error>>),
-    Polling(Box<dyn FnMut(&mut Input) -> Poll<(), Error> + Send + 'static>),
+    Ready(Option<Result<Option<Output>, Error>>),
+    Polling(Box<dyn FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -79,33 +82,33 @@ impl fmt::Debug for BeforeHandleState {
     }
 }
 
-impl<E> From<Result<(), E>> for BeforeHandle
+impl<E> From<Result<Option<Output>, E>> for BeforeHandle
 where
     Error: From<E>,
 {
-    fn from(result: Result<(), E>) -> BeforeHandle {
+    fn from(result: Result<Option<Output>, E>) -> BeforeHandle {
         BeforeHandle::ready(result.map_err(Into::into))
     }
 }
 
 impl BeforeHandle {
     /// Creates a `BeforeHandle` from an immediately value.
-    pub fn ready(result: Result<(), Error>) -> BeforeHandle {
+    pub fn ready(result: Result<Option<Output>, Error>) -> BeforeHandle {
         BeforeHandle(BeforeHandleState::Ready(Some(result)))
     }
 
     /// Creates a `BeforeHandle` from a closure repsenting an asynchronous computation.
-    pub fn polling(f: impl FnMut(&mut Input) -> Poll<(), Error> + Send + 'static) -> BeforeHandle {
+    pub fn polling(f: impl FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static) -> BeforeHandle {
         BeforeHandle(BeforeHandleState::Polling(Box::new(f)))
     }
 
     /// Creates a `BeforeHandle` from a future.
     #[inline(always)]
-    pub fn wrap_future(mut future: impl Future<Item = (), Error = Error> + Send + 'static) -> BeforeHandle {
+    pub fn wrap_future(mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static) -> BeforeHandle {
         BeforeHandle::polling(move |input| input.with_set_current(|| future.poll()))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<(), Error> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Option<Output>, Error> {
         use self::BeforeHandleState::*;
         match self.0 {
             Ready(ref mut res) => res.take()

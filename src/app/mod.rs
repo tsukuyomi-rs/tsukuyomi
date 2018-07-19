@@ -64,13 +64,16 @@ impl ScopeId {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ModifierId(ScopeId, usize);
+pub(crate) enum ModifierId {
+    Global(usize),
+    Scope(usize, usize),
+    Route(usize, usize),
+}
 
 struct ScopeData {
     parent: ScopeId,
     prefix: Option<Uri>,
     chain: Vec<ScopeId>,
-    modifier_ids: Vec<ModifierId>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
@@ -135,10 +138,10 @@ impl App {
     }
 
     pub(crate) fn modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
-        let ModifierId(scope_id, pos) = id;
-        match scope_id {
-            ScopeId::Scope(id) => self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m),
-            ScopeId::Global => self.inner.modifiers.get(pos).map(|m| &**m),
+        match id {
+            ModifierId::Global(pos) => self.inner.modifiers.get(pos).map(|m| &**m),
+            ModifierId::Scope(id, pos) => self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m),
+            ModifierId::Route(id, pos) => self.inner.endpoints.get(id)?.modifiers.get(pos).map(|m| &**m),
         }
     }
 
