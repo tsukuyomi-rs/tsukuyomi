@@ -1,4 +1,4 @@
-//! The definition of components for constructing the HTTP applications.
+//! Components for constructing HTTP applications.
 
 pub mod builder;
 pub mod service;
@@ -21,11 +21,10 @@ use error::Error;
 use handler::Handler;
 use modifier::Modifier;
 
+use self::builder::AppBuilder;
 use self::container::ScopedContainer;
 use self::recognizer::Recognizer;
-
-pub use self::builder::AppBuilder;
-pub use self::uri::Uri;
+use self::uri::Uri;
 
 #[derive(Debug)]
 struct Config {

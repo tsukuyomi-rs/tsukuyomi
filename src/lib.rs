@@ -53,7 +53,6 @@ pub mod json;
 pub mod local;
 pub mod modifier;
 pub mod output;
-pub mod rt;
 pub mod server;
 
 #[doc(inline)]
@@ -67,6 +66,12 @@ pub use handler::Handler;
 
 #[doc(inline)]
 pub use input::Input;
+
+#[doc(inline)]
+pub use modifier::Modifier;
+
+#[doc(inline)]
+pub use output::{Output, Responder};
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///

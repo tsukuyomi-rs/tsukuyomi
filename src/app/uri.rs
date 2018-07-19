@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-#![cfg_attr(feature = "cargo-clippy", allow(new_without_default_derive, should_implement_trait))]
 
 use failure::Error;
 use std::fmt;
@@ -18,22 +17,18 @@ where
     }
 
     if uri.is_empty() {
-        Uri::new()
+        Uri::root()
     } else {
         Uri(uri)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Uri(String);
+pub(super) struct Uri(String);
 
 impl Uri {
-    pub fn new() -> Uri {
+    pub(super) fn root() -> Uri {
         Uri("/".into())
-    }
-
-    pub fn from_str(s: &str) -> Result<Uri, Error> {
-        normalize_uri(s).map(Uri)
     }
 }
 
@@ -41,7 +36,7 @@ impl FromStr for Uri {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Uri, Error> {
-        Uri::from_str(s)
+        normalize_uri(s).map(Uri)
     }
 }
 

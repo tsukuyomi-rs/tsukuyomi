@@ -1,5 +1,6 @@
 //! The implementation of low level HTTP server.
 
+pub mod blocking;
 pub mod transport;
 
 use failure::Error;
@@ -15,8 +16,8 @@ use std::sync::Arc;
 use tokio;
 use tokio::runtime::{self, Runtime};
 
+use self::blocking::{with_set_mode, RuntimeMode};
 use self::transport::Listener;
-use rt::{self, RuntimeMode};
 
 // ==== Server ====
 
@@ -170,9 +171,7 @@ where
                     let protocol = protocol.clone();
                     move |(stream, service)| {
                         let mut conn = protocol.serve_connection(stream, WrapService(service)).with_upgrades();
-                        poll_fn(move || {
-                            rt::runtime::with_set_mode(RuntimeMode::ThreadPool, || conn.poll().map_err(mem::drop))
-                        })
+                        poll_fn(move || with_set_mode(RuntimeMode::ThreadPool, || conn.poll().map_err(mem::drop)))
                     }
                 });
 

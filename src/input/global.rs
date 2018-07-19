@@ -17,13 +17,14 @@ impl Drop for ResetOnDrop {
     }
 }
 
+/// Returns `true` if the reference to `Input` is set to the current task.
 #[inline(always)]
-pub(crate) fn is_set_current() -> bool {
+pub fn is_set_current() -> bool {
     INPUT.with(|input| input.get().is_some())
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-pub(super) fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R {
+pub(crate) fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R {
     // safety: The value of `self: &mut Input` is always non-null.
     let prev = INPUT.with(|input| {
         let ptr = self_ as *mut Input as *mut () as *mut Input<'static>;
@@ -33,7 +34,32 @@ pub(super) fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R
     f()
 }
 
-pub(super) fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
+/// Acquires a mutable borrow of `Input` from the current task context and executes the provided
+/// closure with its reference.
+///
+/// # Panics
+///
+/// This function only work in the management of the framework and causes a panic
+/// if any references to `Input` is not set at the current task.
+/// Do not use this function outside of futures returned by the handler functions.
+/// Such situations often occurs by spawning tasks by the external `Executor`
+/// (typically calling `tokio::spawn()`).
+///
+/// In additional, this function forms a (dynamic) scope to prevent the references to `Input`
+/// violate the borrowing rule in Rust.
+/// Duplicate borrowings such as the following code are reported as a runtime error.
+///
+/// ```ignore
+/// with_get_current(|input| {
+///     some_process()
+/// });
+///
+/// fn some_process() {
+///     // Duplicate borrowing of `Input` occurs at this point.
+///     with_get_current(|input| { ... })
+/// }
+/// ```
+pub fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
     let input_ptr = INPUT.with(|input| input.replace(None));
     let _reset = ResetOnDrop(input_ptr);
     let mut input_ptr = input_ptr.expect("Any reference to Input are not set at the current task context.");

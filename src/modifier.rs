@@ -1,4 +1,4 @@
-//! Definition of `Modifier` and supplemental components.
+//! `Modifier` and supplemental components.
 //!
 //! The purpose of `Modifier` is to insert some processes before and after
 //! applying `Handler` in a certain scope.
@@ -33,7 +33,7 @@ use futures::{self, Future, Poll};
 use std::fmt;
 
 use error::Error;
-use input::Input;
+use input::{self, Input};
 use output::Output;
 
 /// A trait representing a `Modifier`.
@@ -106,7 +106,7 @@ impl BeforeHandle {
     /// Creates a `BeforeHandle` from a future.
     #[inline(always)]
     pub fn wrap_future(mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static) -> BeforeHandle {
-        BeforeHandle::polling(move |input| input.with_set_current(|| future.poll()))
+        BeforeHandle::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Option<Output>, Error> {
@@ -167,7 +167,7 @@ impl AfterHandle {
     /// Creates an `AfterHandle` from a `Future`.
     #[inline(always)]
     pub fn wrap_future(mut future: impl Future<Item = Output, Error = Error> + Send + 'static) -> AfterHandle {
-        AfterHandle::polling(move |input| input.with_set_current(|| future.poll()))
+        AfterHandle::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
