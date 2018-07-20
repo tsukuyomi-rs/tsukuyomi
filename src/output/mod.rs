@@ -10,7 +10,7 @@ mod response;
 pub(crate) use self::body::Receive;
 pub use self::body::{Data, ResponseBody};
 pub use self::responder::Responder;
-pub use self::response::{HttpResponse, ResponseExt};
+pub use self::response::HttpResponse;
 
 // =====
 
