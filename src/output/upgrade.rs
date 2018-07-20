@@ -32,8 +32,8 @@ impl Upgrade {
 }
 
 impl Responder for Upgrade {
-    fn respond_to(mut self, cx: &Input) -> Result<Output, Error> {
-        if cx.version() != Version::HTTP_11 {
+    fn respond_to(mut self, input: &mut Input) -> Result<Output, Error> {
+        if input.version() != Version::HTTP_11 {
             // FIXME: choose appropriate status code
             return Err(Error::bad_request(format_err!(
                 "Protocol upgrade is available only on HTTP/1.1"
