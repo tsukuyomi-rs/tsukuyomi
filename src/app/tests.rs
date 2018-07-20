@@ -175,21 +175,23 @@ fn scope_nested() {
 
 #[test]
 fn scope_variable() {
+    global_key!(static KEY: String);
+
     let app = App::builder()
-        .set::<String>("G".into())
+        .set(&KEY, "G".into())
         .route(("/rg", dummy_handler))
         .mount("/s0", |m| {
             m.route(("/r0", dummy_handler));
             m.mount("/s1", |m| {
-                m.set::<String>("A".into());
+                m.set(&KEY, "A".into());
                 m.route(("/r1", dummy_handler));
             });
         })
         .mount("/s2", |m| {
-            m.set::<String>("B".into());
+            m.set(&KEY, "B".into());
             m.route(("/r2", dummy_handler));
             m.mount("/s3", |m| {
-                m.set::<String>("C".into());
+                m.set(&KEY, "C".into());
                 m.route(("/r3", dummy_handler));
                 m.mount("/s4", |m| {
                     m.route(("/r4", dummy_handler));
@@ -204,14 +206,40 @@ fn scope_variable() {
         .finish()
         .unwrap();
 
-    assert_eq!(app.get(RouteId(ScopeId::Global, 0)).map(String::as_str), Some("G"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(0), 1)).map(String::as_str), Some("G"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(1), 2)).map(String::as_str), Some("A"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(2), 3)).map(String::as_str), Some("B"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(3), 4)).map(String::as_str), Some("C"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(4), 5)).map(String::as_str), Some("C"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(5), 6)).map(String::as_str), Some("B"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(6), 7)).map(String::as_str), Some("B"));
+    println!("{:#?}", app);
+
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Global, 0)).map(String::as_str),
+        Some("G")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(0), 1)).map(String::as_str),
+        Some("G")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(1), 2)).map(String::as_str),
+        Some("A")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(2), 3)).map(String::as_str),
+        Some("B")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(3), 4)).map(String::as_str),
+        Some("C")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(4), 5)).map(String::as_str),
+        Some("C")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(5), 6)).map(String::as_str),
+        Some("B")
+    );
+    assert_eq!(
+        app.get(&KEY, RouteId(ScopeId::Local(6), 7)).map(String::as_str),
+        Some("B")
+    );
 }
 
 #[test]

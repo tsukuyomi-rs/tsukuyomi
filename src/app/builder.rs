@@ -8,15 +8,14 @@ use failure::{Error, Fail};
 use http::header::HeaderValue;
 use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
-use state::Container;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::{Handle, Handler};
 use input::Input;
 use modifier::Modifier;
 
-use super::container::{self, ScopedContainer};
 use super::recognizer::Recognizer;
+use super::scoped_map::{self, ScopedKey};
 use super::uri::{self, Uri};
 use super::{App, AppState, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
 
@@ -27,8 +26,7 @@ pub struct AppBuilder {
     config: Config,
     error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    state: Container,
-    scoped_state: container::Builder,
+    globals: scoped_map::Builder,
     prefix: Option<Uri>,
     #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
     options_handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static>>>,
@@ -95,8 +93,7 @@ impl AppBuilder {
             config: Default::default(),
             error_handler: None,
             modifiers: vec![],
-            state: Container::new(),
-            scoped_state: ScopedContainer::builder(),
+            globals: Default::default(),
             prefix: None,
             options_handler: Some(Box::new(default_options_handler)),
 
@@ -298,26 +295,19 @@ impl AppBuilder {
     }
 
     /// Sets a value of `T` to the global storage.
-    pub fn set<T>(&mut self, state: T) -> &mut Self
+    pub fn set<T>(&mut self, key: &'static ScopedKey<T>, value: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
-        self.set_value(state, ScopeId::Global);
+        self.set_value(key, value, ScopeId::Global);
         self
     }
 
-    fn set_value<T>(&mut self, state: T, id: ScopeId)
+    fn set_value<T>(&mut self, key: &'static ScopedKey<T>, value: T, id: ScopeId)
     where
         T: Send + Sync + 'static,
     {
-        match id {
-            ScopeId::Global => {
-                self.state.set(state);
-            }
-            ScopeId::Local(id) => {
-                self.scoped_state.set(state, id);
-            }
-        }
+        self.globals.set(key, value, id);
     }
 
     /// Sets the prefix of URIs.
@@ -347,8 +337,7 @@ impl AppBuilder {
             result,
             error_handler,
             modifiers,
-            mut state,
-            mut scoped_state,
+            globals,
             scopes,
             prefix,
             mut options_handler,
@@ -446,9 +435,8 @@ impl AppBuilder {
         let error_handler = error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::new()));
 
         // finalize global/scope-local storages.
-        state.freeze();
-        let parents: Vec<_> = scopes.iter().map(|scope| scope.parent.local_id()).collect();
-        let scoped_state = scoped_state.finish(&parents[..]);
+        let parents: Vec<_> = scopes.iter().map(|scope| scope.parent).collect();
+        let globals = globals.finish(&parents[..]);
 
         let scopes = scopes
             .into_iter()
@@ -469,8 +457,7 @@ impl AppBuilder {
                 config,
                 error_handler,
                 modifiers,
-                state,
-                scoped_state,
+                globals,
             }),
         })
     }
@@ -507,11 +494,11 @@ impl<'a> Scope<'a> {
     }
 
     /// Adds a *scope-local* variable into the application.
-    pub fn set<T>(&mut self, state: T) -> &mut Self
+    pub fn set<T>(&mut self, key: &'static ScopedKey<T>, value: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
-        self.builder.set_value(state, self.id);
+        self.builder.set_value(key, value, self.id);
         self
     }
 

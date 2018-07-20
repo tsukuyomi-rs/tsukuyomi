@@ -3,8 +3,9 @@
 pub mod builder;
 pub mod service;
 
-mod container;
 mod recognizer;
+#[macro_use]
+mod scoped_map;
 mod uri;
 
 #[cfg(test)]
@@ -12,7 +13,6 @@ mod tests;
 
 use http::Method;
 use indexmap::IndexMap;
-use state::Container;
 use std::fmt;
 use std::sync::Arc;
 
@@ -22,9 +22,11 @@ use handler::Handler;
 use modifier::Modifier;
 
 use self::builder::AppBuilder;
-use self::container::ScopedContainer;
 use self::recognizer::Recognizer;
+use self::scoped_map::ScopedMap;
 use self::uri::Uri;
+
+pub use self::scoped_map::ScopedKey;
 
 #[derive(Debug)]
 struct Config {
@@ -114,8 +116,7 @@ struct AppState {
     route_ids: Vec<IndexMap<Method, usize>>,
     config: Config,
 
-    state: Container,
-    scoped_state: ScopedContainer,
+    globals: ScopedMap,
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
@@ -129,6 +130,7 @@ impl fmt::Debug for AppState {
             .field("recognizer", &self.recognizer)
             .field("route_ids", &self.route_ids)
             .field("config", &self.config)
+            .field("globals", &self.globals)
             .finish()
     }
 }
@@ -162,15 +164,11 @@ impl App {
         }
     }
 
-    pub(crate) fn get<T>(&self, id: RouteId) -> Option<&T>
+    pub(crate) fn get<T>(&self, key: &'static ScopedKey<T>, id: RouteId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        let RouteId(id, ..) = id;
-        match id {
-            ScopeId::Local(id) => self.inner.scoped_state.get(id).or_else(|| self.inner.state.try_get()),
-            ScopeId::Global => self.inner.state.try_get(),
-        }
+        self.inner.globals.get(key, id.0)
     }
 
     fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
