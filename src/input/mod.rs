@@ -10,7 +10,6 @@ mod params;
 
 // re-exports
 pub use self::body::RequestBody;
-pub use self::cookie::Cookies;
 pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
 pub use self::params::Params;
@@ -47,6 +46,7 @@ pub mod header {
 
 // ====
 
+use cookie::CookieJar;
 use http::Request;
 use std::ops::{Deref, DerefMut};
 
@@ -120,12 +120,12 @@ impl<'task> Input<'task> {
     ///
     /// This function will perform parsing when called at first, and returns an `Err`
     /// if the value of header field is invalid.
-    pub fn cookies(&mut self) -> Result<Cookies, Error> {
+    pub fn cookies(&mut self) -> Result<&mut CookieJar, Error> {
         let cookies = &mut self.parts.cookies;
         if !cookies.is_init() {
             cookies.init(self.request.headers()).map_err(Error::bad_request)?;
         }
-        Ok(cookies.cookies())
+        Ok(&mut cookies.jar)
     }
 
     /// Returns a reference to `LocalMap` for managing request-local data.
