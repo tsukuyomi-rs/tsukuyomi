@@ -107,6 +107,14 @@ impl Error {
         }
     }
 
+    /// Returns `true` if this error is a *critical* error.
+    pub fn is_critical(&self) -> bool {
+        match self.kind {
+            ErrorKind::Crit(..) => true,
+            _ => false,
+        }
+    }
+
     /// Returns the representation as `HttpError` of this error value.
     ///
     /// If the value is a criticial error, it will return a `None`.
