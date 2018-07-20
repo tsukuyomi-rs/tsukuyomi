@@ -42,7 +42,7 @@ impl InputParts {
             route,
             params,
             cookies: CookieManager::new(),
-            locals: LocalMap::new(),
+            locals: LocalMap::default(),
             _priv: (),
         }
     }
