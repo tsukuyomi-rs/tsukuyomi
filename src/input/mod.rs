@@ -1,6 +1,7 @@
 //! Components for parsing incoming HTTP requests and accessing the global or request-local data.
 
 pub mod body;
+#[macro_use]
 pub mod local_map;
 
 mod cookie;
@@ -14,10 +15,39 @@ pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
 pub use self::params::Params;
 
+#[allow(missing_docs)]
+pub mod header {
+    use super::Input;
+    use error::Error;
+    use http::header;
+    use mime::Mime;
+
+    /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
+    pub fn content_type<'a>(input: &'a mut Input) -> Result<Option<&'a Mime>, Error> {
+        local_key!(static CONTENT_TYPE: Option<Mime>);
+
+        // TODO: optimize
+        if input.locals().get(&CONTENT_TYPE).is_some() {
+            Ok(input.locals().get(&CONTENT_TYPE).unwrap().as_ref())
+        } else {
+            let mime = match input.headers().get(header::CONTENT_TYPE) {
+                Some(h) => {
+                    let mime: Mime = h.to_str()
+                        .map_err(Error::bad_request)?
+                        .parse()
+                        .map_err(Error::bad_request)?;
+                    Some(mime)
+                }
+                None => None,
+            };
+            Ok(input.locals_mut().entry(&CONTENT_TYPE).or_insert(mime).as_ref())
+        }
+    }
+}
+
 // ====
 
 use http::Request;
-use hyperx::header::Header;
 use std::ops::{Deref, DerefMut};
 
 use app::{App, RouteId, ScopedKey};
@@ -65,20 +95,6 @@ impl<'task> Input<'task> {
     /// Returns a mutable reference to the value of `Request` contained in this context.
     pub fn request_mut(&mut self) -> &mut Request<RequestBody> {
         self.request
-    }
-
-    /// Parses a header field in the request to a value of `H`.
-    pub fn header<H>(&self) -> Result<Option<H>, Error>
-    where
-        H: Header,
-    {
-        // TODO: cache the parsed values
-        match self.headers().get(H::header_name()) {
-            Some(h) => H::parse_header(&h.as_bytes().into())
-                .map_err(Error::bad_request)
-                .map(Some),
-            None => Ok(None),
-        }
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.

@@ -5,7 +5,6 @@ use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
 use hyper::upgrade::OnUpgrade;
-use hyperx::header::ContentType;
 use mime;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -13,6 +12,7 @@ use std::ops::Deref;
 use std::{fmt, mem};
 
 use error::{CritError, Error};
+use input::header::content_type;
 use input::{self, Input};
 
 // ==== RequestBody ====
@@ -285,7 +285,7 @@ where
     T: FromData,
 {
     /// Attempts to convert the incoming message data into an value of `T`.
-    pub fn poll_ready(&mut self, input: &Input) -> Poll<T, Error> {
+    pub fn poll_ready(&mut self, input: &mut Input) -> Poll<T, Error> {
         let data = try_ready!(self.read_all.poll().map_err(Error::critical));
         T::from_data(data, input).map(Async::Ready)
     }
@@ -307,13 +307,13 @@ where
 /// A trait representing the conversion to certain type.
 pub trait FromData: Sized {
     /// Perform conversion from a received buffer of bytes into a value of `Self`.
-    fn from_data(data: Bytes, input: &Input) -> Result<Self, Error>;
+    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Error>;
 }
 
 impl FromData for String {
-    fn from_data(data: Bytes, input: &Input) -> Result<Self, Error> {
-        if let Some(ContentType(m)) = input.header()? {
-            if m != mime::TEXT_PLAIN {
+    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Error> {
+        if let Some(m) = content_type(input)? {
+            if *m != mime::TEXT_PLAIN {
                 return Err(Error::bad_request(format_err!("the content type must be text/plain")));
             }
             if m.get_param("charset").map_or(true, |charset| charset != "utf-8") {

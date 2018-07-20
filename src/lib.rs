@@ -19,7 +19,6 @@ extern crate failure;
 extern crate futures;
 extern crate http;
 extern crate hyper;
-extern crate hyperx;
 extern crate indexmap;
 #[macro_use]
 extern crate log;
