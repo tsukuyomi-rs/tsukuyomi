@@ -6,29 +6,30 @@ use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
-/// A macro to create a `LocalKey`.
-#[cfg(feature = "nightly")]
-#[macro_export]
-macro_rules! local_key {
-    ($vis:vis static $NAME:ident : $t:ty) => {
-        $vis static $NAME: $crate::input::local_map::LocalKey<$t> = {
-            fn __type_id() -> ::std::any::TypeId {
-                struct __A;
-                ::std::any::TypeId::of::<__A>()
-            }
-            $crate::input::local_map::LocalKey {
-                __type_id,
-                __marker: PhantomData,
-            }
-        };
-    };
-}
-
-/// A macro to create a `LocalKey`.
+/// A macro to create a `LocalKey<T>`.
+///
+/// # Examples
+///
+/// ```
+/// #[macro_use]
+/// extern crate tsukuyomi;
+/// # use tsukuyomi::input::local_map::LocalMap;
+///
+/// # fn main() {
+/// local_key!(static KEY: String);
+///
+/// let mut map = LocalMap::default();
+/// map.entry(&KEY).or_insert("Alice".into());
+/// # }
+/// ```
 #[cfg(not(feature = "nightly"))]
 #[macro_export]
 macro_rules! local_key {
-    (static $NAME:ident : $t:ty) => {
+    ($(
+        $(#[$m:meta])*
+        static $NAME:ident : $t:ty;
+    )*) => {$(
+        $(#[$m])*
         static $NAME: $crate::input::local_map::LocalKey<$t> = {
             fn __type_id() -> ::std::any::TypeId {
                 struct __A;
@@ -36,9 +37,48 @@ macro_rules! local_key {
             }
             $crate::input::local_map::LocalKey {
                 __type_id,
-                __marker: PhantomData,
+                __marker: ::std::marker::PhantomData,
             }
         };
+    )*};
+    ($(
+        $(#[$m:meta])*
+        static $NAME:ident : $t:ty
+    );*) => {
+        local_key!($(
+            $(#[$m])*
+            static $NAME: $t;
+        )*)
+    };
+}
+
+#[cfg(feature = "nightly")]
+#[macro_export]
+macro_rules! local_key {
+    ($(
+        $(#[$m:meta])*
+        $vis:vis static $NAME:ident : $t:ty;
+    )*) => {$(
+        $(#[$m])*
+        $vis static $NAME: $crate::input::local_map::LocalKey<$t> = {
+            fn __type_id() -> ::std::any::TypeId {
+                struct __A;
+                ::std::any::TypeId::of::<__A>()
+            }
+            $crate::input::local_map::LocalKey {
+                __type_id,
+                __marker: ::std::marker::PhantomData,
+            }
+        };
+    )*};
+    ($(
+        $(#[$m:meta])*
+        $vis:vis static $NAME:ident : $t:ty
+    );*) => {
+        local_key!($(
+            $(#[$m])*
+            $vis static $NAME: $t;
+        )*)
     };
 }
 
@@ -128,10 +168,6 @@ impl fmt::Debug for LocalMap {
 }
 
 impl LocalMap {
-    pub(crate) fn new() -> LocalMap {
-        Default::default()
-    }
-
     /// Returns a shared reference to the value corresponding to the provided `LocalKey`.
     pub fn get<T>(&self, key: &'static LocalKey<T>) -> Option<&T>
     where
@@ -301,7 +337,7 @@ mod tests {
 
     #[test]
     fn smoke_test() {
-        let mut map = LocalMap::new();
+        let mut map = LocalMap::default();
 
         local_key!(static KEY: String);
 
@@ -323,7 +359,7 @@ mod tests {
 
     #[test]
     fn entry_or_insert() {
-        let mut map = LocalMap::new();
+        let mut map = LocalMap::default();
 
         local_key!(static KEY: String);
 
@@ -336,7 +372,7 @@ mod tests {
 
     #[test]
     fn entry_and_modify() {
-        let mut map = LocalMap::new();
+        let mut map = LocalMap::default();
 
         local_key!(static KEY: String);
 
@@ -360,7 +396,7 @@ mod tests {
 
     #[test]
     fn occupied_entry() {
-        let mut map = LocalMap::new();
+        let mut map = LocalMap::default();
 
         local_key!(static KEY: String);
 

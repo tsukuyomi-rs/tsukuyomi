@@ -20,7 +20,7 @@ use http::Request;
 use hyperx::header::Header;
 use std::ops::{Deref, DerefMut};
 
-use app::{App, RouteId};
+use app::{App, RouteId, ScopedKey};
 use error::Error;
 
 use self::cookie::CookieManager;
@@ -42,7 +42,7 @@ impl InputParts {
             route,
             params,
             cookies: CookieManager::new(),
-            locals: LocalMap::new(),
+            locals: LocalMap::default(),
             _priv: (),
         }
     }
@@ -89,27 +89,15 @@ impl<'task> Input<'task> {
         }
     }
 
-    /// Returns the reference to a value of `T` registered in the global storage.
-    ///
-    /// # Panics
-    /// This method will cause a panic if a value of `T` is not registered in the global storage.
-    #[inline]
-    pub fn get<T>(&self) -> &T
-    where
-        T: Send + Sync + 'static,
-    {
-        self.try_get().expect("The value of this value is not set.")
-    }
-
     /// Returns the reference to a value of `T` registered in the global storage, if possible.
     ///
     /// This method will return a `None` if a value of `T` is not registered in the global storage.
     #[inline]
-    pub fn try_get<T>(&self) -> Option<&T>
+    pub fn get<T>(&self, key: &'static ScopedKey<T>) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.app.get(self.parts.route)
+        self.app.get(key, self.parts.route)
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.

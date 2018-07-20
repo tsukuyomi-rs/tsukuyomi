@@ -27,7 +27,6 @@ extern crate mime;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
-extern crate state;
 extern crate tokio;
 extern crate tokio_tcp;
 extern crate tokio_threadpool;
