@@ -14,6 +14,7 @@ use error::handler::ErrorHandler;
 use error::{CritError, Error, HttpError};
 use input::body::FromData;
 use input::Input;
+use modifier::{AfterHandle, Modifier};
 use output::{HttpResponse, Output, Responder, ResponseBody};
 
 /// A wraper struct representing a statically typed JSON value.
@@ -92,10 +93,8 @@ impl JsonErrorHandler {
     pub fn new() -> JsonErrorHandler {
         Default::default()
     }
-}
 
-impl ErrorHandler for JsonErrorHandler {
-    fn handle_error(&self, e: &dyn HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
+    fn make_error_response(&self, e: &dyn HttpError) -> Result<Response<ResponseBody>, CritError> {
         let body = json!({
             "code": e.status_code().as_u16(),
             "description": e.to_string(),
@@ -107,6 +106,24 @@ impl ErrorHandler for JsonErrorHandler {
             .header(header::CACHE_CONTROL, "no-cache")
             .body(body.into())
             .map_err(Into::into)
+    }
+}
+
+impl ErrorHandler for JsonErrorHandler {
+    fn handle_error(&self, err: &dyn HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
+        self.make_error_response(err)
+    }
+}
+
+impl Modifier for JsonErrorHandler {
+    fn after_handle(&self, _: &mut Input, result: Result<Output, Error>) -> AfterHandle {
+        AfterHandle::ready(match result {
+            Ok(output) => Ok(output),
+            Err(ref e) if !e.is_critical() => self.make_error_response(e.as_http_error().unwrap())
+                .map(Into::into)
+                .map_err(Error::critical),
+            Err(e) => Err(e),
+        })
     }
 }
 
