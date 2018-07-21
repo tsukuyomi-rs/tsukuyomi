@@ -38,6 +38,7 @@ use futures::{Future, Poll};
 use http::header::{HeaderName, HeaderValue};
 use http::{request, HttpTryFrom, Method, Request, Response, Uri};
 use std::{io, mem};
+use tokio::executor::DefaultExecutor;
 use tokio::runtime::current_thread::Runtime;
 
 use app::service::{AppService, AppServiceFuture};
@@ -225,9 +226,11 @@ impl Future for TestResponseFuture {
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // FIXME: use `futures::task::Context::executor()` instead.
+        let mut exec = DefaultExecutor::current();
         loop {
             let polled = match *self {
-                TestResponseFuture::Initial(ref mut f) => Some(Polled::Response(try_ready!(f.poll_ready()))),
+                TestResponseFuture::Initial(ref mut f) => Some(Polled::Response(try_ready!(f.poll_ready(&mut exec)))),
                 TestResponseFuture::Receive(ref mut res) => {
                     Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))
                 }

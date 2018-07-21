@@ -4,7 +4,6 @@ use bytes::{Buf, Bytes, BytesMut};
 use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
-use hyper::upgrade::OnUpgrade;
 use mime;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -14,52 +13,84 @@ use std::{fmt, mem};
 use error::{CritError, Error};
 use input::header::content_type;
 use input::{self, Input};
+use upgrade::{OnUpgrade, UpgradeContext};
+
+pub(crate) type OnUpgradeObj =
+    Box<dyn FnMut(UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>;
 
 // ==== RequestBody ====
 
 /// A type representing a message body in the incoming HTTP request.
-#[derive(Debug)]
-pub struct RequestBody(Option<Body>);
+pub struct RequestBody {
+    body: Option<Body>,
+    on_upgrade: Option<OnUpgradeObj>,
+}
+
+impl fmt::Debug for RequestBody {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RequestBody")
+            .field("body", &self.body)
+            .field("on_upgrade", &self.on_upgrade.as_ref().map(|_| "<upgrade>"))
+            .finish()
+    }
+}
 
 impl RequestBody {
     pub(crate) fn from_hyp(body: Body) -> RequestBody {
-        RequestBody(Some(body))
-    }
-
-    fn take_body(&mut self) -> Option<Body> {
-        self.0.take()
-    }
-
-    /// Takes away the instance of raw message body if exists.
-    pub fn forget(&mut self) {
-        let _ = self.take_body();
+        RequestBody {
+            body: Some(body),
+            on_upgrade: None,
+        }
     }
 
     /// Returns 'true' if the instance of raw message body has already taken away.
     pub fn is_gone(&self) -> bool {
-        self.0.is_none()
+        self.body.is_none()
     }
 
     /// Creates an instance of "Payload" from the raw message body.
     pub fn payload(&mut self) -> Payload {
-        Payload(self.take_body())
+        Payload(self.body.take())
     }
 
     /// Creates an instance of "ReadAll" from the raw message body.
     pub fn read_all(&mut self) -> ReadAll {
         ReadAll {
-            state: ReadAllState::Init(self.take_body()),
+            state: ReadAllState::Init(self.body.take()),
         }
     }
 
-    pub(crate) fn on_upgrade(&mut self) -> Option<OnUpgrade> {
-        self.take_body().map(|body| body.on_upgrade())
+    /// Returns 'true' if the upgrade function is set.
+    pub fn is_upgraded(&self) -> bool {
+        self.on_upgrade.is_some()
+    }
+
+    /// Registers the upgrade function to this request.
+    pub fn on_upgrade<T: OnUpgrade>(&mut self, on_upgrade: T) -> Option<T> {
+        if self.on_upgrade.is_some() {
+            return Some(on_upgrade);
+        }
+
+        let mut on_upgrade = Some(on_upgrade);
+        self.on_upgrade = Some(Box::new(move |cx: UpgradeContext| {
+            let on_upgrade = on_upgrade.take().unwrap();
+            on_upgrade.on_upgrade(cx)
+        }));
+
+        None
+    }
+
+    pub(crate) fn deconstruct(self) -> (Option<Body>, Option<OnUpgradeObj>) {
+        (self.body, self.on_upgrade)
     }
 }
 
 impl Default for RequestBody {
     fn default() -> Self {
-        RequestBody(Some(Default::default()))
+        RequestBody {
+            body: Some(Default::default()),
+            on_upgrade: None,
+        }
     }
 }
 
@@ -73,7 +104,10 @@ macro_rules! impl_from_for_request_body {
     ($($t:ty,)*) => {$(
         impl From<$t> for RequestBody {
             fn from(body: $t) -> Self {
-                RequestBody(Some(body.into()))
+                RequestBody {
+                    body: Some(body.into()),
+                    on_upgrade: None,
+                }
             }
         }
     )*};
