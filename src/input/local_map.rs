@@ -44,7 +44,7 @@ macro_rules! local_key {
     ($(
         $(#[$m:meta])*
         static $NAME:ident : $t:ty
-    );*) => {
+    );+) => {
         local_key!($(
             $(#[$m])*
             static $NAME: $t;
@@ -74,7 +74,7 @@ macro_rules! local_key {
     ($(
         $(#[$m:meta])*
         $vis:vis static $NAME:ident : $t:ty
-    );*) => {
+    );+) => {
         local_key!($(
             $(#[$m])*
             $vis static $NAME: $t;

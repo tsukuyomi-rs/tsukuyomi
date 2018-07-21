@@ -49,7 +49,7 @@ macro_rules! global_key {
     ($(
         $(#[$m:meta])*
         static $NAME:ident : $t:ty
-    );*) => {
+    );+) => {
         global_key!($(
             $(#[$m])*
             static $NAME: $t;
@@ -79,7 +79,7 @@ macro_rules! global_key {
     ($(
         $(#[$m:meta])*
         $vis:vis static $NAME:ident : $t:ty
-    );*) => {
+    );+) => {
         global_key!($(
             $(#[$m])*
             $vis static $NAME: $t;
