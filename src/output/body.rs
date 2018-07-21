@@ -1,53 +1,50 @@
 use bytes::Bytes;
-use futures::{Async, Poll, Stream};
+use futures::Stream;
 use hyper::body::{Body, Chunk};
 use std::borrow::Cow;
 use std::error::Error as StdError;
-use std::{mem, str};
+use std::str;
 
-use error::CritError;
 use input;
 
 /// A type representing the message body in HTTP response.
 #[derive(Debug)]
-pub struct ResponseBody(ResponseBodyInner);
+pub struct ResponseBody(pub(crate) ResponseBodyKind);
 
 #[derive(Debug)]
-enum ResponseBodyInner {
+pub(crate) enum ResponseBodyKind {
     Empty,
     Sized(Bytes),
     Chunked(Body),
 }
 
-use self::ResponseBodyInner as Inner;
-
 impl Default for ResponseBody {
     fn default() -> Self {
-        ResponseBody(Inner::Empty)
+        ResponseBody(ResponseBodyKind::Empty)
     }
 }
 
 impl From<()> for ResponseBody {
     fn from(_: ()) -> Self {
-        ResponseBody(Inner::Empty)
+        ResponseBody(ResponseBodyKind::Empty)
     }
 }
 
 impl From<Body> for ResponseBody {
     fn from(body: Body) -> Self {
-        ResponseBody(Inner::Chunked(body))
+        ResponseBody(ResponseBodyKind::Chunked(body))
     }
 }
 
 impl From<input::body::Chunk> for ResponseBody {
     fn from(chunk: input::body::Chunk) -> Self {
-        ResponseBody(Inner::Sized(chunk.0.into_bytes()))
+        ResponseBody(ResponseBodyKind::Sized(chunk.0.into_bytes()))
     }
 }
 
 impl From<Chunk> for ResponseBody {
     fn from(chunk: Chunk) -> Self {
-        ResponseBody(Inner::Sized(chunk.into_bytes()))
+        ResponseBody(ResponseBodyKind::Sized(chunk.into_bytes()))
     }
 }
 
@@ -55,7 +52,7 @@ macro_rules! impl_conversions {
     ($($t:ty,)*) => {$(
         impl From<$t> for ResponseBody {
             fn from(body: $t) -> Self {
-                ResponseBody(Inner::Sized(body.into()))
+                ResponseBody(ResponseBodyKind::Sized(body.into()))
             }
         }
     )*};
@@ -94,118 +91,22 @@ impl ResponseBody {
         S::Error: Into<Box<dyn StdError + Send + Sync + 'static>>,
         Chunk: From<S::Item>,
     {
-        ResponseBody(Inner::Chunked(Body::wrap_stream(stream)))
+        ResponseBody(ResponseBodyKind::Chunked(Body::wrap_stream(stream)))
     }
 
     pub(crate) fn content_length(&self) -> Option<usize> {
         match self.0 {
-            Inner::Empty => Some(0),
-            Inner::Sized(ref bytes) => Some(bytes.len()),
+            ResponseBodyKind::Empty => Some(0),
+            ResponseBodyKind::Sized(ref bytes) => Some(bytes.len()),
             _ => None,
         }
     }
 
     pub(crate) fn into_hyp(self) -> Body {
         match self.0 {
-            Inner::Empty => Body::empty(),
-            Inner::Sized(bytes) => Body::from(bytes),
-            Inner::Chunked(body) => body,
-        }
-    }
-
-    pub(crate) fn receive(self) -> Receive {
-        match self.0 {
-            Inner::Empty => Receive(ReceiveInner::Empty),
-            Inner::Sized(data) => Receive(ReceiveInner::Sized(Some(data))),
-            Inner::Chunked(body) => Receive(ReceiveInner::Chunked(body, vec![])),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct Receive(ReceiveInner);
-
-#[derive(Debug)]
-enum ReceiveInner {
-    Empty,
-    Sized(Option<Bytes>),
-    Chunked(Body, Vec<Bytes>),
-}
-
-impl Receive {
-    pub(crate) fn poll_ready(&mut self) -> Poll<Data, CritError> {
-        match self.0 {
-            ReceiveInner::Empty => Ok(Async::Ready(Data(DataInner::Empty))),
-            ReceiveInner::Sized(ref mut data) => Ok(Async::Ready(Data(DataInner::Sized(
-                data.take().expect("The response body has already resolved"),
-            )))),
-            ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
-                while let Some(chunk) = try_ready!(body.poll()) {
-                    chunks.push(chunk.into());
-                }
-                let chunks = mem::replace(chunks, vec![]);
-                Ok(Async::Ready(Data(DataInner::Chunked(chunks))))
-            }
-        }
-    }
-}
-
-/// A type representing a received HTTP message data from the server.
-///
-/// This type is usually used by the testing framework.
-#[derive(Debug)]
-pub struct Data(DataInner);
-
-#[derive(Debug)]
-enum DataInner {
-    Empty,
-    Sized(Bytes),
-    Chunked(Vec<Bytes>),
-}
-
-#[allow(missing_docs)]
-impl Data {
-    pub fn is_sized(&self) -> bool {
-        match self.0 {
-            DataInner::Empty | DataInner::Sized(..) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_chunked(&self) -> bool {
-        !self.is_sized()
-    }
-
-    pub fn content_length(&self) -> Option<usize> {
-        match self.0 {
-            DataInner::Empty => Some(0),
-            DataInner::Sized(ref data) => Some(data.len()),
-            _ => None,
-        }
-    }
-
-    pub fn as_chunks(&self) -> Option<&[Bytes]> {
-        match self.0 {
-            DataInner::Chunked(ref chunks) => Some(&chunks[..]),
-            _ => None,
-        }
-    }
-
-    pub fn to_bytes(&self) -> Cow<[u8]> {
-        match self.0 {
-            DataInner::Empty => Cow::Borrowed(&[]),
-            DataInner::Sized(ref data) => Cow::Borrowed(&data[..]),
-            DataInner::Chunked(ref chunks) => Cow::Owned(chunks.iter().fold(Vec::new(), |mut acc, chunk| {
-                acc.extend_from_slice(&*chunk);
-                acc
-            })),
-        }
-    }
-
-    pub fn to_utf8(&self) -> Result<Cow<str>, str::Utf8Error> {
-        match self.to_bytes() {
-            Cow::Borrowed(bytes) => str::from_utf8(bytes).map(Cow::Borrowed),
-            Cow::Owned(bytes) => String::from_utf8(bytes).map_err(|e| e.utf8_error()).map(Cow::Owned),
+            ResponseBodyKind::Empty => Body::empty(),
+            ResponseBodyKind::Sized(bytes) => Body::from(bytes),
+            ResponseBodyKind::Chunked(body) => body,
         }
     }
 }

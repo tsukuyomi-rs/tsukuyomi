@@ -5,7 +5,6 @@ use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
 use mime;
-use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, mem};
@@ -84,44 +83,6 @@ impl RequestBody {
         (self.body, self.on_upgrade)
     }
 }
-
-impl Default for RequestBody {
-    fn default() -> Self {
-        RequestBody {
-            body: Some(Default::default()),
-            on_upgrade: None,
-        }
-    }
-}
-
-impl From<()> for RequestBody {
-    fn from(_: ()) -> Self {
-        Default::default()
-    }
-}
-
-macro_rules! impl_from_for_request_body {
-    ($($t:ty,)*) => {$(
-        impl From<$t> for RequestBody {
-            fn from(body: $t) -> Self {
-                RequestBody {
-                    body: Some(body.into()),
-                    on_upgrade: None,
-                }
-            }
-        }
-    )*};
-}
-
-impl_from_for_request_body![
-    &'static str,
-    &'static [u8],
-    Vec<u8>,
-    String,
-    Cow<'static, str>,
-    Cow<'static, [u8]>,
-    Bytes,
-];
 
 // ==== Payload ====
 
