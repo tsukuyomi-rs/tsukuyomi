@@ -1,6 +1,5 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
-use futures::future::lazy;
 use futures::{self, Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Request, Response, StatusCode};
@@ -13,8 +12,8 @@ use error::{CritError, Error};
 use handler::Handle;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
-use output::upgrade::UpgradeContext;
 use output::{Output, ResponseBody};
+use upgrade::UpgradeContext;
 
 use super::{App, RouteData};
 
@@ -243,62 +242,61 @@ impl AppServiceFuture {
         }
     }
 
-    fn handle_response(&mut self, output: Output) -> Result<Response<ResponseBody>, CritError> {
-        let (mut response, handler) = output.deconstruct();
+    fn handle_response(&mut self, mut output: Output) -> Result<Response<ResponseBody>, CritError> {
+        let (request, body) = {
+            let request = self.request.take().expect("This future has already polled.");
+            let (parts, body) = request.into_parts();
+            (Request::from_parts(parts, ()), body)
+        };
+        let InputParts { cookies, locals, .. } = self.parts.take().expect("This future has already polled");
 
-        let parts = self.parts.take().expect("This future has already polled");
-        let InputParts { cookies, .. } = parts;
-
-        cookies.append_to(response.headers_mut());
+        // append Cookie entries.
+        cookies.append_to(output.headers_mut());
 
         // append the value of Content-Length to the response header if missing.
-        if let Some(len) = response.body().content_length() {
-            response
-                .headers_mut()
-                .entry(header::CONTENT_LENGTH)?
-                .or_insert_with(|| {
-                    // safety: '0'-'9' is ascci.
-                    // TODO: more efficient
-                    unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
-                });
+        if let Some(len) = output.body().content_length() {
+            output.headers_mut().entry(header::CONTENT_LENGTH)?.or_insert_with(|| {
+                // safety: '0'-'9' is ascci.
+                // TODO: more efficient
+                unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
+            });
         }
 
-        if let Some(handler) = handler {
-            debug_assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
-
-            let mut request = self.request.take().expect("This future has already polled.");
-            let on_upgrade = request
-                .body_mut()
-                .on_upgrade()
-                .ok_or_else(|| format_err!("The request body has already gone").compat())?;
-            let request = request.map(mem::drop);
-
-            tokio::spawn(lazy(move || {
-                on_upgrade.map_err(|_| error!("")).and_then(|upgraded| {
-                    let cx = UpgradeContext {
-                        io: upgraded,
-                        request,
-                        _priv: (),
-                    };
-                    handler.upgrade(cx)
-                })
-            }));
+        // spawn the upgrade task.
+        if output.status() == StatusCode::SWITCHING_PROTOCOLS {
+            if let (Some(body), Some(mut upgrade)) = body.deconstruct() {
+                // FIXME: use Context::executor() or custom tokio_executor::Executor.
+                tokio::spawn(
+                    body.on_upgrade()
+                        .map_err(|e| error!("upgrade error: {}", e))
+                        .and_then(move |upgraded| {
+                            upgrade(UpgradeContext {
+                                io: upgraded,
+                                request,
+                                locals,
+                                _priv: (),
+                            })
+                        }),
+                );
+            }
         }
 
-        Ok(response)
+        Ok(output)
     }
 
     fn handle_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
+        let request = self.request
+            .take()
+            .expect("This future has already polled")
+            .map(mem::drop);
+        drop(self.parts.take());
+
         if let Some(err) = err.as_http_error() {
-            let request = self.request
-                .take()
-                .expect("This future has already polled")
-                .map(mem::drop);
             let response = self.app.error_handler().handle_error(err, &request)?;
             return Ok(response);
         }
-        Err(err.into_critical()
-            .expect("unexpected condition in AppServiceFuture::handle_error"))
+
+        Err(err.into_critical().unwrap())
     }
 }
 

@@ -655,6 +655,6 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
     Box::new(move |_: &mut Input| -> Handle {
         let mut response = Response::new(());
         response.headers_mut().insert(header::ALLOW, allowed_methods.clone());
-        Handle::ready(Ok(response.into()))
+        Handle::ready(Ok(response.map(Into::into)))
     })
 }

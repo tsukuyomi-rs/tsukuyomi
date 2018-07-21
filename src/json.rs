@@ -62,7 +62,7 @@ impl<T: Serialize + HttpResponse> Responder for Json<T> {
         let mut response = json_response(body);
         *response.status_mut() = self.0.status_code();
         self.0.append_headers(response.headers_mut());
-        Ok(response.into())
+        Ok(response)
     }
 }
 
@@ -78,7 +78,7 @@ impl From<serde_json::Value> for JsonValue {
 
 impl Responder for JsonValue {
     fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
-        Ok(json_response(self.0.to_string()).into())
+        Ok(json_response(self.0.to_string()))
     }
 }
 

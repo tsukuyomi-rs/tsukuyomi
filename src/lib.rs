@@ -52,6 +52,7 @@ pub mod local;
 pub mod modifier;
 pub mod output;
 pub mod server;
+pub mod upgrade;
 
 #[doc(inline)]
 pub use app::App;

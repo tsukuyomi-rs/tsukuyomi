@@ -31,19 +31,13 @@ where
     }
 }
 
-impl Responder for Output {
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
-        Ok(self)
-    }
-}
-
 impl<T> Responder for Response<T>
 where
     T: Into<ResponseBody>,
 {
     #[inline]
     fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
-        Ok(self.into())
+        Ok(self.map(Into::into))
     }
 }
 
@@ -67,5 +61,5 @@ fn text_response<T: Into<ResponseBody>>(body: T) -> Output {
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/plain; charset=utf-8"),
     );
-    response.into()
+    response
 }
