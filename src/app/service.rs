@@ -6,7 +6,7 @@ use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
-use tokio;
+use tokio::executor::{DefaultExecutor, Executor};
 
 use error::{CritError, Error};
 use handler::Handle;
@@ -231,9 +231,9 @@ impl AppServiceFuture {
     }
 
     #[allow(missing_docs)]
-    pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
+    pub fn poll_ready(&mut self, exec: &mut impl Executor) -> Poll<Response<ResponseBody>, CritError> {
         match self.poll_in_flight() {
-            Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
+            Ok(Async::Ready(output)) => self.handle_response(output, exec).map(Async::Ready),
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => {
                 self.status = AppServiceFutureStatus::Done;
@@ -242,7 +242,11 @@ impl AppServiceFuture {
         }
     }
 
-    fn handle_response(&mut self, mut output: Output) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_response(
+        &mut self,
+        mut output: Output,
+        exec: &mut impl Executor,
+    ) -> Result<Response<ResponseBody>, CritError> {
         let (request, body) = {
             let request = self.request.take().expect("This future has already polled.");
             let (parts, body) = request.into_parts();
@@ -263,10 +267,9 @@ impl AppServiceFuture {
         }
 
         // spawn the upgrade task.
-        if output.status() == StatusCode::SWITCHING_PROTOCOLS {
-            if let (Some(body), Some(mut upgrade)) = body.deconstruct() {
-                // FIXME: use Context::executor() or custom tokio_executor::Executor.
-                tokio::spawn(
+        if let (Some(body), Some(mut upgrade)) = body.deconstruct() {
+            if output.status() == StatusCode::SWITCHING_PROTOCOLS {
+                exec.spawn(Box::new(
                     body.on_upgrade()
                         .map_err(|e| error!("upgrade error: {}", e))
                         .and_then(move |upgraded| {
@@ -277,7 +280,7 @@ impl AppServiceFuture {
                                 _priv: (),
                             })
                         }),
-                );
+                )).map_err(|_| format_err!("failed spawn the upgrade task").compat())?;
             }
         }
 
@@ -305,7 +308,9 @@ impl futures::Future for AppServiceFuture {
     type Error = CritError;
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        self.poll_ready()
+        // FIXME: use futures::task::Context::executor() instead.
+        let mut exec = DefaultExecutor::current();
+        self.poll_ready(&mut exec)
             .map(|x| x.map(|response| response.map(ResponseBody::into_hyp)))
     }
 }
