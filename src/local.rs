@@ -22,9 +22,9 @@
 //!
 //! // Emulate an HTTP request and retrieve its response.
 //! let response = server.client()
-//!                     .get("/hello")
-//!                     .execute()
-//!                     .unwrap();
+//!     .get("/hello")
+//!     .execute()
+//!     .unwrap();
 //!
 //! // Do some stuff...
 //! assert_eq!(response.status(), StatusCode::OK);
@@ -34,18 +34,21 @@
 
 // TODO: emulates some behaviour of Hyper
 
-use futures::{Future, Poll};
+use bytes::Bytes;
+use futures::{Async, Future, Poll, Stream};
 use http::header::{HeaderName, HeaderValue};
 use http::{request, HttpTryFrom, Method, Request, Response, Uri};
-use std::{io, mem};
+use hyper::Body;
+use std::borrow::Cow;
+use std::{io, mem, str};
 use tokio::executor::DefaultExecutor;
 use tokio::runtime::current_thread::Runtime;
 
 use app::service::{AppService, AppServiceFuture};
 use app::App;
 use error::CritError;
-use input::body::RequestBody;
-use output::{Data, Receive, ResponseBody};
+use input;
+use output::{ResponseBody, ResponseBodyKind};
 use server::blocking::{with_set_mode, RuntimeMode};
 
 /// A local server which emulates an HTTP service without using the low-level transport.
@@ -114,7 +117,7 @@ impl<'a> Client<'a> {
         LocalRequest {
             client: Some(self),
             request,
-            body: None,
+            body: Default::default(),
         }
     }
 
@@ -139,7 +142,7 @@ impl<'a> Client<'a> {
 pub struct LocalRequest<'a: 'b, 'b> {
     client: Option<&'b mut Client<'a>>,
     request: request::Builder,
-    body: Option<RequestBody>,
+    body: RequestBody,
 }
 
 impl<'a, 'b> LocalRequest<'a, 'b> {
@@ -172,11 +175,8 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
     }
 
     /// Sets a message body of this request.
-    pub fn body<T>(&mut self, body: T) -> &mut LocalRequest<'a, 'b>
-    where
-        T: Into<RequestBody>,
-    {
-        self.body = Some(body.into());
+    pub fn body(&mut self, body: impl Into<RequestBody>) -> &mut LocalRequest<'a, 'b> {
+        self.body = body.into();
         self
     }
 
@@ -184,7 +184,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         LocalRequest {
             client: self.client.take(),
             request: mem::replace(&mut self.request, Request::builder()),
-            body: self.body.take(),
+            body: mem::replace(&mut self.body, Default::default()),
         }
     }
 
@@ -193,10 +193,8 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         let LocalRequest {
             client,
             mut request,
-            body,
+            body: RequestBody(body),
         } = self.take();
-
-        let body = body.unwrap_or_else(|| RequestBody::from(()));
 
         let client = client.expect("This LocalRequest has already been used.");
         let request = request.body(body)?;
@@ -239,13 +237,153 @@ impl Future for TestResponseFuture {
 
             match (mem::replace(self, TestResponseFuture::Done), polled) {
                 (TestResponseFuture::Initial(..), Some(Polled::Response(response))) => {
-                    *self = TestResponseFuture::Receive(response.map(ResponseBody::receive));
+                    *self = TestResponseFuture::Receive(response.map(Receive::new));
                 }
                 (TestResponseFuture::Receive(response), Some(Polled::Received(received))) => {
                     return Ok(response.map(|_| received).into())
                 }
                 _ => unreachable!("unexpected state"),
             }
+        }
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct RequestBody(input::body::RequestBody);
+
+impl RequestBody {
+    fn from_hyp(body: Body) -> RequestBody {
+        RequestBody(input::body::RequestBody::from_hyp(body))
+    }
+}
+
+impl Default for RequestBody {
+    fn default() -> Self {
+        RequestBody::from_hyp(Default::default())
+    }
+}
+
+impl From<()> for RequestBody {
+    fn from(_: ()) -> Self {
+        Default::default()
+    }
+}
+
+macro_rules! impl_from_for_request_body {
+    ($($t:ty,)*) => {$(
+        impl From<$t> for RequestBody {
+            fn from(body: $t) -> Self {
+                RequestBody::from_hyp(body.into())
+            }
+        }
+    )*};
+}
+
+impl_from_for_request_body![
+    &'static str,
+    &'static [u8],
+    Vec<u8>,
+    String,
+    Cow<'static, str>,
+    Cow<'static, [u8]>,
+    Bytes,
+];
+
+// ==== Data ====
+
+#[derive(Debug)]
+pub(crate) struct Receive(ReceiveInner);
+
+#[derive(Debug)]
+enum ReceiveInner {
+    Empty,
+    Sized(Option<Bytes>),
+    Chunked(Body, Vec<Bytes>),
+}
+
+impl Receive {
+    fn new(body: ResponseBody) -> Receive {
+        match body.0 {
+            ResponseBodyKind::Empty => Receive(ReceiveInner::Empty),
+            ResponseBodyKind::Sized(data) => Receive(ReceiveInner::Sized(Some(data))),
+            ResponseBodyKind::Chunked(body) => Receive(ReceiveInner::Chunked(body, vec![])),
+        }
+    }
+
+    pub(crate) fn poll_ready(&mut self) -> Poll<Data, CritError> {
+        match self.0 {
+            ReceiveInner::Empty => Ok(Async::Ready(Data(DataInner::Empty))),
+            ReceiveInner::Sized(ref mut data) => Ok(Async::Ready(Data(DataInner::Sized(
+                data.take().expect("The response body has already resolved"),
+            )))),
+            ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
+                while let Some(chunk) = try_ready!(body.poll()) {
+                    chunks.push(chunk.into());
+                }
+                let chunks = mem::replace(chunks, vec![]);
+                Ok(Async::Ready(Data(DataInner::Chunked(chunks))))
+            }
+        }
+    }
+}
+
+/// A type representing a received HTTP message data from the server.
+///
+/// This type is usually used by the testing framework.
+#[derive(Debug)]
+pub struct Data(DataInner);
+
+#[derive(Debug)]
+enum DataInner {
+    Empty,
+    Sized(Bytes),
+    Chunked(Vec<Bytes>),
+}
+
+#[allow(missing_docs)]
+impl Data {
+    pub fn is_sized(&self) -> bool {
+        match self.0 {
+            DataInner::Empty | DataInner::Sized(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_chunked(&self) -> bool {
+        !self.is_sized()
+    }
+
+    pub fn content_length(&self) -> Option<usize> {
+        match self.0 {
+            DataInner::Empty => Some(0),
+            DataInner::Sized(ref data) => Some(data.len()),
+            _ => None,
+        }
+    }
+
+    pub fn as_chunks(&self) -> Option<&[Bytes]> {
+        match self.0 {
+            DataInner::Chunked(ref chunks) => Some(&chunks[..]),
+            _ => None,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Cow<[u8]> {
+        match self.0 {
+            DataInner::Empty => Cow::Borrowed(&[]),
+            DataInner::Sized(ref data) => Cow::Borrowed(&data[..]),
+            DataInner::Chunked(ref chunks) => Cow::Owned(chunks.iter().fold(Vec::new(), |mut acc, chunk| {
+                acc.extend_from_slice(&*chunk);
+                acc
+            })),
+        }
+    }
+
+    pub fn to_utf8(&self) -> Result<Cow<str>, str::Utf8Error> {
+        match self.to_bytes() {
+            Cow::Borrowed(bytes) => str::from_utf8(bytes).map(Cow::Borrowed),
+            Cow::Owned(bytes) => String::from_utf8(bytes).map_err(|e| e.utf8_error()).map(Cow::Owned),
         }
     }
 }

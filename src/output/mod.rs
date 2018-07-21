@@ -5,8 +5,8 @@ mod responder;
 mod response;
 
 // re-exports
-pub(crate) use self::body::Receive;
-pub use self::body::{Data, ResponseBody};
+pub use self::body::ResponseBody;
+pub(crate) use self::body::ResponseBodyKind;
 pub use self::responder::Responder;
 pub use self::response::HttpResponse;
 
