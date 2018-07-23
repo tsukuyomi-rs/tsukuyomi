@@ -51,7 +51,6 @@ use std::rc::Rc;
 
 use app::App;
 use app::RouteId;
-use app::ScopedKey;
 use input::local_map::LocalMap;
 
 /// Contextual information used when upgrading the server protocol.
@@ -74,11 +73,11 @@ pub struct UpgradeContext {
 
 impl UpgradeContext {
     /// Returns the reference to a value of `T` registered in the global storage.
-    pub fn get<T>(&self, key: &'static ScopedKey<T>) -> Option<&T>
+    pub fn get<T>(&self) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.app.get(key, self.route)
+        self.app.get(self.route)
     }
 }
 

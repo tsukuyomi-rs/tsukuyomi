@@ -26,8 +26,6 @@ use self::recognizer::Recognizer;
 use self::scoped_map::ScopedMap;
 use self::uri::Uri;
 
-pub use self::scoped_map::ScopedKey;
-
 #[derive(Debug)]
 struct Config {
     fallback_head: bool,
@@ -164,11 +162,11 @@ impl App {
         }
     }
 
-    pub(crate) fn get<T>(&self, key: &'static ScopedKey<T>, id: RouteId) -> Option<&T>
+    pub(crate) fn get<T>(&self, id: RouteId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.inner.globals.get(key, id.0)
+        self.inner.globals.get(id.0)
     }
 
     fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
