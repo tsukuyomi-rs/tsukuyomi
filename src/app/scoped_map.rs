@@ -53,7 +53,7 @@ macro_rules! global_key {
         global_key!($(
             $(#[$m])*
             static $NAME: $t;
-        )*)
+        )*);
     };
 }
 
@@ -83,7 +83,7 @@ macro_rules! global_key {
         global_key!($(
             $(#[$m])*
             $vis static $NAME: $t;
-        )*)
+        )*);
     };
 }
 
