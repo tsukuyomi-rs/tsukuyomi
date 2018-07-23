@@ -6,6 +6,7 @@ use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
+use std::marker::PhantomData;
 use tokio::executor::{DefaultExecutor, Executor};
 
 use error::{CritError, Error};
@@ -252,7 +253,7 @@ impl AppServiceFuture {
             let (parts, body) = request.into_parts();
             (Request::from_parts(parts, ()), body)
         };
-        let InputParts { cookies, locals, .. } = self.parts.take().expect("This future has already polled");
+        let InputParts { cookies, locals, route, params, .. } = self.parts.take().expect("This future has already polled");
 
         // append Cookie entries.
         cookies.append_to(output.headers_mut());
@@ -269,6 +270,7 @@ impl AppServiceFuture {
         // spawn the upgrade task.
         if let (Some(body), Some(mut upgrade)) = body.deconstruct() {
             if output.status() == StatusCode::SWITCHING_PROTOCOLS {
+                let app = self.app.clone();
                 exec.spawn(Box::new(
                     body.on_upgrade()
                         .map_err(|e| error!("upgrade error: {}", e))
@@ -277,7 +279,10 @@ impl AppServiceFuture {
                                 io: upgraded,
                                 request,
                                 locals,
-                                _priv: (),
+                                route,
+                                params,
+                                app,
+                                _marker: PhantomData,
                             })
                         }),
                 )).map_err(|_| format_err!("failed spawn the upgrade task").compat())?;
