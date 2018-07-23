@@ -48,7 +48,7 @@ macro_rules! local_key {
         local_key!($(
             $(#[$m])*
             static $NAME: $t;
-        )*)
+        )*);
     };
 }
 
@@ -78,7 +78,7 @@ macro_rules! local_key {
         local_key!($(
             $(#[$m])*
             $vis static $NAME: $t;
-        )*)
+        )*);
     };
 }
 
