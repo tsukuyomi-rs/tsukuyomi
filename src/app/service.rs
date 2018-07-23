@@ -5,8 +5,8 @@ use http::header::HeaderValue;
 use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
-use std::mem;
 use std::marker::PhantomData;
+use std::mem;
 use tokio::executor::{DefaultExecutor, Executor};
 
 use error::{CritError, Error};
@@ -253,7 +253,13 @@ impl AppServiceFuture {
             let (parts, body) = request.into_parts();
             (Request::from_parts(parts, ()), body)
         };
-        let InputParts { cookies, locals, route, params, .. } = self.parts.take().expect("This future has already polled");
+        let InputParts {
+            cookies,
+            locals,
+            route,
+            params,
+            ..
+        } = self.parts.take().expect("This future has already polled");
 
         // append Cookie entries.
         cookies.append_to(output.headers_mut());

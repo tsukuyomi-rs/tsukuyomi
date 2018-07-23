@@ -15,7 +15,7 @@ use input::Input;
 use modifier::Modifier;
 
 use super::recognizer::Recognizer;
-use super::scoped_map::{self, ScopedKey};
+use super::scoped_map;
 use super::uri::{self, Uri};
 use super::{App, AppState, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
 
@@ -295,19 +295,19 @@ impl AppBuilder {
     }
 
     /// Sets a value of `T` to the global storage.
-    pub fn set<T>(&mut self, key: &'static ScopedKey<T>, value: T) -> &mut Self
+    pub fn set<T>(&mut self, value: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
-        self.set_value(key, value, ScopeId::Global);
+        self.set_value(value, ScopeId::Global);
         self
     }
 
-    fn set_value<T>(&mut self, key: &'static ScopedKey<T>, value: T, id: ScopeId)
+    fn set_value<T>(&mut self, value: T, id: ScopeId)
     where
         T: Send + Sync + 'static,
     {
-        self.globals.set(key, value, id);
+        self.globals.set(value, id);
     }
 
     /// Sets the prefix of URIs.
@@ -494,11 +494,11 @@ impl<'a> Scope<'a> {
     }
 
     /// Adds a *scope-local* variable into the application.
-    pub fn set<T>(&mut self, key: &'static ScopedKey<T>, value: T) -> &mut Self
+    pub fn set<T>(&mut self, value: T) -> &mut Self
     where
         T: Send + Sync + 'static,
     {
-        self.builder.set_value(key, value, self.id);
+        self.builder.set_value(value, self.id);
         self
     }
 

@@ -50,7 +50,7 @@ use cookie::CookieJar;
 use http::Request;
 use std::ops::{Deref, DerefMut};
 
-use app::{App, RouteId, ScopedKey};
+use app::{App, RouteId};
 use error::Error;
 
 use self::cookie::CookieManager;
@@ -109,11 +109,11 @@ impl<'task> Input<'task> {
     ///
     /// This method will return a `None` if a value of `T` is not registered in the global storage.
     #[inline]
-    pub fn get<T>(&self, key: &'static ScopedKey<T>) -> Option<&T>
+    pub fn get<T>(&self) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.app.get(key, self.parts.route)
+        self.app.get(self.parts.route)
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
