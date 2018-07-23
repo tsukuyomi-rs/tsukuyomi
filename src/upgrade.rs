@@ -46,7 +46,12 @@
 use futures::{Future, IntoFuture};
 use http::Request;
 use hyper::upgrade::Upgraded;
+use std::marker::PhantomData;
+use std::rc::Rc;
 
+use app::App;
+use app::RouteId;
+use app::ScopedKey;
 use input::local_map::LocalMap;
 
 /// Contextual information used when upgrading the server protocol.
@@ -61,7 +66,20 @@ pub struct UpgradeContext {
     /// The value of `LocalMap` used in the handshake.
     pub locals: LocalMap,
 
-    pub(crate) _priv: (),
+    pub(crate) route: RouteId,
+    pub(crate) params: Vec<(usize, usize)>,
+    pub(crate) app: App,
+    pub(crate) _marker: PhantomData<Rc<()>>,
+}
+
+impl UpgradeContext {
+    /// Returns the reference to a value of `T` registered in the global storage.
+    pub fn get<T>(&self, key: &'static ScopedKey<T>) -> Option<&T>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.app.get(key, self.route)
+    }
 }
 
 /// A trait representing a function called at performing the protocol upgrade.
