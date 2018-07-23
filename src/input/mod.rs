@@ -16,30 +16,31 @@ pub use self::params::Params;
 
 #[allow(missing_docs)]
 pub mod header {
-    use super::Input;
-    use error::Error;
     use http::header;
     use mime::Mime;
+
+    use error::Error;
+
+    use super::local_map::Entry;
+    use super::Input;
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
     pub fn content_type<'a>(input: &'a mut Input) -> Result<Option<&'a Mime>, Error> {
         local_key!(static CONTENT_TYPE: Option<Mime>);
 
-        // TODO: optimize
-        if input.locals().get(&CONTENT_TYPE).is_some() {
-            Ok(input.locals().get(&CONTENT_TYPE).unwrap().as_ref())
-        } else {
-            let mime = match input.headers().get(header::CONTENT_TYPE) {
-                Some(h) => {
-                    let mime: Mime = h.to_str()
+        match input.parts.locals.entry(&CONTENT_TYPE) {
+            Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
+            Entry::Vacant(entry) => {
+                let mime = match input.request.headers().get(header::CONTENT_TYPE) {
+                    Some(h) => h.to_str()
                         .map_err(Error::bad_request)?
                         .parse()
-                        .map_err(Error::bad_request)?;
-                    Some(mime)
-                }
-                None => None,
-            };
-            Ok(input.locals_mut().entry(&CONTENT_TYPE).or_insert(mime).as_ref())
+                        .map(Some)
+                        .map_err(Error::bad_request)?,
+                    None => None,
+                };
+                Ok(entry.insert(mime).as_ref())
+            }
         }
     }
 }
