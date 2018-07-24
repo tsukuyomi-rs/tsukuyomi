@@ -10,9 +10,10 @@ use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
-use handler::{Handle, Handler};
+use handler::Handler;
 use input::Input;
 use modifier::Modifier;
+use output::Respond;
 
 use super::recognizer::Recognizer;
 use super::scoped_map;
@@ -652,9 +653,9 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
     };
 
-    Box::new(move |_: &mut Input| -> Handle {
+    Box::new(move |_: &mut Input| -> Respond {
         let mut response = Response::new(());
         response.headers_mut().insert(header::ALLOW, allowed_methods.clone());
-        Handle::ready(Ok(response.map(Into::into)))
+        Respond::ready(Ok(response.map(Into::into)))
     })
 }
