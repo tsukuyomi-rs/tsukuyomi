@@ -118,16 +118,16 @@ impl AppBuilder {
     /// # use tsukuyomi::app::App;
     /// use tsukuyomi::app::builder::Route;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::handler::Handle;
+    /// # use tsukuyomi::output::Responder;
     /// # use http::Method;
     ///
-    /// fn handler(_: &mut Input) -> Handle {
+    /// fn handler(_: &mut Input) -> impl Responder {
     ///     // ...
-    /// # unimplemented!()
+    /// # ""
     /// }
-    /// fn submit(_: &mut Input) -> Handle {
+    /// fn submit(_: &mut Input) -> impl Responder {
     ///     // ...
-    /// # unimplemented!()
+    /// # ""
     /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
@@ -169,17 +169,17 @@ impl AppBuilder {
     ///
     /// ```
     /// # use tsukuyomi::app::App;
-    /// use tsukuyomi::app::builder::Scope;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::handler::Handle;
+    /// # use tsukuyomi::output::Responder;
+    /// use tsukuyomi::app::builder::Scope;
     ///
-    /// fn get_post(_: &mut Input) -> Handle {
+    /// fn get_post(_: &mut Input) -> impl Responder {
     ///     // ...
-    /// # unimplemented!()
+    /// # ""
     /// }
-    /// fn add_post(_: &mut Input) -> Handle {
+    /// fn add_post(_: &mut Input) -> impl Responder {
     ///     // ...
-    /// # unimplemented!()
+    /// # ""
     /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
@@ -224,14 +224,14 @@ impl AppBuilder {
     /// ```
     /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::handler::Handle;
-    /// fn get_post(_: &mut Input) -> Handle {
+    /// # use tsukuyomi::output::Responder;
+    /// fn get_post(_: &mut Input) -> impl Responder {
     ///     // ...
-    /// # unimplemented!()
+    /// # ""
     /// }
-    /// fn add_post(_: &mut Input) -> Handle {
+    /// fn add_post(_: &mut Input) -> impl Responder {
     ///     // ...
-    /// # unimplemented!()
+    /// # ""
     /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {

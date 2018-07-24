@@ -43,6 +43,8 @@ where
 /// # extern crate futures;
 /// # use futures::prelude::*;
 /// # use tsukuyomi::{App, Input, Error};
+/// # use tsukuyomi::handler::wrap_async;
+/// #
 /// fn handler(input: &mut Input)
 ///     -> impl Future<Item = String, Error = Error> + Send + 'static
 /// {
