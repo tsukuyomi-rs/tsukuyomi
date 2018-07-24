@@ -1,10 +1,11 @@
 //! `Handler` and supplemental components.
 
+use futures::{Async, Future, IntoFuture};
 use std::sync::Arc;
 
-use input::Input;
-use output::responder::IntoResponder;
-use output::{AsyncResponder, Respond};
+use error::Error;
+use input::{self, Input};
+use output::{AsyncResponder, Respond, Responder};
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -33,10 +34,42 @@ where
     }
 }
 
-/// A helper function to instantiate a `Handler` from a function which will return a `Future`.
-pub fn wrap_async<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+/// A helper function to instantiate a `Handler` from an async function.
+///
+/// # Examples
+///
+/// ```
+/// # extern crate tsukuyomi;
+/// # extern crate futures;
+/// # use futures::prelude::*;
+/// # use tsukuyomi::{App, Input, Error};
+/// fn handler(input: &mut Input)
+///     -> impl Future<Item = String, Error = Error> + Send + 'static
+/// {
+///     input.body_mut()
+///         .read_all()
+///         .convert_to()
+/// }
+///
+/// # fn main() -> tsukuyomi::AppResult<()> {
+/// let app = App::builder()
+///     .route(("/", wrap_async(handler)))
+///     .finish()?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn wrap_async<F>(f: impl Fn(&mut Input) -> F) -> impl Handler
 where
-    R: IntoResponder,
+    F: IntoFuture,
+    F::Future: Send + 'static,
+    F::Item: Responder,
+    Error: From<F::Error>,
 {
-    move |input: &mut Input| f(input).into_responder()
+    move |input: &mut Input| {
+        let mut future = f(input).into_future();
+        Respond::new(move |input| {
+            let item = try_ready!(input::with_set_current(input, || future.poll()));
+            Responder::respond_to(item, input).map(Async::Ready)
+        })
+    }
 }

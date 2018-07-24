@@ -70,7 +70,7 @@ pub use input::Input;
 pub use modifier::Modifier;
 
 #[doc(inline)]
-pub use output::{Output, Responder};
+pub use output::{AsyncResponder, Output, Responder};
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///
