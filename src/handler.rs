@@ -1,12 +1,12 @@
 //! `Handler` and supplemental components.
 
-use futures::{Async, Future, Poll};
+use futures::{Async, Poll};
 use std::fmt;
 use std::sync::Arc;
 
 use error::Error;
-use input::{self, Input};
-use output::{Output, Responder};
+use input::Input;
+use output::{AsyncResponder, Output, Responder};
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -34,6 +34,43 @@ where
     }
 }
 
+/// A type representing the return value from `Handler::handle`.
+pub struct Handle(HandleKind);
+
+#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+enum HandleKind {
+    Ready(Option<Result<Output, Error>>),
+    Async(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static>),
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for Handle {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Handle").finish()
+    }
+}
+
+impl Handle {
+    #[doc(hidden)]
+    pub fn ready(result: Result<Output, Error>) -> Handle {
+        Handle(HandleKind::Ready(Some(result)))
+    }
+
+    #[doc(hidden)]
+    pub fn wrap_async(mut x: impl AsyncResponder) -> Handle {
+        Handle(HandleKind::Async(Box::new(move |input| {
+            x.poll_respond_to(input)
+        })))
+    }
+
+    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
+        match self.0 {
+            HandleKind::Ready(ref mut res) => res.take().expect("this future has already polled").map(Async::Ready),
+            HandleKind::Async(ref mut f) => (f)(input),
+        }
+    }
+}
+
 /// Create an instance of `Handler` from the provided function.
 ///
 /// The provided handler is *synchronous*, which means that the provided handler
@@ -45,19 +82,19 @@ where
 /// ```
 /// # use tsukuyomi::app::App;
 /// # use tsukuyomi::input::Input;
-/// # use tsukuyomi::handler::ready_handler;
+/// # use tsukuyomi::handler::wrap_ready;
 /// fn index(input: &mut Input) -> &'static str {
 ///     "Hello, Tsukuyomi.\n"
 /// }
 ///
 /// # fn main() -> tsukuyomi::AppResult<()> {
 /// let app = App::builder()
-///     .route(("/index.html", ready_handler(index)))
+///     .route(("/index.html", wrap_ready(index)))
 ///     .finish()?;
 /// # Ok(())
 /// # }
 /// ```
-pub fn ready_handler<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+pub fn wrap_ready<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
 where
     R: Responder,
 {
@@ -86,35 +123,47 @@ where
 /// # Examples
 ///
 /// ```
-/// # extern crate futures;
-/// # extern crate tsukuyomi;
 /// # use tsukuyomi::app::App;
 /// # use tsukuyomi::error::Error;
 /// # use tsukuyomi::input::Input;
-/// # use futures::Future;
-/// # use futures::future::lazy;
-/// # use tsukuyomi::handler::async_handler;
-/// fn handler(input: &mut Input)
-///     -> impl Future<Item = String, Error = Error> + Send + 'static
-/// {
-///     let query = input.uri().query().unwrap_or("<empty>").to_owned();
-///     lazy(move || {
-///         Ok(format!("query = {}", query))
-///     })
+/// # use tsukuyomi::output::AsyncResponder;
+/// # use tsukuyomi::handler::wrap_async;
+/// fn handler(input: &mut Input) -> impl AsyncResponder<Output = String> {
+///     input.body_mut().read_all().convert_to()
 /// }
 ///
 /// # fn main() -> tsukuyomi::AppResult<()> {
 /// let app = App::builder()
-///     .route(("/posts", async_handler(handler)))
+///     .route(("/posts", wrap_async(handler)))
 ///     .finish()?;
 /// # Ok(())
 /// # }
 /// ```
-pub fn async_handler<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+///
+/// ```ignore
+/// # extern crate tsukuyomi;
+/// # extern crate futures_await as futures;
+/// # use tsukuyomi::app::App;
+/// # use tsukuyomi::error::Error;
+/// # use tsukuyomi::input::Input;
+/// # use tsukuyomi::output::Responder;
+/// # use tsukuyomi::handler::wrap_async;
+/// # use futures::prelude::*;
+/// #[async]
+/// fn handler() -> tsukuyomi::Result<impl Responder> {
+///     Ok("Hello")
+/// }
+///
+/// # fn main() -> tsukuyomi::AppResult<()> {
+/// let app = App::builder()
+///     .route(("/posts", wrap_async(handler)))
+///     .finish()?;
+/// # Ok(())
+/// # }
+/// ```
+pub fn wrap_async<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
 where
-    R: Future + Send + 'static,
-    R::Item: Responder,
-    Error: From<R::Error>,
+    R: AsyncResponder,
 {
     #[allow(missing_debug_implementations)]
     struct AsyncHandler<T>(T);
@@ -122,98 +171,12 @@ where
     impl<T, R> Handler for AsyncHandler<T>
     where
         T: Fn(&mut Input) -> R,
-        R: Future + Send + 'static,
-        R::Item: Responder,
-        Error: From<R::Error>,
+        R: AsyncResponder,
     {
         fn handle(&self, input: &mut Input) -> Handle {
-            let mut future = (self.0)(input);
-            Handle(HandleKind::Async(Box::new(move |input| {
-                let item = try_ready!(input::with_set_current(input, || future.poll()));
-                item.respond_to(input).map(Async::Ready)
-            })))
+            Handle::wrap_async((self.0)(input))
         }
     }
 
     AsyncHandler(f)
-}
-
-/// Create an `Handler` from the provided function.
-///
-/// This function is equivalent to `async_handler(move |_| f())`.
-#[inline(always)]
-pub fn fully_async_handler<R>(f: impl Fn() -> R) -> impl Handler
-where
-    R: Future + Send + 'static,
-    R::Item: Responder,
-    Error: From<R::Error>,
-{
-    async_handler(move |_| f())
-}
-
-/// A type representing the return value from `Handler::handle`.
-#[derive(Debug)]
-pub struct Handle(HandleKind);
-
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
-enum HandleKind {
-    Ready(Option<Result<Output, Error>>),
-    Async(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send>),
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for HandleKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Handle").finish()
-    }
-}
-
-impl Handle {
-    /// Creates a `Handle` from an HTTP response.
-    pub fn ok(output: Output) -> Handle {
-        Handle::ready(Ok(output))
-    }
-
-    /// Creates a `Handle` from an error value.
-    pub fn err<E>(err: E) -> Handle
-    where
-        E: Into<Error>,
-    {
-        Handle::ready(Err(err.into()))
-    }
-
-    #[doc(hidden)]
-    pub fn ready(result: Result<Output, Error>) -> Handle {
-        Handle(HandleKind::Ready(Some(result)))
-    }
-
-    /// Creates a `Handle` from a future.
-    pub fn wrap_future<F>(mut future: F) -> Handle
-    where
-        F: Future<Item = Output, Error = Error> + Send + 'static,
-    {
-        Handle(HandleKind::Async(Box::new(move |input| {
-            input::with_set_current(input, || future.poll())
-        })))
-    }
-
-    #[doc(hidden)]
-    pub fn async_responder<F>(mut future: F) -> Handle
-    where
-        F: Future + Send + 'static,
-        F::Item: Responder,
-        Error: From<F::Error>,
-    {
-        Handle(HandleKind::Async(Box::new(move |input| {
-            let x = try_ready!(input::with_set_current(input, || future.poll()));
-            x.respond_to(input).map(Async::Ready)
-        })))
-    }
-
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
-        match self.0 {
-            HandleKind::Ready(ref mut res) => res.take().expect("this future has already polled").map(Async::Ready),
-            HandleKind::Async(ref mut f) => (f)(input),
-        }
-    }
 }

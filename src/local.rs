@@ -11,7 +11,7 @@
 //! use tsukuyomi::local::LocalServer;
 //!
 //! let app = App::builder()
-//!     .route(("/hello", handler::ready_handler(|_| "Hello")))
+//!     .route(("/hello", handler::wrap_ready(|_| "Hello")))
 //!     .finish()
 //!     .unwrap();
 //!
