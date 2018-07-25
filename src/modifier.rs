@@ -22,7 +22,7 @@
 //!
 //! # fn main() -> tsukuyomi::AppResult<()> {
 //! let app = App::builder()
-//!     .route(("/", handler::ready_handler(|_| "Hello")))
+//!     .route(("/", handler::wrap_ready(|_| "Hello")))
 //!     .modifier(RequestCounter::default())
 //!     .finish()?;
 //! # Ok(())

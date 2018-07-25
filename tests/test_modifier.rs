@@ -3,7 +3,7 @@ extern crate http;
 extern crate tsukuyomi;
 
 use tsukuyomi::app::builder::Route;
-use tsukuyomi::handler::Handle;
+use tsukuyomi::handler::wrap_ready;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::{Output, ResponseBody};
@@ -43,10 +43,10 @@ fn global_modifier() {
     let app = App::builder()
         .route(("/", {
             let marker = marker.clone();
-            move |_: &mut Input| {
+            wrap_ready(move |_| {
                 marker.lock().unwrap().push("H");
-                Handle::ok(Response::new(ResponseBody::empty()))
-            }
+                ""
+            })
         }))
         .modifier(MarkModifier {
             marker: marker.clone(),
@@ -75,10 +75,10 @@ fn global_modifier_error_on_before() {
     let app = App::builder()
         .route(("/", {
             let marker = marker.clone();
-            move |_: &mut Input| {
+            wrap_ready(move |_| {
                 marker.lock().unwrap().push("H");
-                Handle::ok(Response::new(ResponseBody::empty()))
-            }
+                ""
+            })
         }))
         .modifier(MarkModifier {
             marker: marker.clone(),
@@ -107,10 +107,10 @@ fn global_modifiers() {
     let app = App::builder()
         .route(("/", {
             let marker = marker.clone();
-            move |_: &mut Input| {
+            wrap_ready(move |_| {
                 marker.lock().unwrap().push("H");
-                Handle::ok(Response::new(ResponseBody::empty()))
-            }
+                ""
+            })
         }))
         .modifier(MarkModifier {
             marker: marker.clone(),
@@ -173,18 +173,18 @@ fn scoped_modifier() {
             });
             s.route(("/", {
                 let marker = marker.clone();
-                move |_: &mut Input| {
+                wrap_ready(move |_| {
                     marker.lock().unwrap().push("H1");
-                    Handle::ok(Response::new(ResponseBody::empty()))
-                }
+                    ""
+                })
             }));
         })
         .route(("/path2", {
             let marker = marker.clone();
-            move |_: &mut Input| {
+            wrap_ready(move |_| {
                 marker.lock().unwrap().push("H2");
-                Handle::ok(Response::new(ResponseBody::empty()))
-            }
+                ""
+            })
         }))
         .finish()
         .unwrap();
@@ -230,10 +230,10 @@ fn nested_modifiers() {
                 });
                 s.route(("/", {
                     let marker = marker.clone();
-                    move |_: &mut Input| {
+                    wrap_ready(move |_| {
                         marker.lock().unwrap().push("H1");
-                        Handle::ok(Response::new(ResponseBody::empty()))
-                    }
+                        ""
+                    })
                 }));
 
                 s.mount("/a", |s| {
@@ -250,10 +250,10 @@ fn nested_modifiers() {
                     });
                     s.route(("/", {
                         let marker = marker.clone();
-                        move |_: &mut Input| {
+                        wrap_ready(move |_| {
                             marker.lock().unwrap().push("H2");
-                            Handle::ok(Response::new(ResponseBody::empty()))
-                        }
+                            ""
+                        })
                     }));
                 });
             });
@@ -303,10 +303,12 @@ fn route_modifiers() {
                         },
                     });
 
-                    let marker = marker.clone();
-                    r.handler(move |_: &mut Input| {
-                        marker.lock().unwrap().push("H");
-                        Handle::ok(Response::new(ResponseBody::empty()))
+                    r.handler({
+                        let marker = marker.clone();
+                        wrap_ready(move |_| {
+                            marker.lock().unwrap().push("H");
+                            ""
+                        })
                     });
                 });
             });

@@ -5,7 +5,7 @@ use http::{Method, Response, StatusCode};
 use input::Input;
 
 fn dummy_handler(_: &mut Input) -> Handle {
-    Handle::ok(Response::new(Default::default()))
+    Handle::ready(Ok(Response::new(Default::default())))
 }
 
 #[test]

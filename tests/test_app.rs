@@ -23,7 +23,7 @@ fn test_case1_empty_routes() {
 fn test_case2_single_route() {
     let app = App::builder()
         .mount("/", |m| {
-            m.route(("/hello", handler::ready_handler(|_| "Tsukuyomi")));
+            m.route(("/hello", handler::wrap_ready(|_| "Tsukuyomi")));
         })
         .finish()
         .unwrap();
@@ -49,7 +49,7 @@ fn test_case3_post_body() {
         .route((
             "/hello",
             Method::POST,
-            handler::async_handler(|input| input.body_mut().read_all().convert_to::<String>()),
+            handler::wrap_async(|input| input.body_mut().read_all().convert_to::<String>()),
         ))
         .finish()
         .unwrap();
@@ -84,7 +84,7 @@ fn test_case4_cookie() {
     let app = App::builder()
         .route((
             "/login",
-            handler::ready_handler({
+            handler::wrap_ready({
                 move |input| -> tsukuyomi::Result<_> {
                     #[cfg_attr(rustfmt, rustfmt_skip)]
                     let cookie = Cookie::build("session", "dummy_session_id")
@@ -98,7 +98,7 @@ fn test_case4_cookie() {
         ))
         .route((
             "/logout",
-            handler::ready_handler(move |input| -> tsukuyomi::Result<_> {
+            handler::wrap_ready(move |input| -> tsukuyomi::Result<_> {
                 input.cookies()?.remove(Cookie::named("session"));
                 Ok("Logged out")
             }),
@@ -144,8 +144,8 @@ fn test_case4_cookie() {
 #[test]
 fn test_case_5_default_options() {
     let app = App::builder()
-        .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
-        .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
+        .route(("/path", Method::GET, handler::wrap_ready(|_| "get")))
+        .route(("/path", Method::POST, handler::wrap_ready(|_| "post")))
         .finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
@@ -166,8 +166,8 @@ fn test_case_5_default_options() {
 #[test]
 fn test_case_5_disable_default_options() {
     let app = App::builder()
-        .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
-        .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
+        .route(("/path", Method::GET, handler::wrap_ready(|_| "get")))
+        .route(("/path", Method::POST, handler::wrap_ready(|_| "post")))
         .default_options(false)
         .finish()
         .unwrap();
