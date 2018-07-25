@@ -34,6 +34,17 @@ The following features does not currently implemented but will be supported in t
 * [API documentation (released)](https://docs.rs/tsukuyomi/0.2/tsukuyomi)
 * [API documentation (master)](https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/index.html)
 
+## Dependencies Status
+
+| Released | Master |
+|:--------:|:------:|
+| [![dependency status][deps-released-badge]][deps-released] | [![dependency status][deps-developed-badge]][deps-developed] |
+
+[deps-released]: https://deps.rs/crate/tsukuyomi/0.2.2
+[deps-released-badge]: https://deps.rs/crate/tsukuyomi/0.2.2/status.svg
+[deps-developed]: https://deps.rs/repo/github/tsukuyomi-rs/tsukuyomi
+[deps-developed-badge]: https://deps.rs/repo/github/tsukuyomi-rs/tsukuyomi/status.svg
+
 ## Build Status
 
 | Travis CI | Appveor | Coveralls |
