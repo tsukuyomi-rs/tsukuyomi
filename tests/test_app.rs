@@ -168,7 +168,7 @@ fn test_case_5_disable_default_options() {
     let app = App::builder()
         .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
         .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
-        .default_options(None)
+        .default_options(false)
         .finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();

@@ -29,6 +29,7 @@ use self::uri::Uri;
 #[derive(Debug)]
 struct Config {
     fallback_head: bool,
+    fallback_options: bool,
     _priv: (),
 }
 
@@ -36,6 +37,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             fallback_head: true,
+            fallback_options: true,
             _priv: (),
         }
     }
