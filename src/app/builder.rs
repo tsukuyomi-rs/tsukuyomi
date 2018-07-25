@@ -1,7 +1,7 @@
 //! Components for building an `App`.
 
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, mem};
 
 use bytes::BytesMut;
 use failure::{Error, Fail};
@@ -139,7 +139,7 @@ impl AppBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn route(&mut self, config: impl RouteConfig) -> &mut Self {
+    pub fn route(mut self, config: impl RouteConfig) -> Self {
         self.new_route(ScopeId::Global, config);
         self
     }
@@ -189,7 +189,7 @@ impl AppBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn scope(&mut self, config: impl ScopeConfig) -> &mut Self {
+    pub fn scope(mut self, config: impl ScopeConfig) -> Self {
         self.new_scope(ScopeId::Global, config);
         self
     }
@@ -241,14 +241,14 @@ impl AppBuilder {
     /// # }
     /// ```
     #[inline(always)]
-    pub fn mount(&mut self, prefix: &str, f: impl FnOnce(&mut Scope)) -> &mut Self {
+    pub fn mount(self, prefix: &str, f: impl FnOnce(&mut Scope)) -> Self {
         self.scope(Mount(prefix, f))
     }
 
     /// Sets whether the fallback to GET if the handler for HEAD is not registered is enabled or not.
     ///
     /// The default value is `true`.
-    pub fn fallback_head(&mut self, enabled: bool) -> &mut Self {
+    pub fn fallback_head(mut self, enabled: bool) -> Self {
         self.modify(move |self_| {
             self_.config.fallback_head = enabled;
             Ok(())
@@ -260,7 +260,7 @@ impl AppBuilder {
     ///
     /// If `enabled`, it creates the default OPTIONS handlers by collecting the registered
     /// methods from the router and then adds them to the global scope.
-    pub fn default_options(&mut self, enabled: bool) -> &mut Self {
+    pub fn default_options(mut self, enabled: bool) -> Self {
         self.modify(move |self_| {
             self_.config.fallback_options = enabled;
             Ok(())
@@ -269,13 +269,13 @@ impl AppBuilder {
     }
 
     /// Sets the instance to an error handler into this builder.
-    pub fn error_handler(&mut self, error_handler: impl ErrorHandler + Send + Sync + 'static) -> &mut Self {
+    pub fn error_handler(mut self, error_handler: impl ErrorHandler + Send + Sync + 'static) -> Self {
         self.error_handler = Some(Box::new(error_handler));
         self
     }
 
     /// Register a `Modifier` into the global scope.
-    pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
+    pub fn modifier(mut self, modifier: impl Modifier + Send + Sync + 'static) -> Self {
         self.add_modifier(ScopeId::Global, modifier);
         self
     }
@@ -288,7 +288,7 @@ impl AppBuilder {
     }
 
     /// Sets a value of `T` to the global storage.
-    pub fn set<T>(&mut self, value: T) -> &mut Self
+    pub fn set<T>(mut self, value: T) -> Self
     where
         T: Send + Sync + 'static,
     {
@@ -304,7 +304,7 @@ impl AppBuilder {
     }
 
     /// Sets the prefix of URIs.
-    pub fn prefix(&mut self, prefix: &str) -> &mut Self {
+    pub fn prefix(mut self, prefix: &str) -> Self {
         self.set_prefix(prefix, ScopeId::Global);
         self
     }
@@ -323,7 +323,7 @@ impl AppBuilder {
     }
 
     /// Creates a configured `App` using the current settings.
-    pub fn finish(&mut self) -> Result<App, Error> {
+    pub fn finish(self) -> Result<App, Error> {
         let AppBuilder {
             routes,
             config,
@@ -333,7 +333,7 @@ impl AppBuilder {
             globals,
             scopes,
             prefix,
-        } = mem::replace(self, AppBuilder::new());
+        } = self;
 
         result?;
 
