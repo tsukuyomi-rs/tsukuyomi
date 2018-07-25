@@ -89,7 +89,7 @@ fn route_fallback_options_disabled() {
     let app = App::builder()
         .route(("/", dummy_handler))
         .route(("/", Method::POST, dummy_handler))
-        .default_options(None)
+        .default_options(false)
         .finish()
         .unwrap();
 

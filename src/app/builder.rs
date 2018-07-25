@@ -1,7 +1,7 @@
 //! Components for building an `App`.
 
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, mem};
 
 use bytes::BytesMut;
 use failure::{Error, Fail};
@@ -28,8 +28,6 @@ pub struct AppBuilder {
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     globals: scoped_map::Builder,
     prefix: Option<Uri>,
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-    options_handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static>>>,
 
     result: Result<(), Error>,
 }
@@ -95,7 +93,6 @@ impl AppBuilder {
             modifiers: vec![],
             globals: Default::default(),
             prefix: None,
-            options_handler: Some(Box::new(default_options_handler)),
 
             result: Ok(()),
         }
@@ -142,7 +139,7 @@ impl AppBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn route(&mut self, config: impl RouteConfig) -> &mut Self {
+    pub fn route(mut self, config: impl RouteConfig) -> Self {
         self.new_route(ScopeId::Global, config);
         self
     }
@@ -192,7 +189,7 @@ impl AppBuilder {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn scope(&mut self, config: impl ScopeConfig) -> &mut Self {
+    pub fn scope(mut self, config: impl ScopeConfig) -> Self {
         self.new_scope(ScopeId::Global, config);
         self
     }
@@ -244,14 +241,14 @@ impl AppBuilder {
     /// # }
     /// ```
     #[inline(always)]
-    pub fn mount(&mut self, prefix: &str, f: impl FnOnce(&mut Scope)) -> &mut Self {
+    pub fn mount(self, prefix: &str, f: impl FnOnce(&mut Scope)) -> Self {
         self.scope(Mount(prefix, f))
     }
 
     /// Sets whether the fallback to GET if the handler for HEAD is not registered is enabled or not.
     ///
     /// The default value is `true`.
-    pub fn fallback_head(&mut self, enabled: bool) -> &mut Self {
+    pub fn fallback_head(mut self, enabled: bool) -> Self {
         self.modify(move |self_| {
             self_.config.fallback_head = enabled;
             Ok(())
@@ -259,31 +256,27 @@ impl AppBuilder {
         self
     }
 
-    /// Specifies whether to use the fallback OPTIONS handlers if the handler is not set.
+    /// Specifies whether to use the default OPTIONS handlers.
     ///
-    /// If a function is provided, the builder creates the instances of handler function by using the provided
-    /// function for each registered route, and then specifies them to each route as OPTIONS handlers.
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-    pub fn default_options(
-        &mut self,
-        handler: Option<Box<dyn FnMut(Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static> + 'static>>,
-    ) -> &mut Self {
-        self.options_handler = handler;
+    /// If `enabled`, it creates the default OPTIONS handlers by collecting the registered
+    /// methods from the router and then adds them to the global scope.
+    pub fn default_options(mut self, enabled: bool) -> Self {
+        self.modify(move |self_| {
+            self_.config.fallback_options = enabled;
+            Ok(())
+        });
         self
     }
 
     /// Sets the instance to an error handler into this builder.
-    pub fn error_handler<H>(&mut self, error_handler: H) -> &mut Self
-    where
-        H: ErrorHandler + Send + Sync + 'static,
-    {
+    pub fn error_handler(mut self, error_handler: impl ErrorHandler + Send + Sync + 'static) -> Self {
         self.error_handler = Some(Box::new(error_handler));
         self
     }
 
     /// Register a `Modifier` into the global scope.
-    pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
-        self.modifiers.push(Box::new(modifier));
+    pub fn modifier(mut self, modifier: impl Modifier + Send + Sync + 'static) -> Self {
+        self.add_modifier(ScopeId::Global, modifier);
         self
     }
 
@@ -295,7 +288,7 @@ impl AppBuilder {
     }
 
     /// Sets a value of `T` to the global storage.
-    pub fn set<T>(&mut self, value: T) -> &mut Self
+    pub fn set<T>(mut self, value: T) -> Self
     where
         T: Send + Sync + 'static,
     {
@@ -311,7 +304,7 @@ impl AppBuilder {
     }
 
     /// Sets the prefix of URIs.
-    pub fn prefix(&mut self, prefix: &str) -> &mut Self {
+    pub fn prefix(mut self, prefix: &str) -> Self {
         self.set_prefix(prefix, ScopeId::Global);
         self
     }
@@ -330,7 +323,7 @@ impl AppBuilder {
     }
 
     /// Creates a configured `App` using the current settings.
-    pub fn finish(&mut self) -> Result<App, Error> {
+    pub fn finish(self) -> Result<App, Error> {
         let AppBuilder {
             routes,
             config,
@@ -340,8 +333,7 @@ impl AppBuilder {
             globals,
             scopes,
             prefix,
-            mut options_handler,
-        } = mem::replace(self, AppBuilder::new());
+        } = self;
 
         result?;
 
@@ -408,7 +400,7 @@ impl AppBuilder {
             let mut recognizer = Recognizer::builder();
             let mut route_ids = vec![];
             for (uri, mut methods) in collected_routes {
-                if let Some(ref mut f) = options_handler {
+                if config.fallback_options {
                     let m = methods.keys().cloned().chain(Some(Method::OPTIONS)).collect();
                     methods.entry(Method::OPTIONS).or_insert_with(|| {
                         let id = routes.len();
@@ -417,7 +409,7 @@ impl AppBuilder {
                             uri: uri.clone(),
                             method: Method::OPTIONS,
                             modifiers: vec![],
-                            handler: (f)(m),
+                            handler: default_options_handler(m),
                             modifier_ids: (0..modifiers.len()).map(ModifierId::Global).collect(),
                         });
                         id
