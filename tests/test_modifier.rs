@@ -3,6 +3,7 @@ extern crate http;
 extern crate tsukuyomi;
 
 use tsukuyomi::app::builder::Route;
+use tsukuyomi::handler::Handle;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::{Output, ResponseBody};
@@ -44,7 +45,7 @@ fn global_modifier() {
             let marker = marker.clone();
             move |_: &mut Input| {
                 marker.lock().unwrap().push("H");
-                Response::new(())
+                Handle::ok(Response::new(ResponseBody::empty()))
             }
         }))
         .modifier(MarkModifier {
@@ -76,7 +77,7 @@ fn global_modifier_error_on_before() {
             let marker = marker.clone();
             move |_: &mut Input| {
                 marker.lock().unwrap().push("H");
-                Response::new(())
+                Handle::ok(Response::new(ResponseBody::empty()))
             }
         }))
         .modifier(MarkModifier {
@@ -108,7 +109,7 @@ fn global_modifiers() {
             let marker = marker.clone();
             move |_: &mut Input| {
                 marker.lock().unwrap().push("H");
-                Response::new(())
+                Handle::ok(Response::new(ResponseBody::empty()))
             }
         }))
         .modifier(MarkModifier {
@@ -174,7 +175,7 @@ fn scoped_modifier() {
                 let marker = marker.clone();
                 move |_: &mut Input| {
                     marker.lock().unwrap().push("H1");
-                    Response::new(())
+                    Handle::ok(Response::new(ResponseBody::empty()))
                 }
             }));
         })
@@ -182,7 +183,7 @@ fn scoped_modifier() {
             let marker = marker.clone();
             move |_: &mut Input| {
                 marker.lock().unwrap().push("H2");
-                Response::new(())
+                Handle::ok(Response::new(ResponseBody::empty()))
             }
         }))
         .finish()
@@ -231,7 +232,7 @@ fn nested_modifiers() {
                     let marker = marker.clone();
                     move |_: &mut Input| {
                         marker.lock().unwrap().push("H1");
-                        Response::new(())
+                        Handle::ok(Response::new(ResponseBody::empty()))
                     }
                 }));
 
@@ -251,7 +252,7 @@ fn nested_modifiers() {
                         let marker = marker.clone();
                         move |_: &mut Input| {
                             marker.lock().unwrap().push("H2");
-                            Response::new(())
+                            Handle::ok(Response::new(ResponseBody::empty()))
                         }
                     }));
                 });
@@ -305,7 +306,7 @@ fn route_modifiers() {
                     let marker = marker.clone();
                     r.handler(move |_: &mut Input| {
                         marker.lock().unwrap().push("H");
-                        Response::new(())
+                        Handle::ok(Response::new(ResponseBody::empty()))
                     });
                 });
             });

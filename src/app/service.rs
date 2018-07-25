@@ -10,9 +10,10 @@ use std::mem;
 use tokio::executor::{DefaultExecutor, Executor};
 
 use error::{CritError, Error};
+use handler::Handle;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
-use output::{Output, Respond, ResponseBody};
+use output::{Output, ResponseBody};
 use upgrade::UpgradeContext;
 
 use super::{App, RouteData};
@@ -82,7 +83,7 @@ pub struct AppServiceFuture {
 enum AppServiceFutureStatus {
     Start,
     BeforeHandle { in_flight: BeforeHandle, pos: usize },
-    Handle { in_flight: Respond, pos: usize },
+    Handle { in_flight: Handle, pos: usize },
     AfterHandle { in_flight: AfterHandle, pos: usize },
     Done,
 }

@@ -10,10 +10,9 @@ use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 
 use error::handler::{DefaultErrorHandler, ErrorHandler};
-use handler::Handler;
+use handler::{Handle, Handler};
 use input::Input;
 use modifier::Modifier;
-use output::Respond;
 
 use super::recognizer::Recognizer;
 use super::scoped_map;
@@ -118,16 +117,16 @@ impl AppBuilder {
     /// # use tsukuyomi::app::App;
     /// use tsukuyomi::app::builder::Route;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::output::Responder;
+    /// # use tsukuyomi::handler::Handle;
     /// # use http::Method;
     ///
-    /// fn handler(_: &mut Input) -> impl Responder {
+    /// fn handler(_: &mut Input) -> Handle {
     ///     // ...
-    /// # ""
+    /// # unimplemented!()
     /// }
-    /// fn submit(_: &mut Input) -> impl Responder {
+    /// fn submit(_: &mut Input) -> Handle {
     ///     // ...
-    /// # ""
+    /// # unimplemented!()
     /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
@@ -169,17 +168,17 @@ impl AppBuilder {
     ///
     /// ```
     /// # use tsukuyomi::app::App;
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::output::Responder;
     /// use tsukuyomi::app::builder::Scope;
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::handler::Handle;
     ///
-    /// fn get_post(_: &mut Input) -> impl Responder {
+    /// fn get_post(_: &mut Input) -> Handle {
     ///     // ...
-    /// # ""
+    /// # unimplemented!()
     /// }
-    /// fn add_post(_: &mut Input) -> impl Responder {
+    /// fn add_post(_: &mut Input) -> Handle {
     ///     // ...
-    /// # ""
+    /// # unimplemented!()
     /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
@@ -224,14 +223,14 @@ impl AppBuilder {
     /// ```
     /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::output::Responder;
-    /// fn get_post(_: &mut Input) -> impl Responder {
+    /// # use tsukuyomi::handler::Handle;
+    /// fn get_post(_: &mut Input) -> Handle {
     ///     // ...
-    /// # ""
+    /// # unimplemented!()
     /// }
-    /// fn add_post(_: &mut Input) -> impl Responder {
+    /// fn add_post(_: &mut Input) -> Handle {
     ///     // ...
-    /// # ""
+    /// # unimplemented!()
     /// }
     ///
     /// # fn main() -> tsukuyomi::AppResult<()> {
@@ -653,9 +652,9 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
     };
 
-    Box::new(move |_: &mut Input| -> Respond {
+    Box::new(move |_: &mut Input| -> Handle {
         let mut response = Response::new(());
         response.headers_mut().insert(header::ALLOW, allowed_methods.clone());
-        Respond::ready(Ok(response.map(Into::into)))
+        Handle::ready(Ok(response.map(Into::into)))
     })
 }

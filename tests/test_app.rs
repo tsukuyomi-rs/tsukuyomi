@@ -3,8 +3,9 @@ extern crate http;
 extern crate time;
 extern crate tsukuyomi;
 
+use tsukuyomi::handler;
 use tsukuyomi::local::LocalServer;
-use tsukuyomi::{handler, App, Input};
+use tsukuyomi::App;
 
 use http::{header, Method, StatusCode};
 
@@ -22,7 +23,7 @@ fn test_case1_empty_routes() {
 fn test_case2_single_route() {
     let app = App::builder()
         .mount("/", |m| {
-            m.route(("/hello", |_: &mut Input| "Tsukuyomi"));
+            m.route(("/hello", handler::ready_handler(|_| "Tsukuyomi")));
         })
         .finish()
         .unwrap();
@@ -48,7 +49,7 @@ fn test_case3_post_body() {
         .route((
             "/hello",
             Method::POST,
-            handler::wrap_async(|input| input.body_mut().read_all().convert_to::<String>()),
+            handler::async_handler(|input| input.body_mut().read_all().convert_to::<String>()),
         ))
         .finish()
         .unwrap();
@@ -81,19 +82,27 @@ fn test_case4_cookie() {
     let expires_in = time::now() + Duration::days(7);
 
     let app = App::builder()
-        .route(("/login", move |input: &mut Input| -> tsukuyomi::Result<_> {
-            #[cfg_attr(rustfmt, rustfmt_skip)]
+        .route((
+            "/login",
+            handler::ready_handler({
+                move |input| -> tsukuyomi::Result<_> {
+                    #[cfg_attr(rustfmt, rustfmt_skip)]
                     let cookie = Cookie::build("session", "dummy_session_id")
                         .domain("www.example.com")
                         .expires(expires_in)
                         .finish();
-            input.cookies()?.add(cookie);
-            Ok("Logged in")
-        }))
-        .route(("/logout", move |input: &mut Input| -> tsukuyomi::Result<_> {
-            input.cookies()?.remove(Cookie::named("session"));
-            Ok("Logged out")
-        }))
+                    input.cookies()?.add(cookie);
+                    Ok("Logged in")
+                }
+            }),
+        ))
+        .route((
+            "/logout",
+            handler::ready_handler(move |input| -> tsukuyomi::Result<_> {
+                input.cookies()?.remove(Cookie::named("session"));
+                Ok("Logged out")
+            }),
+        ))
         .finish()
         .unwrap();
 
@@ -135,8 +144,8 @@ fn test_case4_cookie() {
 #[test]
 fn test_case_5_default_options() {
     let app = App::builder()
-        .route(("/path", Method::GET, |_: &mut Input| "get"))
-        .route(("/path", Method::POST, |_: &mut Input| "post"))
+        .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
+        .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
         .finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
@@ -157,8 +166,8 @@ fn test_case_5_default_options() {
 #[test]
 fn test_case_5_disable_default_options() {
     let app = App::builder()
-        .route(("/path", Method::GET, |_: &mut Input| "get"))
-        .route(("/path", Method::POST, |_: &mut Input| "post"))
+        .route(("/path", Method::GET, handler::ready_handler(|_| "get")))
+        .route(("/path", Method::POST, handler::ready_handler(|_| "post")))
         .default_options(None)
         .finish()
         .unwrap();

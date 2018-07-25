@@ -1,10 +1,11 @@
 use super::*;
 
-use http::{Method, StatusCode};
+use handler::Handle;
+use http::{Method, Response, StatusCode};
 use input::Input;
 
-fn dummy_handler(_: &mut Input) -> &'static str {
-    "dummy"
+fn dummy_handler(_: &mut Input) -> Handle {
+    Handle::ok(Response::new(Default::default()))
 }
 
 #[test]
