@@ -1,6 +1,6 @@
 [package]
 name = "tsukuyomi-codegen"
-version = "0.1.0"
+version = "0.1.0-dev"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
@@ -8,13 +8,14 @@ publish = false
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "0.4.6"
-syn = { version = "0.14.4", features = ["full", "extra-traits"] }
-quote = "0.6.3"
+proc-macro2 = "0.4.9"
+syn = { version = "0.14.5", features = ["full", "extra-traits"] }
+quote = "0.6.4"
+failure = "0.1.1"
 
 [dev-dependencies]
 tsukuyomi = { version = "0.3.0-dev", path = ".." }
-futures = "0.1.21"
+futures = "0.1.23"
 futures-await = "0.1.1"
 
 [features]
