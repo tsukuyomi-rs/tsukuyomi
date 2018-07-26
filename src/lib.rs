@@ -7,7 +7,7 @@
 #![deny(unused_extern_crates)]
 #![deny(bare_trait_objects)]
 #![warn(warnings)]
-// #![cfg_attr(feature = "codegen", feature(use_extern_macros))]
+#![cfg_attr(feature = "codegen", feature(use_extern_macros))]
 #![cfg_attr(feature = "extern-prelude", feature(extern_prelude))]
 #![cfg_attr(feature = "nightly", feature(macro_vis_matcher))]
 
@@ -71,6 +71,9 @@ pub use modifier::Modifier;
 
 #[doc(inline)]
 pub use output::{AsyncResponder, Output, Responder};
+
+#[cfg(feature = "codegen")]
+pub use tsukuyomi_codegen::{async_handler, handler};
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///
