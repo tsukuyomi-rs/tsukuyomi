@@ -1,8 +1,8 @@
 //! Components for parsing JSON values and creating JSON responses.
 
 use bytes::Bytes;
-use http::header::HeaderValue;
-use http::{header, Request, Response};
+use http::header::{HeaderMap, HeaderValue};
+use http::{header, Request, Response, StatusCode};
 use mime;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -15,7 +15,19 @@ use input::body::FromData;
 use input::header::content_type;
 use input::Input;
 use modifier::{AfterHandle, Modifier};
-use output::{HttpResponse, Output, Responder, ResponseBody};
+use output::{Output, Responder, ResponseBody};
+
+/// A trait representing additional information for constructing HTTP responses from `Json<T>`.
+pub trait HttpResponse {
+    /// Returns an HTTP status code associated with the value of this type.
+    fn status_code(&self) -> StatusCode {
+        StatusCode::OK
+    }
+
+    /// Appends some entries into the header map of an HTTP response.
+    #[allow(unused_variables)]
+    fn append_headers(&self, headers: &mut HeaderMap) {}
+}
 
 /// A wraper struct representing a statically typed JSON value.
 #[derive(Debug)]
