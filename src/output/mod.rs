@@ -13,7 +13,7 @@ pub type Output = ::http::Response<ResponseBody>;
 
 use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
-use http::{header, Response};
+use http::{header, Response, StatusCode};
 
 use error::Error;
 use input::{self, Input};
@@ -22,6 +22,14 @@ use input::{self, Input};
 pub trait Responder {
     /// Converts `self` to an HTTP response.
     fn respond_to(self, input: &mut Input) -> Result<Output, Error>;
+}
+
+impl Responder for () {
+    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
+        let mut response = Response::new(Default::default());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        Ok(response)
+    }
 }
 
 impl<T> Responder for Option<T>
