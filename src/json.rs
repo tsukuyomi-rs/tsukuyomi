@@ -1,12 +1,13 @@
 //! Components for parsing JSON values and creating JSON responses.
 
 use bytes::Bytes;
-use http::header::HeaderValue;
-use http::{header, Request, Response};
+use http::header::{HeaderMap, HeaderValue};
+use http::{header, Request, Response, StatusCode};
 use mime;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json;
+use std::borrow::Cow;
 use std::ops::Deref;
 
 use error::handler::ErrorHandler;
@@ -15,7 +16,98 @@ use input::body::FromData;
 use input::header::content_type;
 use input::Input;
 use modifier::{AfterHandle, Modifier};
-use output::{HttpResponse, Output, Responder, ResponseBody};
+use output::{Output, Responder, ResponseBody};
+
+/// A trait representing additional information for constructing HTTP responses from `Json<T>`.
+pub trait HttpResponse {
+    /// Returns an HTTP status code associated with the value of this type.
+    fn status_code(&self) -> StatusCode {
+        StatusCode::OK
+    }
+
+    /// Appends some entries into the header map of an HTTP response.
+    #[allow(unused_variables)]
+    fn append_headers(&self, headers: &mut HeaderMap) {}
+}
+
+impl<E> HttpResponse for E
+where
+    E: HttpError,
+{
+    fn status_code(&self) -> StatusCode {
+        self.status_code()
+    }
+
+    fn append_headers(&self, h: &mut HeaderMap) {
+        self.append_headers(h);
+    }
+}
+
+macro_rules! impl_http_response {
+    ($($t:ty,)*) => {$(
+        impl HttpResponse for $t {}
+    )*};
+}
+
+impl_http_response! {
+    bool,
+    char,
+    str,
+    String,
+    i8, i16, i32, i64, i128, isize,
+    u8, u16, u32, u64, u128, usize,
+    f32, f64,
+}
+
+impl<'a> HttpResponse for Cow<'a, str> {}
+
+impl<T: Serialize> HttpResponse for Vec<T> {}
+
+impl<T: Serialize> HttpResponse for [T] {}
+
+impl HttpResponse for () {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::NO_CONTENT
+    }
+}
+
+impl<T> HttpResponse for Option<T>
+where
+    T: HttpResponse,
+{
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Some(ref v) => v.status_code(),
+            None => StatusCode::NOT_FOUND,
+        }
+    }
+
+    fn append_headers(&self, h: &mut HeaderMap) {
+        if let Some(ref v) = self {
+            v.append_headers(h);
+        }
+    }
+}
+
+impl<T, E> HttpResponse for Result<T, E>
+where
+    T: HttpResponse,
+    E: HttpError,
+{
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Ok(ref v) => v.status_code(),
+            Err(ref e) => e.status_code(),
+        }
+    }
+
+    fn append_headers(&self, h: &mut HeaderMap) {
+        match self {
+            Ok(ref v) => v.append_headers(h),
+            Err(ref e) => e.append_headers(h),
+        }
+    }
+}
 
 /// A wraper struct representing a statically typed JSON value.
 #[derive(Debug)]
