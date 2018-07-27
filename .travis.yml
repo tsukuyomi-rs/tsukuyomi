@@ -34,6 +34,7 @@ matrix:
       script:
         - cargo clean
         - cargo test
+        - cargo test --features "tls secure"
         - cargo test --no-default-features
       after_success:
         - cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --packages tsukuyomi
@@ -43,12 +44,14 @@ matrix:
       script:
         - cargo clean
         - cargo test
+        - cargo test --features "tls secure"
         - cargo test --no-default-features
 
     - rust: nightly
       script:
         - cargo clean
         - cargo test
+        - cargo test --features "tls secure"
         - cargo test --no-default-features
         - cargo test --features nightly
         - cargo test -p tsukuyomi-codegen
