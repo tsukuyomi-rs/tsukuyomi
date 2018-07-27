@@ -1,6 +1,6 @@
 use failure::Error;
 use rustls::internal::pemfile;
-use rustls::{Certificate, PrivateKey, ServerConfig};
+use rustls::{Certificate, PrivateKey, ServerConfig, NoClientAuth};
 use std::path::PathBuf;
 use std::{fs, io};
 
@@ -21,8 +21,9 @@ pub(super) fn load_config(config: &TlsConfig) -> Result<ServerConfig, Error> {
     let certs = load_certs(&config.certs_path)?;
     let key = load_key(&config.key_path)?;
 
-    let mut cfg = ServerConfig::new();
-    cfg.set_single_cert(certs, key);
+    let client_verifier = NoClientAuth::new();
+    let mut cfg = ServerConfig::new(client_verifier);
+    cfg.set_single_cert(certs, key)?;
     cfg.set_protocols(&config.alpn_protocols[..]);
 
     Ok(cfg)
