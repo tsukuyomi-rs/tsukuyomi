@@ -59,6 +59,11 @@ indexmap = "1.0.1"
 
 tsukuyomi-codegen = { version = "0.1.0-dev", path = "codegen", optional = true }
 
+base64 = { version = "0.9.2", optional = true }
+sha1 = { version = "0.6.0", optional = true }
+tokio-codec = { version = "0.1.0", optional = true }
+tsukuyomi-websocket-codec = { git = "https://github.com/tsukuyomi-rs/websocket-codec.git", branch = "codec", optional = true }
+
 [dev-dependencies]
 matches = "0.1.6"
 time = "0.1.40"
@@ -70,6 +75,7 @@ tokio-uds = "0.2.0"
 default = []
 secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
+websocket = ["base64", "sha1", "tokio-codec", "tsukuyomi-websocket-codec"]
 codegen = ["tsukuyomi-codegen"]
 nightly = ["tsukuyomi-codegen/nightly"]
 
