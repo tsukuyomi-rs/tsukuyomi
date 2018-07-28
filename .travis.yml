@@ -34,7 +34,7 @@ matrix:
       script:
         - cargo clean
         - cargo test
-        - cargo test --features "tls secure"
+        - cargo test --features "tls secure websocket"
         - cargo test --no-default-features
       after_success:
         - cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --packages tsukuyomi
@@ -44,14 +44,14 @@ matrix:
       script:
         - cargo clean
         - cargo test
-        - cargo test --features "tls secure"
+        - cargo test --features "tls secure websocket"
         - cargo test --no-default-features
 
     - rust: nightly
       script:
         - cargo clean
         - cargo test
-        - cargo test --features "tls secure"
+        - cargo test --features "tls secure websocket"
         - cargo test --no-default-features
         - cargo test --features nightly
         - cargo test -p tsukuyomi-codegen
@@ -69,7 +69,7 @@ matrix:
         - rustup component add clippy-preview
       script:
         - cargo clean
-        - cargo clippy
+        - cargo clippy --all-features
 
     # FIXME: enable before releasing 0.3.0
     # - rust: stable
@@ -113,7 +113,7 @@ matrix:
       env: DEPLOY_API_DOC
       script:
         - cargo clean
-        - cargo doc --features "secure tls"
+        - cargo doc --features "secure tls websocket"
         #- cargo doc -p tsukuyomi-codegen
         - rm -f target/doc/.lock
       deploy:

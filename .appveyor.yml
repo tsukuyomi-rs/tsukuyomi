@@ -35,9 +35,10 @@ build: false
 test_script:
   - cargo clean
   - cargo test
+  - cargo test --features "secure tls websocket"
   - cargo test --no-default-features
   - if [%TOOLCHAIN%]==[nightly] (
-      cargo test --features nightly
+      cargo test --all-features
     )
   - if [%TOOLCHAIN%]==[nightly] (
       cargo test -p tsukuyomi-codegen

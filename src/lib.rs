@@ -6,7 +6,6 @@
 #![deny(unreachable_pub)]
 #![deny(unused_extern_crates)]
 #![deny(bare_trait_objects)]
-#![warn(warnings)]
 #![cfg_attr(feature = "codegen", feature(use_extern_macros))]
 #![cfg_attr(feature = "extern-prelude", feature(extern_prelude))]
 #![cfg_attr(feature = "nightly", feature(macro_vis_matcher))]
@@ -43,6 +42,15 @@ extern crate tokio_rustls;
 #[cfg(feature = "codegen")]
 extern crate tsukuyomi_codegen;
 
+#[cfg(feature = "websocket")]
+extern crate base64;
+#[cfg(feature = "websocket")]
+extern crate sha1;
+#[cfg(feature = "websocket")]
+extern crate tokio_codec;
+#[cfg(feature = "websocket")]
+extern crate websocket_codec;
+
 pub mod app;
 pub mod error;
 pub mod handler;
@@ -52,6 +60,9 @@ pub mod local;
 pub mod modifier;
 pub mod output;
 pub mod server;
+
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
 #[doc(inline)]
 pub use app::App;
