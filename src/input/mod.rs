@@ -3,6 +3,7 @@
 pub mod body;
 #[macro_use]
 pub mod local_map;
+pub mod upgrade;
 
 mod cookie;
 mod global;

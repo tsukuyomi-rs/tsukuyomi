@@ -5,16 +5,15 @@ use http::header::HeaderValue;
 use http::{header, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
-use std::marker::PhantomData;
 use std::mem;
 use tokio::executor::{DefaultExecutor, Executor};
 
 use error::{CritError, Error};
 use handler::Handle;
+use input::upgrade::UpgradeContext;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::{Output, ResponseBody};
-use upgrade::UpgradeContext;
 
 use super::{App, RouteData};
 
@@ -274,22 +273,21 @@ impl AppServiceFuture {
         }
 
         // spawn the upgrade task.
-        if let (Some(body), Some(mut upgrade)) = body.deconstruct() {
+        if let (Some(body), Some(upgrade)) = body.deconstruct() {
             if output.status() == StatusCode::SWITCHING_PROTOCOLS {
                 let app = self.app.clone();
                 exec.spawn(Box::new(
                     body.on_upgrade()
                         .map_err(|e| error!("upgrade error: {}", e))
-                        .and_then(move |upgraded| {
-                            upgrade(UpgradeContext {
-                                io: upgraded,
+                        .and_then(move |io| {
+                            let cx = UpgradeContext {
                                 request,
                                 locals,
                                 route,
                                 params,
                                 app,
-                                _marker: PhantomData,
-                            })
+                            };
+                            upgrade.upgrade(io, cx)
                         }),
                 )).map_err(|_| format_err!("failed spawn the upgrade task").compat())?;
             }

@@ -6,9 +6,9 @@
 //! # extern crate tsukuyomi;
 //! # extern crate futures;
 //! # extern crate http;
-//! # use tsukuyomi::input::Input;
 //! # use tsukuyomi::error::Error;
-//! # use tsukuyomi::upgrade::UpgradeContext;
+//! # use tsukuyomi::input::Input;
+//! # use tsukuyomi::input::upgrade::{Upgraded, UpgradeContext};
 //! # use tsukuyomi::output::{Output, ResponseBody};
 //! # use futures::{future, Future};
 //! # use http::{header, StatusCode, Response};
@@ -17,7 +17,7 @@
 //! #   Ok(())
 //! }
 //!
-//! fn on_upgrade(cx: UpgradeContext)
+//! fn on_upgrade(io: Upgraded, cx: UpgradeContext)
 //!     -> impl Future<Item = (), Error = ()> + Send + 'static {
 //!     // ...
 //! #   future::ok(())
@@ -45,33 +45,33 @@
 
 use futures::{Future, IntoFuture};
 use http::Request;
-use hyper::upgrade::Upgraded;
-use std::marker::PhantomData;
-use std::rc::Rc;
+pub use hyper::upgrade::Upgraded;
 
 use app::App;
 use app::RouteId;
 use input::local_map::LocalMap;
 
-/// Contextual information used when upgrading the server protocol.
+/// Contextual information used at upgrading to another protocol.
 #[derive(Debug)]
 pub struct UpgradeContext {
-    /// The underlying IO object used in the handshake.
-    pub io: Upgraded,
-
-    /// The value of `Request` used in the handshake.
-    pub request: Request<()>,
-
-    /// The value of `LocalMap` used in the handshake.
-    pub locals: LocalMap,
-
+    pub(crate) request: Request<()>,
+    pub(crate) app: App,
+    pub(crate) locals: LocalMap,
     pub(crate) route: RouteId,
     pub(crate) params: Vec<(usize, usize)>,
-    pub(crate) app: App,
-    pub(crate) _marker: PhantomData<Rc<()>>,
 }
 
 impl UpgradeContext {
+    /// Returns the reference to a `Request<()>` used during the handshake.
+    pub fn request(&self) -> &Request<()> {
+        &self.request
+    }
+
+    /// Returns the reference to a `LocalMap` used during the handshake.
+    pub fn locals(&self) -> &LocalMap {
+        &self.locals
+    }
+
     /// Returns the reference to a value of `T` registered in the global storage.
     pub fn get<T>(&self) -> Option<&T>
     where
@@ -84,16 +84,38 @@ impl UpgradeContext {
 /// A trait representing a function called at performing the protocol upgrade.
 pub trait OnUpgrade: Send + 'static {
     /// Creates a task for processing the upgraded protocol from the specified context.
-    fn on_upgrade(self, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
+    fn on_upgrade(self, io: Upgraded, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
 }
 
 impl<F, R> OnUpgrade for F
 where
-    F: FnOnce(UpgradeContext) -> R + Send + 'static,
+    F: FnOnce(Upgraded, UpgradeContext) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
-    fn on_upgrade(self, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
-        Box::new((self)(cx).into_future())
+    fn on_upgrade(self, io: Upgraded, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
+        Box::new((self)(io, cx).into_future())
+    }
+}
+
+pub(crate) struct OnUpgradeObj(
+    Box<dyn FnMut(Upgraded, UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>,
+);
+
+impl OnUpgradeObj {
+    pub(crate) fn new<T: OnUpgrade>(on_upgrade: T) -> Self {
+        let mut on_upgrade = Some(on_upgrade);
+        OnUpgradeObj(Box::new(move |io, cx| {
+            let on_upgrade = on_upgrade.take().unwrap();
+            on_upgrade.on_upgrade(io, cx)
+        }))
+    }
+
+    pub(crate) fn upgrade(
+        mut self,
+        io: Upgraded,
+        cx: UpgradeContext,
+    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
+        (self.0)(io, cx)
     }
 }
