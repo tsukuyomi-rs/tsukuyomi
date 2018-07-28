@@ -10,12 +10,11 @@ use std::ops::Deref;
 use std::{fmt, mem};
 
 use error::{CritError, Error};
-use input::header::content_type;
-use input::{self, Input};
-use upgrade::{OnUpgrade, UpgradeContext};
 
-pub(crate) type OnUpgradeObj =
-    Box<dyn FnMut(UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>;
+use super::global::with_get_current;
+use super::header::content_type;
+use super::upgrade::{OnUpgrade, OnUpgradeObj};
+use super::Input;
 
 // ==== RequestBody ====
 
@@ -69,13 +68,7 @@ impl RequestBody {
         if self.on_upgrade.is_some() {
             return Some(on_upgrade);
         }
-
-        let mut on_upgrade = Some(on_upgrade);
-        self.on_upgrade = Some(Box::new(move |cx: UpgradeContext| {
-            let on_upgrade = on_upgrade.take().unwrap();
-            on_upgrade.on_upgrade(cx)
-        }));
-
+        self.on_upgrade = Some(OnUpgradeObj::new(on_upgrade));
         None
     }
 
@@ -295,7 +288,7 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let data = try_ready!(self.read_all.poll().map_err(Error::critical));
-        input::with_get_current(|input| T::from_data(data, input)).map(Async::Ready)
+        with_get_current(|input| T::from_data(data, input)).map(Async::Ready)
     }
 }
 
