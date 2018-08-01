@@ -12,8 +12,8 @@ use indexmap::map::IndexMap;
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::{self, Handler};
 use modifier::Modifier;
+use recognizer::Recognizer;
 
-use super::recognizer::Recognizer;
 use super::scoped_map;
 use super::uri::{self, Uri};
 use super::{App, AppState, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};

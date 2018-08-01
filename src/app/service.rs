@@ -256,7 +256,7 @@ impl AppServiceFuture {
             cookies,
             locals,
             route,
-            params,
+            captures,
             ..
         } = self.parts.take().expect("This future has already polled");
 
@@ -284,7 +284,7 @@ impl AppServiceFuture {
                                 request,
                                 locals,
                                 route,
-                                params,
+                                captures,
                                 app,
                             };
                             upgrade.upgrade(io, cx)

@@ -209,6 +209,12 @@ enum ChildKind {
     Wildcard,
 }
 
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct Captures {
+    pub(crate) params: Vec<(usize, usize)>,
+    pub(crate) wildcard: Option<(usize, usize)>,
+}
+
 impl Node {
     fn find_child(&self, path: &[u8], offset: usize) -> Option<(&Node, ChildKind)> {
         let pred = path[offset];
@@ -223,10 +229,10 @@ impl Node {
         None
     }
 
-    fn get_value<'r, 'p>(&'r self, path: &'p [u8]) -> Option<(usize, Vec<(usize, usize)>)> {
+    fn get_value<'r, 'p>(&'r self, path: &'p [u8]) -> Option<(usize, Captures)> {
         let mut offset = 0;
         let mut n = self;
-        let mut captures = Vec::new();
+        let mut captures = Captures::default();
 
         'walk: loop {
             if path.len() <= offset + n.path.len() {
@@ -251,12 +257,11 @@ impl Node {
                         .into_iter()
                         .position(|&b| b == b'/')
                         .unwrap_or(path.len() - offset);
-
-                    captures.push((offset, offset + span));
-                    if offset + span >= path.len() {
+                    captures.params.push((offset, offset + span));
+                    offset += span;
+                    if offset >= path.len() {
                         break 'walk;
                     }
-                    offset += span;
 
                     if n.children.is_empty() {
                         return None;
@@ -264,7 +269,7 @@ impl Node {
                     n = &n.children[0];
                 }
                 ChildKind::Wildcard => {
-                    captures.push((offset, path.len()));
+                    captures.wildcard = Some((offset, path.len()));
                     break 'walk;
                 }
             }
@@ -339,7 +344,7 @@ impl Recognizer {
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub(crate) fn recognize(&self, path: &str) -> Option<(usize, Vec<(usize, usize)>)> {
+    pub(crate) fn recognize(&self, path: &str) -> Option<(usize, Captures)> {
         self.root.as_ref()?.get_value(path.as_bytes())
     }
 }
@@ -557,14 +562,23 @@ mod tests {
     }
 
     mod recognize {
-        use super::super::Recognizer;
+        use super::super::{Captures, Recognizer};
 
         #[test]
         fn case1_empty() {
             let mut builder = Recognizer::builder();
             builder.push("/").unwrap();
             let recognizer = builder.finish();
-            assert_eq!(recognizer.recognize("/"), Some((0, vec![])));
+            assert_eq!(
+                recognizer.recognize("/"),
+                Some((
+                    0,
+                    Captures {
+                        params: vec![],
+                        wildcard: None,
+                    }
+                ))
+            );
         }
 
         #[test]
@@ -575,7 +589,13 @@ mod tests {
 
             assert_eq!(
                 recognizer.recognize("/files/readme/0"),
-                Some((0, vec![(7, 13), (14, 15)]))
+                Some((
+                    0,
+                    Captures {
+                        params: vec![(7, 13), (14, 15)],
+                        wildcard: None,
+                    }
+                ))
             );
         }
 
@@ -584,7 +604,16 @@ mod tests {
             let mut builder = Recognizer::builder();
             builder.push("/*path").unwrap();
             let recognizer = builder.finish();
-            assert_eq!(recognizer.recognize("/path/to/readme.txt"), Some((0, vec![(1, 19)])));
+            assert_eq!(
+                recognizer.recognize("/path/to/readme.txt"),
+                Some((
+                    0,
+                    Captures {
+                        params: vec![],
+                        wildcard: Some((1, 19)),
+                    }
+                ))
+            );
         }
 
         #[test]
@@ -592,7 +621,16 @@ mod tests {
             let mut builder = Recognizer::builder();
             builder.push("/path/to/*path").unwrap();
             let recognizer = builder.finish();
-            assert_eq!(recognizer.recognize("/path/to/readme.txt"), Some((0, vec![(9, 19)])));
+            assert_eq!(
+                recognizer.recognize("/path/to/readme.txt"),
+                Some((
+                    0,
+                    Captures {
+                        params: vec![],
+                        wildcard: Some((9, 19)),
+                    }
+                ))
+            );
         }
 
         // The following test cases are for catching the unexpected behaviors.
