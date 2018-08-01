@@ -556,11 +556,11 @@ mod tests {
         }
     }
 
-    mod get {
+    mod recognize {
         use super::super::Recognizer;
 
         #[test]
-        fn case1() {
+        fn case1_empty() {
             let mut builder = Recognizer::builder();
             builder.push("/").unwrap();
             let recognizer = builder.finish();
@@ -568,7 +568,7 @@ mod tests {
         }
 
         #[test]
-        fn case2() {
+        fn case2_multi_param() {
             let mut builder = Recognizer::builder();
             builder.push("/files/:name/:id").unwrap();
             let recognizer = builder.finish();
@@ -580,11 +580,39 @@ mod tests {
         }
 
         #[test]
-        fn case3() {
+        fn case3_wildcard_root() {
             let mut builder = Recognizer::builder();
             builder.push("/*path").unwrap();
             let recognizer = builder.finish();
             assert_eq!(recognizer.recognize("/path/to/readme.txt"), Some((0, vec![(1, 19)])));
+        }
+
+        #[test]
+        fn case4_wildcard_subdir() {
+            let mut builder = Recognizer::builder();
+            builder.push("/path/to/*path").unwrap();
+            let recognizer = builder.finish();
+            assert_eq!(recognizer.recognize("/path/to/readme.txt"), Some((0, vec![(9, 19)])));
+        }
+
+        // The following test cases are for catching the unexpected behaviors.
+
+        #[test]
+        fn case5_wildcard_with_empty_root() {
+            let mut builder = Recognizer::builder();
+            builder.push("/*path").unwrap();
+            let recognizer = builder.finish();
+            assert_eq!(recognizer.recognize("/"), None);
+            //assert_eq!(recognizer.recognize("/"), Some((0, vec![(1, 1)])));
+        }
+
+        #[test]
+        fn case6_wildcard_with_empty_subdir() {
+            let mut builder = Recognizer::builder();
+            builder.push("/path/to/*path").unwrap();
+            let recognizer = builder.finish();
+            assert_eq!(recognizer.recognize("/path/to/"), None);
+            //assert_eq!(recognizer.recognize("/path/to/"), Some((0, vec![(9, 9)])));
         }
     }
 }
