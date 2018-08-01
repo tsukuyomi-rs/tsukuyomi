@@ -235,11 +235,18 @@ impl Node {
         let mut captures = Captures::default();
 
         'walk: loop {
-            if path.len() <= offset + n.path.len() {
-                if path[offset..] == n.path[..] {
-                    break 'walk;
+            if offset + n.path.len() >= path.len() {
+                if n.path[..] != path[offset..] {
+                    return None;
                 }
-                return None;
+                return match (n.leaf, n.children.get(0)) {
+                    (Some(i), _) => Some((i, captures)),
+                    (None, Some(ch)) if ch.path.get(0) == Some(&b'*') => {
+                        captures.wildcard = Some((path.len(), path.len()));
+                        Some((ch.leaf?, captures))
+                    }
+                    _ => None,
+                };
             }
 
             if path[offset..offset + n.path.len()] != n.path[..] {
@@ -260,23 +267,21 @@ impl Node {
                     captures.params.push((offset, offset + span));
                     offset += span;
                     if offset >= path.len() {
-                        break 'walk;
+                        return Some((n.leaf?, captures));
                     }
 
                     if n.children.is_empty() {
+                        println!("[debug] d");
                         return None;
                     }
                     n = &n.children[0];
                 }
                 ChildKind::Wildcard => {
                     captures.wildcard = Some((offset, path.len()));
-                    break 'walk;
+                    return Some((n.leaf?, captures));
                 }
             }
         }
-
-        let index = n.leaf?;
-        Some((index, captures))
     }
 }
 
@@ -633,24 +638,55 @@ mod tests {
             );
         }
 
-        // The following test cases are for catching the unexpected behaviors.
-
         #[test]
-        fn case5_wildcard_with_empty_root() {
+        fn case5_wildcard_empty_root() {
             let mut builder = Recognizer::builder();
             builder.push("/*path").unwrap();
             let recognizer = builder.finish();
-            assert_eq!(recognizer.recognize("/"), None);
-            //assert_eq!(recognizer.recognize("/"), Some((0, vec![(1, 1)])));
+            assert_eq!(
+                recognizer.recognize("/"),
+                Some((
+                    0,
+                    Captures {
+                        params: vec![],
+                        wildcard: Some((1, 1)),
+                    }
+                ))
+            );
         }
 
         #[test]
-        fn case6_wildcard_with_empty_subdir() {
+        fn case6_wildcard_empty_subdir() {
             let mut builder = Recognizer::builder();
             builder.push("/path/to/*path").unwrap();
             let recognizer = builder.finish();
-            assert_eq!(recognizer.recognize("/path/to/"), None);
-            //assert_eq!(recognizer.recognize("/path/to/"), Some((0, vec![(9, 9)])));
+            assert_eq!(
+                recognizer.recognize("/path/to/"),
+                Some((
+                    0,
+                    Captures {
+                        params: vec![],
+                        wildcard: Some((9, 9)),
+                    }
+                ))
+            );
+        }
+
+        #[test]
+        fn case7_wildcard_empty_with_param() {
+            let mut builder = Recognizer::builder();
+            builder.push("/path/to/:id/*path").unwrap();
+            let recognizer = builder.finish();
+            assert_eq!(
+                recognizer.recognize("/path/to/10/"),
+                Some((
+                    0,
+                    Captures {
+                        params: vec![(9, 11)],
+                        wildcard: Some((12, 12)),
+                    }
+                ))
+            );
         }
     }
 }
