@@ -11,7 +11,7 @@ use std::borrow::Cow;
 use std::ops::Deref;
 
 use error::handler::ErrorHandler;
-use error::{CritError, Error, HttpError};
+use error::{CritError, Error, HttpError, Never};
 use input::body::FromData;
 use input::header::content_type;
 use input::Input;
@@ -135,7 +135,9 @@ impl<T> Deref for Json<T> {
 }
 
 impl<T: DeserializeOwned> FromData for Json<T> {
-    fn from_data(data: Bytes, input: &mut Input) -> Result<Json<T>, Error> {
+    type Error = Error;
+
+    fn from_data(data: Bytes, input: &mut Input) -> Result<Json<T>, Self::Error> {
         if let Some(mime) = content_type(input)? {
             if *mime != mime::APPLICATION_JSON {
                 return Err(Error::bad_request(format_err!(
@@ -151,7 +153,10 @@ impl<T: DeserializeOwned> FromData for Json<T> {
 }
 
 impl<T: Serialize + HttpResponse> Responder for Json<T> {
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
+    type Body = Vec<u8>;
+    type Error = Error;
+
+    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
         let body = serde_json::to_vec(&self.0).map_err(Error::internal_server_error)?;
         let mut response = json_response(body);
         *response.status_mut() = self.0.status_code();
@@ -171,7 +176,10 @@ impl From<serde_json::Value> for JsonValue {
 }
 
 impl Responder for JsonValue {
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
+    type Body = String;
+    type Error = Never;
+
+    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
         Ok(json_response(self.0.to_string()))
     }
 }
@@ -228,8 +236,8 @@ impl Modifier for JsonErrorHandler {
 
 // ====
 
-fn json_response<T: Into<ResponseBody>>(body: T) -> Response<ResponseBody> {
-    let mut response = Response::new(body.into());
+fn json_response<T>(body: T) -> Response<T> {
+    let mut response = Response::new(body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),

@@ -280,7 +280,9 @@ where
     /// Attempts to convert the incoming message data into an value of `T`.
     pub fn poll_ready(&mut self, input: &mut Input) -> Poll<T, Error> {
         let data = try_ready!(self.read_all.poll().map_err(Error::critical));
-        T::from_data(data, input).map(Async::Ready)
+        T::from_data(data, input)
+            .map(Async::Ready)
+            .map_err(Into::into)
     }
 }
 
@@ -293,18 +295,25 @@ where
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let data = try_ready!(self.read_all.poll().map_err(Error::critical));
-        with_get_current(|input| T::from_data(data, input)).map(Async::Ready)
+        with_get_current(|input| T::from_data(data, input))
+            .map(Async::Ready)
+            .map_err(Into::into)
     }
 }
 
 /// A trait representing the conversion to certain type.
 pub trait FromData: Sized {
+    /// The error type which will be returned from `from_data`.
+    type Error: Into<Error>;
+
     /// Perform conversion from a received buffer of bytes into a value of `Self`.
-    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Error>;
+    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Self::Error>;
 }
 
 impl FromData for String {
-    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Error> {
+    type Error = Error;
+
+    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Self::Error> {
         if let Some(m) = content_type(input)? {
             if *m != mime::TEXT_PLAIN {
                 return Err(Error::bad_request(format_err!(
