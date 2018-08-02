@@ -34,8 +34,8 @@ matrix:
       script:
         - cargo clean
         - cargo test
-        - cargo test --features "tls secure websocket"
         - cargo test --no-default-features
+        - cargo test --features full
       after_success:
         - cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --packages tsukuyomi
 
@@ -43,25 +43,32 @@ matrix:
       env: RUSTFLAGS="-D warnings"
       script:
         - cargo clean
+
         - cargo test
-        - cargo test --features "tls secure websocket"
         - cargo test --no-default-features
+        - cargo test --features full
+
+        - cargo test -p tsukuyomi-codegen
+        - cargo test -p tsukuyomi-codegen --no-default-features
 
     - rust: nightly
       script:
         - cargo clean
+
         - cargo test
-        - cargo test --features "tls secure websocket"
         - cargo test --no-default-features
-        - cargo test --features nightly
+        - cargo test --features "full nightly"
+
         - cargo test -p tsukuyomi-codegen
+        - cargo test -p tsukuyomi-codegen --no-default-features
+        - cargo test -p tsukuyomi-codegen --features nightly
 
     - rust: stable
       env: RUSTFMT
       before_script:
         - rustup component add rustfmt-preview
       script:
-        - cargo fmt -- --write-mode=diff
+        - cargo fmt --all -- --check
 
     - rust: nightly
       env: CLIPPY
@@ -109,12 +116,12 @@ matrix:
     #         echo 'tsukuyomi = { path = ".." }' >> docs/Cargo.toml
     #     - (cd docs && cargo test --all)
 
-    - rust: stable
+    - rust: beta
       env: DEPLOY_API_DOC
       script:
         - cargo clean
-        - cargo doc --features "secure tls websocket"
-        #- cargo doc -p tsukuyomi-codegen
+        - cargo doc --features full
+        - cargo doc -p tsukuyomi-codegen
         - rm -f target/doc/.lock
       deploy:
         provider: pages

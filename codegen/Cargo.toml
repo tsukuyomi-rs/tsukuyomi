@@ -16,7 +16,6 @@ failure = "0.1.1"
 [dev-dependencies]
 tsukuyomi = { version = "0.3.0-dev", path = ".." }
 futures = "0.1.23"
-futures-await = "0.1.1"
 
 [features]
 nightly = ["proc-macro2/nightly"]
