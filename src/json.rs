@@ -12,7 +12,7 @@ use std::ops::Deref;
 
 use error::handler::ErrorHandler;
 use error::{CritError, Error, HttpError, Never};
-use input::body::FromData;
+use input::body::{FromData, RequestBody};
 use input::header::content_type;
 use input::Input;
 use modifier::{AfterHandle, Modifier};
@@ -28,19 +28,6 @@ pub trait HttpResponse {
     /// Appends some entries into the header map of an HTTP response.
     #[allow(unused_variables)]
     fn append_headers(&self, headers: &mut HeaderMap) {}
-}
-
-impl<E> HttpResponse for E
-where
-    E: HttpError,
-{
-    fn status_code(&self) -> StatusCode {
-        self.status_code()
-    }
-
-    fn append_headers(&self, h: &mut HeaderMap) {
-        self.append_headers(h);
-    }
 }
 
 macro_rules! impl_http_response {
@@ -92,7 +79,7 @@ where
 impl<T, E> HttpResponse for Result<T, E>
 where
     T: HttpResponse,
-    E: HttpError,
+    E: HttpResponse,
 {
     fn status_code(&self) -> StatusCode {
         match self {
@@ -215,7 +202,7 @@ impl ErrorHandler for JsonErrorHandler {
     fn handle_error(
         &self,
         err: &dyn HttpError,
-        _: &Request<()>,
+        _: &Request<RequestBody>,
     ) -> Result<Response<ResponseBody>, CritError> {
         self.make_error_response(err)
     }
@@ -223,14 +210,11 @@ impl ErrorHandler for JsonErrorHandler {
 
 impl Modifier for JsonErrorHandler {
     fn after_handle(&self, _: &mut Input, result: Result<Output, Error>) -> AfterHandle {
-        AfterHandle::ready(match result {
-            Ok(output) => Ok(output),
-            Err(ref e) if !e.is_critical() => self
-                .make_error_response(e.as_http_error().unwrap())
-                .map(Into::into)
-                .map_err(Error::critical),
-            Err(e) => Err(e),
-        })
+        AfterHandle::ready(result.map(Ok).unwrap_or_else(|err| {
+            err.try_into_http_error()
+                .and_then(|e| self.make_error_response(&*e))
+                .map_err(Error::critical)
+        }))
     }
 }
 
