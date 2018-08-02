@@ -85,7 +85,10 @@ impl RequestBody {
 pub struct Payload(Option<Body>);
 
 impl Payload {
-    fn with_body<T>(&mut self, f: impl FnOnce(&mut Body) -> Result<T, CritError>) -> Result<T, CritError> {
+    fn with_body<T>(
+        &mut self,
+        f: impl FnOnce(&mut Body) -> Result<T, CritError>,
+    ) -> Result<T, CritError> {
         match self.0 {
             Some(ref mut bd) => f(bd),
             None => Err(format_err!("").compat().into()),
@@ -264,7 +267,9 @@ pub struct ConvertTo<T> {
 
 impl<T> fmt::Debug for ConvertTo<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("ConvertTo").field("read_all", &self.read_all).finish()
+        f.debug_struct("ConvertTo")
+            .field("read_all", &self.read_all)
+            .finish()
     }
 }
 
@@ -302,9 +307,13 @@ impl FromData for String {
     fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Error> {
         if let Some(m) = content_type(input)? {
             if *m != mime::TEXT_PLAIN {
-                return Err(Error::bad_request(format_err!("the content type must be text/plain")));
+                return Err(Error::bad_request(format_err!(
+                    "the content type must be text/plain"
+                )));
             }
-            if m.get_param("charset").map_or(true, |charset| charset != "utf-8") {
+            if m.get_param("charset")
+                .map_or(true, |charset| charset != "utf-8")
+            {
                 return Err(Error::bad_request(format_err!("the charset must be utf-8")));
             }
         }

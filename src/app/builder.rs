@@ -267,7 +267,10 @@ impl AppBuilder {
     }
 
     /// Sets the instance to an error handler into this builder.
-    pub fn error_handler(mut self, error_handler: impl ErrorHandler + Send + Sync + 'static) -> Self {
+    pub fn error_handler(
+        mut self,
+        error_handler: impl ErrorHandler + Send + Sync + 'static,
+    ) -> Self {
         self.error_handler = Some(Box::new(error_handler));
         self
     }
@@ -355,17 +358,20 @@ impl AppBuilder {
                     .ok_or_else(|| format_err!("default handler is not supported"))?;
 
                 // calculate the modifier identifiers.
-                let mut modifier_ids: Vec<_> = (0..modifiers.len()).map(ModifierId::Global).collect();
+                let mut modifier_ids: Vec<_> =
+                    (0..modifiers.len()).map(ModifierId::Global).collect();
                 if let Some(scope) = route.scope_id.local_id().and_then(|id| scopes.get(id)) {
-                    for (id, scope) in scope
-                        .chain
-                        .iter()
-                        .filter_map(|&id| id.local_id().and_then(|id| scopes.get(id).map(|scope| (id, scope))))
-                    {
-                        modifier_ids.extend((0..scope.modifiers.len()).map(|pos| ModifierId::Scope(id, pos)));
+                    for (id, scope) in scope.chain.iter().filter_map(|&id| {
+                        id.local_id()
+                            .and_then(|id| scopes.get(id).map(|scope| (id, scope)))
+                    }) {
+                        modifier_ids.extend(
+                            (0..scope.modifiers.len()).map(|pos| ModifierId::Scope(id, pos)),
+                        );
                     }
                 }
-                modifier_ids.extend((0..route.modifiers.len()).map(|pos| ModifierId::Route(route_id, pos)));
+                modifier_ids
+                    .extend((0..route.modifiers.len()).map(|pos| ModifierId::Route(route_id, pos)));
 
                 let id = RouteId(route.scope_id, route_id);
 
@@ -399,7 +405,11 @@ impl AppBuilder {
             let mut route_ids = vec![];
             for (uri, mut methods) in collected_routes {
                 if config.fallback_options {
-                    let m = methods.keys().cloned().chain(Some(Method::OPTIONS)).collect();
+                    let m = methods
+                        .keys()
+                        .cloned()
+                        .chain(Some(Method::OPTIONS))
+                        .collect();
                     methods.entry(Method::OPTIONS).or_insert_with(|| {
                         let id = routes.len();
                         routes.push(RouteData {
@@ -644,7 +654,9 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
 
     Box::new(handler::wrap_ready(move |_| {
         let mut response = Response::new(());
-        response.headers_mut().insert(header::ALLOW, allowed_methods.clone());
+        response
+            .headers_mut()
+            .insert(header::ALLOW, allowed_methods.clone());
         response
     }))
 }

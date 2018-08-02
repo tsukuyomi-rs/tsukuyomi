@@ -135,17 +135,22 @@ pub fn handshake(input: &mut Input) -> Result<Response<()>, HandshakeError> {
 pub type Transport = Framed<Upgraded, MessageCodec<OwnedMessage>>;
 
 /// A helper function for creating a WebSocket endpoint.
-pub fn start<R>(input: &mut Input, f: impl FnOnce(Transport, UpgradeContext) -> R + Send + 'static) -> impl Responder
+pub fn start<R>(
+    input: &mut Input,
+    f: impl FnOnce(Transport, UpgradeContext) -> R + Send + 'static,
+) -> impl Responder
 where
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
     let response = handshake(input)?;
 
-    input.body_mut().on_upgrade(move |io: Upgraded, cx: UpgradeContext| {
-        let transport = Framed::new(io, MessageCodec::default(Context::Server));
-        f(transport, cx).into_future()
-    });
+    input
+        .body_mut()
+        .on_upgrade(move |io: Upgraded, cx: UpgradeContext| {
+            let transport = Framed::new(io, MessageCodec::default(Context::Server));
+            f(transport, cx).into_future()
+        });
 
     Ok::<_, Error>(response)
 }

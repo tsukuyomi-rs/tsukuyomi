@@ -17,7 +17,10 @@ enum PathKind {
 impl fmt::Debug for PathKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PathKind::Segment(ref s) => f.debug_tuple("Segment").field(&String::from_utf8_lossy(s)).finish(),
+            PathKind::Segment(ref s) => f
+                .debug_tuple("Segment")
+                .field(&String::from_utf8_lossy(s))
+                .finish(),
             PathKind::Param => f.debug_tuple("Param").finish(),
             PathKind::CatchAll => f.debug_tuple("CatchAll").finish(),
         }

@@ -137,12 +137,18 @@ mod tests {
 
     #[test]
     fn normalize_uri_case_2() {
-        assert_eq!(normalize_uri("/path/to/lib").ok(), Some("/path/to/lib".into()));
+        assert_eq!(
+            normalize_uri("/path/to/lib").ok(),
+            Some("/path/to/lib".into())
+        );
     }
 
     #[test]
     fn normalize_uri_case_3() {
-        assert_eq!(normalize_uri("/path/to/lib/").ok(), Some("/path/to/lib/".into()));
+        assert_eq!(
+            normalize_uri("/path/to/lib/").ok(),
+            Some("/path/to/lib/".into())
+        );
     }
 
     #[test]
@@ -180,7 +186,10 @@ mod tests {
 
     #[test]
     fn join_path_case1() {
-        assert_eq!(join_all(&[Uri("/".into()), Uri("/".into())]), Uri("/".into()));
+        assert_eq!(
+            join_all(&[Uri("/".into()), Uri("/".into())]),
+            Uri("/".into())
+        );
     }
 
     #[test]

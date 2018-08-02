@@ -73,7 +73,9 @@ impl error::Error for BlockingError {
 /// [`tokio_threadpool::blocking`]: https://docs.rs/tokio-threadpool/0.1/tokio_threadpool/fn.blocking.html
 pub fn blocking<R>(f: impl FnOnce() -> R) -> Poll<R, BlockingError> {
     match current_mode() {
-        Some(RuntimeMode::ThreadPool) | None => tokio_threadpool::blocking(f).map_err(BlockingError),
+        Some(RuntimeMode::ThreadPool) | None => {
+            tokio_threadpool::blocking(f).map_err(BlockingError)
+        }
         Some(RuntimeMode::CurrentThread) => Ok(Async::Ready(f())),
     }
 }

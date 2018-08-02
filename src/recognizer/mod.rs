@@ -12,8 +12,8 @@ use failure::Error;
 
 pub(crate) use self::captures::Captures;
 use self::tree::Tree;
-pub(crate) use self::uri::Uri;
 use self::uri::TryIntoUri;
+pub(crate) use self::uri::Uri;
 
 /// A route recognizer.
 #[derive(Debug, Default)]

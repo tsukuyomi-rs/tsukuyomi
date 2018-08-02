@@ -228,7 +228,9 @@ impl Future for TestResponseFuture {
         let mut exec = DefaultExecutor::current();
         loop {
             let polled = match *self {
-                TestResponseFuture::Initial(ref mut f) => Some(Polled::Response(try_ready!(f.poll_ready(&mut exec)))),
+                TestResponseFuture::Initial(ref mut f) => {
+                    Some(Polled::Response(try_ready!(f.poll_ready(&mut exec))))
+                }
                 TestResponseFuture::Receive(ref mut res) => {
                     Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))
                 }
@@ -373,17 +375,21 @@ impl Data {
         match self.0 {
             DataInner::Empty => Cow::Borrowed(&[]),
             DataInner::Sized(ref data) => Cow::Borrowed(&data[..]),
-            DataInner::Chunked(ref chunks) => Cow::Owned(chunks.iter().fold(Vec::new(), |mut acc, chunk| {
-                acc.extend_from_slice(&*chunk);
-                acc
-            })),
+            DataInner::Chunked(ref chunks) => {
+                Cow::Owned(chunks.iter().fold(Vec::new(), |mut acc, chunk| {
+                    acc.extend_from_slice(&*chunk);
+                    acc
+                }))
+            }
         }
     }
 
     pub fn to_utf8(&self) -> Result<Cow<str>, str::Utf8Error> {
         match self.to_bytes() {
             Cow::Borrowed(bytes) => str::from_utf8(bytes).map(Cow::Borrowed),
-            Cow::Owned(bytes) => String::from_utf8(bytes).map_err(|e| e.utf8_error()).map(Cow::Owned),
+            Cow::Owned(bytes) => String::from_utf8(bytes)
+                .map_err(|e| e.utf8_error())
+                .map(Cow::Owned),
         }
     }
 }

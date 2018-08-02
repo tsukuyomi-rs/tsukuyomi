@@ -139,6 +139,5 @@ mod sealed {
         F: Future + Send + 'static,
         F::Item: Responder,
         Error: From<F::Error>,
-    {
-    }
+    {}
 }

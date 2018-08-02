@@ -65,7 +65,10 @@ impl Handle {
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
         match self.0 {
-            HandleKind::Ready(ref mut res) => res.take().expect("this future has already polled").map(Async::Ready),
+            HandleKind::Ready(ref mut res) => res
+                .take()
+                .expect("this future has already polled")
+                .map(Async::Ready),
             HandleKind::Async(ref mut f) => (f)(input),
         }
     }

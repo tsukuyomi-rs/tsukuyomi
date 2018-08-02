@@ -85,7 +85,11 @@ impl UpgradeContext {
 /// A trait representing a function called at performing the protocol upgrade.
 pub trait OnUpgrade: Send + 'static {
     /// Creates a task for processing the upgraded protocol from the specified context.
-    fn on_upgrade(self, io: Upgraded, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
+    fn on_upgrade(
+        self,
+        io: Upgraded,
+        cx: UpgradeContext,
+    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
 }
 
 impl<F, R> OnUpgrade for F
@@ -94,13 +98,21 @@ where
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
-    fn on_upgrade(self, io: Upgraded, cx: UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
+    fn on_upgrade(
+        self,
+        io: Upgraded,
+        cx: UpgradeContext,
+    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
         Box::new((self)(io, cx).into_future())
     }
 }
 
 pub(crate) struct OnUpgradeObj(
-    Box<dyn FnMut(Upgraded, UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>,
+    Box<
+        dyn FnMut(Upgraded, UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send>
+            + Send
+            + 'static,
+    >,
 );
 
 impl OnUpgradeObj {

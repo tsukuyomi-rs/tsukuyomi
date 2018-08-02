@@ -33,11 +33,17 @@ fn test_case2_single_route() {
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
-        response.headers().get(header::CONTENT_TYPE).map(|v| v.as_bytes()),
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .map(|v| v.as_bytes()),
         Some(&b"text/plain; charset=utf-8"[..])
     );
     assert_eq!(
-        response.headers().get(header::CONTENT_LENGTH).map(|v| v.as_bytes()),
+        response
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .map(|v| v.as_bytes()),
         Some(&b"9"[..])
     );
     assert_eq!(*response.body().to_bytes(), b"Tsukuyomi"[..]);
@@ -64,11 +70,17 @@ fn test_case3_post_body() {
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
-        response.headers().get(header::CONTENT_TYPE).map(|v| v.as_bytes()),
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .map(|v| v.as_bytes()),
         Some(&b"text/plain; charset=utf-8"[..])
     );
     assert_eq!(
-        response.headers().get(header::CONTENT_LENGTH).map(|v| v.as_bytes()),
+        response
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .map(|v| v.as_bytes()),
         Some(&b"17"[..])
     );
     assert_eq!(*response.body().to_bytes(), b"Hello, Tsukuyomi."[..]);
@@ -111,7 +123,12 @@ fn test_case4_cookie() {
     let response = server.client().get("/login").execute().unwrap();
     assert!(response.headers().contains_key(header::SET_COOKIE));
 
-    let cookie_str = response.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap();
+    let cookie_str = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     let cookie = Cookie::parse_encoded(cookie_str).unwrap();
 
     assert_eq!(cookie.name(), "session");
@@ -129,7 +146,12 @@ fn test_case4_cookie() {
         .unwrap();
     assert!(response.headers().contains_key(header::SET_COOKIE));
 
-    let cookie_str = response.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap();
+    let cookie_str = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     let cookie = Cookie::parse_encoded(cookie_str).unwrap();
 
     assert_eq!(cookie.name(), "session");
@@ -150,7 +172,11 @@ fn test_case_5_default_options() {
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
 
-    let response = server.client().request(Method::OPTIONS, "/path").execute().unwrap();
+    let response = server
+        .client()
+        .request(Method::OPTIONS, "/path")
+        .execute()
+        .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
@@ -158,7 +184,10 @@ fn test_case_5_default_options() {
         Some(&b"GET, POST, OPTIONS"[..])
     );
     assert_eq!(
-        response.headers().get(header::CONTENT_LENGTH).map(|v| v.as_bytes()),
+        response
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .map(|v| v.as_bytes()),
         Some(&b"0"[..])
     );
 }
@@ -173,6 +202,10 @@ fn test_case_5_disable_default_options() {
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
 
-    let response = server.client().request(Method::OPTIONS, "/path").execute().unwrap();
+    let response = server
+        .client()
+        .request(Method::OPTIONS, "/path")
+        .execute()
+        .unwrap();
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
 }

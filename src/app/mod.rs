@@ -156,8 +156,12 @@ impl App {
     fn modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
         match id {
             ModifierId::Global(pos) => self.inner.modifiers.get(pos).map(|m| &**m),
-            ModifierId::Scope(id, pos) => self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m),
-            ModifierId::Route(id, pos) => self.inner.routes.get(id)?.modifiers.get(pos).map(|m| &**m),
+            ModifierId::Scope(id, pos) => {
+                self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m)
+            }
+            ModifierId::Route(id, pos) => {
+                self.inner.routes.get(id)?.modifiers.get(pos).map(|m| &**m)
+            }
         }
     }
 
@@ -169,15 +173,21 @@ impl App {
     }
 
     fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Captures), Error> {
-        let (i, params) = self.inner.recognizer.recognize(path).ok_or_else(Error::not_found)?;
+        let (i, params) = self
+            .inner
+            .recognizer
+            .recognize(path)
+            .ok_or_else(Error::not_found)?;
 
         let methods = &self.inner.route_ids[i];
         match methods.get(method) {
             Some(&i) => Ok((i, params)),
-            None if self.inner.config.fallback_head && *method == Method::HEAD => match methods.get(&Method::GET) {
-                Some(&i) => Ok((i, params)),
-                None => Err(Error::method_not_allowed()),
-            },
+            None if self.inner.config.fallback_head && *method == Method::HEAD => {
+                match methods.get(&Method::GET) {
+                    Some(&i) => Ok((i, params)),
+                    None => Err(Error::method_not_allowed()),
+                }
+            }
             None => Err(Error::method_not_allowed()),
         }
     }

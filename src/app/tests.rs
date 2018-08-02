@@ -206,14 +206,38 @@ fn scope_variable() {
 
     println!("{:#?}", app);
 
-    assert_eq!(app.get(RouteId(ScopeId::Global, 0)).map(String::as_str), Some("G"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(0), 1)).map(String::as_str), Some("G"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(1), 2)).map(String::as_str), Some("A"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(2), 3)).map(String::as_str), Some("B"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(3), 4)).map(String::as_str), Some("C"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(4), 5)).map(String::as_str), Some("C"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(5), 6)).map(String::as_str), Some("B"));
-    assert_eq!(app.get(RouteId(ScopeId::Local(6), 7)).map(String::as_str), Some("B"));
+    assert_eq!(
+        app.get(RouteId(ScopeId::Global, 0)).map(String::as_str),
+        Some("G")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(0), 1)).map(String::as_str),
+        Some("G")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(1), 2)).map(String::as_str),
+        Some("A")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(2), 3)).map(String::as_str),
+        Some("B")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(3), 4)).map(String::as_str),
+        Some("C")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(4), 5)).map(String::as_str),
+        Some("C")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(5), 6)).map(String::as_str),
+        Some("B")
+    );
+    assert_eq!(
+        app.get(RouteId(ScopeId::Local(6), 7)).map(String::as_str),
+        Some("B")
+    );
 }
 
 #[test]

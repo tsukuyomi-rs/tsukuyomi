@@ -69,7 +69,10 @@ impl Error {
 
     /// Creates an HTTP error representing "405 Method Not Allowed".
     pub fn method_not_allowed() -> Error {
-        Error::from_failure(format_err!("Method Not Allowed"), StatusCode::METHOD_NOT_ALLOWED)
+        Error::from_failure(
+            format_err!("Method Not Allowed"),
+            StatusCode::METHOD_NOT_ALLOWED,
+        )
     }
 
     /// Creates an HTTP error representing "400 Bad Request" from the provided error value.

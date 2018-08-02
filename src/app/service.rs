@@ -88,7 +88,11 @@ enum AppServiceFutureStatus {
 }
 
 impl AppServiceFuture {
-    fn get_modifier<'a>(&self, pos: usize, app: &'a App) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
+    fn get_modifier<'a>(
+        &self,
+        pos: usize,
+        app: &'a App,
+    ) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
         app.modifier(*self.get_route(&self.app)?.modifier_ids.get(pos)?)
     }
 
@@ -102,7 +106,8 @@ impl AppServiceFuture {
         macro_rules! input {
             () => {
                 Input {
-                    request: self.request
+                    request: self
+                        .request
                         .as_mut()
                         .expect("This future has already polled"),
                     parts: self.parts.as_mut().expect("This future has already polled"),
@@ -132,7 +137,9 @@ impl AppServiceFuture {
         let result = loop {
             let polled = match self.status {
                 Start => Polled::Empty,
-                BeforeHandle { ref mut in_flight, .. } => {
+                BeforeHandle {
+                    ref mut in_flight, ..
+                } => {
                     // FIXME: use result.transpose()
                     Polled::BeforeHandle(match ready!(in_flight.poll_ready(&mut input!())) {
                         Ok(Some(x)) => Some(Ok(x)),
@@ -140,21 +147,27 @@ impl AppServiceFuture {
                         Err(e) => Some(Err(e)),
                     })
                 }
-                Handle { ref mut in_flight, .. } => Polled::Handle(ready!(in_flight.poll_ready(&mut input!()))),
-                AfterHandle { ref mut in_flight, .. } => {
-                    Polled::AfterHandle(ready!(in_flight.poll_ready(&mut input!())))
-                }
+                Handle {
+                    ref mut in_flight, ..
+                } => Polled::Handle(ready!(in_flight.poll_ready(&mut input!()))),
+                AfterHandle {
+                    ref mut in_flight, ..
+                } => Polled::AfterHandle(ready!(in_flight.poll_ready(&mut input!()))),
                 Done => panic!("unexpected state"),
             };
 
             self.status = match (mem::replace(&mut self.status, Done), polled) {
                 (Start, Polled::Empty) => {
                     {
-                        let request = self.request.as_ref().expect("This future has already polled");
-                        let (pos, params) = match self.app.recognize(request.uri().path(), request.method()) {
-                            Ok(r) => r,
-                            Err(e) => break Err(e),
-                        };
+                        let request = self
+                            .request
+                            .as_ref()
+                            .expect("This future has already polled");
+                        let (pos, params) =
+                            match self.app.recognize(request.uri().path(), request.method()) {
+                                Ok(r) => r,
+                                Err(e) => break Err(e),
+                            };
                         let route_id = self.app.inner.routes[pos].id;
                         debug_assert_eq!(route_id.1, pos);
                         self.parts = Some(InputParts::new(route_id, params));
@@ -212,16 +225,18 @@ impl AppServiceFuture {
                     None => break result,
                 },
 
-                (AfterHandle { pos, .. }, Polled::AfterHandle(result)) => match pos.checked_sub(1) {
-                    Some(pos) => match self.get_modifier(pos, &self.app) {
-                        Some(modifier) => AfterHandle {
-                            in_flight: modifier.after_handle(&mut input!(), result),
-                            pos,
+                (AfterHandle { pos, .. }, Polled::AfterHandle(result)) => {
+                    match pos.checked_sub(1) {
+                        Some(pos) => match self.get_modifier(pos, &self.app) {
+                            Some(modifier) => AfterHandle {
+                                in_flight: modifier.after_handle(&mut input!(), result),
+                                pos,
+                            },
+                            None => break result,
                         },
                         None => break result,
-                    },
-                    None => break result,
-                },
+                    }
+                }
 
                 _ => panic!("unexpected state"),
             }
@@ -231,7 +246,10 @@ impl AppServiceFuture {
     }
 
     #[allow(missing_docs)]
-    pub fn poll_ready(&mut self, exec: &mut impl Executor) -> Poll<Response<ResponseBody>, CritError> {
+    pub fn poll_ready(
+        &mut self,
+        exec: &mut impl Executor,
+    ) -> Poll<Response<ResponseBody>, CritError> {
         match self.poll_in_flight() {
             Ok(Async::Ready(output)) => self.handle_response(output, exec).map(Async::Ready),
             Ok(Async::NotReady) => Ok(Async::NotReady),
@@ -248,7 +266,10 @@ impl AppServiceFuture {
         exec: &mut impl Executor,
     ) -> Result<Response<ResponseBody>, CritError> {
         let (request, body) = {
-            let request = self.request.take().expect("This future has already polled.");
+            let request = self
+                .request
+                .take()
+                .expect("This future has already polled.");
             let (parts, body) = request.into_parts();
             (Request::from_parts(parts, ()), body)
         };
@@ -265,11 +286,14 @@ impl AppServiceFuture {
 
         // append the value of Content-Length to the response header if missing.
         if let Some(len) = output.body().content_length() {
-            output.headers_mut().entry(header::CONTENT_LENGTH)?.or_insert_with(|| {
-                // safety: '0'-'9' is ascci.
-                // TODO: more efficient
-                unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
-            });
+            output
+                .headers_mut()
+                .entry(header::CONTENT_LENGTH)?
+                .or_insert_with(|| {
+                    // safety: '0'-'9' is ascci.
+                    // TODO: more efficient
+                    unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
+                });
         }
 
         // spawn the upgrade task.
@@ -297,7 +321,8 @@ impl AppServiceFuture {
     }
 
     fn handle_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
-        let request = self.request
+        let request = self
+            .request
             .take()
             .expect("This future has already polled")
             .map(mem::drop);

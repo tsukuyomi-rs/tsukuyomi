@@ -40,7 +40,10 @@ impl CookieManager {
         }
 
         for cookie in self.jar.delta() {
-            h.insert(header::SET_COOKIE, cookie.encoded().to_string().parse().unwrap());
+            h.insert(
+                header::SET_COOKIE,
+                cookie.encoded().to_string().parse().unwrap(),
+            );
         }
     }
 }

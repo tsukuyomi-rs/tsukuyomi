@@ -170,8 +170,14 @@ where
                 let dispatch = handshake.join(service).and_then({
                     let protocol = protocol.clone();
                     move |(stream, service)| {
-                        let mut conn = protocol.serve_connection(stream, WrapService(service)).with_upgrades();
-                        poll_fn(move || with_set_mode(RuntimeMode::ThreadPool, || conn.poll().map_err(mem::drop)))
+                        let mut conn = protocol
+                            .serve_connection(stream, WrapService(service))
+                            .with_upgrades();
+                        poll_fn(move || {
+                            with_set_mode(RuntimeMode::ThreadPool, || {
+                                conn.poll().map_err(mem::drop)
+                            })
+                        })
                     }
                 });
 

@@ -115,18 +115,26 @@ enum ListenerKind {
 impl ListenerKind {
     fn poll_accept_raw(&mut self) -> Poll<Handshake, io::Error> {
         match *self {
-            ListenerKind::Tcp(ref mut l) => map_async(l.poll_accept(), |(s, _)| Handshake::raw_tcp(s)),
+            ListenerKind::Tcp(ref mut l) => {
+                map_async(l.poll_accept(), |(s, _)| Handshake::raw_tcp(s))
+            }
             #[cfg(unix)]
-            ListenerKind::Uds(ref mut l) => map_async(l.poll_accept(), |(s, _)| Handshake::raw_uds(s)),
+            ListenerKind::Uds(ref mut l) => {
+                map_async(l.poll_accept(), |(s, _)| Handshake::raw_uds(s))
+            }
         }
     }
 
     #[cfg(feature = "tls")]
     fn poll_accept_tls(&mut self, session: ServerSession) -> Poll<Handshake, io::Error> {
         match *self {
-            ListenerKind::Tcp(ref mut l) => map_async(l.poll_accept(), |(s, _)| Handshake::tcp_with_tls(s, session)),
+            ListenerKind::Tcp(ref mut l) => map_async(l.poll_accept(), |(s, _)| {
+                Handshake::tcp_with_tls(s, session)
+            }),
             #[cfg(unix)]
-            ListenerKind::Uds(ref mut l) => map_async(l.poll_accept(), |(s, _)| Handshake::uds_with_tls(s, session)),
+            ListenerKind::Uds(ref mut l) => map_async(l.poll_accept(), |(s, _)| {
+                Handshake::uds_with_tls(s, session)
+            }),
         }
     }
 }

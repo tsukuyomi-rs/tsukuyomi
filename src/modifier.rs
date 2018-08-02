@@ -99,20 +99,25 @@ impl BeforeHandle {
     }
 
     /// Creates a `BeforeHandle` from a closure repsenting an asynchronous computation.
-    pub fn polling(f: impl FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static) -> BeforeHandle {
+    pub fn polling(
+        f: impl FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static,
+    ) -> BeforeHandle {
         BeforeHandle(BeforeHandleState::Polling(Box::new(f)))
     }
 
     /// Creates a `BeforeHandle` from a future.
     #[inline(always)]
-    pub fn wrap_future(mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static) -> BeforeHandle {
+    pub fn wrap_future(
+        mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static,
+    ) -> BeforeHandle {
         BeforeHandle::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Option<Output>, Error> {
         use self::BeforeHandleState::*;
         match self.0 {
-            Ready(ref mut res) => res.take()
+            Ready(ref mut res) => res
+                .take()
                 .expect("BeforeHandle has already polled")
                 .map(futures::Async::Ready),
             Polling(ref mut f) => f(input),
@@ -160,20 +165,25 @@ impl AfterHandle {
     }
 
     /// Creates an `AfterHandle` from a closure repsenting an asynchronous computation.
-    pub fn polling(f: impl FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static) -> AfterHandle {
+    pub fn polling(
+        f: impl FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static,
+    ) -> AfterHandle {
         AfterHandle(AfterHandleState::Polling(Box::new(f)))
     }
 
     /// Creates an `AfterHandle` from a `Future`.
     #[inline(always)]
-    pub fn wrap_future(mut future: impl Future<Item = Output, Error = Error> + Send + 'static) -> AfterHandle {
+    pub fn wrap_future(
+        mut future: impl Future<Item = Output, Error = Error> + Send + 'static,
+    ) -> AfterHandle {
         AfterHandle::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
         use self::AfterHandleState::*;
         match self.0 {
-            Ready(ref mut res) => res.take()
+            Ready(ref mut res) => res
+                .take()
                 .expect("AfterHandle has already polled")
                 .map(futures::Async::Ready),
             Polling(ref mut f) => (*f)(input),

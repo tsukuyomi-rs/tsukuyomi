@@ -62,7 +62,8 @@ pub(crate) fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R
 pub fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
     let input_ptr = INPUT.with(|input| input.replace(None));
     let _reset = ResetOnDrop(input_ptr);
-    let mut input_ptr = input_ptr.expect("Any reference to Input are not set at the current task context.");
+    let mut input_ptr =
+        input_ptr.expect("Any reference to Input are not set at the current task context.");
     // safety: The lifetime of `input_ptr` is always shorter then the borrowing of `Input` in `with_set_current()`
     f(unsafe { input_ptr.as_mut() })
 }

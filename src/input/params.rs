@@ -16,11 +16,16 @@ impl<'input> Params<'input> {
     }
 
     pub fn get(&self, i: usize) -> Option<&str> {
-        self.captures.params.get(i).and_then(|&(s, e)| self.path.get(s..e))
+        self.captures
+            .params
+            .get(i)
+            .and_then(|&(s, e)| self.path.get(s..e))
     }
 
     pub fn get_wildcard(&self) -> Option<&str> {
-        self.captures.wildcard.and_then(|(s, e)| self.path.get(s..e))
+        self.captures
+            .wildcard
+            .and_then(|(s, e)| self.path.get(s..e))
     }
 }
 

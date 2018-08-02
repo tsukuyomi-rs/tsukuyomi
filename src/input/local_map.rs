@@ -197,7 +197,12 @@ impl LocalMap {
     where
         T: Send + 'static,
     {
-        Some(unsafe { *self.inner.insert(key.type_id(), Box::new(value))?.downcast_unchecked() })
+        Some(unsafe {
+            *self
+                .inner
+                .insert(key.type_id(), Box::new(value))?
+                .downcast_unchecked()
+        })
     }
 
     /// Removes a value corresponding to the provided `LocalKey` from the map.
@@ -327,7 +332,11 @@ where
     T: Send + 'static,
 {
     pub fn insert(self, default: T) -> &'a mut T {
-        unsafe { self.inner.insert(Box::new(default)).downcast_mut_unchecked() }
+        unsafe {
+            self.inner
+                .insert(Box::new(default))
+                .downcast_mut_unchecked()
+        }
     }
 }
 

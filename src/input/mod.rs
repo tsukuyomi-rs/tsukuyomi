@@ -33,7 +33,8 @@ pub mod header {
             Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
             Entry::Vacant(entry) => {
                 let mime = match input.request.headers().get(header::CONTENT_TYPE) {
-                    Some(h) => h.to_str()
+                    Some(h) => h
+                        .to_str()
                         .map_err(Error::bad_request)?
                         .parse()
                         .map(Some)
@@ -126,7 +127,9 @@ impl<'task> Input<'task> {
     pub fn cookies(&mut self) -> Result<&mut CookieJar, Error> {
         let cookies = &mut self.parts.cookies;
         if !cookies.is_init() {
-            cookies.init(self.request.headers()).map_err(Error::bad_request)?;
+            cookies
+                .init(self.request.headers())
+                .map_err(Error::bad_request)?;
         }
         Ok(&mut cookies.jar)
     }

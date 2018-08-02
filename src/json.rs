@@ -144,7 +144,9 @@ impl<T: DeserializeOwned> FromData for Json<T> {
             }
         }
 
-        serde_json::from_slice(&*data).map_err(Error::bad_request).map(Json)
+        serde_json::from_slice(&*data)
+            .map_err(Error::bad_request)
+            .map(Json)
     }
 }
 
@@ -202,7 +204,11 @@ impl JsonErrorHandler {
 }
 
 impl ErrorHandler for JsonErrorHandler {
-    fn handle_error(&self, err: &dyn HttpError, _: &Request<()>) -> Result<Response<ResponseBody>, CritError> {
+    fn handle_error(
+        &self,
+        err: &dyn HttpError,
+        _: &Request<()>,
+    ) -> Result<Response<ResponseBody>, CritError> {
         self.make_error_response(err)
     }
 }
@@ -211,7 +217,8 @@ impl Modifier for JsonErrorHandler {
     fn after_handle(&self, _: &mut Input, result: Result<Output, Error>) -> AfterHandle {
         AfterHandle::ready(match result {
             Ok(output) => Ok(output),
-            Err(ref e) if !e.is_critical() => self.make_error_response(e.as_http_error().unwrap())
+            Err(ref e) if !e.is_critical() => self
+                .make_error_response(e.as_http_error().unwrap())
                 .map(Into::into)
                 .map_err(Error::critical),
             Err(e) => Err(e),
@@ -223,8 +230,9 @@ impl Modifier for JsonErrorHandler {
 
 fn json_response<T: Into<ResponseBody>>(body: T) -> Response<ResponseBody> {
     let mut response = Response::new(body.into());
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
     response
 }

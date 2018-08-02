@@ -142,7 +142,9 @@ impl dyn ScopedValue {
     }
 
     #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-    unsafe fn downcast_mut_unchecked<T: Send + Sync + 'static>(&mut self) -> &mut TypedScopedValue<T> {
+    unsafe fn downcast_mut_unchecked<T: Send + Sync + 'static>(
+        &mut self,
+    ) -> &mut TypedScopedValue<T> {
         &mut *(self as *mut dyn ScopedValue as *mut TypedScopedValue<T>)
     }
 }
@@ -187,7 +189,12 @@ impl ScopedMap {
     where
         T: Send + Sync + 'static,
     {
-        unsafe { self.map.get(&TypeId::of::<T>())?.downcast_ref_unchecked().get(id) }
+        unsafe {
+            self.map
+                .get(&TypeId::of::<T>())?
+                .downcast_ref_unchecked()
+                .get(id)
+        }
     }
 }
 

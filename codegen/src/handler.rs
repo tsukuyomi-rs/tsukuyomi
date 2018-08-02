@@ -7,7 +7,10 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> Result<TokenStream, Erro
     let item: syn::ItemFn = syn::parse2(item)?;
     let mode = detect_mode(&attr, &item)?;
 
-    let context = Context { item: item, mode: mode };
+    let context = Context {
+        item: item,
+        mode: mode,
+    };
     context.validate()?;
 
     Ok(context.generate().into_token_stream())
@@ -82,7 +85,9 @@ impl Context {
         let ident = &self.item.ident;
 
         let input: syn::Ident = match self.mode {
-            HandlerMode::Ready if self.num_inputs() == 0 => syn::Ident::new("_input", Span::call_site()),
+            HandlerMode::Ready if self.num_inputs() == 0 => {
+                syn::Ident::new("_input", Span::call_site())
+            }
             _ => syn::Ident::new("input", Span::call_site()),
         };
 
