@@ -1,17 +1,16 @@
 #![cfg(test)]
 
-use super::super::Recognizer;
-use super::Node;
+use super::{Node, PathKind, Tree};
 
 macro_rules! t {
     ($test:ident, [$($path:expr),*], $expected:expr) => {
         #[test]
         fn $test() {
-            let mut recognizer = Recognizer::default();
-            for &path in &[$($path),*] {
-                recognizer.add_route(path).unwrap();
+            let mut tree = Tree::default();
+            for (i, path) in [$($path),*].iter().enumerate() {
+                tree.insert(path.as_bytes(), i).unwrap();
             }
-            assert_eq!(recognizer.root, Some($expected));
+            assert_eq!(tree.root, Some($expected));
         }
     };
     ($test:ident, [$($path:expr,)+], $expected:expr) => {
@@ -21,7 +20,7 @@ macro_rules! t {
 
 #[test]
 fn case0() {
-    let tree = Recognizer::default();
+    let tree = Tree::default();
     assert_eq!(tree.root, None);
 }
 
@@ -29,7 +28,7 @@ t!(
     case1,
     ["/foo"],
     Node {
-        path: "/foo".into(),
+        path: PathKind::segment("/foo"),
         leaf: Some(0),
         children: vec![],
     }
@@ -39,16 +38,16 @@ t!(
     case2,
     ["/foo", "/bar"],
     Node {
-        path: "/".into(),
+        path: PathKind::segment("/"),
         leaf: None,
         children: vec![
             Node {
-                path: "foo".into(),
+                path: PathKind::segment("foo"),
                 leaf: Some(0),
                 children: vec![],
             },
             Node {
-                path: "bar".into(),
+                path: PathKind::segment("bar"),
                 leaf: Some(1),
                 children: vec![],
             },
@@ -60,10 +59,10 @@ t!(
     case3,
     ["/foo", "/foobar"],
     Node {
-        path: "/foo".into(),
+        path: PathKind::segment("/foo"),
         leaf: Some(0),
         children: vec![Node {
-            path: "bar".into(),
+            path: PathKind::segment("bar"),
             leaf: Some(1),
             children: vec![],
         }],
@@ -74,10 +73,10 @@ t!(
     param_case1,
     ["/:id"],
     Node {
-        path: "/".into(),
+        path: PathKind::segment("/"),
         leaf: None,
         children: vec![Node {
-            path: ":id".into(),
+            path: PathKind::Param, // ":id"
             leaf: Some(0),
             children: vec![],
         }],
@@ -94,22 +93,22 @@ t!(
         "/files/:name/likes/:id",
     ],
     Node {
-        path: "/files".into(),
+        path: PathKind::segment("/files"),
         leaf: Some(0),
         children: vec![Node {
-            path: "/".into(),
+            path: PathKind::segment("/"),
             leaf: None,
             children: vec![Node {
-                path: ":name".into(),
+                path: PathKind::Param, // ":name"
                 leaf: Some(2),
                 children: vec![Node {
-                    path: "/likes/".into(),
+                    path: PathKind::segment("/likes/"),
                     leaf: Some(1),
                     children: vec![Node {
-                        path: ":id".into(),
+                        path: PathKind::Param, // ":id"
                         leaf: Some(4),
                         children: vec![Node {
-                            path: "/".into(),
+                            path: PathKind::segment("/"),
                             leaf: Some(3),
                             children: vec![],
                         }],
@@ -124,10 +123,10 @@ t!(
     catch_all_case1,
     ["/*path"],
     Node {
-        path: "/".into(),
+        path: PathKind::segment("/"),
         leaf: None,
         children: vec![Node {
-            path: "*path".into(),
+            path: PathKind::CatchAll, // "*path"
             leaf: Some(0),
             children: vec![],
         }],
@@ -138,13 +137,13 @@ t!(
     catch_all_case2,
     ["/files", "/files/*path"],
     Node {
-        path: "/files".into(),
+        path: PathKind::segment("/files"),
         leaf: Some(0),
         children: vec![Node {
-            path: "/".into(),
+            path: PathKind::segment("/"),
             leaf: None,
             children: vec![Node {
-                path: "*path".into(),
+                path: PathKind::CatchAll, // "*path"
                 leaf: Some(1),
                 children: vec![],
             }],
@@ -154,56 +153,56 @@ t!(
 
 #[test]
 fn failcase1() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/foo").is_ok());
-    assert!(recognizer.add_route("/:id").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/foo", 0).is_ok());
+    assert!(tree.insert(b"/:id", 1).is_err());
 }
 
 #[test]
 fn failcase2() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/foo/").is_ok());
-    assert!(recognizer.add_route("/foo/*path").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/foo/", 0).is_ok());
+    assert!(tree.insert(b"/foo/*path", 1).is_err());
 }
 
 #[test]
 fn failcase3() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/:id").is_ok());
-    assert!(recognizer.add_route("/foo").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/:id", 0).is_ok());
+    assert!(tree.insert(b"/foo", 1).is_err());
 }
 
 #[test]
 fn failcase4() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/foo/*path").is_ok());
-    assert!(recognizer.add_route("/foo/").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/foo/*path", 0).is_ok());
+    assert!(tree.insert(b"/foo/", 1).is_err());
 }
 
 #[test]
 fn failcase5() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/:id").is_ok());
-    assert!(recognizer.add_route("/:name").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/:id", 0).is_ok());
+    assert!(tree.insert(b"/:name", 1).is_err());
 }
 
 #[test]
 fn failcase6() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/:id").is_ok());
-    assert!(recognizer.add_route("/*id").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/:id", 0).is_ok());
+    assert!(tree.insert(b"/*id", 1).is_err());
 }
 
 #[test]
 fn failcase7() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/*id").is_ok());
-    assert!(recognizer.add_route("/:id").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/*id", 0).is_ok());
+    assert!(tree.insert(b"/:id", 1).is_err());
 }
 
 #[test]
 fn failcase8() {
-    let mut recognizer = Recognizer::default();
-    assert!(recognizer.add_route("/path/to").is_ok());
-    assert!(recognizer.add_route("/path/to").is_err());
+    let mut tree = Tree::default();
+    assert!(tree.insert(b"/path/to", 0).is_ok());
+    assert!(tree.insert(b"/path/to", 1).is_err());
 }
