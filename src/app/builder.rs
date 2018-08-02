@@ -12,10 +12,9 @@ use indexmap::map::IndexMap;
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::{self, Handler};
 use modifier::Modifier;
-use recognizer::Recognizer;
+use recognizer::{uri, Recognizer, Uri};
 
 use super::scoped_map;
-use super::uri::{self, Uri};
 use super::{App, AppState, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
 
 /// A builder object for constructing an instance of `App`.
@@ -415,7 +414,7 @@ impl AppBuilder {
                     });
                 }
 
-                recognizer.add_route(uri.as_ref())?;
+                recognizer.add_route(uri)?;
                 route_ids.push(methods);
             }
 

@@ -5,7 +5,6 @@ pub mod service;
 
 #[macro_use]
 mod scoped_map;
-mod uri;
 
 #[cfg(test)]
 mod tests;
@@ -19,11 +18,10 @@ use error::handler::ErrorHandler;
 use error::Error;
 use handler::Handler;
 use modifier::Modifier;
-use recognizer::{Captures, Recognizer};
+use recognizer::{Captures, Recognizer, Uri};
 
 use self::builder::AppBuilder;
 use self::scoped_map::ScopedMap;
-use self::uri::Uri;
 
 #[derive(Debug)]
 struct Config {
