@@ -59,6 +59,7 @@ pub mod json;
 pub mod local;
 pub mod modifier;
 pub mod output;
+pub(crate) mod recognizer;
 pub mod server;
 
 #[cfg(feature = "websocket")]

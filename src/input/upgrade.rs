@@ -47,9 +47,10 @@ use futures::{Future, IntoFuture};
 use http::Request;
 pub use hyper::upgrade::Upgraded;
 
-use app::App;
-use app::RouteId;
-use input::local_map::LocalMap;
+use app::{App, RouteId};
+use recognizer::Captures;
+
+use super::local_map::LocalMap;
 
 /// Contextual information used at upgrading to another protocol.
 #[derive(Debug)]
@@ -58,7 +59,7 @@ pub struct UpgradeContext {
     pub(crate) app: App,
     pub(crate) locals: LocalMap,
     pub(crate) route: RouteId,
-    pub(crate) params: Vec<(usize, usize)>,
+    pub(crate) captures: Captures,
 }
 
 impl UpgradeContext {

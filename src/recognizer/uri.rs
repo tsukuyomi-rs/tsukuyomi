@@ -4,7 +4,28 @@ use failure::Error;
 use std::fmt;
 use std::str::FromStr;
 
-pub(super) fn join_all<I>(prefix: I) -> Uri
+pub(crate) trait TryIntoUri {
+    type Error: Into<Error>;
+    fn try_into(self) -> Result<Uri, Self::Error>;
+}
+
+impl TryIntoUri for Uri {
+    type Error = Error;
+
+    fn try_into(self) -> Result<Uri, Self::Error> {
+        Ok(self)
+    }
+}
+
+impl<'a> TryIntoUri for &'a str {
+    type Error = Error;
+
+    fn try_into(self) -> Result<Uri, Self::Error> {
+        Uri::from_str(self)
+    }
+}
+
+pub(crate) fn join_all<I>(prefix: I) -> Uri
 where
     I: IntoIterator,
     I::Item: AsRef<Uri>,
@@ -24,11 +45,19 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(super) struct Uri(String);
+pub(crate) struct Uri(String);
 
 impl Uri {
-    pub(super) fn root() -> Uri {
+    pub(crate) fn root() -> Uri {
         Uri("/".into())
+    }
+
+    pub(super) fn as_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+
+    pub(super) fn as_str(&self) -> &str {
+        self.0.as_str()
     }
 }
 

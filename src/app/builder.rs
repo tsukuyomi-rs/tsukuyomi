@@ -12,10 +12,9 @@ use indexmap::map::IndexMap;
 use error::handler::{DefaultErrorHandler, ErrorHandler};
 use handler::{self, Handler};
 use modifier::Modifier;
+use recognizer::{uri, Recognizer, Uri};
 
-use super::recognizer::Recognizer;
 use super::scoped_map;
-use super::uri::{self, Uri};
 use super::{App, AppState, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
 
 /// A builder object for constructing an instance of `App`.
@@ -396,7 +395,7 @@ impl AppBuilder {
                 methods.insert(route.method.clone(), i);
             }
 
-            let mut recognizer = Recognizer::builder();
+            let mut recognizer = Recognizer::default();
             let mut route_ids = vec![];
             for (uri, mut methods) in collected_routes {
                 if config.fallback_options {
@@ -415,11 +414,11 @@ impl AppBuilder {
                     });
                 }
 
-                recognizer.push(uri.as_ref())?;
+                recognizer.add_route(uri)?;
                 route_ids.push(methods);
             }
 
-            (recognizer.finish(), route_ids)
+            (recognizer, route_ids)
         };
 
         // finalize error handler.

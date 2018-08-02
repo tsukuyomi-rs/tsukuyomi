@@ -3,10 +3,8 @@
 pub mod builder;
 pub mod service;
 
-mod recognizer;
 #[macro_use]
 mod scoped_map;
-mod uri;
 
 #[cfg(test)]
 mod tests;
@@ -20,11 +18,10 @@ use error::handler::ErrorHandler;
 use error::Error;
 use handler::Handler;
 use modifier::Modifier;
+use recognizer::{Captures, Recognizer, Uri};
 
 use self::builder::AppBuilder;
-use self::recognizer::Recognizer;
 use self::scoped_map::ScopedMap;
-use self::uri::Uri;
 
 #[derive(Debug)]
 struct Config {
@@ -171,7 +168,7 @@ impl App {
         self.inner.globals.get(id.0)
     }
 
-    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Vec<(usize, usize)>), Error> {
+    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Captures), Error> {
         let (i, params) = self.inner.recognizer.recognize(path).ok_or_else(Error::not_found)?;
 
         let methods = &self.inner.route_ids[i];

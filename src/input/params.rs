@@ -1,26 +1,26 @@
 use std::ops::Index;
 
+use recognizer::Captures;
+
 #[allow(missing_docs)]
 #[derive(Debug)]
 pub struct Params<'input> {
     pub(super) path: &'input str,
-    pub(super) params: Option<&'input [(usize, usize)]>,
+    pub(super) captures: &'input Captures,
 }
 
 #[allow(missing_docs)]
 impl<'input> Params<'input> {
     pub fn is_empty(&self) -> bool {
-        self.params.as_ref().map_or(true, |p| p.is_empty())
-    }
-
-    pub fn len(&self) -> usize {
-        self.params.as_ref().map_or(0, |p| p.len())
+        self.captures.params.is_empty() && self.captures.wildcard.is_none()
     }
 
     pub fn get(&self, i: usize) -> Option<&str> {
-        self.params
-            .as_ref()
-            .and_then(|p| p.get(i).and_then(|&(s, e)| self.path.get(s..e)))
+        self.captures.params.get(i).and_then(|&(s, e)| self.path.get(s..e))
+    }
+
+    pub fn get_wildcard(&self) -> Option<&str> {
+        self.captures.wildcard.and_then(|(s, e)| self.path.get(s..e))
     }
 }
 

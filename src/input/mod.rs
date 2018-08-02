@@ -54,6 +54,7 @@ use std::ops::{Deref, DerefMut};
 
 use app::{App, RouteId};
 use error::Error;
+use recognizer::Captures;
 
 use self::cookie::CookieManager;
 use self::local_map::LocalMap;
@@ -62,17 +63,17 @@ use self::local_map::LocalMap;
 #[derive(Debug)]
 pub(crate) struct InputParts {
     pub(crate) route: RouteId,
-    pub(crate) params: Vec<(usize, usize)>,
+    pub(crate) captures: Captures,
     pub(crate) cookies: CookieManager,
     pub(crate) locals: LocalMap,
     _priv: (),
 }
 
 impl InputParts {
-    pub(crate) fn new(route: RouteId, params: Vec<(usize, usize)>) -> InputParts {
+    pub(crate) fn new(route: RouteId, captures: Captures) -> InputParts {
         InputParts {
             route,
-            params,
+            captures,
             cookies: CookieManager::new(),
             locals: LocalMap::default(),
             _priv: (),
@@ -103,7 +104,7 @@ impl<'task> Input<'task> {
     pub fn params(&self) -> Params {
         Params {
             path: self.request.uri().path(),
-            params: Some(&self.parts.params[..]),
+            captures: &self.parts.captures,
         }
     }
 
