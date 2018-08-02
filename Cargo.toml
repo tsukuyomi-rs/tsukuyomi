@@ -21,8 +21,7 @@ include = [
 
 [package.metadata.docs.rs]
 features = [
-  "secure",
-  "tls",
+  "full",
   #"codegen",
 
   # FIXME: remove it as soon as the rustc version used in docs.rs is updated
@@ -76,6 +75,8 @@ default = []
 secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
 websocket = ["base64", "sha1", "tokio-codec", "tsukuyomi-websocket-codec"]
+full = ["secure", "tls", "websocket"]
+
 codegen = ["tsukuyomi-codegen"]
 nightly = ["tsukuyomi-codegen/nightly"]
 

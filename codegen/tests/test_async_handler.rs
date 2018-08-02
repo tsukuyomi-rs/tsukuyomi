@@ -1,4 +1,5 @@
-#![feature(use_extern_macros)]
+#![cfg(feature = "nightly")]
+#![cfg_attr(feature = "nightly", feature(use_extern_macros))]
 
 extern crate futures;
 extern crate tsukuyomi;
