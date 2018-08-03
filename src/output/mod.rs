@@ -15,7 +15,7 @@ use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Response, StatusCode};
 
-use error::{Error, Never};
+use error::{Error, Failure, Never};
 use input::{self, Input};
 
 /// A trait representing the conversion to an HTTP response.
@@ -49,7 +49,7 @@ where
     type Error = Error;
 
     fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
-        self.ok_or_else(Error::not_found)?
+        self.ok_or_else(Failure::not_found)?
             .respond_to(input)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)

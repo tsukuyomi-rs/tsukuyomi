@@ -15,7 +15,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use error::handler::ErrorHandler;
-use error::Error;
+use error::Failure;
 use handler::Handler;
 use modifier::Modifier;
 use recognizer::{Captures, Recognizer, Uri};
@@ -172,12 +172,12 @@ impl App {
         self.inner.globals.get(id.0)
     }
 
-    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Captures), Error> {
+    fn recognize(&self, path: &str, method: &Method) -> Result<(usize, Captures), Failure> {
         let (i, params) = self
             .inner
             .recognizer
             .recognize(path)
-            .ok_or_else(Error::not_found)?;
+            .ok_or_else(Failure::not_found)?;
 
         let methods = &self.inner.route_ids[i];
         match methods.get(method) {
@@ -185,10 +185,10 @@ impl App {
             None if self.inner.config.fallback_head && *method == Method::HEAD => {
                 match methods.get(&Method::GET) {
                     Some(&i) => Ok((i, params)),
-                    None => Err(Error::method_not_allowed()),
+                    None => Err(Failure::method_not_allowed()),
                 }
             }
-            None => Err(Error::method_not_allowed()),
+            None => Err(Failure::method_not_allowed()),
         }
     }
 }

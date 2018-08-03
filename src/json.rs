@@ -11,7 +11,7 @@ use std::borrow::Cow;
 use std::ops::Deref;
 
 use error::handler::ErrorHandler;
-use error::{CritError, Error, HttpError, Never};
+use error::{CritError, Error, Failure, HttpError, Never};
 use input::body::{FromData, RequestBody};
 use input::header::content_type;
 use input::Input;
@@ -122,29 +122,29 @@ impl<T> Deref for Json<T> {
 }
 
 impl<T: DeserializeOwned> FromData for Json<T> {
-    type Error = Error;
+    type Error = Failure;
 
     fn from_data(data: Bytes, input: &mut Input) -> Result<Json<T>, Self::Error> {
         if let Some(mime) = content_type(input)? {
             if *mime != mime::APPLICATION_JSON {
-                return Err(Error::bad_request(format_err!(
+                return Err(Failure::bad_request(format_err!(
                     "The value of Content-type is not equal to application/json"
                 )));
             }
         }
 
         serde_json::from_slice(&*data)
-            .map_err(Error::bad_request)
+            .map_err(Failure::bad_request)
             .map(Json)
     }
 }
 
 impl<T: Serialize + HttpResponse> Responder for Json<T> {
     type Body = Vec<u8>;
-    type Error = Error;
+    type Error = Failure;
 
     fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
-        let body = serde_json::to_vec(&self.0).map_err(Error::internal_server_error)?;
+        let body = serde_json::to_vec(&self.0).map_err(Failure::internal_server_error)?;
         let mut response = json_response(body);
         *response.status_mut() = self.0.status_code();
         self.0.append_headers(response.headers_mut());
