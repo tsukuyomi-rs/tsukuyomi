@@ -3,6 +3,7 @@ extern crate http;
 extern crate tsukuyomi;
 
 use tsukuyomi::app::builder::Route;
+use tsukuyomi::error::Failure;
 use tsukuyomi::handler::wrap_ready;
 use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
@@ -84,7 +85,7 @@ fn global_modifier_error_on_before() {
             marker: marker.clone(),
             before: |m| {
                 m.push("B");
-                Err(Error::not_found())
+                Err(Failure::not_found().into())
             },
             after: |m| {
                 m.push("A");

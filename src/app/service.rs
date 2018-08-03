@@ -166,7 +166,7 @@ impl AppServiceFuture {
                         let (pos, params) =
                             match self.app.recognize(request.uri().path(), request.method()) {
                                 Ok(r) => r,
-                                Err(e) => break Err(e),
+                                Err(e) => break Err(e.into()),
                             };
                         let route_id = self.app.inner.routes[pos].id;
                         debug_assert_eq!(route_id.1, pos);
@@ -324,9 +324,10 @@ impl AppServiceFuture {
         let request = self.request.take().expect("This future has already polled");
         drop(self.parts.take());
 
-        let err = err.try_into_http_error()?;
-        match err.to_response(&request) {
-            Some(response) => Ok(response),
+        let mut err = err.try_into_http_error()?;
+        match err.into_response(&request) {
+            Some(Ok(response)) => Ok(response),
+            Some(Err(err)) => Err(err),
             None => self.app.error_handler().handle_error(&*err, &request),
         }
     }

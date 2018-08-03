@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, mem};
 
-use error::{CritError, Error};
+use error::{CritError, Error, Failure};
 
 use super::global::with_get_current;
 use super::header::content_type;
@@ -311,22 +311,24 @@ pub trait FromData: Sized {
 }
 
 impl FromData for String {
-    type Error = Error;
+    type Error = Failure;
 
     fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Self::Error> {
         if let Some(m) = content_type(input)? {
             if *m != mime::TEXT_PLAIN {
-                return Err(Error::bad_request(format_err!(
+                return Err(Failure::bad_request(format_err!(
                     "the content type must be text/plain"
                 )));
             }
             if m.get_param("charset")
                 .map_or(true, |charset| charset != "utf-8")
             {
-                return Err(Error::bad_request(format_err!("the charset must be utf-8")));
+                return Err(Failure::bad_request(format_err!(
+                    "the charset must be utf-8"
+                )));
             }
         }
 
-        String::from_utf8(data.to_vec()).map_err(Error::bad_request)
+        String::from_utf8(data.to_vec()).map_err(Failure::bad_request)
     }
 }

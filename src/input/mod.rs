@@ -20,13 +20,13 @@ pub mod header {
     use http::header;
     use mime::Mime;
 
-    use error::Error;
+    use error::Failure;
 
     use super::local_map::Entry;
     use super::Input;
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
-    pub fn content_type<'a>(input: &'a mut Input) -> Result<Option<&'a Mime>, Error> {
+    pub fn content_type<'a>(input: &'a mut Input) -> Result<Option<&'a Mime>, Failure> {
         local_key!(static CONTENT_TYPE: Option<Mime>);
 
         match input.parts.locals.entry(&CONTENT_TYPE) {
@@ -35,10 +35,10 @@ pub mod header {
                 let mime = match input.request.headers().get(header::CONTENT_TYPE) {
                     Some(h) => h
                         .to_str()
-                        .map_err(Error::bad_request)?
+                        .map_err(Failure::bad_request)?
                         .parse()
                         .map(Some)
-                        .map_err(Error::bad_request)?,
+                        .map_err(Failure::bad_request)?,
                     None => None,
                 };
                 Ok(entry.insert(mime).as_ref())
@@ -54,7 +54,7 @@ use http::Request;
 use std::ops::{Deref, DerefMut};
 
 use app::{App, RouteId};
-use error::Error;
+use error::Failure;
 use recognizer::Captures;
 
 use self::cookie::CookieManager;
@@ -124,12 +124,12 @@ impl<'task> Input<'task> {
     ///
     /// This function will perform parsing when called at first, and returns an `Err`
     /// if the value of header field is invalid.
-    pub fn cookies(&mut self) -> Result<&mut CookieJar, Error> {
+    pub fn cookies(&mut self) -> Result<&mut CookieJar, Failure> {
         let cookies = &mut self.parts.cookies;
         if !cookies.is_init() {
             cookies
                 .init(self.request.headers())
-                .map_err(Error::bad_request)?;
+                .map_err(Failure::bad_request)?;
         }
         Ok(&mut cookies.jar)
     }
