@@ -4,7 +4,7 @@ extern crate time;
 extern crate tsukuyomi;
 
 use tsukuyomi::handler;
-use tsukuyomi::local::LocalServer;
+use tsukuyomi::server::local::LocalServer;
 use tsukuyomi::App;
 
 use http::{header, Method, StatusCode};

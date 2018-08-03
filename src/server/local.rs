@@ -8,7 +8,7 @@
 //! # use tsukuyomi::app::App;
 //! # use tsukuyomi::handler;
 //! # use http::{StatusCode, header};
-//! use tsukuyomi::local::LocalServer;
+//! use tsukuyomi::server::local::LocalServer;
 //!
 //! let app = App::builder()
 //!     .route(("/hello", handler::wrap_ready(|_| "Hello")))
@@ -49,7 +49,8 @@ use app::App;
 use error::CritError;
 use input;
 use output::{ResponseBody, ResponseBodyKind};
-use server::blocking::{with_set_mode, RuntimeMode};
+
+use super::rt::{with_set_mode, RuntimeMode};
 
 /// A local server which emulates an HTTP service without using the low-level transport.
 ///
