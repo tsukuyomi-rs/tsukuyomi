@@ -15,18 +15,27 @@ use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Response, StatusCode};
 
-use error::Error;
+use error::{Error, Never};
 use input::{self, Input};
 
 /// A trait representing the conversion to an HTTP response.
 pub trait Responder {
+    /// The type of message body in the generated HTTP response.
+    type Body: Into<ResponseBody>;
+
+    /// The error type which will be returned from `respond_to`.
+    type Error: Into<Error>;
+
     /// Converts `self` to an HTTP response.
-    fn respond_to(self, input: &mut Input) -> Result<Output, Error>;
+    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error>;
 }
 
 impl Responder for () {
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
-        let mut response = Response::new(Default::default());
+    type Body = ();
+    type Error = Never;
+
+    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+        let mut response = Response::new(());
         *response.status_mut() = StatusCode::NO_CONTENT;
         Ok(response)
     }
@@ -36,8 +45,14 @@ impl<T> Responder for Option<T>
 where
     T: Responder,
 {
-    fn respond_to(self, input: &mut Input) -> Result<Output, Error> {
-        self.ok_or_else(Error::not_found)?.respond_to(input)
+    type Body = ResponseBody;
+    type Error = Error;
+
+    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+        self.ok_or_else(Error::not_found)?
+            .respond_to(input)
+            .map(|response| response.map(Into::into))
+            .map_err(Into::into)
     }
 }
 
@@ -45,8 +60,14 @@ impl<T> Responder for Result<T, Error>
 where
     T: Responder,
 {
-    fn respond_to(self, input: &mut Input) -> Result<Output, Error> {
-        self?.respond_to(input)
+    type Body = ResponseBody;
+    type Error = Error;
+
+    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+        self?
+            .respond_to(input)
+            .map(|response| response.map(Into::into))
+            .map_err(Into::into)
     }
 }
 
@@ -54,28 +75,37 @@ impl<T> Responder for Response<T>
 where
     T: Into<ResponseBody>,
 {
-    #[inline]
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
-        Ok(self.map(Into::into))
+    type Body = T;
+    type Error = Never;
+
+    #[inline(always)]
+    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+        Ok(self)
     }
 }
 
 impl Responder for &'static str {
-    #[inline]
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
+    type Body = Self;
+    type Error = Never;
+
+    #[inline(always)]
+    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
         Ok(text_response(self))
     }
 }
 
 impl Responder for String {
-    #[inline]
-    fn respond_to(self, _: &mut Input) -> Result<Output, Error> {
+    type Body = Self;
+    type Error = Never;
+
+    #[inline(always)]
+    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
         Ok(text_response(self))
     }
 }
 
-fn text_response<T: Into<ResponseBody>>(body: T) -> Output {
-    let mut response = Response::new(body.into());
+fn text_response<T>(body: T) -> Response<T> {
+    let mut response = Response::new(body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/plain; charset=utf-8"),
@@ -103,7 +133,9 @@ where
 
     fn poll_respond_to(&mut self, input: &mut Input) -> Poll<Output, Error> {
         let x = try_ready!(input::with_set_current(input, || Future::poll(self)));
-        x.respond_to(input).map(Async::Ready)
+        x.respond_to(input)
+            .map(|res| Async::Ready(res.map(Into::into)))
+            .map_err(Into::into)
     }
 }
 

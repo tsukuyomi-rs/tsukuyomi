@@ -3,9 +3,11 @@
 pub mod handler;
 
 use failure::{self, Fail};
-use http::header::HeaderMap;
-use http::StatusCode;
+use http::{Request, Response, StatusCode};
 use std::{error, fmt};
+
+use input::RequestBody;
+use output::ResponseBody;
 
 /// A type alias representing a critical error.
 pub type CritError = Box<dyn error::Error + Send + Sync + 'static>;
@@ -15,13 +17,20 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 /// [unstable]
 /// A trait representing HTTP errors.
-pub trait HttpError: Fail {
+pub trait HttpError: fmt::Debug + fmt::Display + Send + 'static {
     /// Returns an HTTP status code associated with the value of this type.
     fn status_code(&self) -> StatusCode;
 
-    /// Appends some entries into the header map of an HTTP response.
+    /// Returns the representation as a `Fail`, if possible.
+    fn as_fail(&self) -> Option<&dyn Fail> {
+        None
+    }
+
+    /// Convert itself into an HTTP response.
     #[allow(unused_variables)]
-    fn append_headers(&self, h: &mut HeaderMap) {}
+    fn to_response(&self, request: &Request<RequestBody>) -> Option<Response<ResponseBody>> {
+        None
+    }
 }
 
 /// A type which holds all kinds of errors occurring in handlers.
@@ -33,7 +42,6 @@ pub struct Error {
 #[derive(Debug)]
 enum ErrorKind {
     Boxed(Box<dyn HttpError>),
-    Concrete(ConcreteHttpError),
     Crit(CritError),
 }
 
@@ -50,16 +58,11 @@ where
 
 impl Error {
     /// Creates an HTTP error from an error value and an HTTP status code.
-    pub fn from_failure<E>(cause: E, status: StatusCode) -> Error
+    pub fn from_failure<E>(err: E, status: StatusCode) -> Error
     where
         E: Into<failure::Error>,
     {
-        Error {
-            kind: ErrorKind::Concrete(ConcreteHttpError {
-                cause: cause.into(),
-                status,
-            }),
-        }
+        Error::from(Failure::new(status, err))
     }
 
     /// Creates an HTTP error representing "404 Not Found".
@@ -123,16 +126,16 @@ impl Error {
     /// If the value is a criticial error, it will return a `None`.
     pub fn as_http_error(&self) -> Option<&dyn HttpError> {
         match self.kind {
-            ErrorKind::Concrete(ref e) => Some(e),
             ErrorKind::Boxed(ref e) => Some(&**e),
             ErrorKind::Crit(..) => None,
         }
     }
 
-    pub(crate) fn into_critical(self) -> Option<CritError> {
+    #[allow(missing_docs)]
+    pub fn try_into_http_error(self) -> ::std::result::Result<Box<dyn HttpError>, CritError> {
         match self.kind {
-            ErrorKind::Crit(e) => Some(e),
-            _ => None,
+            ErrorKind::Boxed(e) => Ok(e),
+            ErrorKind::Crit(e) => Err(e),
         }
     }
 
@@ -142,22 +145,53 @@ impl Error {
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Debug)]
-struct ConcreteHttpError {
-    cause: failure::Error,
+pub struct Failure {
     status: StatusCode,
+    err: failure::Error,
 }
 
-impl fmt::Display for ConcreteHttpError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.cause, f)
+impl Failure {
+    /// Create a new `Failure` from the specified HTTP status code and an error value.
+    pub fn new(status: StatusCode, err: impl Into<failure::Error>) -> Failure {
+        Failure {
+            err: err.into(),
+            status,
+        }
     }
 }
 
-impl Fail for ConcreteHttpError {}
+impl fmt::Display for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.err, f)
+    }
+}
 
-impl HttpError for ConcreteHttpError {
+impl HttpError for Failure {
     fn status_code(&self) -> StatusCode {
         self.status
+    }
+
+    fn as_fail(&self) -> Option<&dyn Fail> {
+        Some(self.err.as_fail())
+    }
+}
+
+/// A helper type emulating the standard never_type (`!`).
+#[derive(Debug)]
+pub enum Never {}
+
+impl fmt::Display for Never {
+    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
+        unreachable!()
+    }
+}
+
+impl Fail for Never {}
+
+impl HttpError for Never {
+    fn status_code(&self) -> StatusCode {
+        unreachable!()
     }
 }

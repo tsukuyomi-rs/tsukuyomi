@@ -321,19 +321,14 @@ impl AppServiceFuture {
     }
 
     fn handle_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
-        let request = self
-            .request
-            .take()
-            .expect("This future has already polled")
-            .map(mem::drop);
+        let request = self.request.take().expect("This future has already polled");
         drop(self.parts.take());
 
-        if let Some(err) = err.as_http_error() {
-            let response = self.app.error_handler().handle_error(err, &request)?;
-            return Ok(response);
+        let err = err.try_into_http_error()?;
+        match err.to_response(&request) {
+            Some(response) => Ok(response),
+            None => self.app.error_handler().handle_error(&*err, &request),
         }
-
-        Err(err.into_critical().unwrap())
     }
 }
 

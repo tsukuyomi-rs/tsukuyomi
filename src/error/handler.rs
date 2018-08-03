@@ -2,6 +2,7 @@
 
 use http::{header, Request, Response};
 
+use input::RequestBody;
 use output::ResponseBody;
 
 use super::{CritError, HttpError};
@@ -12,19 +13,19 @@ pub trait ErrorHandler {
     fn handle_error(
         &self,
         err: &dyn HttpError,
-        request: &Request<()>,
+        request: &Request<RequestBody>,
     ) -> Result<Response<ResponseBody>, CritError>;
 }
 
 impl<F, T> ErrorHandler for F
 where
-    F: Fn(&dyn HttpError, &Request<()>) -> Result<Response<T>, CritError>,
+    F: Fn(&dyn HttpError, &Request<RequestBody>) -> Result<Response<T>, CritError>,
     T: Into<ResponseBody>,
 {
     fn handle_error(
         &self,
         err: &dyn HttpError,
-        request: &Request<()>,
+        request: &Request<RequestBody>,
     ) -> Result<Response<ResponseBody>, CritError> {
         (*self)(err, request).map(|res| res.map(Into::into))
     }
@@ -47,7 +48,7 @@ impl ErrorHandler for DefaultErrorHandler {
     fn handle_error(
         &self,
         err: &dyn HttpError,
-        _: &Request<()>,
+        _: &Request<RequestBody>,
     ) -> Result<Response<ResponseBody>, CritError> {
         Response::builder()
             .status(err.status_code())

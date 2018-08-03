@@ -110,7 +110,12 @@ where
         R: Responder,
     {
         fn handle(&self, input: &mut Input) -> Handle {
-            Handle::ready((self.0)(input).respond_to(input))
+            Handle::ready(
+                (self.0)(input)
+                    .respond_to(input)
+                    .map(|res| res.map(Into::into))
+                    .map_err(Into::into),
+            )
         }
     }
 
