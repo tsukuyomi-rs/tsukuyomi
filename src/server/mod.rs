@@ -1,6 +1,7 @@
 //! The implementation of low level HTTP server.
 
-pub mod blocking;
+pub mod local;
+pub mod rt;
 pub mod transport;
 
 use failure::Error;
@@ -16,7 +17,8 @@ use std::sync::Arc;
 use tokio;
 use tokio::runtime::{self, Runtime};
 
-use self::blocking::{with_set_mode, RuntimeMode};
+pub use self::rt::blocking;
+use self::rt::{with_set_mode, RuntimeMode};
 use self::transport::Listener;
 
 // ==== Server ====

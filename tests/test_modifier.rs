@@ -5,9 +5,9 @@ extern crate tsukuyomi;
 use tsukuyomi::app::builder::Route;
 use tsukuyomi::error::internal_server_error;
 use tsukuyomi::handler::wrap_ready;
-use tsukuyomi::local::LocalServer;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::{Output, ResponseBody};
+use tsukuyomi::server::local::LocalServer;
 use tsukuyomi::{App, Error, Input};
 
 use http::Response;
