@@ -1,11 +1,48 @@
 //! Components for constructing and handling HTTP errors.
+//!
+//! # Error Representation
+//!
+//! Tsukuyomi models the all errors generated during handling HTTP requests with a trait
+//! named [`HttpError`]. This trait is a sub trait of [`Fail`] with additional methods for
+//! converting itself to an HTTP response.
+//!
+//! The all of handling errors are managed in the framework by converting into an [`Error`].
+//! They will be automatically converted to an HTTP response after all processeing will be
+//! completed.
+//!
+//! [`Error`]: ./struct.Error.html
+//! [`Fail`]: https://docs.rs/failure/0.1/failure/trait.Fail.html
+//! [`HttpError`]: ./trait.HttpError.html
+//!
+//! # Error Handling
+//!
+//! The best way to specify the error responses is usually to return a value which implements
+//! `HttpError`. However, The error values after being converted to `Error` can be modified
+//! by using the following components:
+//!
+//! * [`ErrorHandler`] - It modifies the all kinds of errors which occurred during handling.
+//! * [`Modifier`] - It modifies errors occurred within a certain scope.
+//!
+//! [`Modifier`]: ../modifier/trait.Modifier.html
+//! [`ErrorHandler`]: ./trait.ErrorHandler.html
 
-pub mod handler;
+mod failure;
+mod handler;
+mod message;
+mod never;
 
-use failure::{self, Fail};
-use http::{Request, Response, StatusCode};
+pub use self::failure::Failure;
+pub(crate) use self::handler::DefaultErrorHandler;
+pub use self::handler::ErrorHandler;
+pub use self::message::{bad_request, internal_server_error, ErrorMessage};
+pub use self::never::Never;
+
+// ====
+
+use http::header::HeaderMap;
+use http::{header, Request, Response, StatusCode};
 use std::any::TypeId;
-use std::{error, fmt};
+use std::error;
 
 use input::RequestBody;
 use output::ResponseBody;
@@ -16,27 +53,25 @@ pub type CritError = Box<dyn error::Error + Send + Sync + 'static>;
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-/// A trait representing error types to be converted into HTTP response.
-pub trait HttpError: fmt::Debug + fmt::Display + Send + 'static {
-    /// Convert this error value into an HTTP response.
-    #[allow(unused_variables)]
-    fn into_response(
-        &mut self,
-        request: &Request<RequestBody>,
-    ) -> Option<::std::result::Result<Response<ResponseBody>, CritError>> {
-        None
-    }
-
-    //
-
-    /// Returns an HTTP status code associated with the value of this type.
-    fn status_code(&self) -> StatusCode {
+/// A trait representing error values to be converted into an HTTP response.
+pub trait HttpError: ::failure::Fail {
+    /// Returns an HTTP status code associated with this value.
+    ///
+    /// By default, the value is `500 Internal Server Error`.
+    fn status(&self) -> StatusCode {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 
-    /// Returns the representation as a `Fail`, if possible.
-    fn as_fail(&self) -> Option<&dyn Fail> {
-        None
+    /// Appends some entries to the provided header map.
+    #[allow(unused_variables)]
+    fn headers(&self, headers: &mut HeaderMap) {}
+
+    /// Generates a message body from this error value.
+    ///
+    /// By default, it just uses `fmt::Display`.
+    #[allow(unused_variables)]
+    fn body(&mut self, request: &Request<RequestBody>) -> ResponseBody {
+        self.to_string().into()
     }
 
     #[doc(hidden)]
@@ -52,7 +87,7 @@ impl dyn HttpError {
         self.__private_type_id__() == TypeId::of::<T>()
     }
 
-    /// Attempts to downcast this error value to the specified concrete type by reference.
+    /// Attempts to downcast this error value to the specified concrete type by shared reference.
     pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
         if self.is::<T>() {
             unsafe { Some(&*(self as *const dyn HttpError as *const T)) }
@@ -60,35 +95,50 @@ impl dyn HttpError {
             None
         }
     }
+
+    /// Attempts to downcast this error value to the specified concrete type by mutable reference.
+    pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
+        if self.is::<T>() {
+            unsafe { Some(&mut *(self as *mut dyn HttpError as *mut T)) }
+        } else {
+            None
+        }
+    }
+}
+
+/// An extension trait for adding support for downcasting of `HttpError`s.
+pub trait BoxHttpErrorExt {
+    /// Attempts to downcast the error value to the specified concreate type.
+    fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Box<dyn HttpError>>;
+}
+
+impl BoxHttpErrorExt for Box<dyn HttpError> {
+    fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Box<dyn HttpError>> {
+        if self.is::<T>() {
+            unsafe { Ok(Box::from_raw(Box::into_raw(self) as *mut T)) }
+        } else {
+            Err(self)
+        }
+    }
 }
 
 /// A type which holds all kinds of errors occurring in handlers.
 #[derive(Debug)]
-pub struct Error {
-    kind: ErrorKind,
-}
-
-#[derive(Debug)]
-enum ErrorKind {
-    Boxed(Box<dyn HttpError>),
-    Crit(CritError),
-}
+pub struct Error(::std::result::Result<Box<dyn HttpError>, CritError>);
 
 impl<E> From<E> for Error
 where
     E: HttpError,
 {
     fn from(err: E) -> Error {
-        Error::new(err)
+        Error::new(Box::new(err) as Box<dyn HttpError>)
     }
 }
 
 impl Error {
-    /// Creates an HTTP error from an error value and an HTTP status code.
-    pub fn new(err: impl HttpError) -> Error {
-        Error {
-            kind: ErrorKind::Boxed(Box::new(err)),
-        }
+    /// Creates an `Error` from the specified value implementing `HttpError`.
+    pub fn new(err: impl Into<Box<dyn HttpError>>) -> Error {
+        Error(Ok(err.into()))
     }
 
     /// Creates a *critical* error from an error value.
@@ -105,113 +155,83 @@ impl Error {
     where
         E: Into<CritError>,
     {
-        Error {
-            kind: ErrorKind::Crit(err.into()),
-        }
+        Error(Err(err.into()))
     }
 
     /// Returns `true` if this error is a *critical* error.
     pub fn is_critical(&self) -> bool {
-        match self.kind {
-            ErrorKind::Crit(..) => true,
-            _ => false,
-        }
+        self.0.is_err()
     }
 
     /// Returns the representation as `HttpError` of this error value by reference.
     ///
     /// If the value is a criticial error, it will return a `None`.
     pub fn as_http_error(&self) -> Option<&dyn HttpError> {
-        match self.kind {
-            ErrorKind::Boxed(ref e) => Some(&**e),
-            ErrorKind::Crit(..) => None,
+        match self.0 {
+            Ok(ref e) => Some(&**e),
+            Err(..) => None,
         }
     }
 
-    #[allow(missing_docs)]
-    pub fn try_into_http_error(self) -> ::std::result::Result<Box<dyn HttpError>, CritError> {
-        match self.kind {
-            ErrorKind::Boxed(e) => Ok(e),
-            ErrorKind::Crit(e) => Err(e),
+    /// Consumes `self` and converts its value into a boxed `HttpError`.
+    ///
+    /// If the value is a criticial error, it returns `self` wrapped in `Err`.
+    pub fn into_http_error(self) -> ::std::result::Result<Box<dyn HttpError>, Error> {
+        match self.0 {
+            Ok(e) => Ok(e),
+            Err(e) => Err(Error(Err(e))),
         }
     }
 
-    #[allow(missing_docs)]
+    /// Attempts to downcast this error value into the specified concrete type.
+    pub fn downcast<T: HttpError>(self) -> ::std::result::Result<T, Error> {
+        match self.0 {
+            Ok(e) => e.downcast().map(|e| *e).map_err(|e| Error(Ok(e))),
+            Err(e) => Err(Error(Err(e))),
+        }
+    }
+
+    /// Attempts to downcast this error value to the specified concrete type by reference.
     pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
-        self.as_http_error()?.downcast_ref()
-    }
-}
-
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct Failure {
-    status: StatusCode,
-    err: failure::Error,
-}
-
-impl Failure {
-    /// Create a new `Failure` from the specified HTTP status code and an error value.
-    pub fn new(status: StatusCode, err: impl Into<failure::Error>) -> Failure {
-        Failure {
-            err: err.into(),
-            status,
+        match self.0 {
+            Ok(ref e) => e.downcast_ref(),
+            Err(..) => None,
         }
     }
 
-    /// Creates an HTTP error representing "404 Not Found".
-    pub fn not_found() -> Failure {
-        Failure::new(StatusCode::NOT_FOUND, format_err!("Not Found"))
+    /// Attempts to downcast this error value to the specified concrete type by reference.
+    pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
+        match self.0 {
+            Ok(ref mut e) => e.downcast_mut(),
+            Err(..) => None,
+        }
     }
 
-    /// Creates an HTTP error representing "405 Method Not Allowed".
-    pub fn method_not_allowed() -> Failure {
-        Failure::new(
-            StatusCode::METHOD_NOT_ALLOWED,
-            format_err!("Method Not Allowed"),
-        )
+    /// [unstable]
+    /// Attempts to convert the internal value of `HttpError` into a specified type.
+    ///
+    /// This method does nothing if the type id of internal value is equal to `T`.
+    pub fn map<T: HttpError>(self, f: impl FnOnce(Box<dyn HttpError>) -> T) -> Error {
+        Error(match self.0 {
+            Ok(e) => match e.downcast::<T>() {
+                Ok(e) => Ok(e),
+                Err(e) => Ok(Box::new(f(e))),
+            },
+            Err(e) => Err(e),
+        })
     }
 
-    /// Creates an HTTP error representing "400 Bad Request" from the provided error value.
-    pub fn bad_request(err: impl Into<failure::Error>) -> Failure {
-        Failure::new(StatusCode::BAD_REQUEST, err)
-    }
-
-    /// Creates an HTTP error representing "500 Internal Server Error", from the provided error value .
-    pub fn internal_server_error(err: impl Into<failure::Error>) -> Failure {
-        Failure::new(StatusCode::INTERNAL_SERVER_ERROR, err)
-    }
-}
-
-impl fmt::Display for Failure {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.err, f)
-    }
-}
-
-impl HttpError for Failure {
-    fn status_code(&self) -> StatusCode {
-        self.status
-    }
-
-    fn as_fail(&self) -> Option<&dyn Fail> {
-        Some(self.err.as_fail())
-    }
-}
-
-/// A helper type emulating the standard never_type (`!`).
-#[derive(Debug)]
-pub enum Never {}
-
-impl fmt::Display for Never {
-    fn fmt(&self, _: &mut fmt::Formatter) -> fmt::Result {
-        unreachable!()
-    }
-}
-
-impl Fail for Never {}
-
-impl HttpError for Never {
-    fn status_code(&self) -> StatusCode {
-        unreachable!()
+    pub(crate) fn into_response(
+        self,
+        request: &Request<RequestBody>,
+    ) -> ::std::result::Result<Response<ResponseBody>, CritError> {
+        let mut err = self.0?;
+        let mut response = Response::builder()
+            .status(err.status())
+            .header(header::CONNECTION, "close")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(())?;
+        err.headers(response.headers_mut());
+        Ok(response.map(|()| err.body(request)))
     }
 }

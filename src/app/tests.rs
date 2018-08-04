@@ -14,7 +14,7 @@ fn empty() {
     let app = App::builder().finish().unwrap();
     assert_matches!(
         app.recognize("/", &Method::GET),
-        Err(ref e) if e.status_code() == StatusCode::NOT_FOUND
+        Err(ref e) if e.status() == StatusCode::NOT_FOUND
     );
 }
 
@@ -26,11 +26,11 @@ fn route_single_method() {
 
     assert_matches!(
         app.recognize("/path/to", &Method::GET),
-        Err(ref e) if e.status_code() == StatusCode::NOT_FOUND
+        Err(ref e) if e.status() == StatusCode::NOT_FOUND
     );
     assert_matches!(
         app.recognize("/", &Method::POST),
-        Err(ref e) if e.status_code() == StatusCode::METHOD_NOT_ALLOWED
+        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
     );
 }
 
@@ -47,7 +47,7 @@ fn route_multiple_method() {
 
     assert_matches!(
         app.recognize("/", &Method::PUT),
-        Err(ref e) if e.status_code() == StatusCode::METHOD_NOT_ALLOWED
+        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
     );
 }
 
@@ -68,7 +68,7 @@ fn route_fallback_head_disabled() {
 
     assert_matches!(
         app.recognize("/", &Method::HEAD),
-        Err(ref e) if e.status_code() == StatusCode::METHOD_NOT_ALLOWED
+        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
     );
 }
 
@@ -96,7 +96,7 @@ fn route_fallback_options_disabled() {
 
     assert_matches!(
         app.recognize("/", &Method::OPTIONS),
-        Err(ref e) if e.status_code() == StatusCode::METHOD_NOT_ALLOWED
+        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
     );
 }
 
@@ -113,7 +113,7 @@ fn global_prefix() {
     assert_matches!(app.recognize("/api/b", &Method::GET), Ok((1, ..)));
     assert_matches!(
         app.recognize("/a", &Method::GET),
-        Err(ref e) if e.status_code() == StatusCode::NOT_FOUND
+        Err(ref e) if e.status() == StatusCode::NOT_FOUND
     );
 }
 
@@ -170,7 +170,7 @@ fn scope_nested() {
 
     assert_matches!(
         app.recognize("/baz/", &Method::GET),
-        Err(ref e) if e.status_code() == StatusCode::NOT_FOUND
+        Err(ref e) if e.status() == StatusCode::NOT_FOUND
     );
 }
 

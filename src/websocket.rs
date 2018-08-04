@@ -48,41 +48,32 @@ use tokio_codec::Framed;
 use websocket_codec::codec::ws::{Context, MessageCodec};
 pub use websocket_codec::OwnedMessage;
 
-use error::Error;
+use error::{Error, HttpError};
 use input::upgrade::{UpgradeContext, Upgraded};
 use input::Input;
 use output::Responder;
 
-#[allow(bare_trait_objects)]
-mod _priv {
-    use http::StatusCode;
+#[allow(missing_docs)]
+#[derive(Debug, Fail)]
+pub enum HandshakeError {
+    #[fail(display = "The header is missing: `{}'", name)]
+    MissingHeader { name: &'static str },
 
-    use error::HttpError;
+    #[fail(display = "The header value is invalid: `{}'", name)]
+    InvalidHeader { name: &'static str },
 
-    #[allow(missing_docs)]
-    #[derive(Debug, Fail)]
-    pub enum HandshakeError {
-        #[fail(display = "The header is missing: `{}'", name)]
-        MissingHeader { name: &'static str },
+    #[fail(display = "The value of `Sec-WebSocket-Key` is invalid")]
+    InvalidSecWebSocketKey,
 
-        #[fail(display = "The header value is invalid: `{}'", name)]
-        InvalidHeader { name: &'static str },
-
-        #[fail(display = "The value of `Sec-WebSocket-Key` is invalid")]
-        InvalidSecWebSocketKey,
-
-        #[fail(display = "The value of `Sec-WebSocket-Version` must be equal to '13'")]
-        InvalidSecWebSocketVersion,
-    }
-
-    impl HttpError for HandshakeError {
-        fn status_code(&self) -> StatusCode {
-            StatusCode::BAD_REQUEST
-        }
-    }
+    #[fail(display = "The value of `Sec-WebSocket-Version` must be equal to '13'")]
+    InvalidSecWebSocketVersion,
 }
 
-pub use self::_priv::HandshakeError;
+impl HttpError for HandshakeError {
+    fn status(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
+    }
+}
 
 /// Creates a handshake response from the specified request.
 pub fn handshake(input: &mut Input) -> Result<Response<()>, HandshakeError> {

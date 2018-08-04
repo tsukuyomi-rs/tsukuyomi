@@ -9,7 +9,7 @@ use http::header::HeaderValue;
 use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 
-use error::handler::{DefaultErrorHandler, ErrorHandler};
+use error::{DefaultErrorHandler, ErrorHandler};
 use handler::{self, Handler};
 use modifier::Modifier;
 use recognizer::{uri, Recognizer, Uri};
@@ -432,7 +432,8 @@ impl AppBuilder {
         };
 
         // finalize error handler.
-        let error_handler = error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::new()));
+        let error_handler =
+            error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::default()));
 
         // finalize global/scope-local storages.
         let parents: Vec<_> = scopes.iter().map(|scope| scope.parent).collect();

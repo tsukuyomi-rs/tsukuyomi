@@ -2,25 +2,74 @@
 
 use futures::{self, Async, Future, Poll};
 use http::header::HeaderValue;
-use http::{header, Request, Response, StatusCode};
+use http::{header, Method, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
 use tokio::executor::{DefaultExecutor, Executor};
 
-use error::{CritError, Error};
+use error::{CritError, Error, HttpError};
 use handler::Handle;
 use input::upgrade::UpgradeContext;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::{Output, ResponseBody};
+use recognizer::Captures;
 
 use super::{App, RouteData};
+
+/// An instance of `HttpError` which will be thrown from the route recognizer.
+///
+/// The value of this type cannot be modified by the `Modifier`s since they will be
+/// thrown before the scope will be determined.
+#[derive(Debug, Fail)]
+pub enum RecognizeError {
+    /// The request path is not matched to any routes.
+    #[fail(display = "Not Found")]
+    NotFound,
+
+    /// The request path is matched but the method is invalid.
+    #[fail(display = "Method Not Allowed")]
+    MethodNotAllowed,
+}
+
+impl HttpError for RecognizeError {
+    fn status(&self) -> StatusCode {
+        match self {
+            RecognizeError::NotFound => StatusCode::NOT_FOUND,
+            RecognizeError::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
+        }
+    }
+}
 
 impl App {
     /// Creates a new `AppService` to manage a session.
     pub fn new_service(&self) -> AppService {
         AppService { app: self.clone() }
+    }
+
+    pub(super) fn recognize(
+        &self,
+        path: &str,
+        method: &Method,
+    ) -> Result<(usize, Captures), RecognizeError> {
+        let (i, params) = self
+            .inner
+            .recognizer
+            .recognize(path)
+            .ok_or_else(|| RecognizeError::NotFound)?;
+
+        let methods = &self.inner.route_ids[i];
+        match methods.get(method) {
+            Some(&i) => Ok((i, params)),
+            None if self.inner.config.fallback_head && *method == Method::HEAD => {
+                match methods.get(&Method::GET) {
+                    Some(&i) => Ok((i, params)),
+                    None => Err(RecognizeError::MethodNotAllowed),
+                }
+            }
+            None => Err(RecognizeError::MethodNotAllowed),
+        }
     }
 }
 
@@ -255,7 +304,14 @@ impl AppServiceFuture {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => {
                 self.status = AppServiceFutureStatus::Done;
-                self.handle_error(err).map(Async::Ready)
+                let request = self.request.take().expect("This future has already polled");
+                drop(self.parts.take());
+
+                self.app
+                    .error_handler()
+                    .handle_error(err)
+                    .into_response(&request)
+                    .map(Async::Ready)
             }
         }
     }
@@ -318,18 +374,6 @@ impl AppServiceFuture {
         }
 
         Ok(output)
-    }
-
-    fn handle_error(&mut self, err: Error) -> Result<Response<ResponseBody>, CritError> {
-        let request = self.request.take().expect("This future has already polled");
-        drop(self.parts.take());
-
-        let mut err = err.try_into_http_error()?;
-        match err.into_response(&request) {
-            Some(Ok(response)) => Ok(response),
-            Some(Err(err)) => Err(err),
-            None => self.app.error_handler().handle_error(&*err, &request),
-        }
     }
 }
 
