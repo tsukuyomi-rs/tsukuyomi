@@ -69,7 +69,7 @@ pub mod websocket;
 pub use app::App;
 
 #[doc(inline)]
-pub use error::{Error, Result};
+pub use error::{Error, HttpError, Result};
 
 #[doc(inline)]
 pub use handler::Handler;

@@ -10,8 +10,8 @@ use serde_json;
 use std::borrow::Cow;
 use std::ops::Deref;
 
-use error::handler::ErrorHandler;
-use error::{CritError, Error, Failure, HttpError, Never};
+use error::ErrorHandler;
+use error::{Error, Failure, HttpError, Never};
 use input::body::{FromData, RequestBody};
 use input::header::content_type;
 use input::Input;
@@ -171,6 +171,58 @@ impl Responder for JsonValue {
     }
 }
 
+/// An error type representing a JSON error response.
+#[derive(Debug, Fail)]
+#[fail(display = "{}", cause)]
+pub struct JsonError {
+    cause: Box<dyn HttpError>,
+}
+
+impl JsonError {
+    /// Creates a "JsonError" from the provided error value.
+    pub fn new(cause: impl Into<Box<dyn HttpError>>) -> JsonError {
+        JsonError {
+            cause: cause.into(),
+        }
+    }
+
+    /// Returns a reference to the internal error value.
+    pub fn cause(&self) -> &dyn HttpError {
+        &*self.cause
+    }
+}
+
+impl<E> From<E> for JsonError
+where
+    E: Into<Box<dyn HttpError>>,
+{
+    fn from(cause: E) -> Self {
+        JsonError::new(cause)
+    }
+}
+
+impl HttpError for JsonError {
+    fn status(&self) -> StatusCode {
+        self.cause.status()
+    }
+
+    fn headers(&self, headers: &mut HeaderMap) {
+        self.cause.headers(headers);
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+    }
+
+    fn body(&mut self, _: &Request<RequestBody>) -> ResponseBody {
+        json!({
+            "code": self.status().as_u16(),
+            "description": self.to_string(),
+        }).to_string()
+            .into()
+    }
+}
+
 /// An error handler for creating JSON error responses.
 #[derive(Debug, Default)]
 pub struct JsonErrorHandler {
@@ -182,39 +234,17 @@ impl JsonErrorHandler {
     pub fn new() -> JsonErrorHandler {
         Default::default()
     }
-
-    fn make_error_response(&self, e: &dyn HttpError) -> Result<Response<ResponseBody>, CritError> {
-        let body = json!({
-            "code": e.status_code().as_u16(),
-            "description": e.to_string(),
-        }).to_string();
-
-        Response::builder()
-            .status(e.status_code())
-            .header(header::CONNECTION, "close")
-            .header(header::CACHE_CONTROL, "no-cache")
-            .body(body.into())
-            .map_err(Into::into)
-    }
 }
 
 impl ErrorHandler for JsonErrorHandler {
-    fn handle_error(
-        &self,
-        err: &dyn HttpError,
-        _: &Request<RequestBody>,
-    ) -> Result<Response<ResponseBody>, CritError> {
-        self.make_error_response(err)
+    fn handle_error(&self, err: Error) -> Error {
+        err.map(JsonError::new)
     }
 }
 
 impl Modifier for JsonErrorHandler {
     fn after_handle(&self, _: &mut Input, result: Result<Output, Error>) -> AfterHandle {
-        AfterHandle::ready(result.map(Ok).unwrap_or_else(|err| {
-            err.try_into_http_error()
-                .and_then(|e| self.make_error_response(&*e))
-                .map_err(Error::critical)
-        }))
+        AfterHandle::ready(result.map_err(|err| err.map(JsonError::new)))
     }
 }
 

@@ -15,7 +15,7 @@ use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Response, StatusCode};
 
-use error::{Error, Failure, Never};
+use error::{Error, HttpError, Never};
 use input::{self, Input};
 
 /// A trait representing the conversion to an HTTP response.
@@ -49,16 +49,30 @@ where
     type Error = Error;
 
     fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
-        self.ok_or_else(Failure::not_found)?
+        self.ok_or_else(|| OptionError { _priv: () })?
             .respond_to(input)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)
     }
 }
 
-impl<T> Responder for Result<T, Error>
+#[allow(missing_docs)]
+#[derive(Debug, Fail)]
+#[fail(display = "Not Found")]
+pub struct OptionError {
+    _priv: (),
+}
+
+impl HttpError for OptionError {
+    fn status(&self) -> StatusCode {
+        StatusCode::NOT_FOUND
+    }
+}
+
+impl<T, E> Responder for Result<T, E>
 where
     T: Responder,
+    Error: From<E>,
 {
     type Body = ResponseBody;
     type Error = Error;

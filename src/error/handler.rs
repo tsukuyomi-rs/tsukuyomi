@@ -1,64 +1,33 @@
 //! The definition of error handlers.
 
-use http::{header, Request, Response};
+use super::Error;
 
-use input::RequestBody;
-use output::ResponseBody;
-
-use super::{CritError, HttpError};
-
-/// A trait representing error handlers.
+/// A trait representing a global error handlers.
 pub trait ErrorHandler {
-    /// Creates an HTTP response from the provided error value.
-    fn handle_error(
-        &self,
-        err: &dyn HttpError,
-        request: &Request<RequestBody>,
-    ) -> Result<Response<ResponseBody>, CritError>;
+    /// Modifies a specified error value
+    ///
+    /// This method will be called before converting the value of `Error`
+    /// into an HTTP response.
+    fn handle_error(&self, err: Error) -> Error;
 }
 
-impl<F, T> ErrorHandler for F
+impl<F> ErrorHandler for F
 where
-    F: Fn(&dyn HttpError, &Request<RequestBody>) -> Result<Response<T>, CritError>,
-    T: Into<ResponseBody>,
+    F: Fn(Error) -> Error,
 {
-    fn handle_error(
-        &self,
-        err: &dyn HttpError,
-        request: &Request<RequestBody>,
-    ) -> Result<Response<ResponseBody>, CritError> {
-        (*self)(err, request).map(|res| res.map(Into::into))
+    fn handle_error(&self, err: Error) -> Error {
+        (*self)(err)
     }
 }
 
 /// An implementor of `ErrorHandler` used in `App` by default.
 #[derive(Debug, Default)]
-pub struct DefaultErrorHandler {
+pub(crate) struct DefaultErrorHandler {
     _priv: (),
 }
 
-impl DefaultErrorHandler {
-    /// Creates a new instance of `DefaultErrorHandler`.
-    pub fn new() -> DefaultErrorHandler {
-        Default::default()
-    }
-}
-
 impl ErrorHandler for DefaultErrorHandler {
-    fn handle_error(
-        &self,
-        err: &dyn HttpError,
-        _: &Request<RequestBody>,
-    ) -> Result<Response<ResponseBody>, CritError> {
-        Response::builder()
-            .status(err.status_code())
-            .header(header::CONNECTION, "close")
-            .header(header::CACHE_CONTROL, "no-cache")
-            .body(err.to_string().into())
-            .map_err(|e| {
-                format_err!("failed to construct an HTTP error response: {}", e)
-                    .compat()
-                    .into()
-            })
+    fn handle_error(&self, err: Error) -> Error {
+        err
     }
 }
