@@ -17,7 +17,7 @@ use std::sync::Arc;
 use error::ErrorHandler;
 use handler::Handler;
 use modifier::Modifier;
-use recognizer::{Recognizer, Uri};
+use recognizer::{uri::Uri, Recognizer};
 
 use self::builder::AppBuilder;
 use self::scoped_map::ScopedMap;
@@ -141,6 +141,10 @@ impl App {
     /// Creates a builder object for constructing an instance of this type.
     pub fn builder() -> AppBuilder {
         AppBuilder::new()
+    }
+
+    pub(crate) fn uri(&self, id: RouteId) -> &Uri {
+        &self.data.routes[id.1].uri
     }
 
     pub(crate) fn get_state<T>(&self, id: RouteId) -> Option<&T>

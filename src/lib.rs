@@ -18,6 +18,7 @@ extern crate failure;
 extern crate futures;
 extern crate http;
 extern crate hyper;
+#[cfg_attr(test, macro_use)]
 extern crate indexmap;
 #[macro_use]
 extern crate log;

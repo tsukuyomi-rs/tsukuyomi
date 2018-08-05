@@ -164,7 +164,7 @@ impl Node {
         Ok(())
     }
 
-    fn get_value(&self, path: &[u8], captures: &mut Captures) -> Option<usize> {
+    fn get_value(&self, path: &[u8], captures: &mut Option<Captures>) -> Option<usize> {
         let mut offset = 0;
         let mut n = self;
 
@@ -177,7 +177,8 @@ impl Node {
                     return match (n.leaf, n.children.get(0)) {
                         (Some(i), _) => Some(i),
                         (None, Some(ch)) if ch.path == PathKind::CatchAll => {
-                            captures.wildcard = Some((path.len(), path.len()));
+                            captures.get_or_insert_with(Default::default).wildcard =
+                                Some((path.len(), path.len()));
                             ch.leaf
                         }
                         _ => None,
@@ -202,7 +203,10 @@ impl Node {
                         .into_iter()
                         .position(|&b| b == b'/')
                         .unwrap_or(path.len() - offset);
-                    captures.params.push((offset, offset + span));
+                    captures
+                        .get_or_insert_with(Default::default)
+                        .params
+                        .push((offset, offset + span));
                     offset += span;
                     if offset >= path.len() {
                         return n.leaf;
@@ -214,7 +218,8 @@ impl Node {
                     n = &n.children[0];
                 }
                 PathKind::CatchAll => {
-                    captures.wildcard = Some((offset, path.len()));
+                    captures.get_or_insert_with(Default::default).wildcard =
+                        Some((offset, path.len()));
                     return n.leaf;
                 }
             }
@@ -265,7 +270,9 @@ pub(super) struct Tree {
 }
 
 impl Tree {
-    pub(super) fn insert(&mut self, path: &[u8], index: usize) -> Result<(), Error> {
+    pub(super) fn insert(&mut self, path: impl AsRef<[u8]>, index: usize) -> Result<(), Error> {
+        let path = path.as_ref();
+
         if let Some(ref mut root) = self.root {
             root.add_path(path, index)?;
             return Ok(());
@@ -275,12 +282,13 @@ impl Tree {
         self.root
             .get_or_insert(Node::new(PathKind::Segment(path[..pos].into())))
             .insert_child(&path[pos..], index)?;
+
         Ok(())
     }
 
-    pub(super) fn recognize(&self, path: &[u8]) -> Option<(usize, Captures)> {
-        let mut captures = Captures::default();
-        let i = self.root.as_ref()?.get_value(path, &mut captures)?;
+    pub(super) fn recognize(&self, path: impl AsRef<[u8]>) -> Option<(usize, Option<Captures>)> {
+        let mut captures = None;
+        let i = self.root.as_ref()?.get_value(path.as_ref(), &mut captures)?;
         Some((i, captures))
     }
 }

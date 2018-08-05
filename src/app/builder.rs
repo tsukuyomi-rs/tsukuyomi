@@ -12,7 +12,10 @@ use indexmap::map::IndexMap;
 use error::{DefaultErrorHandler, ErrorHandler};
 use handler::{self, Handler};
 use modifier::Modifier;
-use recognizer::{uri, Recognizer, Uri};
+use recognizer::{
+    uri::{self, Uri},
+    Recognizer,
+};
 
 use super::scoped_map;
 use super::{App, AppData, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
@@ -351,7 +354,7 @@ impl AppBuilder {
                     current = scope.parent.local_id();
                 }
                 uris.extend(prefix.as_ref());
-                let uri = uri::join_all(uris.into_iter().rev());
+                let uri = uri::join_all(uris.into_iter().rev())?;
 
                 let handler = route
                     .handler
