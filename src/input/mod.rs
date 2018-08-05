@@ -7,13 +7,12 @@ pub mod upgrade;
 
 mod cookie;
 mod global;
-mod params;
 
 // re-exports
 pub use self::body::RequestBody;
 pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
-pub use self::params::Params;
+pub use recognizer::captures::Params;
 
 #[allow(missing_docs)]
 pub mod header {
@@ -55,7 +54,7 @@ use std::ops::{Deref, DerefMut};
 
 use app::{App, RouteId};
 use error::Failure;
-use recognizer::Captures;
+use recognizer::captures::Captures;
 
 use self::cookie::CookieManager;
 use self::local_map::LocalMap;
@@ -64,14 +63,14 @@ use self::local_map::LocalMap;
 #[derive(Debug)]
 pub(crate) struct InputParts {
     pub(crate) route: RouteId,
-    pub(crate) captures: Captures,
+    pub(crate) captures: Option<Captures>,
     pub(crate) cookies: CookieManager,
     pub(crate) locals: LocalMap,
     _priv: (),
 }
 
 impl InputParts {
-    pub(crate) fn new(route: RouteId, captures: Captures) -> InputParts {
+    pub(crate) fn new(route: RouteId, captures: Option<Captures>) -> InputParts {
         InputParts {
             route,
             captures,
@@ -103,10 +102,11 @@ impl<'task> Input<'task> {
 
     /// Returns a proxy object for accessing parameters extracted by the router.
     pub fn params(&self) -> Params {
-        Params {
-            path: self.request.uri().path(),
-            captures: &self.parts.captures,
-        }
+        Params::new(
+            self.request.uri().path(),
+            self.app.uri(self.parts.route).capture_names(),
+            self.parts.captures.as_ref(),
+        )
     }
 
     /// Returns the reference to a value of `T` registered in the global storage, if possible.

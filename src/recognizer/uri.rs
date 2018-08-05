@@ -1,9 +1,10 @@
-#![allow(missing_docs)]
-
+use super::captures::CaptureNames;
 use failure::Error;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
+/// A helper trait representing the conversion into an `Uri`.
 pub(crate) trait TryIntoUri {
     type Error: Into<Error>;
     fn try_into(self) -> Result<Uri, Self::Error>;
@@ -21,51 +22,170 @@ impl<'a> TryIntoUri for &'a str {
     type Error = Error;
 
     fn try_into(self) -> Result<Uri, Self::Error> {
-        Uri::from_str(self)
+        self.parse()
     }
 }
 
-pub(crate) fn join_all<I>(prefix: I) -> Uri
+/// Concatenate a list of Uris to an Uri.
+pub(crate) fn join_all<I>(segments: I) -> Result<Uri, Error>
 where
     I: IntoIterator,
     I::Item: AsRef<Uri>,
 {
-    let mut uri = String::new();
-    for p in prefix {
-        if p.as_ref().0 != "/" {
-            uri = format!("{}{}", uri.trim_right_matches('/'), p.as_ref());
-        }
-    }
+    segments
+        .into_iter()
+        .fold(Ok(Uri::root()), |acc, uri| acc?.join(uri))
+}
 
-    if uri.is_empty() {
-        Uri::root()
-    } else {
-        Uri(uri)
+/// A type representing the URI of a route.
+#[derive(Debug, Clone)]
+pub(crate) struct Uri(UriKind);
+
+#[derive(Debug, Clone, PartialEq)]
+enum UriKind {
+    Root,
+    Segments(String, Option<CaptureNames>),
+}
+
+impl PartialEq for Uri {
+    fn eq(&self, other: &Uri) -> bool {
+        match (&self.0, &other.0) {
+            (&UriKind::Root, &UriKind::Root) => true,
+            (&UriKind::Segments(ref s, ..), &UriKind::Segments(ref o, ..)) if s == o => true,
+            _ => false,
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct Uri(String);
+impl Eq for Uri {}
 
-impl Uri {
-    pub(crate) fn root() -> Uri {
-        Uri("/".into())
-    }
-
-    pub(super) fn as_bytes(&self) -> &[u8] {
-        self.0.as_bytes()
-    }
-
-    pub(super) fn as_str(&self) -> &str {
-        self.0.as_str()
+impl Hash for Uri {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.0 {
+            UriKind::Root => "/".hash(state),
+            UriKind::Segments(ref s, ..) => s.hash(state),
+        }
     }
 }
 
 impl FromStr for Uri {
     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Uri, Error> {
-        normalize_uri(s).map(Uri)
+    fn from_str(mut s: &str) -> Result<Uri, Self::Err> {
+        if !s.is_ascii() {
+            bail!("The URI is not ASCII");
+        }
+
+        if !s.starts_with('/') {
+            bail!("invalid URI")
+        }
+
+        if s == "/" {
+            return Ok(Uri::root());
+        }
+
+        let mut has_trailing_slash = false;
+        if s.ends_with('/') {
+            has_trailing_slash = true;
+            s = &s[..s.len() - 1];
+        }
+
+        let mut names: Option<CaptureNames> = None;
+        for segment in s[1..].split('/') {
+            if segment.is_empty() {
+                bail!("empty segment");
+            }
+            if names.as_ref().map_or(false, |names| names.wildcard) {
+                bail!("The wildcard parameter has already set.");
+            }
+
+            if segment
+                .get(1..)
+                .map_or(false, |s| s.bytes().any(|b| b == b':' || b == b'*'))
+            {
+                bail!("invalid character in a segment");
+            }
+            match segment.as_bytes()[0] {
+                c @ b':' | c @ b'*' => {
+                    let names = names.get_or_insert_with(Default::default);
+                    match c {
+                        b':' => names.append(&segment[1..])?,
+                        b'*' => names.set_wildcard()?,
+                        _ => unreachable!(),
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if has_trailing_slash {
+            Ok(Uri::segments(format!("{}/", s), names))
+        } else {
+            Ok(Uri::segments(s, names))
+        }
+    }
+}
+
+impl Uri {
+    pub(crate) fn root() -> Uri {
+        Uri(UriKind::Root)
+    }
+
+    fn segments(s: impl Into<String>, names: Option<CaptureNames>) -> Uri {
+        Uri(UriKind::Segments(s.into(), names))
+    }
+
+    #[cfg(test)]
+    fn static_(s: impl Into<String>) -> Uri {
+        Uri::segments(s, None)
+    }
+
+    #[cfg(test)]
+    fn captured(s: impl Into<String>, names: CaptureNames) -> Uri {
+        Uri(UriKind::Segments(s.into(), Some(names)))
+    }
+
+    pub(super) fn as_str(&self) -> &str {
+        match self.0 {
+            UriKind::Root => "/",
+            UriKind::Segments(ref s, ..) => s.as_str(),
+        }
+    }
+
+    pub(crate) fn capture_names(&self) -> Option<&CaptureNames> {
+        match self.0 {
+            UriKind::Segments(_, Some(ref names)) => Some(names),
+            _ => None,
+        }
+    }
+
+    fn join(self, other: impl AsRef<Uri>) -> Result<Uri, Error> {
+        match self.0 {
+            UriKind::Root => Ok(other.as_ref().clone()),
+            UriKind::Segments(mut s, mut names) => match other.as_ref().0 {
+                | UriKind::Root => Ok(Uri::segments(s, names)),
+                | UriKind::Segments(ref o, ref onames) => {
+                    s += if s.ends_with('/') {
+                        o.trim_left_matches('/')
+                    } else {
+                        o
+                    };
+                    match (&mut names, onames) {
+                        (&mut Some(ref mut names), &Some(ref onames)) => {
+                            names.extend(onames.params.iter().cloned())?;
+                            if onames.wildcard {
+                                names.set_wildcard()?;
+                            }
+                        }
+                        (ref mut names @ None, &Some(ref onames)) => {
+                            **names = Some(onames.clone());
+                        }
+                        (_, &None) => {}
+                    }
+                    Ok(Uri::segments(s, names))
+                }
+            },
+        }
     }
 }
 
@@ -75,54 +195,9 @@ impl AsRef<Uri> for Uri {
     }
 }
 
-impl AsRef<str> for Uri {
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
-    }
-}
-
 impl fmt::Display for Uri {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-fn normalize_uri(mut s: &str) -> Result<String, Error> {
-    if !s.is_ascii() {
-        bail!("The URI is not ASCII");
-    }
-
-    if !s.starts_with('/') {
-        bail!("invalid URI")
-    }
-
-    if s == "/" {
-        return Ok("/".into());
-    }
-
-    let mut has_trailing_slash = false;
-    if s.ends_with('/') {
-        has_trailing_slash = true;
-        s = &s[..s.len() - 1];
-    }
-
-    for segment in s[1..].split('/') {
-        if segment.is_empty() {
-            bail!("empty segment");
-        }
-        match segment.as_bytes()[0] {
-            b':' | b'*' if segment.len() == 1 => bail!("empty parameter name"),
-            _ => {}
-        }
-        if segment[1..].bytes().any(|b| b == b':' || b == b'*') {
-            bail!("invalid character in a segment");
-        }
-    }
-
-    if has_trailing_slash {
-        Ok(format!("{}/", s))
-    } else {
-        Ok(s.into())
+        f.write_str(self.as_str())
     }
 }
 
@@ -130,105 +205,107 @@ fn normalize_uri(mut s: &str) -> Result<String, Error> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn normalize_uri_case_1() {
-        assert_eq!(normalize_uri("/").ok(), Some("/".into()));
+    macro_rules! t {
+        (@case $name:ident, $input:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                assert_eq!($input.ok().map(|uri: Uri| uri.0), Some($expected.0));
+            }
+        };
+        ($(
+            $name:ident ($input:expr, $expected:expr);
+        )*) => {$(
+            t!(@case $name, $input, $expected);
+        )*};
     }
 
-    #[test]
-    fn normalize_uri_case_2() {
-        assert_eq!(
-            normalize_uri("/path/to/lib").ok(),
-            Some("/path/to/lib".into())
+    t! [
+        parse_uri_root(
+            "/".parse(),
+            Uri::root()
         );
-    }
-
-    #[test]
-    fn normalize_uri_case_3() {
-        assert_eq!(
-            normalize_uri("/path/to/lib/").ok(),
-            Some("/path/to/lib/".into())
+        parse_uri_static(
+            "/path/to/lib".parse(),
+            Uri::static_("/path/to/lib")
         );
-    }
-
-    #[test]
-    fn normalize_uri_case_4() {
-        assert_eq!(
-            normalize_uri("/api/v1/:param/*param").ok(),
-            Some("/api/v1/:param/*param".into())
+        parse_uri_static_has_trailing_slash(
+            "/path/to/lib/".parse(),
+            Uri::static_("/path/to/lib/")
         );
-    }
-
-    #[test]
-    fn normalize_uri_failcase_1() {
-        assert!(normalize_uri("").is_err());
-    }
-
-    #[test]
-    fn normalize_uri_failcase_2() {
-        assert!(normalize_uri("foo/bar").is_err());
-    }
-
-    #[test]
-    fn normalize_uri_failcase_3() {
-        assert!(normalize_uri("/foo/bar//").is_err());
-    }
-
-    #[test]
-    fn normalize_uri_failcase_4() {
-        assert!(normalize_uri("/pa:th").is_err());
-    }
-
-    #[test]
-    fn normalize_uri_failcase_5() {
-        assert!(normalize_uri("/パス").is_err());
-    }
-
-    #[test]
-    fn join_path_case1() {
-        assert_eq!(
-            join_all(&[Uri("/".into()), Uri("/".into())]),
-            Uri("/".into())
+        parse_uri_has_wildcard_params(
+            "/api/v1/:param/*path".parse(),
+            Uri::captured(
+                "/api/v1/:param/*path",
+                CaptureNames {
+                    params: indexset!["param".into()],
+                    wildcard: true,
+                }
+            )
         );
+    ];
+
+    #[test]
+    fn parse_uri_failcase_empty() {
+        assert!("".parse::<Uri>().is_err());
     }
 
     #[test]
-    fn join_path_case2() {
-        assert_eq!(
-            join_all(&[Uri("/path".into()), Uri("/to".into())]),
-            Uri("/path/to".into())
-        );
+    fn parse_uri_failcase_without_prefix_root() {
+        assert!("foo/bar".parse::<Uri>().is_err());
     }
 
     #[test]
-    fn join_path_case3() {
-        assert_eq!(
-            join_all(&[Uri("/path/".into()), Uri("/to".into())]),
-            Uri("/path/to".into())
-        );
+    fn parse_uri_failcase_duplicated_slashes() {
+        assert!("//foo/bar/".parse::<Uri>().is_err());
+        assert!("/foo//bar/".parse::<Uri>().is_err());
+        assert!("/foo/bar//".parse::<Uri>().is_err());
     }
 
     #[test]
-    fn join_path_case4() {
-        assert_eq!(
-            join_all(&[Uri("/".into()), Uri("/path/to".into())]),
-            Uri("/path/to".into())
-        );
+    fn parse_uri_failcase_invalid_wildcard_specifier_pos() {
+        assert!("/pa:th".parse::<Uri>().is_err());
     }
 
     #[test]
-    fn join_path_case5() {
-        assert_eq!(
-            join_all(&[Uri("/path/to/".into()), Uri("/".into())]),
-            Uri("/path/to/".into())
-        );
+    fn parse_uri_failcase_non_ascii() {
+        // FIXME: allow non-ascii URIs with encoding
+        assert!("/パス".parse::<Uri>().is_err());
     }
 
     #[test]
-    fn join_path_case6() {
-        assert_eq!(
-            join_all(&[Uri("/path/to".into()), Uri("/".into())]),
-            Uri("/path/to".into())
-        );
+    fn parse_uri_failcase_duplicated_param_name() {
+        assert!("/:id/:id".parse::<Uri>().is_err());
     }
+
+    #[test]
+    fn parse_uri_failcase_after_wildcard_name() {
+        assert!("/path/to/*a/id".parse::<Uri>().is_err());
+    }
+
+    t! [
+        join_roots(
+            Uri::root().join(Uri::root()),
+            Uri::root()
+        );
+        join_root_and_static(
+            Uri::root().join(Uri::static_("/path/to")),
+            Uri::static_("/path/to")
+        );
+        join_trailing_slash_before_root_1(
+            Uri::static_("/path/to/").join(Uri::root()),
+            Uri::static_("/path/to/")
+        );
+        join_trailing_slash_before_root_2(
+            Uri::static_("/path/to").join(Uri::root()),
+            Uri::static_("/path/to")
+        );
+        join_trailing_slash_before_static_1(
+            Uri::static_("/path").join(Uri::static_("/to")),
+            Uri::static_("/path/to")
+        );
+        join_trailing_slash_before_static_2(
+            Uri::static_("/path/").join(Uri::static_("/to")),
+            Uri::static_("/path/to")
+        );
+    ];
 }

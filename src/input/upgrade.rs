@@ -48,7 +48,7 @@ use http::Request;
 pub use hyper::upgrade::Upgraded;
 
 use app::{App, RouteId};
-use recognizer::Captures;
+use recognizer::captures::Captures;
 
 use super::local_map::LocalMap;
 
@@ -59,7 +59,7 @@ pub struct UpgradeContext {
     pub(crate) app: App,
     pub(crate) locals: LocalMap,
     pub(crate) route: RouteId,
-    pub(crate) captures: Captures,
+    pub(crate) captures: Option<Captures>,
 }
 
 impl UpgradeContext {

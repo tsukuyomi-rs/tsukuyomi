@@ -14,7 +14,7 @@ use input::upgrade::UpgradeContext;
 use input::{Input, InputParts, RequestBody};
 use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::{Output, ResponseBody};
-use recognizer::Captures;
+use recognizer::captures::Captures;
 
 use super::{App, ModifierId, RouteData, RouteId, ScopeId};
 
@@ -52,7 +52,7 @@ impl App {
         &self,
         path: &str,
         method: &Method,
-    ) -> Result<(usize, Captures), RecognizeError> {
+    ) -> Result<(usize, Option<Captures>), RecognizeError> {
         let (i, params) = self
             .data
             .recognizer

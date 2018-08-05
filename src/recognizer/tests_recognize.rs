@@ -7,16 +7,7 @@ fn case1_empty() {
     let mut recognizer = Recognizer::default();
     recognizer.add_route("/").unwrap();
 
-    assert_eq!(
-        recognizer.recognize("/"),
-        Some((
-            0,
-            Captures {
-                params: vec![],
-                wildcard: None,
-            }
-        ))
-    );
+    assert_eq!(recognizer.recognize("/"), Some((0, None,)));
 }
 
 #[test]
@@ -28,10 +19,10 @@ fn case2_multi_param() {
         recognizer.recognize("/files/readme/0"),
         Some((
             0,
-            Captures {
+            Some(Captures {
                 params: vec![(7, 13), (14, 15)],
                 wildcard: None,
-            }
+            })
         ))
     );
 }
@@ -45,10 +36,10 @@ fn case3_wildcard_root() {
         recognizer.recognize("/path/to/readme.txt"),
         Some((
             0,
-            Captures {
+            Some(Captures {
                 params: vec![],
                 wildcard: Some((1, 19)),
-            }
+            })
         ))
     );
 }
@@ -62,10 +53,10 @@ fn case4_wildcard_subdir() {
         recognizer.recognize("/path/to/readme.txt"),
         Some((
             0,
-            Captures {
+            Some(Captures {
                 params: vec![],
                 wildcard: Some((9, 19)),
-            }
+            })
         ))
     );
 }
@@ -79,10 +70,10 @@ fn case5_wildcard_empty_root() {
         recognizer.recognize("/"),
         Some((
             0,
-            Captures {
+            Some(Captures {
                 params: vec![],
                 wildcard: Some((1, 1)),
-            }
+            })
         ))
     );
 }
@@ -96,10 +87,10 @@ fn case6_wildcard_empty_subdir() {
         recognizer.recognize("/path/to/"),
         Some((
             0,
-            Captures {
+            Some(Captures {
                 params: vec![],
                 wildcard: Some((9, 9)),
-            }
+            })
         ))
     );
 }
@@ -113,10 +104,10 @@ fn case7_wildcard_empty_with_param() {
         recognizer.recognize("/path/to/10/"),
         Some((
             0,
-            Captures {
+            Some(Captures {
                 params: vec![(9, 11)],
                 wildcard: Some((12, 12)),
-            }
+            })
         ))
     );
 }

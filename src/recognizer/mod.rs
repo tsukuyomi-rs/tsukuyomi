@@ -1,19 +1,17 @@
 //! The implementation of route recognizer.
 
-// NOTE: The original implementation was imported from https://github.com/ubnt-intrepid/susanoo
-
-mod captures;
-#[path = "tests_recognize.rs"]
-mod tests;
+pub(crate) mod captures;
 mod tree;
 pub(crate) mod uri;
 
+#[path = "tests_recognize.rs"]
+mod tests;
+
 use failure::Error;
 
-pub(crate) use self::captures::Captures;
+use self::captures::Captures;
 use self::tree::Tree;
-use self::uri::TryIntoUri;
-pub(crate) use self::uri::Uri;
+use self::uri::{TryIntoUri, Uri};
 
 /// A route recognizer.
 #[derive(Debug, Default)]
@@ -32,7 +30,7 @@ impl Recognizer {
         }
 
         let index = self.uris.len();
-        self.tree.insert(uri.as_bytes(), index)?;
+        self.tree.insert(uri.as_str(), index)?;
         self.uris.push(uri);
         Ok(())
     }
@@ -41,7 +39,7 @@ impl Recognizer {
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub(crate) fn recognize(&self, path: &str) -> Option<(usize, Captures)> {
-        self.tree.recognize(path.as_bytes())
+    pub(crate) fn recognize(&self, path: &str) -> Option<(usize, Option<Captures>)> {
+        self.tree.recognize(path)
     }
 }
