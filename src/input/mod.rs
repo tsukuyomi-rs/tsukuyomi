@@ -117,7 +117,7 @@ impl<'task> Input<'task> {
     where
         T: Send + Sync + 'static,
     {
-        self.app.get(self.parts.route)
+        self.app.get_state(self.parts.route)
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
