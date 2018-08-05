@@ -57,8 +57,7 @@ impl ScopeId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ModifierId {
-    Global(usize),
-    Scope(usize, usize),
+    Scope(ScopeId, usize),
     Route(usize, usize),
 }
 
@@ -105,7 +104,7 @@ impl fmt::Debug for RouteData {
 }
 
 /// The global and shared variables used throughout the serving an HTTP application.
-struct AppState {
+struct AppData {
     routes: Vec<RouteData>,
     scopes: Vec<ScopeData>,
 
@@ -119,9 +118,9 @@ struct AppState {
 }
 
 #[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for AppState {
+impl fmt::Debug for AppData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("AppState")
+        f.debug_struct("AppData")
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)
             .field("recognizer", &self.recognizer)
@@ -135,7 +134,7 @@ impl fmt::Debug for AppState {
 /// The main type which represents an HTTP application.
 #[derive(Debug, Clone)]
 pub struct App {
-    inner: Arc<AppState>,
+    data: Arc<AppData>,
 }
 
 impl App {
@@ -144,31 +143,10 @@ impl App {
         AppBuilder::new()
     }
 
-    fn route(&self, id: RouteId) -> Option<&RouteData> {
-        let RouteId(_, pos) = id;
-        self.inner.routes.get(pos)
-    }
-
-    fn error_handler(&self) -> &(dyn ErrorHandler + Send + Sync + 'static) {
-        &*self.inner.error_handler
-    }
-
-    fn modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
-        match id {
-            ModifierId::Global(pos) => self.inner.modifiers.get(pos).map(|m| &**m),
-            ModifierId::Scope(id, pos) => {
-                self.inner.scopes.get(id)?.modifiers.get(pos).map(|m| &**m)
-            }
-            ModifierId::Route(id, pos) => {
-                self.inner.routes.get(id)?.modifiers.get(pos).map(|m| &**m)
-            }
-        }
-    }
-
-    pub(crate) fn get<T>(&self, id: RouteId) -> Option<&T>
+    pub(crate) fn get_state<T>(&self, id: RouteId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.inner.globals.get(id.0)
+        self.data.globals.get(id.0)
     }
 }

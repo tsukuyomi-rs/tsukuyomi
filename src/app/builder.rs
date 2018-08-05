@@ -15,7 +15,7 @@ use modifier::Modifier;
 use recognizer::{uri, Recognizer, Uri};
 
 use super::scoped_map;
-use super::{App, AppState, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
+use super::{App, AppData, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
 
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
@@ -358,15 +358,17 @@ impl AppBuilder {
                     .ok_or_else(|| format_err!("default handler is not supported"))?;
 
                 // calculate the modifier identifiers.
-                let mut modifier_ids: Vec<_> =
-                    (0..modifiers.len()).map(ModifierId::Global).collect();
+                let mut modifier_ids: Vec<_> = (0..modifiers.len())
+                    .map(|i| ModifierId::Scope(ScopeId::Global, i))
+                    .collect();
                 if let Some(scope) = route.scope_id.local_id().and_then(|id| scopes.get(id)) {
                     for (id, scope) in scope.chain.iter().filter_map(|&id| {
                         id.local_id()
                             .and_then(|id| scopes.get(id).map(|scope| (id, scope)))
                     }) {
                         modifier_ids.extend(
-                            (0..scope.modifiers.len()).map(|pos| ModifierId::Scope(id, pos)),
+                            (0..scope.modifiers.len())
+                                .map(|pos| ModifierId::Scope(ScopeId::Local(id), pos)),
                         );
                     }
                 }
@@ -418,7 +420,9 @@ impl AppBuilder {
                             method: Method::OPTIONS,
                             modifiers: vec![],
                             handler: default_options_handler(m),
-                            modifier_ids: (0..modifiers.len()).map(ModifierId::Global).collect(),
+                            modifier_ids: (0..modifiers.len())
+                                .map(|i| ModifierId::Scope(ScopeId::Global, i))
+                                .collect(),
                         });
                         id
                     });
@@ -450,7 +454,7 @@ impl AppBuilder {
             .collect();
 
         Ok(App {
-            inner: Arc::new(AppState {
+            data: Arc::new(AppData {
                 routes,
                 scopes,
                 recognizer,

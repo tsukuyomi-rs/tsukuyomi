@@ -16,7 +16,7 @@ use modifier::{AfterHandle, BeforeHandle, Modifier};
 use output::{Output, ResponseBody};
 use recognizer::Captures;
 
-use super::{App, RouteData};
+use super::{App, ModifierId, RouteData, RouteId, ScopeId};
 
 /// An instance of `HttpError` which will be thrown from the route recognizer.
 ///
@@ -54,15 +54,15 @@ impl App {
         method: &Method,
     ) -> Result<(usize, Captures), RecognizeError> {
         let (i, params) = self
-            .inner
+            .data
             .recognizer
             .recognize(path)
             .ok_or_else(|| RecognizeError::NotFound)?;
 
-        let methods = &self.inner.route_ids[i];
+        let methods = &self.data.route_ids[i];
         match methods.get(method) {
             Some(&i) => Ok((i, params)),
-            None if self.inner.config.fallback_head && *method == Method::HEAD => {
+            None if self.data.config.fallback_head && *method == Method::HEAD => {
                 match methods.get(&Method::GET) {
                     Some(&i) => Ok((i, params)),
                     None => Err(RecognizeError::MethodNotAllowed),
@@ -142,11 +142,19 @@ impl AppServiceFuture {
         pos: usize,
         app: &'a App,
     ) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
-        app.modifier(*self.get_route(&self.app)?.modifier_ids.get(pos)?)
+        let &id = self.get_route(&self.app)?.modifier_ids.get(pos)?;
+        match id {
+            ModifierId::Scope(ScopeId::Global, pos) => app.data.modifiers.get(pos).map(|m| &**m),
+            ModifierId::Scope(ScopeId::Local(id), pos) => {
+                app.data.scopes.get(id)?.modifiers.get(pos).map(|m| &**m)
+            }
+            ModifierId::Route(id, pos) => app.data.routes.get(id)?.modifiers.get(pos).map(|m| &**m),
+        }
     }
 
     fn get_route<'a>(&self, app: &'a App) -> Option<&'a RouteData> {
-        app.route(self.parts.as_ref()?.route)
+        let RouteId(_, pos) = self.parts.as_ref()?.route;
+        app.data.routes.get(pos)
     }
 
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
@@ -217,7 +225,7 @@ impl AppServiceFuture {
                                 Ok(r) => r,
                                 Err(e) => break Err(e.into()),
                             };
-                        let route_id = self.app.inner.routes[pos].id;
+                        let route_id = self.app.data.routes[pos].id;
                         debug_assert_eq!(route_id.1, pos);
                         self.parts = Some(InputParts::new(route_id, params));
                     }
@@ -308,7 +316,8 @@ impl AppServiceFuture {
                 drop(self.parts.take());
 
                 self.app
-                    .error_handler()
+                    .data
+                    .error_handler
                     .handle_error(err)
                     .into_response(&request)
                     .map(Async::Ready)

@@ -78,7 +78,7 @@ impl UpgradeContext {
     where
         T: Send + Sync + 'static,
     {
-        self.app.get(self.route)
+        self.app.get_state(self.route)
     }
 }
 
