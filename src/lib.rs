@@ -14,6 +14,7 @@ extern crate bytes;
 extern crate cookie;
 #[macro_use]
 extern crate failure;
+extern crate filetime;
 #[macro_use]
 extern crate futures;
 extern crate http;
@@ -26,6 +27,7 @@ extern crate mime;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
+extern crate time;
 extern crate tokio;
 extern crate tokio_tcp;
 extern crate tokio_threadpool;
@@ -54,6 +56,7 @@ extern crate websocket_codec;
 
 pub mod app;
 pub mod error;
+pub mod fs;
 pub mod handler;
 pub mod input;
 pub mod json;

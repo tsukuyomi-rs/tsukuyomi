@@ -55,6 +55,8 @@ cookie = { version = "0.11.0", features = ["percent-encode"] }
 serde = { version = "1.0.66", features = ["derive"] }
 serde_json = "1.0.20"
 indexmap = "1.0.1"
+filetime = "0.2.1"
+time = "0.1.40"
 
 tsukuyomi-codegen = { version = "0.1.0-dev", path = "codegen", optional = true }
 
@@ -65,7 +67,6 @@ tsukuyomi-websocket-codec = { git = "https://github.com/tsukuyomi-rs/websocket-c
 
 [dev-dependencies]
 matches = "0.1.6"
-time = "0.1.40"
 
 [target.'cfg(unix)'.dependencies]
 tokio-uds = "0.2.0"
