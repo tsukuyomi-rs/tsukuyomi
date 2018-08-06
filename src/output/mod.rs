@@ -11,6 +11,7 @@ pub type Output = ::http::Response<ResponseBody>;
 
 // ====
 
+use either::Either;
 use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Response, StatusCode};
@@ -28,6 +29,28 @@ pub trait Responder {
 
     /// Converts `self` to an HTTP response.
     fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error>;
+}
+
+impl<L, R> Responder for Either<L, R>
+where
+    L: Responder,
+    R: Responder,
+{
+    type Body = ResponseBody;
+    type Error = Error;
+
+    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+        match self {
+            Either::Left(l) => l
+                .respond_to(input)
+                .map(|res| res.map(Into::into))
+                .map_err(Into::into),
+            Either::Right(r) => r
+                .respond_to(input)
+                .map(|res| res.map(Into::into))
+                .map_err(Into::into),
+        }
+    }
 }
 
 impl Responder for () {

@@ -12,6 +12,7 @@
 
 extern crate bytes;
 extern crate cookie;
+extern crate either;
 #[macro_use]
 extern crate failure;
 extern crate filetime;
