@@ -42,7 +42,7 @@ pub use self::never::Never;
 use http::header::HeaderMap;
 use http::{header, Request, Response, StatusCode};
 use std::any::TypeId;
-use std::error;
+use std::{error, io};
 
 use input::RequestBody;
 use output::ResponseBody;
@@ -118,6 +118,17 @@ impl BoxHttpErrorExt for Box<dyn HttpError> {
             unsafe { Ok(Box::from_raw(Box::into_raw(self) as *mut T)) }
         } else {
             Err(self)
+        }
+    }
+}
+
+/// The implementation of HttpError for the standard I/O error.
+impl HttpError for io::Error {
+    fn status(&self) -> StatusCode {
+        match self.kind() {
+            io::ErrorKind::NotFound => StatusCode::NOT_FOUND,
+            io::ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
