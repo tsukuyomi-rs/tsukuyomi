@@ -1,11 +1,9 @@
 //! The implementation of low level HTTP server.
 
 pub mod local;
-pub mod rt;
 pub mod transport;
 
 use failure::Error;
-use futures::future::poll_fn;
 use futures::prelude::*;
 use http::Request;
 use hyper::body::{Body, Payload};
@@ -16,9 +14,8 @@ use std::mem;
 use std::sync::Arc;
 use tokio;
 use tokio::runtime::{self, Runtime};
+pub use tokio_threadpool::{blocking, BlockingError};
 
-pub use self::rt::blocking;
-use self::rt::{with_set_mode, RuntimeMode};
 use self::transport::Listener;
 
 // ==== Server ====
@@ -172,14 +169,10 @@ where
                 let dispatch = handshake.join(service).and_then({
                     let protocol = protocol.clone();
                     move |(stream, service)| {
-                        let mut conn = protocol
+                        protocol
                             .serve_connection(stream, WrapService(service))
-                            .with_upgrades();
-                        poll_fn(move || {
-                            with_set_mode(RuntimeMode::ThreadPool, || {
-                                conn.poll().map_err(mem::drop)
-                            })
-                        })
+                            .with_upgrades()
+                            .map_err(mem::drop)
                     }
                 });
 

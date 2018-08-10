@@ -19,7 +19,7 @@ use time::{self, Timespec};
 use error::Failure;
 use input::Input;
 use output::{Responder, ResponseBody};
-use server::rt::blocking;
+use server::blocking;
 
 // ==== headers ====
 

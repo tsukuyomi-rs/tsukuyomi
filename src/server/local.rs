@@ -41,16 +41,16 @@ use http::{request, HttpTryFrom, Method, Request, Response, Uri};
 use hyper::Body;
 use std::borrow::Cow;
 use std::{io, mem, str};
+
+use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
 use tokio::executor::DefaultExecutor;
-use tokio::runtime::current_thread::Runtime;
+use tokio::runtime::{self, Runtime};
 
 use app::service::{AppService, AppServiceFuture};
 use app::App;
 use error::CritError;
 use input;
 use output::{ResponseBody, ResponseBodyKind};
-
-use super::rt::{with_set_mode, RuntimeMode};
 
 /// A local server which emulates an HTTP service without using the low-level transport.
 ///
@@ -66,10 +66,12 @@ impl LocalServer {
     ///
     /// This function will return an error if the construction of the runtime is failed.
     pub fn new(app: App) -> io::Result<LocalServer> {
-        Ok(LocalServer {
-            app,
-            runtime: Runtime::new()?,
-        })
+        let mut pool = ThreadPoolBuilder::new();
+        pool.pool_size(1);
+
+        let runtime = runtime::Builder::new().threadpool_builder(pool).build()?;
+
+        Ok(LocalServer { app, runtime })
     }
 
     /// Create a `Client` associated with this server.
@@ -201,9 +203,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         let request = request.body(body)?;
 
         let future = client.service.dispatch_request(request);
-        with_set_mode(RuntimeMode::CurrentThread, || {
-            client.runtime.block_on(TestResponseFuture::Initial(future))
-        })
+        client.runtime.block_on(TestResponseFuture::Initial(future))
     }
 }
 
