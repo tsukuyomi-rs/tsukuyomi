@@ -30,8 +30,10 @@ matrix:
             - cmake
             - zlib1g-dev
       before_script:
-        - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || echo "cargo-tarpauling is installed."
+        - rustup component add rustfmt-preview
+        - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || true
       script:
+        - cargo fmt --all -- --check
         - cargo clean
         - cargo test
         - cargo test --no-default-features
@@ -52,6 +54,8 @@ matrix:
         - cargo test -p tsukuyomi-codegen --no-default-features
 
     - rust: nightly
+      before_script:
+        - rustup component add clippy-preview
       script:
         - cargo clean
 
@@ -63,19 +67,6 @@ matrix:
         - cargo test -p tsukuyomi-codegen --no-default-features
         - cargo test -p tsukuyomi-codegen --features nightly
 
-    - rust: stable
-      env: RUSTFMT
-      before_script:
-        - rustup component add rustfmt-preview
-      script:
-        - cargo fmt --all -- --check
-
-    - rust: nightly
-      env: CLIPPY
-      before_script:
-        - rustup component add clippy-preview
-      script:
-        - cargo clean
         - cargo clippy --all-features
 
     # FIXME: enable before releasing 0.3.0
@@ -116,7 +107,7 @@ matrix:
     #         echo 'tsukuyomi = { path = ".." }' >> docs/Cargo.toml
     #     - (cd docs && cargo test --all)
 
-    - rust: beta
+    - rust: beta # FIXME: switch to stable
       env: DEPLOY_API_DOC
       script:
         - cargo clean
