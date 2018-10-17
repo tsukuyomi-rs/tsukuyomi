@@ -35,9 +35,9 @@ The following features does not currently implemented but will be supported in t
 
 ## Build Status
 
-| Travis CI | Appveor | CircleCI | Codecov |
-|:---------:|:-------:|:--------:|:-------:|
-| [![Build Status][travis-badge]][travis] | [![Build status][appveyor-badge]][appveyor] | [![CircleCI][circleci-badge]][circleci] | [![Coverage Status][codecov-badge]][codecov] |
+| Travis CI | CircleCI | Codecov |
+|:---------:|:--------:|:-------:|
+| [![Build Status][travis-badge]][travis] | [![CircleCI][circleci-badge]][circleci] | [![Coverage Status][codecov-badge]][codecov] |
 
 ## License
 Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE) at your option.
@@ -46,12 +46,11 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 
 [crates-io]: https://crates.io/crates/tsukuyomi
 [docs-rs]: https://docs.rs/tsukuyomi
-[master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/index.html
+[master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
 [deps-rs]: https://deps.rs/crate/tsukuyomi/0.2.2
 [travis]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi
-[appveyor]: https://ci.appveyor.com/project/ubnt-intrepid/tsukuyomi/branch/master
 [circleci]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
@@ -62,6 +61,5 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
 [deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.2.2/status.svg
 [travis-badge]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi.svg?branch=master
-[appveyor-badge]: https://ci.appveyor.com/api/projects/status/kf8mx9k8iqfa08oj/branch/master?svg=true
 [circleci-badge]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master.svg?style=svg
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg

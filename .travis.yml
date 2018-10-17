@@ -3,17 +3,17 @@ sudo: false
 language: rust
 
 cache:
-  - apt: true
   - cargo: true
-  - bundler: true
-  - directories:
-    - doc/target
 
 branches:
   only:
     - master
     - /^\d+\.\d+$/
     - /^wip\/.*$/
+
+script:
+  - cargo update
+  - cargo build
 
 matrix:
   allow_failures:
@@ -24,39 +24,19 @@ matrix:
       before_script:
         - rustup component add rustfmt-preview
       script:
-        - cargo fmt --all -- --check
-        - cargo clean
+        - cargo fmt -- --check
+        - cargo update
         - cargo test
         - cargo test --no-default-features
         - cargo test --features full
 
+    - rust: 1.26.2
+    - rust: stable
+      os: osx
+    - rust: stable
+      os: windows
     - rust: beta
-      env: RUSTFLAGS="-D warnings"
-      script:
-        - cargo clean
-
-        - cargo test
-        - cargo test --no-default-features
-        - cargo test --features full
-
-        - cargo test -p tsukuyomi-codegen
-        - cargo test -p tsukuyomi-codegen --no-default-features
-
     - rust: nightly
-      before_script:
-        - rustup component add clippy-preview
-      script:
-        - cargo clean
-
-        - cargo test
-        - cargo test --no-default-features
-        - cargo test --features "full nightly"
-
-        - cargo test -p tsukuyomi-codegen
-        - cargo test -p tsukuyomi-codegen --no-default-features
-        - cargo test -p tsukuyomi-codegen --features nightly
-
-        - cargo clippy --all-features
 
     # FIXME: enable before releasing 0.3.0
     # - rust: stable
@@ -103,6 +83,7 @@ matrix:
         - cargo doc --features full
         - cargo doc -p tsukuyomi-codegen
         - rm -f target/doc/.lock
+        - echo '<meta http-equiv="refresh" content="0;URL=tsukuyomi/index.html">' > target/doc/index.html
       deploy:
         provider: pages
         skip_cleanup: true
