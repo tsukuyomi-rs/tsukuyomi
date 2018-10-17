@@ -20,12 +20,13 @@ matrix:
     - rust: nightly
   include:
     - rust: stable
-      env: RUSTFLAGS="-D warnings"
+      env: TSUKUYOMI_DENY_WARNINGS=1
       before_script:
-        - rustup component add rustfmt-preview
+        - rustup component add rustfmt-preview clippy-preview
       script:
-        - cargo fmt -- --check
         - cargo update
+        - cargo fmt -- --check
+        - cargo clippy --tests
         - cargo test
         - cargo test --no-default-features
         - cargo test --features full

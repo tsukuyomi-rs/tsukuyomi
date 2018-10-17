@@ -168,7 +168,7 @@ impl Node {
         let mut offset = 0;
         let mut n = self;
 
-        'walk: loop {
+        loop {
             if let PathKind::Segment(ref s) = n.path {
                 if offset + s.len() >= path.len() {
                     if s[..] != path[offset..] {

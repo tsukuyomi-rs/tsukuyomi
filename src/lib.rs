@@ -1,14 +1,21 @@
+// FIXME: remove this feature gate as soon as the rustc version used in docs.rs is updated
+#![cfg_attr(tsukuyomi_inject_extern_prelude, feature(extern_prelude))]
+
+#![cfg_attr(feature = "codegen", feature(use_extern_macros))]
+#![cfg_attr(feature = "nightly", feature(macro_vis_matcher))]
+
 //! Tsukuyomi is a next generation Web framework for Rust.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.2.1/tsukuyomi")]
-#![deny(missing_docs)]
-#![deny(missing_debug_implementations)]
-#![deny(unreachable_pub)]
-#![deny(unused_extern_crates)]
-#![deny(bare_trait_objects)]
-#![cfg_attr(feature = "codegen", feature(use_extern_macros))]
-#![cfg_attr(feature = "extern-prelude", feature(extern_prelude))]
-#![cfg_attr(feature = "nightly", feature(macro_vis_matcher))]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.2.2")]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    nonstandard_style,
+    //rust_2018_idioms,
+    unused,
+)]
+#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
+#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
 extern crate bytes;
 extern crate cookie;

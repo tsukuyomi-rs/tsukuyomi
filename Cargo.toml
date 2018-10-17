@@ -5,15 +5,17 @@ A next generation Web framework for Rust
 """
 version = "0.3.0-dev"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
-documentation = "https://docs.rs/tsukuyomi/"
 readme = "README.md"
 keywords = ["web", "framework", "futures", "hyper", "tokio"]
 categories = ["web-programming::http-server"]
 
+build = "build.rs"
+
 include = [
   "src/**/*.rs",
+  "tests/**/*.rs",
   "Cargo.toml",
   "README.md",
   "LICENSE-*",
@@ -23,14 +25,11 @@ include = [
 features = [
   "full",
   #"codegen",
-
-  # FIXME: remove it as soon as the rustc version used in docs.rs is updated
-  "extern-prelude",
 ]
+# FIXME: remove it as soon as the rustc version used in docs.rs is updated
+rustdoc-args = ["--cfg", "tsukuyomi_inject_extern_prelude"]
 
 [badges]
-appveyor = { repository = "tsukuyomi-rs/tsukuyomi" }
-travis-ci = { repository = "tsukuyomi-rs/tsukuyomi" }
 maintenance = { status = "actively-developed" }
 
 [workspace]
@@ -82,6 +81,3 @@ full = ["secure", "tls", "websocket"]
 
 codegen = ["tsukuyomi-codegen"]
 nightly = ["tsukuyomi-codegen/nightly"]
-
-# FIXME: remove it as soon as the rustc version used in docs.rs is updated
-extern-prelude = []
