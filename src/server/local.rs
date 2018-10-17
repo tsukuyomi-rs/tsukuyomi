@@ -69,7 +69,10 @@ impl LocalServer {
         let mut pool = ThreadPoolBuilder::new();
         pool.pool_size(1);
 
-        let runtime = runtime::Builder::new().threadpool_builder(pool).build()?;
+        let runtime = runtime::Builder::new()
+            .core_threads(1)
+            .blocking_threads(1)
+            .build()?;
 
         Ok(LocalServer { app, runtime })
     }
