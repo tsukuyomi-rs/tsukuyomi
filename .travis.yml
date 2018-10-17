@@ -20,26 +20,15 @@ matrix:
     - rust: nightly
   include:
     - rust: stable
-      sudo: required
       env: RUSTFLAGS="-D warnings"
-      addons:
-        apt:
-          packages:
-            - libssl-dev
-            - pkg-config
-            - cmake
-            - zlib1g-dev
       before_script:
         - rustup component add rustfmt-preview
-        - RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin || true
       script:
         - cargo fmt --all -- --check
         - cargo clean
         - cargo test
         - cargo test --no-default-features
         - cargo test --features full
-      after_success:
-        - cargo tarpaulin --skip-clean --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --packages tsukuyomi
 
     - rust: beta
       env: RUSTFLAGS="-D warnings"
