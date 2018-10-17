@@ -288,7 +288,10 @@ impl Tree {
 
     pub(super) fn recognize(&self, path: impl AsRef<[u8]>) -> Option<(usize, Option<Captures>)> {
         let mut captures = None;
-        let i = self.root.as_ref()?.get_value(path.as_ref(), &mut captures)?;
+        let i = self
+            .root
+            .as_ref()?
+            .get_value(path.as_ref(), &mut captures)?;
         Some((i, captures))
     }
 }

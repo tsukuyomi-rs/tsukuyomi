@@ -24,8 +24,7 @@ fn test_case2_single_route() {
     let app = App::builder()
         .mount("/", |m| {
             m.route(("/hello", handler::wrap_ready(|_| "Tsukuyomi")));
-        })
-        .finish()
+        }).finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
 
@@ -56,8 +55,7 @@ fn test_case3_post_body() {
             "/hello",
             Method::POST,
             handler::wrap_async(|input| input.body_mut().read_all().convert_to::<String>()),
-        ))
-        .finish()
+        )).finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();
 
@@ -107,15 +105,13 @@ fn test_case4_cookie() {
                     Ok("Logged in")
                 }
             }),
-        ))
-        .route((
+        )).route((
             "/logout",
             handler::wrap_ready(move |input| -> tsukuyomi::Result<_> {
                 input.cookies()?.remove(Cookie::named("session"));
                 Ok("Logged out")
             }),
-        ))
-        .finish()
+        )).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();

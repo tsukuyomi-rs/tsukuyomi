@@ -388,8 +388,7 @@ impl AppBuilder {
                     handler,
                     modifier_ids,
                 })
-            })
-            .collect::<Result<_, _>>()?;
+            }).collect::<Result<_, _>>()?;
 
         // create a router
         let (recognizer, route_ids) = {
@@ -453,8 +452,7 @@ impl AppBuilder {
                 parent: scope.parent,
                 prefix: scope.prefix,
                 modifiers: scope.modifiers,
-            })
-            .collect();
+            }).collect();
 
         Ok(App {
             data: Arc::new(AppData {

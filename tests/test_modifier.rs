@@ -48,8 +48,7 @@ fn global_modifier() {
                 marker.lock().unwrap().push("H");
                 ""
             })
-        }))
-        .modifier(MarkModifier {
+        })).modifier(MarkModifier {
             marker: marker.clone(),
             before: |m| {
                 m.push("B");
@@ -59,8 +58,7 @@ fn global_modifier() {
                 m.push("A");
                 Ok(Response::new(ResponseBody::empty()))
             },
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();
@@ -80,8 +78,7 @@ fn global_modifier_error_on_before() {
                 marker.lock().unwrap().push("H");
                 ""
             })
-        }))
-        .modifier(MarkModifier {
+        })).modifier(MarkModifier {
             marker: marker.clone(),
             before: |m| {
                 m.push("B");
@@ -91,8 +88,7 @@ fn global_modifier_error_on_before() {
                 m.push("A");
                 Ok(Response::new(ResponseBody::empty()))
             },
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();
@@ -112,8 +108,7 @@ fn global_modifiers() {
                 marker.lock().unwrap().push("H");
                 ""
             })
-        }))
-        .modifier(MarkModifier {
+        })).modifier(MarkModifier {
             marker: marker.clone(),
             before: |m| {
                 m.push("B1");
@@ -123,8 +118,7 @@ fn global_modifiers() {
                 m.push("A1");
                 Ok(Response::new(ResponseBody::empty()))
             },
-        })
-        .modifier(MarkModifier {
+        }).modifier(MarkModifier {
             marker: marker.clone(),
             before: |m| {
                 m.push("B2");
@@ -134,8 +128,7 @@ fn global_modifiers() {
                 m.push("A2");
                 Ok(Response::new(ResponseBody::empty()))
             },
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();
@@ -159,8 +152,7 @@ fn scoped_modifier() {
                 m.push("A1");
                 Ok(Response::new(ResponseBody::empty()))
             },
-        })
-        .mount("/path1", |s| {
+        }).mount("/path1", |s| {
             s.modifier(MarkModifier {
                 marker: marker.clone(),
                 before: |m| {
@@ -179,15 +171,13 @@ fn scoped_modifier() {
                     ""
                 })
             }));
-        })
-        .route(("/path2", {
+        }).route(("/path2", {
             let marker = marker.clone();
             wrap_ready(move |_| {
                 marker.lock().unwrap().push("H2");
                 ""
             })
-        }))
-        .finish()
+        })).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();
@@ -258,8 +248,7 @@ fn nested_modifiers() {
                     }));
                 });
             });
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();
@@ -313,8 +302,7 @@ fn route_modifiers() {
                     });
                 });
             });
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     let mut server = LocalServer::new(app).unwrap();

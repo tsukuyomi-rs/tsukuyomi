@@ -163,8 +163,8 @@ impl Uri {
         match self.0 {
             UriKind::Root => Ok(other.as_ref().clone()),
             UriKind::Segments(mut s, mut names) => match other.as_ref().0 {
-                | UriKind::Root => Ok(Uri::segments(s, names)),
-                | UriKind::Segments(ref o, ref onames) => {
+                UriKind::Root => Ok(Uri::segments(s, names)),
+                UriKind::Segments(ref o, ref onames) => {
                     s += if s.ends_with('/') {
                         o.trim_left_matches('/')
                     } else {

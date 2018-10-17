@@ -219,7 +219,7 @@ impl HttpError for JsonError {
             "code": self.status().as_u16(),
             "description": self.to_string(),
         }).to_string()
-            .into()
+        .into()
     }
 }
 

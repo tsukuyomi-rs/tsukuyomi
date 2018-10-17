@@ -125,14 +125,12 @@ fn scope_simple() {
         .scope(|s: &mut Scope| {
             s.route(("/a", dummy_handler));
             s.route(("/b", dummy_handler));
-        })
-        .route(("/foo", dummy_handler))
+        }).route(("/foo", dummy_handler))
         .scope(|s: &mut Scope| {
             s.prefix("/c");
             s.route(("/d", dummy_handler));
             s.route(("/e", dummy_handler));
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     assert_matches!(app.recognize("/a", &Method::GET), Ok((0, ..)));
@@ -185,8 +183,7 @@ fn scope_variable() {
                 m.set::<String>("A".into());
                 m.route(("/r1", dummy_handler));
             });
-        })
-        .mount("/s2", |m| {
+        }).mount("/s2", |m| {
             m.set::<String>("B".into());
             m.route(("/r2", dummy_handler));
             m.mount("/s3", |m| {
@@ -201,8 +198,7 @@ fn scope_variable() {
                     m.route(("/r6", dummy_handler));
                 });
             });
-        })
-        .finish()
+        }).finish()
         .unwrap();
 
     assert_eq!(
@@ -262,7 +258,6 @@ fn failcase_different_scope_at_the_same_uri() {
         .route(("/path", Method::GET, dummy_handler))
         .mount("/", |scope| {
             scope.route(("/path", Method::GET, dummy_handler));
-        })
-        .finish();
+        }).finish();
     assert!(app.is_err());
 }
