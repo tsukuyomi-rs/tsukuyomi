@@ -6,8 +6,10 @@
 //! # extern crate futures;
 //! # extern crate tsukuyomi;
 //! # use futures::prelude::*;
-//! use tsukuyomi::{App, Input, Responder};
-//! use tsukuyomi::handler::wrap_ready;
+//! # use tsukuyomi::app::App;
+//! # use tsukuyomi::input::Input;
+//! # use tsukuyomi::output::Responder;
+//! # use tsukuyomi::handler::wrap_ready;
 //! use tsukuyomi::websocket::{start, Message};
 //!
 //! fn websocket(input: &mut Input) -> impl Responder {
@@ -27,15 +29,13 @@
 //!     })
 //! }
 //!
-//! fn main() -> tsukuyomi::AppResult<()> {
-//!     let app = App::builder()
-//!         .route(("/ws", wrap_ready(websocket)))
-//!         .finish()?;
-//! # drop(move || {
-//!     tsukuyomi::run(app)
-//! # });
-//! #   Ok(())
-//! }
+//! # fn main() -> tsukuyomi::app::AppResult<()> {
+//! let app = App::builder()
+//!     .route(("/ws", wrap_ready(websocket)))
+//!     .finish()?;
+//! # drop(app);
+//! # Ok(())
+//! # }
 //! ```
 
 use base64;

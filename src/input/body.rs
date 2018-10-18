@@ -10,6 +10,7 @@ use std::ops::Deref;
 use std::{fmt, mem};
 
 use crate::error::{Error, Failure};
+use crate::server::rt;
 use crate::server::CritError;
 
 use super::global::with_get_current;
@@ -67,9 +68,9 @@ impl RequestBody {
             return Err(on_upgrade);
         }
         self.is_upgraded = true;
-        let body = self.body.take().expect("The body has already gone");
 
-        ::tokio::executor::spawn(
+        let body = self.body.take().expect("The body has already gone");
+        rt::spawn(
             body.on_upgrade()
                 .map_err(|_| ())
                 .and_then(move |upgraded| on_upgrade(UpgradedIo(upgraded)).into_future()),

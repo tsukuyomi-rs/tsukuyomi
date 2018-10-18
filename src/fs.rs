@@ -131,7 +131,8 @@ impl NamedFile {
     /// # Examples
     ///
     /// ```
-    /// # use tsukuyomi::{Input, AsyncResponder};
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::output::AsyncResponder;
     /// # use tsukuyomi::fs::NamedFile;
     /// #
     /// # #[allow(dead_code)]
@@ -151,7 +152,8 @@ impl NamedFile {
     /// # Examples
     ///
     /// ```
-    /// # use tsukuyomi::{Input, AsyncResponder};
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::output::AsyncResponder;
     /// # use tsukuyomi::fs::{NamedFile, OpenConfig};
     /// use std::time::Duration;
     ///

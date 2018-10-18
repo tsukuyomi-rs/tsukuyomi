@@ -2,10 +2,11 @@ extern crate cookie;
 extern crate http;
 extern crate time;
 extern crate tsukuyomi;
+extern crate tsukuyomi_server;
 
+use tsukuyomi::app::App;
 use tsukuyomi::handler;
-use tsukuyomi::server::local::LocalServer;
-use tsukuyomi::App;
+use tsukuyomi_server::local::LocalServer;
 
 use http::{header, Method, Request, StatusCode};
 
@@ -105,7 +106,7 @@ fn test_case4_cookie() {
         .route((
             "/login",
             handler::wrap_ready({
-                move |input| -> tsukuyomi::Result<_> {
+                move |input| -> tsukuyomi::error::Result<_> {
                     #[cfg_attr(rustfmt, rustfmt_skip)]
                     let cookie = Cookie::build("session", "dummy_session_id")
                         .domain("www.example.com")
@@ -117,7 +118,7 @@ fn test_case4_cookie() {
             }),
         )).route((
             "/logout",
-            handler::wrap_ready(move |input| -> tsukuyomi::Result<_> {
+            handler::wrap_ready(move |input| -> tsukuyomi::error::Result<_> {
                 input.cookies()?.remove(Cookie::named("session"));
                 Ok("Logged out")
             }),

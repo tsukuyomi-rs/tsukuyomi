@@ -1,14 +1,18 @@
 extern crate futures;
 extern crate http;
 extern crate tsukuyomi;
+extern crate tsukuyomi_server;
 
 use tsukuyomi::app::builder::Route;
+use tsukuyomi::app::App;
 use tsukuyomi::error::internal_server_error;
+use tsukuyomi::error::Error;
 use tsukuyomi::handler::wrap_ready;
+use tsukuyomi::input::Input;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::{Output, ResponseBody};
-use tsukuyomi::server::local::LocalServer;
-use tsukuyomi::{App, Error, Input};
+
+use tsukuyomi_server::local::LocalServer;
 
 use http::{Request, Response};
 use std::sync::{Arc, Mutex};

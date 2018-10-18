@@ -23,6 +23,11 @@ use self::builder::AppBuilder;
 use self::scoped_map::ScopedMap;
 pub use self::service::RecognizeError;
 
+/// A type alias of `Result<T, E>` which will be returned from `run`.
+///
+/// This typed is intended to be used as the return type of `main()`.
+pub type AppResult<T> = ::std::result::Result<T, ::failure::Error>;
+
 #[derive(Debug)]
 struct Config {
     fallback_head: bool,

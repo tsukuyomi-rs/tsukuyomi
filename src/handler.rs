@@ -91,7 +91,7 @@ impl Handle {
 ///     "Hello, Tsukuyomi.\n"
 /// }
 ///
-/// # fn main() -> tsukuyomi::AppResult<()> {
+/// # fn main() -> tsukuyomi::app::AppResult<()> {
 /// let app = App::builder()
 ///     .route(("/index.html", wrap_ready(index)))
 ///     .finish()?;
@@ -141,7 +141,7 @@ where
 ///     input.body_mut().read_all().convert_to()
 /// }
 ///
-/// # fn main() -> tsukuyomi::AppResult<()> {
+/// # fn main() -> tsukuyomi::app::AppResult<()> {
 /// let app = App::builder()
 ///     .route(("/posts", wrap_async(handler)))
 ///     .finish()?;

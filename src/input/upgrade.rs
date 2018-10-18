@@ -50,7 +50,7 @@ use bytes::{Buf, BufMut};
 use futures::Poll;
 use hyper::upgrade::Upgraded;
 use std::io;
-use tokio::io as tokio_io;
+use tokio_io;
 
 /// An asynchronous I/O upgraded from HTTP connection.
 ///

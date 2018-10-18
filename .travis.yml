@@ -80,6 +80,7 @@ matrix:
         - rm -rf target/doc
         - cargo update
         - cargo doc --all-features --no-deps -p failure -p tungstenite -p tokio-tungstenite
+        - cargo doc --all-features --no-deps -p tsukuyomi-server
         - cargo doc --all-features --no-deps
         - rm -f target/doc/.lock
         - echo '<meta http-equiv="refresh" content="0;URL=tsukuyomi/index.html">' > target/doc/index.html

@@ -29,6 +29,7 @@ extern crate rustls;
 extern crate tokio_rustls;
 
 pub mod local;
+pub mod rt;
 pub mod transport;
 
 use std::error;

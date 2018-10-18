@@ -15,7 +15,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
-extern crate tsukuyomi_server;
+extern crate tsukuyomi_server as server;
 
 extern crate bytes;
 extern crate cookie;
@@ -36,7 +36,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate time;
-extern crate tokio;
+extern crate tokio_io;
 #[cfg(test)]
 #[macro_use]
 extern crate matches;
@@ -59,42 +59,5 @@ pub mod json;
 pub mod modifier;
 pub mod output;
 pub(crate) mod recognizer;
-
-/// The implementation of low level HTTP server.
-pub mod server {
-    #[doc(no_inline)]
-    pub use tsukuyomi_server::*;
-}
-
 #[cfg(feature = "websocket")]
 pub mod websocket;
-
-#[doc(inline)]
-pub use crate::app::App;
-
-#[doc(inline)]
-pub use crate::error::{Error, HttpError, Result};
-
-#[doc(inline)]
-pub use crate::handler::Handler;
-
-#[doc(inline)]
-pub use crate::input::Input;
-
-#[doc(inline)]
-pub use crate::modifier::Modifier;
-
-#[doc(inline)]
-pub use crate::output::{AsyncResponder, Output, Responder};
-
-/// A type alias of `Result<T, E>` which will be returned from `run`.
-///
-/// This typed is intended to be used as the return type of `main()`.
-pub type AppResult<T> = ::std::result::Result<T, ::failure::Error>;
-
-/// Starts an HTTP server with a constructed `App` and the default server configuration.
-pub fn run(app: App) -> AppResult<()> {
-    let server = crate::server::Server::builder().finish(app)?;
-    server.serve();
-    Ok(())
-}

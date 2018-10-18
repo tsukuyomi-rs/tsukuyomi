@@ -127,7 +127,7 @@ impl AppBuilder {
     /// # unimplemented!()
     /// }
     ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// # fn main() -> tsukuyomi::app::AppResult<()> {
     /// let app = App::builder()
     ///     .route(("/", handler))
     ///     .route(("/", Method::POST, submit))
@@ -180,7 +180,7 @@ impl AppBuilder {
     /// # unimplemented!()
     /// }
     ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// # fn main() -> tsukuyomi::app::AppResult<()> {
     /// let app = App::builder()
     ///     .scope(|s: &mut Scope| {
     ///         s.prefix("/api/v1");
@@ -233,7 +233,7 @@ impl AppBuilder {
     /// # unimplemented!()
     /// }
     ///
-    /// # fn main() -> tsukuyomi::AppResult<()> {
+    /// # fn main() -> tsukuyomi::app::AppResult<()> {
     /// let app = App::builder()
     ///     .mount("/api/v1", |s| {
     ///         s.route(("/posts/:id", get_post));
