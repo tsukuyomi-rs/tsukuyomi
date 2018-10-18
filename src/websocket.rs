@@ -11,7 +11,7 @@
 //! use tsukuyomi::websocket::{start, Message};
 //!
 //! fn websocket(input: &mut Input) -> impl Responder {
-//!     start(input, None, |transport, _cx| {
+//!     start(input, None, |transport| {
 //!         let (sink, stream) = transport.split();
 //!         stream
 //!             .filter_map(|m| {
@@ -48,7 +48,7 @@ pub use tungstenite::protocol::Message;
 use tungstenite::protocol::{Role, WebSocketConfig};
 
 use crate::error::{Error, HttpError};
-use crate::input::upgrade::{UpgradeContext, Upgraded};
+use crate::input::upgrade::UpgradedIo;
 use crate::input::Input;
 use crate::output::Responder;
 
@@ -122,13 +122,13 @@ pub fn handshake(input: &mut Input<'_>) -> Result<Response<()>, HandshakeError> 
 }
 
 /// A transport for exchanging data frames with the peer.
-pub type Transport = WebSocketStream<Upgraded>;
+pub type Transport = WebSocketStream<UpgradedIo>;
 
 /// A helper function for creating a WebSocket endpoint.
 pub fn start<R>(
     input: &mut Input<'_>,
     config: Option<WebSocketConfig>,
-    f: impl FnOnce(Transport, UpgradeContext) -> R + Send + 'static,
+    f: impl FnOnce(Transport) -> R + Send + 'static,
 ) -> impl Responder
 where
     R: IntoFuture<Item = (), Error = ()>,
@@ -138,10 +138,10 @@ where
 
     input
         .body_mut()
-        .on_upgrade(move |io: Upgraded, cx: UpgradeContext| {
+        .upgrade(move |io: UpgradedIo| {
             let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
-            f(transport, cx).into_future()
-        });
+            f(transport).into_future()
+        }).map_err(|_| crate::error::internal_server_error("failed to spawn WebSocket task"))?;
 
     Ok::<_, Error>(response)
 }

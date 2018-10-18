@@ -8,7 +8,7 @@
 //! # extern crate http;
 //! # use tsukuyomi::error::Error;
 //! # use tsukuyomi::input::Input;
-//! # use tsukuyomi::input::upgrade::{Upgraded, UpgradeContext};
+//! # use tsukuyomi::input::upgrade::UpgradedIo;
 //! # use tsukuyomi::output::{Output, ResponseBody};
 //! # use futures::{future, Future};
 //! # use http::{header, StatusCode, Response};
@@ -19,7 +19,7 @@
 //! }
 //!
 //! # #[allow(unused_variables, dead_code)]
-//! fn on_upgrade(io: Upgraded, cx: UpgradeContext)
+//! fn on_upgrade(io: UpgradedIo)
 //!     -> impl Future<Item = (), Error = ()> + Send + 'static {
 //!     // ...
 //! #   future::ok(())
@@ -31,7 +31,7 @@
 //!
 //!     // Register a callback function called when upgrading
 //!     // the server protocol.
-//!     let _ = input.body_mut().on_upgrade(on_upgrade);
+//!     let _ = input.body_mut().upgrade(on_upgrade);
 //!
 //!     // Build the handshake response.
 //!     // If the status code is set to `101 Switching Protocols`,
@@ -46,93 +46,57 @@
 //! }
 //! ```
 
-use futures::{Future, IntoFuture};
-use http::Request;
-pub use hyper::upgrade::Upgraded;
+use bytes::{Buf, BufMut};
+use futures::Poll;
+use hyper::upgrade::Upgraded;
+use std::io;
+use tokio::io as tokio_io;
 
-use crate::app::{App, RouteId};
-use crate::recognizer::captures::Captures;
-
-use super::local_map::LocalMap;
-
-/// Contextual information used at upgrading to another protocol.
+/// An asynchronous I/O upgraded from HTTP connection.
+///
+/// Currenly, this type is implemented as a thin wrapper of `hyper::upgrade::Upgraded`.
 #[derive(Debug)]
-pub struct UpgradeContext {
-    pub(crate) request: Request<()>,
-    pub(crate) app: App,
-    pub(crate) locals: LocalMap,
-    pub(crate) route: RouteId,
-    pub(crate) captures: Option<Captures>,
-}
+pub struct UpgradedIo(pub(crate) Upgraded);
 
-impl UpgradeContext {
-    /// Returns the reference to a `Request<()>` used during the handshake.
-    pub fn request(&self) -> &Request<()> {
-        &self.request
-    }
-
-    /// Returns the reference to a `LocalMap` used during the handshake.
-    pub fn locals(&self) -> &LocalMap {
-        &self.locals
-    }
-
-    /// Returns the reference to a value of `T` registered in the global storage.
-    pub fn get<T>(&self) -> Option<&T>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.app.get_state(self.route)
+impl io::Read for UpgradedIo {
+    #[inline]
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
     }
 }
 
-/// A trait representing a function called at performing the protocol upgrade.
-pub trait OnUpgrade: Send + 'static {
-    /// Creates a task for processing the upgraded protocol from the specified context.
-    fn on_upgrade(
-        self,
-        io: Upgraded,
-        cx: UpgradeContext,
-    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
-}
+impl io::Write for UpgradedIo {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
 
-impl<F, R> OnUpgrade for F
-where
-    F: FnOnce(Upgraded, UpgradeContext) -> R + Send + 'static,
-    R: IntoFuture<Item = (), Error = ()>,
-    R::Future: Send + 'static,
-{
-    fn on_upgrade(
-        self,
-        io: Upgraded,
-        cx: UpgradeContext,
-    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
-        Box::new((self)(io, cx).into_future())
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-pub(crate) struct OnUpgradeObj(
-    Box<
-        dyn FnMut(Upgraded, UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send>
-            + Send
-            + 'static,
-    >,
-);
-
-impl OnUpgradeObj {
-    pub(crate) fn new<T: OnUpgrade>(on_upgrade: T) -> Self {
-        let mut on_upgrade = Some(on_upgrade);
-        OnUpgradeObj(Box::new(move |io, cx| {
-            let on_upgrade = on_upgrade.take().unwrap();
-            on_upgrade.on_upgrade(io, cx)
-        }))
+impl tokio_io::AsyncRead for UpgradedIo {
+    #[inline]
+    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [u8]) -> bool {
+        self.0.prepare_uninitialized_buffer(buf)
     }
 
-    pub(crate) fn upgrade(
-        mut self,
-        io: Upgraded,
-        cx: UpgradeContext,
-    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
-        (self.0)(io, cx)
+    #[inline]
+    fn read_buf<B: BufMut>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
+        self.0.read_buf(buf)
+    }
+}
+
+impl tokio_io::AsyncWrite for UpgradedIo {
+    #[inline]
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        tokio_io::AsyncWrite::shutdown(&mut self.0)
+    }
+
+    #[inline]
+    fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
+        self.0.write_buf(buf)
     }
 }

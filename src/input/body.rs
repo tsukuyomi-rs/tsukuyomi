@@ -1,7 +1,7 @@
 //! Components for receiving incoming request bodies.
 
 use bytes::{Buf, Bytes, BytesMut};
-use futures::{Async, Future, Poll, Stream};
+use futures::{Async, Future, IntoFuture, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{self, Body, Payload as _Payload};
 use mime;
@@ -13,31 +13,23 @@ use crate::error::{CritError, Error, Failure};
 
 use super::global::with_get_current;
 use super::header::content_type;
-use super::upgrade::{OnUpgrade, OnUpgradeObj};
+use super::upgrade::UpgradedIo;
 use super::Input;
 
 // ==== RequestBody ====
 
 /// A type representing a message body in the incoming HTTP request.
+#[derive(Debug)]
 pub struct RequestBody {
     body: Option<Body>,
-    on_upgrade: Option<OnUpgradeObj>,
-}
-
-impl fmt::Debug for RequestBody {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RequestBody")
-            .field("body", &self.body)
-            .field("on_upgrade", &self.on_upgrade.as_ref().map(|_| "<upgrade>"))
-            .finish()
-    }
+    is_upgraded: bool,
 }
 
 impl RequestBody {
     pub(crate) fn from_hyp(body: Body) -> RequestBody {
         RequestBody {
             body: Some(body),
-            on_upgrade: None,
+            is_upgraded: false,
         }
     }
 
@@ -60,20 +52,29 @@ impl RequestBody {
 
     /// Returns 'true' if the upgrade function is set.
     pub fn is_upgraded(&self) -> bool {
-        self.on_upgrade.is_some()
+        self.is_upgraded
     }
 
     /// Registers the upgrade function to this request.
-    pub fn on_upgrade<T: OnUpgrade>(&mut self, on_upgrade: T) -> Option<T> {
-        if self.on_upgrade.is_some() {
-            return Some(on_upgrade);
+    pub fn upgrade<F, R>(&mut self, on_upgrade: F) -> Result<(), F>
+    where
+        F: FnOnce(UpgradedIo) -> R + Send + 'static,
+        R: IntoFuture<Item = (), Error = ()>,
+        R::Future: Send + 'static,
+    {
+        if self.is_upgraded {
+            return Err(on_upgrade);
         }
-        self.on_upgrade = Some(OnUpgradeObj::new(on_upgrade));
-        None
-    }
+        self.is_upgraded = true;
+        let body = self.body.take().expect("The body has already gone");
 
-    pub(crate) fn deconstruct(self) -> (Option<Body>, Option<OnUpgradeObj>) {
-        (self.body, self.on_upgrade)
+        ::tokio::executor::spawn(
+            body.on_upgrade()
+                .map_err(|_| ())
+                .and_then(move |upgraded| on_upgrade(UpgradedIo(upgraded)).into_future()),
+        );
+
+        Ok(())
     }
 }
 
