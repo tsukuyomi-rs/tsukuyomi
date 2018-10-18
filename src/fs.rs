@@ -134,6 +134,7 @@ impl NamedFile {
     /// # use tsukuyomi::{Input, AsyncResponder};
     /// # use tsukuyomi::fs::NamedFile;
     /// #
+    /// # #[allow(dead_code)]
     /// fn handler(_: &mut Input) -> impl AsyncResponder {
     ///     NamedFile::open("/path/to/index.html")
     /// }
@@ -154,6 +155,7 @@ impl NamedFile {
     /// # use tsukuyomi::fs::{NamedFile, OpenConfig};
     /// use std::time::Duration;
     ///
+    /// # #[allow(dead_code)]
     /// fn handler(_: &mut Input) -> impl AsyncResponder {
     ///     NamedFile::open_with_config(
     ///         "/path/to/index.html",

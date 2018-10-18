@@ -8,23 +8,21 @@
 //! # use futures::prelude::*;
 //! use tsukuyomi::{App, Input, Responder};
 //! use tsukuyomi::handler::wrap_ready;
-//! use tsukuyomi::websocket::{start, OwnedMessage};
+//! use tsukuyomi::websocket::{start, Message};
 //!
 //! fn websocket(input: &mut Input) -> impl Responder {
 //!     start(input, None, |transport, _cx| {
 //!         let (sink, stream) = transport.split();
 //!         stream
-//!             .take_while(|m| Ok(!m.is_close()))
 //!             .filter_map(|m| {
 //!                 println!("Message from client: {:?}", m);
 //!                 match m {
-//!                     OwnedMessage::Ping(p) => Some(OwnedMessage::Pong(p)),
-//!                     OwnedMessage::Pong(_) => None,
+//!                     Message::Ping(p) => Some(Message::Pong(p)),
+//!                     Message::Pong(_) => None,
 //!                     _ => Some(m),
 //!                 }
 //!             })
 //!             .forward(sink)
-//!             .and_then(|(_, sink)| sink.send(OwnedMessage::Close(None)))
 //!             .then(|_| Ok(()))
 //!     })
 //! }

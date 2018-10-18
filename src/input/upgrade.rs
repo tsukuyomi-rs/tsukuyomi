@@ -12,17 +12,20 @@
 //! # use tsukuyomi::output::{Output, ResponseBody};
 //! # use futures::{future, Future};
 //! # use http::{header, StatusCode, Response};
+//! # #[allow(unused_variables, dead_code)]
 //! fn validate(input: &Input) -> Result<(), Error> {
 //!     // do some stuff ...
 //! #   Ok(())
 //! }
 //!
+//! # #[allow(unused_variables, dead_code)]
 //! fn on_upgrade(io: Upgraded, cx: UpgradeContext)
 //!     -> impl Future<Item = (), Error = ()> + Send + 'static {
 //!     // ...
 //! #   future::ok(())
 //! }
 //!
+//! # #[allow(dead_code)]
 //! fn handshake(input: &mut Input) -> Result<Output, Error> {
 //!     validate(input)?;
 //!

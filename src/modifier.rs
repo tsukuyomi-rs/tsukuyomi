@@ -8,7 +8,7 @@
 //! ```
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //! use tsukuyomi::{App, Input, handler};
-//! use tsukuyomi::modifier::{Modifier, BeforeHandle, AfterHandle};
+//! use tsukuyomi::modifier::{Modifier, BeforeHandle};
 //!
 //! #[derive(Default)]
 //! struct RequestCounter(AtomicUsize);
@@ -25,6 +25,7 @@
 //!     .route(("/", handler::wrap_ready(|_| "Hello")))
 //!     .modifier(RequestCounter::default())
 //!     .finish()?;
+//! # drop(app);
 //! # Ok(())
 //! # }
 //! ```

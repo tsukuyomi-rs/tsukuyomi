@@ -50,6 +50,7 @@ impl Builder {
     ///         t.bind_tcp(([0, 0, 0, 0], 8888));
     ///     })
     ///     .finish(app).unwrap();
+    /// # drop(server);
     /// ```
     pub fn transport(&mut self, f: impl FnOnce(&mut transport::Builder)) -> &mut Self {
         f(&mut self.transport);
@@ -70,6 +71,7 @@ impl Builder {
     ///             .keep_alive(false);
     ///     })
     ///     .finish(app).unwrap();
+    /// # drop(server);
     /// ```
     pub fn http(&mut self, f: impl FnOnce(&mut Http)) -> &mut Self {
         f(&mut self.protocol);
@@ -85,13 +87,14 @@ impl Builder {
     /// # extern crate tsukuyomi;
     /// # use tsukuyomi::server::Server;
     /// # use tsukuyomi::App;
-    /// # use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
     /// # let app = App::builder().finish().unwrap();
     /// let server = Server::builder()
     ///     .runtime(|rt| {
-    ///         rt.threadpool_builder(ThreadPoolBuilder::new());
+    ///         rt.core_threads(4);
+    ///         rt.blocking_threads(150);
     ///     })
     ///     .finish(app).unwrap();
+    /// # drop(server);
     /// ```
     pub fn runtime(&mut self, f: impl FnOnce(&mut runtime::Builder)) -> &mut Self {
         f(&mut self.runtime);

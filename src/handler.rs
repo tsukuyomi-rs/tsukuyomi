@@ -86,6 +86,7 @@ impl Handle {
 /// # use tsukuyomi::app::App;
 /// # use tsukuyomi::input::Input;
 /// # use tsukuyomi::handler::wrap_ready;
+/// # #[allow(unused_variables)]
 /// fn index(input: &mut Input) -> &'static str {
 ///     "Hello, Tsukuyomi.\n"
 /// }
@@ -94,6 +95,7 @@ impl Handle {
 /// let app = App::builder()
 ///     .route(("/index.html", wrap_ready(index)))
 ///     .finish()?;
+/// # drop(app);
 /// # Ok(())
 /// # }
 /// ```
@@ -132,7 +134,6 @@ where
 ///
 /// ```
 /// # use tsukuyomi::app::App;
-/// # use tsukuyomi::error::Error;
 /// # use tsukuyomi::input::Input;
 /// # use tsukuyomi::output::AsyncResponder;
 /// # use tsukuyomi::handler::wrap_async;
@@ -144,6 +145,7 @@ where
 /// let app = App::builder()
 ///     .route(("/posts", wrap_async(handler)))
 ///     .finish()?;
+/// # drop(app);
 /// # Ok(())
 /// # }
 /// ```

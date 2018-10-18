@@ -137,6 +137,7 @@ impl AppBuilder {
     ///         r.handler(submit);
     ///     })
     ///     .finish()?;
+    /// # drop(app);
     /// # Ok(())
     /// # }
     /// ```
@@ -187,6 +188,7 @@ impl AppBuilder {
     ///         s.route(("/posts", "POST", add_post));
     ///     })
     ///     .finish()?;
+    /// # drop(app);
     /// # Ok(())
     /// # }
     /// ```
@@ -238,6 +240,7 @@ impl AppBuilder {
     ///         s.route(("/posts", "POST", add_post));
     ///     })
     ///     .finish()?;
+    /// # drop(app);
     /// # Ok(())
     /// # }
     /// ```
