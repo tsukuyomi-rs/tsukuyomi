@@ -1,7 +1,7 @@
 // FIXME: remove this feature gate as soon as the rustc version used in docs.rs is updated
 #![cfg_attr(tsukuyomi_inject_extern_prelude, feature(extern_prelude))]
 
-//! Tsukuyomi is a next generation Web framework for Rust.
+//! Tsukuyomi is an asynchronous Web framework for Rust.
 
 #![doc(html_root_url = "https://docs.rs/tsukuyomi/0.2.2")]
 #![warn(
@@ -51,13 +51,10 @@ extern crate tokio_tungstenite;
 extern crate tungstenite;
 
 pub mod app;
+pub mod contrib;
 pub mod error;
-pub mod fs;
 pub mod handler;
 pub mod input;
-pub mod json;
 pub mod modifier;
 pub mod output;
 pub(crate) mod recognizer;
-#[cfg(feature = "websocket")]
-pub mod websocket;

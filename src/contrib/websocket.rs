@@ -10,7 +10,7 @@
 //! # use tsukuyomi::input::Input;
 //! # use tsukuyomi::output::Responder;
 //! # use tsukuyomi::handler::wrap_ready;
-//! use tsukuyomi::websocket::{start, Message};
+//! use tsukuyomi::contrib::websocket::{start, Message};
 //!
 //! fn websocket(input: &mut Input) -> impl Responder {
 //!     start(input, None, |transport| {

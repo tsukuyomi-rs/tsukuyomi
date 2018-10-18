@@ -133,7 +133,7 @@ impl NamedFile {
     /// ```
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::output::AsyncResponder;
-    /// # use tsukuyomi::fs::NamedFile;
+    /// # use tsukuyomi::contrib::fs::NamedFile;
     /// #
     /// # #[allow(dead_code)]
     /// fn handler(_: &mut Input) -> impl AsyncResponder {
@@ -154,7 +154,7 @@ impl NamedFile {
     /// ```
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::output::AsyncResponder;
-    /// # use tsukuyomi::fs::{NamedFile, OpenConfig};
+    /// # use tsukuyomi::contrib::fs::{NamedFile, OpenConfig};
     /// use std::time::Duration;
     ///
     /// # #[allow(dead_code)]
