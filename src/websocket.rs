@@ -11,7 +11,7 @@
 //! use tsukuyomi::websocket::{start, OwnedMessage};
 //!
 //! fn websocket(input: &mut Input) -> impl Responder {
-//!     start(input, |transport, _cx| {
+//!     start(input, None, |transport, _cx| {
 //!         let (sink, stream) = transport.split();
 //!         stream
 //!             .take_while(|m| Ok(!m.is_close()))
@@ -44,9 +44,10 @@ use base64;
 use futures::prelude::*;
 use http::{header, Response, StatusCode};
 use sha1;
-use tokio_codec::Framed;
-use websocket_codec::codec::ws::{Context, MessageCodec};
-pub use websocket_codec::OwnedMessage;
+
+use tokio_tungstenite::WebSocketStream;
+pub use tungstenite::protocol::Message;
+use tungstenite::protocol::{Role, WebSocketConfig};
 
 use error::{Error, HttpError};
 use input::upgrade::{UpgradeContext, Upgraded};
@@ -123,11 +124,12 @@ pub fn handshake(input: &mut Input) -> Result<Response<()>, HandshakeError> {
 }
 
 /// A transport for exchanging data frames with the peer.
-pub type Transport = Framed<Upgraded, MessageCodec<OwnedMessage>>;
+pub type Transport = WebSocketStream<Upgraded>;
 
 /// A helper function for creating a WebSocket endpoint.
 pub fn start<R>(
     input: &mut Input,
+    config: Option<WebSocketConfig>,
     f: impl FnOnce(Transport, UpgradeContext) -> R + Send + 'static,
 ) -> impl Responder
 where
@@ -139,7 +141,7 @@ where
     input
         .body_mut()
         .on_upgrade(move |io: Upgraded, cx: UpgradeContext| {
-            let transport = Framed::new(io, MessageCodec::default(Context::Server));
+            let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
             f(transport, cx).into_future()
         });
 

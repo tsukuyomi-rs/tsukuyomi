@@ -1,6 +1,5 @@
 // FIXME: remove this feature gate as soon as the rustc version used in docs.rs is updated
 #![cfg_attr(tsukuyomi_inject_extern_prelude, feature(extern_prelude))]
-
 #![cfg_attr(feature = "codegen", feature(use_extern_macros))]
 #![cfg_attr(feature = "nightly", feature(macro_vis_matcher))]
 
@@ -58,9 +57,9 @@ extern crate base64;
 #[cfg(feature = "websocket")]
 extern crate sha1;
 #[cfg(feature = "websocket")]
-extern crate tokio_codec;
+extern crate tokio_tungstenite;
 #[cfg(feature = "websocket")]
-extern crate websocket_codec;
+extern crate tungstenite;
 
 pub mod app;
 pub mod error;

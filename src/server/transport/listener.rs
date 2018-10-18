@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::{fmt, io, mem};
 use tokio::io::{AsyncRead, AsyncWrite};
 #[cfg(feature = "tls")]
-use tokio_rustls::{self, AcceptAsync};
+use tokio_rustls::{self, Accept as AcceptAsync, TlsAcceptor};
 use tokio_tcp::{TcpListener, TcpStream};
 #[cfg(unix)]
 use tokio_uds::{UnixListener, UnixStream};
@@ -235,7 +235,7 @@ impl Handshake {
     #[cfg(feature = "tls")]
     fn tcp_with_tls(stream: TcpStream, session: ServerSession) -> Handshake {
         Handshake(HandshakeKind::Tcp(MaybeTlsHandshake::Tls(
-            tokio_rustls::accept_async_with_session(stream, session),
+            TlsAcceptor::accept_with_session(stream, session),
         )))
     }
 
@@ -248,7 +248,7 @@ impl Handshake {
     #[cfg(feature = "tls")]
     fn uds_with_tls(stream: UnixStream, session: ServerSession) -> Handshake {
         Handshake(HandshakeKind::Uds(MaybeTlsHandshake::Tls(
-            tokio_rustls::accept_async_with_session(stream, session),
+            TlsAcceptor::accept_with_session(stream, session),
         )))
     }
 }
