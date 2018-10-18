@@ -1,11 +1,11 @@
 use http::{Method, Response, StatusCode};
 
 use super::*;
-use error::HttpError;
-use handler::Handle;
-use input::Input;
+use crate::error::HttpError;
+use crate::handler::Handle;
+use crate::input::Input;
 
-fn dummy_handler(_: &mut Input) -> Handle {
+fn dummy_handler(_: &mut Input<'_>) -> Handle {
     Handle::ready(Ok(Response::new(Default::default())))
 }
 
@@ -119,14 +119,14 @@ fn global_prefix() {
 
 #[test]
 fn scope_simple() {
-    use app::builder::Scope;
+    use crate::app::builder::Scope;
 
     let app = App::builder()
-        .scope(|s: &mut Scope| {
+        .scope(|s: &mut Scope<'_>| {
             s.route(("/a", dummy_handler));
             s.route(("/b", dummy_handler));
         }).route(("/foo", dummy_handler))
-        .scope(|s: &mut Scope| {
+        .scope(|s: &mut Scope<'_>| {
             s.prefix("/c");
             s.route(("/d", dummy_handler));
             s.route(("/e", dummy_handler));
@@ -142,16 +142,16 @@ fn scope_simple() {
 
 #[test]
 fn scope_nested() {
-    use app::builder::Scope;
+    use crate::app::builder::Scope;
 
     let app = App::builder()
-        .scope(|s: &mut Scope| {
+        .scope(|s: &mut Scope<'_>| {
             s.route(("/foo", dummy_handler)); // /foo
             s.route(("/bar", dummy_handler)); // /bar
         }).mount("/baz", |s| {
             s.route(("/", dummy_handler)); // /baz
 
-            s.scope(|s: &mut Scope| {
+            s.scope(|s: &mut Scope<'_>| {
                 s.route(("/foobar", dummy_handler)); // /baz/foobar
             });
         }).route(("/hoge", dummy_handler)) // /hoge

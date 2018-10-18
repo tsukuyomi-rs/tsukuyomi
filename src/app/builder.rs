@@ -9,10 +9,10 @@ use http::header::HeaderValue;
 use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 
-use error::{DefaultErrorHandler, ErrorHandler};
-use handler::{self, Handler};
-use modifier::Modifier;
-use recognizer::{
+use crate::error::{DefaultErrorHandler, ErrorHandler};
+use crate::handler::{self, Handler};
+use crate::modifier::Modifier;
+use crate::recognizer::{
     uri::{self, Uri},
     Recognizer,
 };
@@ -43,7 +43,7 @@ struct ScopeBuilder {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for ScopeBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopeBuilder")
             .field("parent", &self.parent)
             .field("prefix", &self.prefix)
@@ -62,7 +62,7 @@ struct RouteBuilder {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for RouteBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RouteBuilder")
             .field("scope_id", &self.scope_id)
             .field("uri", &self.uri)
@@ -73,7 +73,7 @@ impl fmt::Debug for RouteBuilder {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppBuilder")
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)
@@ -242,7 +242,7 @@ impl AppBuilder {
     /// # }
     /// ```
     #[inline(always)]
-    pub fn mount(self, prefix: &str, f: impl FnOnce(&mut Scope)) -> Self {
+    pub fn mount(self, prefix: &str, f: impl FnOnce(&mut Scope<'_>)) -> Self {
         self.scope(Mount(prefix, f))
     }
 
@@ -495,7 +495,7 @@ impl<'a> Scope<'a> {
     ///
     /// This method is a shortcut of `Scope::scope(Mount(prefix, f))`.
     #[inline(always)]
-    pub fn mount(&mut self, prefix: &str, f: impl FnOnce(&mut Scope)) -> &mut Self {
+    pub fn mount(&mut self, prefix: &str, f: impl FnOnce(&mut Scope<'_>)) -> &mut Self {
         self.scope(Mount(prefix, f))
     }
 
@@ -524,14 +524,14 @@ impl<'a> Scope<'a> {
 /// Trait representing a set of configuration for setting a scope.
 pub trait ScopeConfig {
     /// Applies this configuration to the provided `Scope`.
-    fn configure(self, scope: &mut Scope);
+    fn configure(self, scope: &mut Scope<'_>);
 }
 
 impl<F> ScopeConfig for F
 where
-    F: FnOnce(&mut Scope),
+    F: FnOnce(&mut Scope<'_>),
 {
-    fn configure(self, scope: &mut Scope) {
+    fn configure(self, scope: &mut Scope<'_>) {
         self(scope)
     }
 }
@@ -543,10 +543,10 @@ pub struct Mount<P, F>(pub P, pub F);
 impl<P, F> ScopeConfig for Mount<P, F>
 where
     P: AsRef<str>,
-    F: FnOnce(&mut Scope),
+    F: FnOnce(&mut Scope<'_>),
 {
     #[inline(always)]
-    fn configure(self, scope: &mut Scope) {
+    fn configure(self, scope: &mut Scope<'_>) {
         scope.prefix(self.0.as_ref());
         (self.1)(scope);
     }
@@ -604,14 +604,14 @@ impl<'a> Route<'a> {
 /// Trait representing a set of configuration for setting a route.
 pub trait RouteConfig {
     /// Applies this configuration to the provided `Route`.
-    fn configure(self, route: &mut Route);
+    fn configure(self, route: &mut Route<'_>);
 }
 
 impl<F> RouteConfig for F
 where
-    F: FnOnce(&mut Route),
+    F: FnOnce(&mut Route<'_>),
 {
-    fn configure(self, route: &mut Route) {
+    fn configure(self, route: &mut Route<'_>) {
         self(route)
     }
 }
@@ -621,7 +621,7 @@ where
     A: AsRef<str>,
     B: Handler + Send + Sync + 'static,
 {
-    fn configure(self, route: &mut Route) {
+    fn configure(self, route: &mut Route<'_>) {
         route.uri(self.0.as_ref());
         route.handler(self.1);
     }
@@ -634,7 +634,7 @@ where
     C: Handler + Send + Sync + 'static,
     <Method as HttpTryFrom<B>>::Error: Fail,
 {
-    fn configure(self, route: &mut Route) {
+    fn configure(self, route: &mut Route<'_>) {
         route.uri(self.0.as_ref());
         route.method(self.1);
         route.handler(self.2);

@@ -24,10 +24,10 @@ pub fn is_set_current() -> bool {
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-pub(crate) fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R {
+pub(crate) fn with_set_current<R>(self_: &mut Input<'_>, f: impl FnOnce() -> R) -> R {
     // safety: The value of `self: &mut Input` is always non-null.
     let prev = INPUT.with(|input| {
-        let ptr = self_ as *mut Input as *mut () as *mut Input<'static>;
+        let ptr = self_ as *mut Input<'_> as *mut () as *mut Input<'static>;
         input.replace(Some(unsafe { NonNull::new_unchecked(ptr) }))
     });
     let _reset = ResetOnDrop(prev);
@@ -59,7 +59,7 @@ pub(crate) fn with_set_current<R>(self_: &mut Input, f: impl FnOnce() -> R) -> R
 ///     with_get_current(|input| { ... })
 /// }
 /// ```
-pub fn with_get_current<R>(f: impl FnOnce(&mut Input) -> R) -> R {
+pub fn with_get_current<R>(f: impl FnOnce(&mut Input<'_>) -> R) -> R {
     let input_ptr = INPUT.with(|input| input.replace(None));
     let _reset = ResetOnDrop(input_ptr);
     let mut input_ptr =

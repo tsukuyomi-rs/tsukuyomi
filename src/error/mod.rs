@@ -44,8 +44,8 @@ use http::{header, Request, Response, StatusCode};
 use std::any::TypeId;
 use std::{error, io};
 
-use input::RequestBody;
-use output::ResponseBody;
+use crate::input::RequestBody;
+use crate::output::ResponseBody;
 
 /// A type alias representing a critical error.
 pub type CritError = Box<dyn error::Error + Send + Sync + 'static>;

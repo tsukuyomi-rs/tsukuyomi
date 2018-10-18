@@ -14,10 +14,10 @@ use indexmap::IndexMap;
 use std::fmt;
 use std::sync::Arc;
 
-use error::ErrorHandler;
-use handler::Handler;
-use modifier::Modifier;
-use recognizer::{uri::Uri, Recognizer};
+use crate::error::ErrorHandler;
+use crate::handler::Handler;
+use crate::modifier::Modifier;
+use crate::recognizer::{uri::Uri, Recognizer};
 
 use self::builder::AppBuilder;
 use self::scoped_map::ScopedMap;
@@ -73,7 +73,7 @@ struct ScopeData {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for ScopeData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopeData")
             .field("id", &self.id)
             .field("parent", &self.parent)
@@ -93,7 +93,7 @@ struct RouteData {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for RouteData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RouteData")
             .field("id", &self.id)
             .field("uri", &self.uri)
@@ -119,7 +119,7 @@ struct AppData {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AppData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppData")
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)

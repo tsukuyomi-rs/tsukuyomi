@@ -3,7 +3,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::*;
 use syn;
 
-pub fn async_handler(_attr: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+pub fn async_handler(attr: TokenStream, item: TokenStream) -> Result<TokenStream, Error> {
+    drop(attr);
     let item: syn::ItemFn = syn::parse2(item)?;
 
     let context = Context { item: item };

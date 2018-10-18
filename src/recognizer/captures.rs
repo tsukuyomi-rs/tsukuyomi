@@ -18,7 +18,7 @@ impl CaptureNames {
         if name.is_empty() {
             bail!("empty parameter name");
         }
-        if !self.params.insert(name.into()) {
+        if !self.params.insert(name) {
             bail!("the duplicated parameter name");
         }
         Ok(())

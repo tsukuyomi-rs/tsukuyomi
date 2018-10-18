@@ -196,7 +196,7 @@ impl AsRef<Uri> for Uri {
 }
 
 impl fmt::Display for Uri {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }

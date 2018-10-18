@@ -2,8 +2,8 @@ use http::{Request, StatusCode};
 use std::borrow::Cow;
 use std::mem;
 
-use input::RequestBody;
-use output::ResponseBody;
+use crate::input::RequestBody;
+use crate::output::ResponseBody;
 
 use super::HttpError;
 

@@ -4,22 +4,22 @@ use futures::{Async, Poll};
 use std::fmt;
 use std::sync::Arc;
 
-use error::Error;
-use input::Input;
-use output::{AsyncResponder, Output, Responder};
+use crate::error::Error;
+use crate::input::Input;
+use crate::output::{AsyncResponder, Output, Responder};
 
 /// A trait representing handler functions.
 pub trait Handler {
     /// Applies an incoming request to this handler.
-    fn handle(&self, input: &mut Input) -> Handle;
+    fn handle(&self, input: &mut Input<'_>) -> Handle;
 }
 
 impl<F> Handler for F
 where
-    F: Fn(&mut Input) -> Handle,
+    F: Fn(&mut Input<'_>) -> Handle,
 {
     #[inline]
-    fn handle(&self, input: &mut Input) -> Handle {
+    fn handle(&self, input: &mut Input<'_>) -> Handle {
         (*self)(input)
     }
 }
@@ -29,7 +29,7 @@ where
     H: Handler,
 {
     #[inline]
-    fn handle(&self, input: &mut Input) -> Handle {
+    fn handle(&self, input: &mut Input<'_>) -> Handle {
         (**self).handle(input)
     }
 }
@@ -40,12 +40,12 @@ pub struct Handle(HandleKind);
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum HandleKind {
     Ready(Option<Result<Output, Error>>),
-    Async(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static>),
+    Async(Box<dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Handle {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Handle").finish()
     }
 }
@@ -63,7 +63,7 @@ impl Handle {
         })))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
         match self.0 {
             HandleKind::Ready(ref mut res) => res
                 .take()
@@ -97,7 +97,7 @@ impl Handle {
 /// # Ok(())
 /// # }
 /// ```
-pub fn wrap_ready<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+pub fn wrap_ready<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
 where
     R: Responder,
 {
@@ -106,10 +106,10 @@ where
 
     impl<T, R> Handler for ReadyHandler<T>
     where
-        T: Fn(&mut Input) -> R,
+        T: Fn(&mut Input<'_>) -> R,
         R: Responder,
     {
-        fn handle(&self, input: &mut Input) -> Handle {
+        fn handle(&self, input: &mut Input<'_>) -> Handle {
             Handle::ready(
                 (self.0)(input)
                     .respond_to(input)
@@ -169,7 +169,7 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub fn wrap_async<R>(f: impl Fn(&mut Input) -> R) -> impl Handler
+pub fn wrap_async<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
 where
     R: AsyncResponder,
 {
@@ -178,10 +178,10 @@ where
 
     impl<T, R> Handler for AsyncHandler<T>
     where
-        T: Fn(&mut Input) -> R,
+        T: Fn(&mut Input<'_>) -> R,
         R: AsyncResponder,
     {
-        fn handle(&self, input: &mut Input) -> Handle {
+        fn handle(&self, input: &mut Input<'_>) -> Handle {
             Handle::wrap_async((self.0)(input))
         }
     }

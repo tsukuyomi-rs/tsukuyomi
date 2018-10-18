@@ -16,8 +16,8 @@ use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Response, StatusCode};
 
-use error::{Error, HttpError, Never};
-use input::{self, Input};
+use crate::error::{Error, HttpError, Never};
+use crate::input::{self, Input};
 
 /// A trait representing the conversion to an HTTP response.
 pub trait Responder {
@@ -28,7 +28,7 @@ pub trait Responder {
     type Error: Into<Error>;
 
     /// Converts `self` to an HTTP response.
-    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error>;
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error>;
 }
 
 impl<L, R> Responder for Either<L, R>
@@ -39,7 +39,7 @@ where
     type Body = ResponseBody;
     type Error = Error;
 
-    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         match self {
             Either::Left(l) => l
                 .respond_to(input)
@@ -57,7 +57,7 @@ impl Responder for () {
     type Body = ();
     type Error = Never;
 
-    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let mut response = Response::new(());
         *response.status_mut() = StatusCode::NO_CONTENT;
         Ok(response)
@@ -71,7 +71,7 @@ where
     type Body = ResponseBody;
     type Error = Error;
 
-    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         self.ok_or_else(|| OptionError { _priv: () })?
             .respond_to(input)
             .map(|response| response.map(Into::into))
@@ -100,7 +100,7 @@ where
     type Body = ResponseBody;
     type Error = Error;
 
-    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         self?
             .respond_to(input)
             .map(|response| response.map(Into::into))
@@ -116,7 +116,7 @@ where
     type Error = Never;
 
     #[inline(always)]
-    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(self)
     }
 }
@@ -126,7 +126,7 @@ impl Responder for &'static str {
     type Error = Never;
 
     #[inline(always)]
-    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(text_response(self))
     }
 }
@@ -136,7 +136,7 @@ impl Responder for String {
     type Error = Never;
 
     #[inline(always)]
-    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(text_response(self))
     }
 }
@@ -157,7 +157,7 @@ pub trait AsyncResponder: Send + 'static + sealed::Sealed {
 
     /// Polls for a result of inner `Responder`.
     // FIXME: replace the receiver type with PinMut<Self>
-    fn poll_respond_to(&mut self, input: &mut Input) -> Poll<Output, Error>;
+    fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error>;
 }
 
 impl<F> AsyncResponder for F
@@ -168,7 +168,7 @@ where
 {
     type Output = F::Item;
 
-    fn poll_respond_to(&mut self, input: &mut Input) -> Poll<Output, Error> {
+    fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
         let x = try_ready!(input::with_set_current(input, || Future::poll(self)));
         x.respond_to(input)
             .map(|res| Async::Ready(res.map(Into::into)))
@@ -199,7 +199,7 @@ mod sealed {
     use futures::Future;
 
     use super::Responder;
-    use error::Error;
+    use crate::error::Error;
 
     pub trait Sealed {}
 

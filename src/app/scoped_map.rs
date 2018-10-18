@@ -15,7 +15,7 @@ struct TypedScopedValue<T> {
 
 #[cfg_attr(tarpaulin, skip)]
 impl<T> fmt::Debug for TypedScopedValue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let locals = self.locals.iter().map(|_| "<value>").collect::<Vec<_>>();
         f.debug_struct("TypedScopedValue")
             .field("global", &self.global.as_ref().map(|_| "<value>"))
@@ -115,12 +115,12 @@ impl<T> TypedScopedValue<T> {
 }
 
 trait ScopedValue: Send + Sync + 'static {
-    fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result;
+    fn fmt_debug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
     fn finalize(&mut self, parents: &[ScopeId]);
 }
 
 impl<T: Send + Sync + 'static> ScopedValue for TypedScopedValue<T> {
-    fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt_debug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
 
@@ -130,7 +130,7 @@ impl<T: Send + Sync + 'static> ScopedValue for TypedScopedValue<T> {
 }
 
 impl fmt::Debug for dyn ScopedValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_debug(f)
     }
 }
@@ -204,7 +204,7 @@ pub(super) struct Builder {
 }
 
 impl fmt::Debug for Builder {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder").finish()
     }
 }

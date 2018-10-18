@@ -49,10 +49,10 @@ use tokio_tungstenite::WebSocketStream;
 pub use tungstenite::protocol::Message;
 use tungstenite::protocol::{Role, WebSocketConfig};
 
-use error::{Error, HttpError};
-use input::upgrade::{UpgradeContext, Upgraded};
-use input::Input;
-use output::Responder;
+use crate::error::{Error, HttpError};
+use crate::input::upgrade::{UpgradeContext, Upgraded};
+use crate::input::Input;
+use crate::output::Responder;
 
 #[allow(missing_docs)]
 #[derive(Debug, Fail)]
@@ -77,7 +77,7 @@ impl HttpError for HandshakeError {
 }
 
 /// Creates a handshake response from the specified request.
-pub fn handshake(input: &mut Input) -> Result<Response<()>, HandshakeError> {
+pub fn handshake(input: &mut Input<'_>) -> Result<Response<()>, HandshakeError> {
     match input.headers().get(header::UPGRADE) {
         Some(h) if h == "Websocket" || h == "websocket" => (),
         Some(..) => Err(HandshakeError::InvalidHeader { name: "Upgrade" })?,
@@ -128,7 +128,7 @@ pub type Transport = WebSocketStream<Upgraded>;
 
 /// A helper function for creating a WebSocket endpoint.
 pub fn start<R>(
-    input: &mut Input,
+    input: &mut Input<'_>,
     config: Option<WebSocketConfig>,
     f: impl FnOnce(Transport, UpgradeContext) -> R + Send + 'static,
 ) -> impl Responder

@@ -47,8 +47,8 @@ use futures::{Future, IntoFuture};
 use http::Request;
 pub use hyper::upgrade::Upgraded;
 
-use app::{App, RouteId};
-use recognizer::captures::Captures;
+use crate::app::{App, RouteId};
+use crate::recognizer::captures::Captures;
 
 use super::local_map::LocalMap;
 
@@ -107,6 +107,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 pub(crate) struct OnUpgradeObj(
     Box<
         dyn FnMut(Upgraded, UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send>

@@ -131,7 +131,7 @@ pub struct LocalMap {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for LocalMap {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LocalMap").finish()
     }
 }
@@ -183,7 +183,7 @@ impl LocalMap {
     }
 
     /// Create a `Entry` for in-place manipulation corresponds to an entry in the map.
-    pub fn entry<T>(&mut self, key: &'static LocalKey<T>) -> Entry<T>
+    pub fn entry<T>(&mut self, key: &'static LocalKey<T>) -> Entry<'_, T>
     where
         T: Send + 'static,
     {
@@ -251,7 +251,7 @@ impl<'a, T> fmt::Debug for OccupiedEntry<'a, T>
 where
     T: Send + 'static + fmt::Debug,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("OccupiedEntry").field(self.get()).finish()
     }
 }
@@ -290,7 +290,7 @@ pub struct VacantEntry<'a, T: Send + 'static> {
 
 #[cfg_attr(tarpaulin, skip)]
 impl<'a, T: Send + 'static> fmt::Debug for VacantEntry<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VacantEntry").finish()
     }
 }

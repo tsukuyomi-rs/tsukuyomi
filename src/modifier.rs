@@ -32,9 +32,9 @@
 use futures::{self, Future, Poll};
 use std::fmt;
 
-use error::Error;
-use input::{self, Input};
-use output::Output;
+use crate::error::Error;
+use crate::input::{self, Input};
+use crate::output::Output;
 
 /// A trait representing a `Modifier`.
 ///
@@ -44,7 +44,7 @@ pub trait Modifier {
     ///
     /// By default, this method does nothing.
     #[allow(unused_variables)]
-    fn before_handle(&self, input: &mut Input) -> BeforeHandle {
+    fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
         BeforeHandle::ready(Ok(None))
     }
 
@@ -52,7 +52,7 @@ pub trait Modifier {
     ///
     /// By default, this method does nothing and immediately return the provided `Output`.
     #[allow(unused_variables)]
-    fn after_handle(&self, input: &mut Input, result: Result<Output, Error>) -> AfterHandle {
+    fn after_handle(&self, input: &mut Input<'_>, result: Result<Output, Error>) -> AfterHandle {
         AfterHandle::ready(result)
     }
 }
@@ -69,12 +69,12 @@ pub struct BeforeHandle(BeforeHandleState);
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum BeforeHandleState {
     Ready(Option<Result<Option<Output>, Error>>),
-    Polling(Box<dyn FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static>),
+    Polling(Box<dyn FnMut(&mut Input<'_>) -> Poll<Option<Output>, Error> + Send + 'static>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for BeforeHandleState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::BeforeHandleState::*;
         match *self {
             Ready(ref res) => f.debug_tuple("Ready").field(res).finish(),
@@ -100,7 +100,7 @@ impl BeforeHandle {
 
     /// Creates a `BeforeHandle` from a closure repsenting an asynchronous computation.
     pub fn polling(
-        f: impl FnMut(&mut Input) -> Poll<Option<Output>, Error> + Send + 'static,
+        f: impl FnMut(&mut Input<'_>) -> Poll<Option<Output>, Error> + Send + 'static,
     ) -> BeforeHandle {
         BeforeHandle(BeforeHandleState::Polling(Box::new(f)))
     }
@@ -113,7 +113,7 @@ impl BeforeHandle {
         BeforeHandle::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Option<Output>, Error> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Option<Output>, Error> {
         use self::BeforeHandleState::*;
         match self.0 {
             Ready(ref mut res) => res
@@ -134,12 +134,12 @@ pub struct AfterHandle(AfterHandleState);
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum AfterHandleState {
     Ready(Option<Result<Output, Error>>),
-    Polling(Box<dyn FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static>),
+    Polling(Box<dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for AfterHandleState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::AfterHandleState::*;
         match *self {
             Ready(ref res) => f.debug_tuple("Ready").field(res).finish(),
@@ -166,7 +166,7 @@ impl AfterHandle {
 
     /// Creates an `AfterHandle` from a closure repsenting an asynchronous computation.
     pub fn polling(
-        f: impl FnMut(&mut Input) -> Poll<Output, Error> + Send + 'static,
+        f: impl FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static,
     ) -> AfterHandle {
         AfterHandle(AfterHandleState::Polling(Box::new(f)))
     }
@@ -179,7 +179,7 @@ impl AfterHandle {
         AfterHandle::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input) -> Poll<Output, Error> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
         use self::AfterHandleState::*;
         match self.0 {
             Ready(ref mut res) => res

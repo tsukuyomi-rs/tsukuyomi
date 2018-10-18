@@ -48,9 +48,6 @@ extern crate rustls;
 #[cfg(feature = "tls")]
 extern crate tokio_rustls;
 
-#[cfg(feature = "codegen")]
-extern crate tsukuyomi_codegen;
-
 #[cfg(feature = "websocket")]
 extern crate base64;
 #[cfg(feature = "websocket")]
@@ -75,25 +72,22 @@ pub mod server;
 pub mod websocket;
 
 #[doc(inline)]
-pub use app::App;
+pub use crate::app::App;
 
 #[doc(inline)]
-pub use error::{Error, HttpError, Result};
+pub use crate::error::{Error, HttpError, Result};
 
 #[doc(inline)]
-pub use handler::Handler;
+pub use crate::handler::Handler;
 
 #[doc(inline)]
-pub use input::Input;
+pub use crate::input::Input;
 
 #[doc(inline)]
-pub use modifier::Modifier;
+pub use crate::modifier::Modifier;
 
 #[doc(inline)]
-pub use output::{AsyncResponder, Output, Responder};
-
-#[cfg(feature = "codegen")]
-pub use tsukuyomi_codegen::{async_handler, handler};
+pub use crate::output::{AsyncResponder, Output, Responder};
 
 /// A type alias of `Result<T, E>` which will be returned from `run`.
 ///
@@ -102,7 +96,7 @@ pub type AppResult<T> = ::std::result::Result<T, ::failure::Error>;
 
 /// Starts an HTTP server with a constructed `App` and the default server configuration.
 pub fn run(app: App) -> AppResult<()> {
-    let server = ::server::Server::builder().finish(app)?;
+    let server = crate::server::Server::builder().finish(app)?;
     server.serve();
     Ok(())
 }

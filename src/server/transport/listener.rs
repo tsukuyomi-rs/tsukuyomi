@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::{fmt, io, mem};
 use tokio::io::{AsyncRead, AsyncWrite};
 #[cfg(feature = "tls")]
-use tokio_rustls::{self, Accept as AcceptAsync, TlsAcceptor};
+use tokio_rustls::{Accept as AcceptAsync, TlsAcceptor};
 use tokio_tcp::{TcpListener, TcpStream};
 #[cfg(unix)]
 use tokio_uds::{UnixListener, UnixStream};
@@ -151,7 +151,7 @@ pub struct Listener {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Listener {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_struct("Listener");
         d.field("kind", &self.kind);
         #[cfg(feature = "tls")]
@@ -255,7 +255,7 @@ impl Handshake {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for HandshakeKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             HandshakeKind::Tcp(..) => f.debug_tuple("Tcp").finish(),
             #[cfg(unix)]

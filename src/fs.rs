@@ -16,10 +16,10 @@ use http::header::HeaderMap;
 use http::{header, Response, StatusCode};
 use time::{self, Timespec};
 
-use error::Failure;
-use input::Input;
-use output::{Responder, ResponseBody};
-use server::blocking;
+use crate::error::Failure;
+use crate::input::Input;
+use crate::output::{Responder, ResponseBody};
+use crate::server::blocking;
 
 // ==== headers ====
 
@@ -88,7 +88,7 @@ impl FromStr for ETag {
 }
 
 impl fmt::Display for ETag {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.weak {
             f.write_str("W/")?;
         }
@@ -231,7 +231,7 @@ impl Responder for NamedFile {
     type Body = ResponseBody;
     type Error = Failure;
 
-    fn respond_to(self, input: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         trace!("NamedFile::respond_to");
 
         if !self.is_modified(input.headers())? {
@@ -308,6 +308,7 @@ enum State {
 impl ReadStream {
     fn new(file: File, meta: Metadata, buf_size: Option<usize>) -> ReadStream {
         let buf_size = finalize_block_size(buf_size, &meta);
+        drop(meta);
         ReadStream(State::Reading { file, buf_size })
     }
 }

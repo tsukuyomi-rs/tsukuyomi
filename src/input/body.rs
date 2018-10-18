@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, mem};
 
-use error::{CritError, Error, Failure};
+use crate::error::{CritError, Error, Failure};
 
 use super::global::with_get_current;
 use super::header::content_type;
@@ -25,7 +25,7 @@ pub struct RequestBody {
 }
 
 impl fmt::Debug for RequestBody {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RequestBody")
             .field("body", &self.body)
             .field("on_upgrade", &self.on_upgrade.as_ref().map(|_| "<upgrade>"))
@@ -266,7 +266,7 @@ pub struct ConvertTo<T> {
 }
 
 impl<T> fmt::Debug for ConvertTo<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConvertTo")
             .field("read_all", &self.read_all)
             .finish()
@@ -278,7 +278,7 @@ where
     T: FromData,
 {
     /// Attempts to convert the incoming message data into an value of `T`.
-    pub fn poll_ready(&mut self, input: &mut Input) -> Poll<T, Error> {
+    pub fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, Error> {
         let data = try_ready!(self.read_all.poll().map_err(Error::critical));
         T::from_data(data, input)
             .map(Async::Ready)
@@ -307,13 +307,13 @@ pub trait FromData: Sized {
     type Error: Into<Error>;
 
     /// Perform conversion from a received buffer of bytes into a value of `Self`.
-    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Self::Error>;
+    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error>;
 }
 
 impl FromData for String {
     type Error = Failure;
 
-    fn from_data(data: Bytes, input: &mut Input) -> Result<Self, Self::Error> {
+    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error> {
         if let Some(m) = content_type(input)? {
             if *m != mime::TEXT_PLAIN {
                 return Err(Failure::bad_request(format_err!(

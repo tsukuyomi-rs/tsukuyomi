@@ -10,13 +10,13 @@ use serde_json;
 use std::borrow::Cow;
 use std::ops::Deref;
 
-use error::ErrorHandler;
-use error::{Error, Failure, HttpError, Never};
-use input::body::{FromData, RequestBody};
-use input::header::content_type;
-use input::Input;
-use modifier::{AfterHandle, Modifier};
-use output::{Output, Responder, ResponseBody};
+use crate::error::ErrorHandler;
+use crate::error::{Error, Failure, HttpError, Never};
+use crate::input::body::{FromData, RequestBody};
+use crate::input::header::content_type;
+use crate::input::Input;
+use crate::modifier::{AfterHandle, Modifier};
+use crate::output::{Output, Responder, ResponseBody};
 
 /// A trait representing additional information for constructing HTTP responses from `Json<T>`.
 pub trait HttpResponse {
@@ -124,7 +124,7 @@ impl<T> Deref for Json<T> {
 impl<T: DeserializeOwned> FromData for Json<T> {
     type Error = Failure;
 
-    fn from_data(data: Bytes, input: &mut Input) -> Result<Json<T>, Self::Error> {
+    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Json<T>, Self::Error> {
         if let Some(mime) = content_type(input)? {
             if *mime != mime::APPLICATION_JSON {
                 return Err(Failure::bad_request(format_err!(
@@ -143,7 +143,7 @@ impl<T: Serialize + HttpResponse> Responder for Json<T> {
     type Body = Vec<u8>;
     type Error = Failure;
 
-    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let body = serde_json::to_vec(&self.0).map_err(Failure::internal_server_error)?;
         let mut response = json_response(body);
         *response.status_mut() = self.0.status_code();
@@ -166,7 +166,7 @@ impl Responder for JsonValue {
     type Body = String;
     type Error = Never;
 
-    fn respond_to(self, _: &mut Input) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(json_response(self.0.to_string()))
     }
 }
@@ -243,7 +243,7 @@ impl ErrorHandler for JsonErrorHandler {
 }
 
 impl Modifier for JsonErrorHandler {
-    fn after_handle(&self, _: &mut Input, result: Result<Output, Error>) -> AfterHandle {
+    fn after_handle(&self, _: &mut Input<'_>, result: Result<Output, Error>) -> AfterHandle {
         AfterHandle::ready(result.map_err(|err| err.map(JsonError::new)))
     }
 }

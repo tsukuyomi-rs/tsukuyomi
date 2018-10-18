@@ -15,7 +15,7 @@ enum PathKind {
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for PathKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PathKind::Segment(ref s) => f
                 .debug_tuple("Segment")

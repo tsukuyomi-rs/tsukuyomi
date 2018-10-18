@@ -29,7 +29,7 @@ matrix:
         - cargo clippy --tests
         - cargo test
         - cargo test --no-default-features
-        - cargo test --features full
+        - cargo test --all-features
 
     # - rust: 1.30.0
     - rust: beta
@@ -80,9 +80,10 @@ matrix:
     - rust: beta # FIXME: switch to stable
       env: DEPLOY_API_DOC
       script:
-        - cargo clean
-        - cargo doc --features full
-        - cargo doc -p tsukuyomi-codegen
+        - rm -rf target/doc
+        - cargo update
+        - cargo doc --all-features --no-deps -p failure tungstenite tokio-tungstenite
+        - cargo doc --all-features --no-deps
         - rm -f target/doc/.lock
         - echo '<meta http-equiv="refresh" content="0;URL=tsukuyomi/index.html">' > target/doc/index.html
       deploy:

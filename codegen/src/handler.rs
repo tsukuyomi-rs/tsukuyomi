@@ -65,7 +65,7 @@ impl Context {
 
     fn generate(&self) -> syn::ItemFn {
         let inner = self.generate_inner_item();
-        self.generate_new_item(inner)
+        self.generate_new_item(&inner)
     }
 
     fn generate_inner_item(&self) -> syn::ItemFn {
@@ -80,7 +80,7 @@ impl Context {
         inner
     }
 
-    fn generate_new_item(&self, inner: syn::ItemFn) -> syn::ItemFn {
+    fn generate_new_item(&self, inner: &syn::ItemFn) -> syn::ItemFn {
         let vis = &self.item.vis;
         let ident = &self.item.ident;
 
@@ -106,6 +106,8 @@ impl Context {
             HandlerMode::Ready => parse_quote!({
                 ::tsukuyomi::handler::Handle::ready(
                     ::tsukuyomi::output::Responder::respond_to(#call, input)
+                        .map(|response| response.map(Into::into))
+                        .map_err(Into::into)
                 )
             }),
             HandlerMode::Async => parse_quote!({

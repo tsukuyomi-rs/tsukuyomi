@@ -46,11 +46,11 @@ use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
 use tokio::executor::DefaultExecutor;
 use tokio::runtime::{self, Runtime};
 
-use app::service::{AppService, AppServiceFuture};
-use app::App;
-use error::CritError;
-use input;
-use output::{ResponseBody, ResponseBodyKind};
+use crate::app::service::{AppService, AppServiceFuture};
+use crate::app::App;
+use crate::error::CritError;
+use crate::input;
+use crate::output::{ResponseBody, ResponseBodyKind};
 
 /// A local server which emulates an HTTP service without using the low-level transport.
 ///
@@ -78,7 +78,7 @@ impl LocalServer {
     }
 
     /// Create a `Client` associated with this server.
-    pub fn client(&mut self) -> Client {
+    pub fn client(&mut self) -> Client<'_> {
         Client {
             service: self.app.new_service(),
             runtime: &mut self.runtime,
@@ -375,7 +375,7 @@ impl Data {
         }
     }
 
-    pub fn to_bytes(&self) -> Cow<[u8]> {
+    pub fn to_bytes(&self) -> Cow<'_, [u8]> {
         match self.0 {
             DataInner::Empty => Cow::Borrowed(&[]),
             DataInner::Sized(ref data) => Cow::Borrowed(&data[..]),
@@ -388,7 +388,7 @@ impl Data {
         }
     }
 
-    pub fn to_utf8(&self) -> Result<Cow<str>, str::Utf8Error> {
+    pub fn to_utf8(&self) -> Result<Cow<'_, str>, str::Utf8Error> {
         match self.to_bytes() {
             Cow::Borrowed(bytes) => str::from_utf8(bytes).map(Cow::Borrowed),
             Cow::Owned(bytes) => String::from_utf8(bytes)

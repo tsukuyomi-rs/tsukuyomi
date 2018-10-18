@@ -12,20 +12,20 @@ mod global;
 pub use self::body::RequestBody;
 pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
-pub use recognizer::captures::Params;
+pub use crate::recognizer::captures::Params;
 
 #[allow(missing_docs)]
 pub mod header {
     use http::header;
     use mime::Mime;
 
-    use error::Failure;
+    use crate::error::Failure;
 
     use super::local_map::Entry;
     use super::Input;
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
-    pub fn content_type<'a>(input: &'a mut Input) -> Result<Option<&'a Mime>, Failure> {
+    pub fn content_type<'a>(input: &'a mut Input<'_>) -> Result<Option<&'a Mime>, Failure> {
         local_key!(static CONTENT_TYPE: Option<Mime>);
 
         match input.parts.locals.entry(&CONTENT_TYPE) {
@@ -52,9 +52,9 @@ use cookie::CookieJar;
 use http::Request;
 use std::ops::{Deref, DerefMut};
 
-use app::{App, RouteId};
-use error::Failure;
-use recognizer::captures::Captures;
+use crate::app::{App, RouteId};
+use crate::error::Failure;
+use crate::recognizer::captures::Captures;
 
 use self::cookie::CookieManager;
 use self::local_map::LocalMap;
@@ -101,7 +101,7 @@ impl<'task> Input<'task> {
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
-    pub fn params(&self) -> Params {
+    pub fn params(&self) -> Params<'_> {
         Params::new(
             self.request.uri().path(),
             self.app.uri(self.parts.route).capture_names(),

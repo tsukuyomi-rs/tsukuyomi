@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::error::Error as StdError;
 use std::str;
 
-use input;
+use crate::input;
 
 /// A type representing the message body in HTTP response.
 #[derive(Debug)]
