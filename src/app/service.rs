@@ -1,12 +1,11 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
-use futures::{self, Async, Future, Poll};
+use futures::{self, Async, Poll};
 use http::header::HeaderValue;
 use http::{header, Method, Request, Response, StatusCode};
 use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
-use tokio::executor::{DefaultExecutor, Executor};
 
 use crate::error::{CritError, Error, HttpError};
 use crate::handler::Handle;
@@ -302,12 +301,9 @@ impl AppServiceFuture {
     }
 
     #[allow(missing_docs)]
-    pub fn poll_ready(
-        &mut self,
-        exec: &mut impl Executor,
-    ) -> Poll<Response<ResponseBody>, CritError> {
+    pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
         match self.poll_in_flight() {
-            Ok(Async::Ready(output)) => self.handle_response(output, exec).map(Async::Ready),
+            Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => {
                 self.status = AppServiceFutureStatus::Done;
@@ -324,19 +320,11 @@ impl AppServiceFuture {
         }
     }
 
-    fn handle_response(
-        &mut self,
-        mut output: Output,
-        exec: &mut impl Executor,
-    ) -> Result<Response<ResponseBody>, CritError> {
-        let body = {
-            let request = self
-                .request
-                .take()
-                .expect("This future has already polled.");
-            let (_parts, body) = request.into_parts();
-            body
-        };
+    fn handle_response(&mut self, mut output: Output) -> Result<Response<ResponseBody>, CritError> {
+        let _request = self
+            .request
+            .take()
+            .expect("This future has already polled.");
         let InputParts { cookies, .. } = self.parts.take().expect("This future has already polled");
 
         // append Cookie entries.
@@ -354,17 +342,6 @@ impl AppServiceFuture {
                 });
         }
 
-        // spawn the upgrade task.
-        if let (Some(body), Some(upgrade)) = body.deconstruct() {
-            if output.status() == StatusCode::SWITCHING_PROTOCOLS {
-                exec.spawn(Box::new(
-                    body.on_upgrade()
-                        .map_err(|e| error!("upgrade error: {}", e))
-                        .and_then(move |io| upgrade.upgrade(io)),
-                )).map_err(|_| format_err!("failed spawn the upgrade task").compat())?;
-            }
-        }
-
         Ok(output)
     }
 }
@@ -374,9 +351,7 @@ impl futures::Future for AppServiceFuture {
     type Error = CritError;
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        // FIXME: use futures::task::Context::executor() instead.
-        let mut exec = DefaultExecutor::current();
-        self.poll_ready(&mut exec)
+        self.poll_ready()
             .map(|x| x.map(|response| response.map(ResponseBody::into_hyp)))
     }
 }

@@ -43,7 +43,6 @@ use std::borrow::Cow;
 use std::{io, mem, str};
 
 use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
-use tokio::executor::DefaultExecutor;
 use tokio::runtime::{self, Runtime};
 
 use crate::app::service::{AppService, AppServiceFuture};
@@ -228,12 +227,10 @@ impl Future for TestResponseFuture {
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // FIXME: use `futures::task::Context::executor()` instead.
-        let mut exec = DefaultExecutor::current();
         loop {
             let polled = match *self {
                 TestResponseFuture::Initial(ref mut f) => {
-                    Some(Polled::Response(try_ready!(f.poll_ready(&mut exec))))
+                    Some(Polled::Response(try_ready!(f.poll_ready())))
                 }
                 TestResponseFuture::Receive(ref mut res) => {
                     Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))

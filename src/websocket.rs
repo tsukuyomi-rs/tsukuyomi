@@ -136,10 +136,12 @@ where
 {
     let response = handshake(input)?;
 
-    input.body_mut().on_upgrade(move |io: UpgradedIo| {
-        let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
-        f(transport).into_future()
-    });
+    input
+        .body_mut()
+        .upgrade(move |io: UpgradedIo| {
+            let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
+            f(transport).into_future()
+        }).map_err(|_| crate::error::internal_server_error("failed to spawn WebSocket task"))?;
 
     Ok::<_, Error>(response)
 }
