@@ -50,7 +50,6 @@ pub mod header {
 
 use cookie::CookieJar;
 use http::Request;
-use std::ops::{Deref, DerefMut};
 
 use crate::app::{App, RouteId};
 use crate::error::Failure;
@@ -90,14 +89,46 @@ pub struct Input<'task> {
 }
 
 impl<'task> Input<'task> {
-    /// Returns a shared reference to the value of `Request` contained in this context.
-    pub fn request(&self) -> &Request<RequestBody> {
-        self.request
+    /// Returns a reference to the HTTP method of the request.
+    #[inline]
+    pub fn method(&self) -> &http::Method {
+        self.request.method()
     }
 
-    /// Returns a mutable reference to the value of `Request` contained in this context.
-    pub fn request_mut(&mut self) -> &mut Request<RequestBody> {
-        self.request
+    /// Returns a reference to the URI of the request.
+    #[inline]
+    pub fn uri(&self) -> &http::Uri {
+        self.request.uri()
+    }
+
+    /// Returns a reference to the HTTP version of the request.
+    #[inline]
+    pub fn version(&self) -> http::Version {
+        self.request.version()
+    }
+
+    /// Returns a reference to the header map in the request.
+    #[inline]
+    pub fn headers(&self) -> &http::HeaderMap {
+        self.request.headers()
+    }
+
+    /// Returns a reference to the extensions map in the request.
+    #[inline]
+    pub fn extensions(&self) -> &http::Extensions {
+        self.request.extensions()
+    }
+
+    /// Returns a reference to the instance of `RequestBody`.
+    #[inline]
+    pub fn body(&self) -> &RequestBody {
+        self.request.body()
+    }
+
+    /// Returns a mutable reference to the instance of `RequestBody`.
+    #[inline]
+    pub fn body_mut(&mut self) -> &mut RequestBody {
+        self.request.body_mut()
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
@@ -142,19 +173,5 @@ impl<'task> Input<'task> {
     /// Returns a mutable reference to `LocalMap` for managing request-local data.
     pub fn locals_mut(&mut self) -> &mut LocalMap {
         &mut self.parts.locals
-    }
-}
-
-impl<'task> Deref for Input<'task> {
-    type Target = Request<RequestBody>;
-
-    fn deref(&self) -> &Self::Target {
-        self.request()
-    }
-}
-
-impl<'task> DerefMut for Input<'task> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.request_mut()
     }
 }
