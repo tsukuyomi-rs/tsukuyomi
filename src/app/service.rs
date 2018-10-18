@@ -10,7 +10,6 @@ use tokio::executor::{DefaultExecutor, Executor};
 
 use crate::error::{CritError, Error, HttpError};
 use crate::handler::Handle;
-use crate::input::upgrade::UpgradeContext;
 use crate::input::{Input, InputParts, RequestBody};
 use crate::modifier::{AfterHandle, BeforeHandle, Modifier};
 use crate::output::{Output, ResponseBody};
@@ -330,21 +329,15 @@ impl AppServiceFuture {
         mut output: Output,
         exec: &mut impl Executor,
     ) -> Result<Response<ResponseBody>, CritError> {
-        let (request, body) = {
+        let body = {
             let request = self
                 .request
                 .take()
                 .expect("This future has already polled.");
-            let (parts, body) = request.into_parts();
-            (Request::from_parts(parts, ()), body)
+            let (_parts, body) = request.into_parts();
+            body
         };
-        let InputParts {
-            cookies,
-            locals,
-            route,
-            captures,
-            ..
-        } = self.parts.take().expect("This future has already polled");
+        let InputParts { cookies, .. } = self.parts.take().expect("This future has already polled");
 
         // append Cookie entries.
         cookies.append_to(output.headers_mut());
@@ -364,20 +357,10 @@ impl AppServiceFuture {
         // spawn the upgrade task.
         if let (Some(body), Some(upgrade)) = body.deconstruct() {
             if output.status() == StatusCode::SWITCHING_PROTOCOLS {
-                let app = self.app.clone();
                 exec.spawn(Box::new(
                     body.on_upgrade()
                         .map_err(|e| error!("upgrade error: {}", e))
-                        .and_then(move |io| {
-                            let cx = UpgradeContext {
-                                request,
-                                locals,
-                                route,
-                                captures,
-                                app,
-                            };
-                            upgrade.upgrade(io, cx)
-                        }),
+                        .and_then(move |io| upgrade.upgrade(io)),
                 )).map_err(|_| format_err!("failed spawn the upgrade task").compat())?;
             }
         }

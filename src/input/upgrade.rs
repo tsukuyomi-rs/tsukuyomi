@@ -8,7 +8,7 @@
 //! # extern crate http;
 //! # use tsukuyomi::error::Error;
 //! # use tsukuyomi::input::Input;
-//! # use tsukuyomi::input::upgrade::{Upgraded, UpgradeContext};
+//! # use tsukuyomi::input::upgrade::{Upgraded};
 //! # use tsukuyomi::output::{Output, ResponseBody};
 //! # use futures::{future, Future};
 //! # use http::{header, StatusCode, Response};
@@ -19,7 +19,7 @@
 //! }
 //!
 //! # #[allow(unused_variables, dead_code)]
-//! fn on_upgrade(io: Upgraded, cx: UpgradeContext)
+//! fn on_upgrade(io: Upgraded)
 //!     -> impl Future<Item = (), Error = ()> + Send + 'static {
 //!     // ...
 //! #   future::ok(())
@@ -47,92 +47,43 @@
 //! ```
 
 use futures::{Future, IntoFuture};
-use http::Request;
 pub use hyper::upgrade::Upgraded;
-
-use crate::app::{App, RouteId};
-use crate::recognizer::captures::Captures;
-
-use super::local_map::LocalMap;
-
-/// Contextual information used at upgrading to another protocol.
-#[derive(Debug)]
-pub struct UpgradeContext {
-    pub(crate) request: Request<()>,
-    pub(crate) app: App,
-    pub(crate) locals: LocalMap,
-    pub(crate) route: RouteId,
-    pub(crate) captures: Option<Captures>,
-}
-
-impl UpgradeContext {
-    /// Returns the reference to a `Request<()>` used during the handshake.
-    pub fn request(&self) -> &Request<()> {
-        &self.request
-    }
-
-    /// Returns the reference to a `LocalMap` used during the handshake.
-    pub fn locals(&self) -> &LocalMap {
-        &self.locals
-    }
-
-    /// Returns the reference to a value of `T` registered in the global storage.
-    pub fn get<T>(&self) -> Option<&T>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.app.get_state(self.route)
-    }
-}
 
 /// A trait representing a function called at performing the protocol upgrade.
 pub trait OnUpgrade: Send + 'static {
     /// Creates a task for processing the upgraded protocol from the specified context.
-    fn on_upgrade(
-        self,
-        io: Upgraded,
-        cx: UpgradeContext,
-    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
+    fn on_upgrade(self, io: Upgraded) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
 }
 
 impl<F, R> OnUpgrade for F
 where
-    F: FnOnce(Upgraded, UpgradeContext) -> R + Send + 'static,
+    F: FnOnce(Upgraded) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
-    fn on_upgrade(
-        self,
-        io: Upgraded,
-        cx: UpgradeContext,
-    ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
-        Box::new((self)(io, cx).into_future())
+    fn on_upgrade(self, io: Upgraded) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
+        Box::new((self)(io).into_future())
     }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 pub(crate) struct OnUpgradeObj(
-    Box<
-        dyn FnMut(Upgraded, UpgradeContext) -> Box<dyn Future<Item = (), Error = ()> + Send>
-            + Send
-            + 'static,
-    >,
+    Box<dyn FnMut(Upgraded) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>,
 );
 
 impl OnUpgradeObj {
     pub(crate) fn new<T: OnUpgrade>(on_upgrade: T) -> Self {
         let mut on_upgrade = Some(on_upgrade);
-        OnUpgradeObj(Box::new(move |io, cx| {
+        OnUpgradeObj(Box::new(move |io| {
             let on_upgrade = on_upgrade.take().unwrap();
-            on_upgrade.on_upgrade(io, cx)
+            on_upgrade.on_upgrade(io)
         }))
     }
 
     pub(crate) fn upgrade(
         mut self,
         io: Upgraded,
-        cx: UpgradeContext,
     ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
-        (self.0)(io, cx)
+        (self.0)(io)
     }
 }

@@ -11,7 +11,7 @@
 //! use tsukuyomi::websocket::{start, Message};
 //!
 //! fn websocket(input: &mut Input) -> impl Responder {
-//!     start(input, None, |transport, _cx| {
+//!     start(input, None, |transport| {
 //!         let (sink, stream) = transport.split();
 //!         stream
 //!             .filter_map(|m| {
@@ -48,7 +48,7 @@ pub use tungstenite::protocol::Message;
 use tungstenite::protocol::{Role, WebSocketConfig};
 
 use crate::error::{Error, HttpError};
-use crate::input::upgrade::{UpgradeContext, Upgraded};
+use crate::input::upgrade::Upgraded;
 use crate::input::Input;
 use crate::output::Responder;
 
@@ -128,7 +128,7 @@ pub type Transport = WebSocketStream<Upgraded>;
 pub fn start<R>(
     input: &mut Input<'_>,
     config: Option<WebSocketConfig>,
-    f: impl FnOnce(Transport, UpgradeContext) -> R + Send + 'static,
+    f: impl FnOnce(Transport) -> R + Send + 'static,
 ) -> impl Responder
 where
     R: IntoFuture<Item = (), Error = ()>,
@@ -136,12 +136,10 @@ where
 {
     let response = handshake(input)?;
 
-    input
-        .body_mut()
-        .on_upgrade(move |io: Upgraded, cx: UpgradeContext| {
-            let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
-            f(transport, cx).into_future()
-        });
+    input.body_mut().on_upgrade(move |io: Upgraded| {
+        let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
+        f(transport).into_future()
+    });
 
     Ok::<_, Error>(response)
 }
