@@ -80,4 +80,3 @@ websocket = ["base64", "sha1", "tungstenite", "tokio-tungstenite"]
 full = ["secure", "tls", "websocket"]
 
 codegen = ["tsukuyomi-codegen"]
-nightly = ["tsukuyomi-codegen/nightly"]

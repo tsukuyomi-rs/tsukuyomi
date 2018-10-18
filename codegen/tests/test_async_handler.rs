@@ -1,5 +1,3 @@
-#![cfg(feature = "nightly")]
-
 extern crate futures;
 extern crate tsukuyomi;
 extern crate tsukuyomi_codegen;

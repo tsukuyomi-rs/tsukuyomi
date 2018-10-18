@@ -22,37 +22,6 @@ use std::marker::PhantomData;
 /// map.entry(&KEY).or_insert("Alice".into());
 /// # }
 /// ```
-#[cfg(not(feature = "nightly"))]
-#[macro_export]
-macro_rules! local_key {
-    ($(
-        $(#[$m:meta])*
-        static $NAME:ident : $t:ty;
-    )*) => {$(
-        $(#[$m])*
-        static $NAME: $crate::input::local_map::LocalKey<$t> = {
-            fn __type_id() -> ::std::any::TypeId {
-                struct __A;
-                ::std::any::TypeId::of::<__A>()
-            }
-            $crate::input::local_map::LocalKey {
-                __type_id,
-                __marker: ::std::marker::PhantomData,
-            }
-        };
-    )*};
-    ($(
-        $(#[$m:meta])*
-        static $NAME:ident : $t:ty
-    );+) => {
-        local_key!($(
-            $(#[$m])*
-            static $NAME: $t;
-        )*);
-    };
-}
-
-#[cfg(feature = "nightly")]
 #[macro_export]
 macro_rules! local_key {
     ($(

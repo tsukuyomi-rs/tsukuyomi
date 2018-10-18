@@ -148,15 +148,13 @@ fn scope_nested() {
         .scope(|s: &mut Scope| {
             s.route(("/foo", dummy_handler)); // /foo
             s.route(("/bar", dummy_handler)); // /bar
-        })
-        .mount("/baz", |s| {
+        }).mount("/baz", |s| {
             s.route(("/", dummy_handler)); // /baz
 
             s.scope(|s: &mut Scope| {
                 s.route(("/foobar", dummy_handler)); // /baz/foobar
             });
-        })
-        .route(("/hoge", dummy_handler)) // /hoge
+        }).route(("/hoge", dummy_handler)) // /hoge
         .finish()
         .unwrap();
 

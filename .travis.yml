@@ -19,7 +19,7 @@ matrix:
   allow_failures:
     - rust: nightly
   include:
-    - rust: stable
+    - rust: beta
       env: TSUKUYOMI_DENY_WARNINGS=1
       before_script:
         - rustup component add rustfmt-preview clippy-preview
@@ -31,12 +31,12 @@ matrix:
         - cargo test --no-default-features
         - cargo test --features full
 
-    - rust: 1.26.2
-    - rust: stable
-      os: osx
-    - rust: stable
-      os: windows
+    # - rust: 1.30.0
     - rust: beta
+      os: osx
+    - rust: beta
+      os: windows
+    # - rust: beta
     - rust: nightly
 
     # FIXME: enable before releasing 0.3.0

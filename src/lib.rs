@@ -8,8 +8,9 @@
     missing_docs,
     missing_debug_implementations,
     nonstandard_style,
-    //rust_2018_idioms,
-    unused,
+    rust_2018_idioms,
+    rust_2018_compatibility,
+    unused
 )]
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
