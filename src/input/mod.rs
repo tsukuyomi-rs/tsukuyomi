@@ -10,6 +10,7 @@ mod global;
 
 // re-exports
 pub use self::body::RequestBody;
+pub use self::cookie::Cookies;
 pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
 pub use crate::recognizer::captures::Params;
@@ -48,11 +49,10 @@ pub mod header {
 
 // ====
 
-use cookie::CookieJar;
 use http::Request;
 
 use crate::app::{App, RouteId};
-use crate::error::Failure;
+use crate::error::Error;
 use crate::recognizer::captures::Captures;
 
 use self::cookie::CookieManager;
@@ -73,7 +73,7 @@ impl InputParts {
         InputParts {
             route,
             captures,
-            cookies: CookieManager::new(),
+            cookies: CookieManager::default(),
             locals: LocalMap::default(),
             _priv: (),
         }
@@ -155,14 +155,8 @@ impl<'task> Input<'task> {
     ///
     /// This function will perform parsing when called at first, and returns an `Err`
     /// if the value of header field is invalid.
-    pub fn cookies(&mut self) -> Result<&mut CookieJar, Failure> {
-        let cookies = &mut self.parts.cookies;
-        if !cookies.is_init() {
-            cookies
-                .init(self.request.headers())
-                .map_err(Failure::bad_request)?;
-        }
-        Ok(&mut cookies.jar)
+    pub fn cookies(&mut self) -> Result<Cookies<'_>, Error> {
+        self.parts.cookies.init(self.request.headers())
     }
 
     /// Returns a reference to `LocalMap` for managing request-local data.
