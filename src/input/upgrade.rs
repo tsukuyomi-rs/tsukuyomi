@@ -46,29 +46,81 @@
 //! }
 //! ```
 
-use futures::{Future, IntoFuture};
-pub use hyper::upgrade::Upgraded;
+use bytes::{Buf, BufMut};
+use futures::{Future, IntoFuture, Poll};
+use hyper::upgrade::Upgraded;
+use std::io;
+use tokio::io as tokio_io;
+
+/// An asynchronous I/O upgraded from HTTP connection.
+///
+/// Currenly, this type is implemented as a thin wrapper of `hyper::upgrade::Upgraded`.
+#[derive(Debug)]
+pub struct UpgradedIo(Upgraded);
+
+impl io::Read for UpgradedIo {
+    #[inline]
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl io::Write for UpgradedIo {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl tokio_io::AsyncRead for UpgradedIo {
+    #[inline]
+    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [u8]) -> bool {
+        self.0.prepare_uninitialized_buffer(buf)
+    }
+
+    #[inline]
+    fn read_buf<B: BufMut>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
+        self.0.read_buf(buf)
+    }
+}
+
+impl tokio_io::AsyncWrite for UpgradedIo {
+    #[inline]
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        tokio_io::AsyncWrite::shutdown(&mut self.0)
+    }
+
+    #[inline]
+    fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
+        self.0.write_buf(buf)
+    }
+}
 
 /// A trait representing a function called at performing the protocol upgrade.
 pub trait OnUpgrade: Send + 'static {
     /// Creates a task for processing the upgraded protocol from the specified context.
-    fn on_upgrade(self, io: Upgraded) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
+    fn on_upgrade(self, io: UpgradedIo) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static>;
 }
 
 impl<F, R> OnUpgrade for F
 where
-    F: FnOnce(Upgraded) -> R + Send + 'static,
+    F: FnOnce(UpgradedIo) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
-    fn on_upgrade(self, io: Upgraded) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
+    fn on_upgrade(self, io: UpgradedIo) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
         Box::new((self)(io).into_future())
     }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 pub(crate) struct OnUpgradeObj(
-    Box<dyn FnMut(Upgraded) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>,
+    Box<dyn FnMut(UpgradedIo) -> Box<dyn Future<Item = (), Error = ()> + Send> + Send + 'static>,
 );
 
 impl OnUpgradeObj {
@@ -84,6 +136,6 @@ impl OnUpgradeObj {
         mut self,
         io: Upgraded,
     ) -> Box<dyn Future<Item = (), Error = ()> + Send + 'static> {
-        (self.0)(io)
+        (self.0)(UpgradedIo(io))
     }
 }

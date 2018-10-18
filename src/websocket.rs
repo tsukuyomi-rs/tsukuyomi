@@ -48,7 +48,7 @@ pub use tungstenite::protocol::Message;
 use tungstenite::protocol::{Role, WebSocketConfig};
 
 use crate::error::{Error, HttpError};
-use crate::input::upgrade::Upgraded;
+use crate::input::upgrade::UpgradedIo;
 use crate::input::Input;
 use crate::output::Responder;
 
@@ -122,7 +122,7 @@ pub fn handshake(input: &mut Input<'_>) -> Result<Response<()>, HandshakeError> 
 }
 
 /// A transport for exchanging data frames with the peer.
-pub type Transport = WebSocketStream<Upgraded>;
+pub type Transport = WebSocketStream<UpgradedIo>;
 
 /// A helper function for creating a WebSocket endpoint.
 pub fn start<R>(
@@ -136,7 +136,7 @@ where
 {
     let response = handshake(input)?;
 
-    input.body_mut().on_upgrade(move |io: Upgraded| {
+    input.body_mut().on_upgrade(move |io: UpgradedIo| {
         let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
         f(transport).into_future()
     });
