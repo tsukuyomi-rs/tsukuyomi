@@ -7,12 +7,13 @@ use hyper::body::Body;
 use hyper::service::{NewService, Service};
 use std::mem;
 
-use crate::error::{CritError, Error, HttpError};
+use crate::error::{Error, HttpError};
 use crate::handler::Handle;
 use crate::input::{Input, InputParts, RequestBody};
 use crate::modifier::{AfterHandle, BeforeHandle, Modifier};
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::captures::Captures;
+use crate::server::CritError;
 
 use super::{App, ModifierId, RouteData, RouteId, ScopeId};
 

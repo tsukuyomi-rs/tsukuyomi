@@ -10,7 +10,7 @@ use tsukuyomi::output::{Output, ResponseBody};
 use tsukuyomi::server::local::LocalServer;
 use tsukuyomi::{App, Error, Input};
 
-use http::Response;
+use http::{Request, Response};
 use std::sync::{Arc, Mutex};
 
 struct MarkModifier<T1, T2>
@@ -63,7 +63,11 @@ fn global_modifier() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Default::default())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B", "H", "A"]);
 }
 
@@ -93,7 +97,11 @@ fn global_modifier_error_on_before() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Default::default())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B"]);
 }
 
@@ -133,7 +141,11 @@ fn global_modifiers() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Default::default())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }
 
@@ -182,11 +194,19 @@ fn scoped_modifier() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/path1").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Request::get("/path1").body(Default::default()).unwrap())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.client().get("/path2").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Request::get("/path2").body(Default::default()).unwrap())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "H2", "A1"]);
 }
 
@@ -253,11 +273,19 @@ fn nested_modifiers() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/path/to").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Request::get("/path/to").body(Default::default()).unwrap())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.client().get("/path/to/a").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Request::get("/path/to/a").body(Default::default()).unwrap())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "B3", "A2", "A1"]);
 }
 
@@ -307,6 +335,10 @@ fn route_modifiers() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server.client().get("/path/to").execute().unwrap();
+    let _ = server
+        .client()
+        .unwrap()
+        .perform(Request::get("/path/to").body(Default::default()).unwrap())
+        .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }

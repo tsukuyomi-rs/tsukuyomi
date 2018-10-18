@@ -7,7 +7,7 @@
 //! # extern crate http;
 //! # use tsukuyomi::app::App;
 //! # use tsukuyomi::handler;
-//! # use http::{StatusCode, header};
+//! # use http::{Request, StatusCode, header};
 //! use tsukuyomi::server::local::LocalServer;
 //!
 //! let app = App::builder()
@@ -20,11 +20,14 @@
 //! // without the low level I/O.
 //! let mut server = LocalServer::new(app).unwrap();
 //!
+//! let mut client = server.client().unwrap();
+//!
 //! // Emulate an HTTP request and retrieve its response.
-//! let response = server.client()
-//!     .get("/hello")
-//!     .execute()
-//!     .unwrap();
+//! let request = Request::get("/hello")
+//!     .body(Default::default())
+//!     .expect("should be a valid HTTP request");
+//! let response = client.perform(request)
+//!     .expect("unrecoverable error");
 //!
 //! // Do some stuff...
 //! assert_eq!(response.status(), StatusCode::OK);
@@ -34,37 +37,43 @@
 
 // TODO: emulates some behaviour of Hyper
 
-use bytes::Bytes;
-use futures::{Async, Future, Poll, Stream};
-use http::header::{HeaderName, HeaderValue};
-use http::{request, HttpTryFrom, Method, Request, Response, Uri};
-use hyper::Body;
 use std::borrow::Cow;
-use std::{io, mem, str};
+use std::io;
+use std::mem;
+use std::str;
 
+use bytes::{Buf, Bytes};
+use futures::{Async, Future, Poll};
+use http::header::HeaderMap;
+use http::{Request, Response};
+use hyper::body::Payload;
+use hyper::service::{NewService, Service};
 use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
 use tokio::runtime::{self, Runtime};
 
-use crate::app::service::{AppService, AppServiceFuture};
-use crate::app::App;
-use crate::error::CritError;
-use crate::input;
-use crate::output::{ResponseBody, ResponseBodyKind};
+use super::CritError;
 
 /// A local server which emulates an HTTP service without using the low-level transport.
 ///
 /// This type wraps an `App` and a single-threaded Tokio runtime.
 #[derive(Debug)]
-pub struct LocalServer {
-    app: App,
+pub struct LocalServer<S> {
+    new_service: S,
     runtime: Runtime,
 }
 
-impl LocalServer {
+impl<S> LocalServer<S>
+where
+    S: NewService,
+    S::Future: Send + 'static,
+    S::Service: Send + 'static,
+    <S::Service as Service>::ResBody: Payload,
+    S::InitError: Send + 'static,
+{
     /// Creates a new instance of `LocalServer` from a configured `App`.
     ///
     /// This function will return an error if the construction of the runtime is failed.
-    pub fn new(app: App) -> io::Result<LocalServer> {
+    pub fn new(new_service: S) -> io::Result<LocalServer<S>> {
         let mut pool = ThreadPoolBuilder::new();
         pool.pool_size(1);
 
@@ -73,174 +82,85 @@ impl LocalServer {
             .blocking_threads(1)
             .build()?;
 
-        Ok(LocalServer { app, runtime })
+        Ok(LocalServer {
+            new_service,
+            runtime,
+        })
     }
 
     /// Create a `Client` associated with this server.
-    pub fn client(&mut self) -> Client<'_> {
-        Client {
-            service: self.app.new_service(),
+    pub fn client(&mut self) -> Result<Client<'_, S::Service>, S::InitError> {
+        let service = self.runtime.block_on(self.new_service.new_service())?;
+        Ok(Client {
+            service,
             runtime: &mut self.runtime,
-        }
+        })
     }
 }
 
 /// A type which emulates a connection to a peer.
 #[derive(Debug)]
-pub struct Client<'a> {
-    service: AppService,
+pub struct Client<'a, S> {
+    service: S,
     runtime: &'a mut Runtime,
 }
 
-macro_rules! impl_methods_for_client {
-    ($(
-        $(#[$doc:meta])*
-        $name:ident => $METHOD:ident,
-    )*) => {$(
-        $(#[$doc])*
-        #[inline]
-        pub fn $name<'b, U>(&'b mut self, uri: U) -> LocalRequest<'a, 'b>
-        where
-            Uri: HttpTryFrom<U>,
-        {
-            self.request(Method::$METHOD, uri)
-        }
-    )*};
-}
-
-impl<'a> Client<'a> {
-    /// Create a `LocalRequest` associated with this client.
-    pub fn request<'b, M, U>(&'b mut self, method: M, uri: U) -> LocalRequest<'a, 'b>
-    where
-        Method: HttpTryFrom<M>,
-        Uri: HttpTryFrom<U>,
-    {
-        let mut request = Request::builder();
-        request.method(method);
-        request.uri(uri);
-
-        LocalRequest {
-            client: Some(self),
-            request,
-            body: Default::default(),
-        }
+impl<'a, S> Client<'a, S>
+where
+    S: Service,
+    S::ResBody: Payload,
+    S::Future: Send + 'static,
+{
+    /// Applies an HTTP request to this client and get its response.
+    pub fn perform(&mut self, request: Request<S::ReqBody>) -> Result<Response<Data>, CritError> {
+        let future = TestResponseFuture::Initial(self.service.call(request));
+        self.runtime.block_on(future)
     }
 
-    impl_methods_for_client![
-        /// Equivalent to `Client::request(Method::GET, uri)`.
-        get => GET,
-        /// Equivalent to `Client::request(Method::POST, uri)`.
-        post => POST,
-        /// Equivalent to `Client::request(Method::PUT, uri)`.
-        put => PUT,
-        /// Equivalent to `Client::request(Method::DELETE, uri)`.
-        delete => DELETE,
-        /// Equivalent to `Client::request(Method::HEAD, uri)`.
-        head => HEAD,
-        /// Equivalent to `Client::request(Method::PATCH, uri)`.
-        patch => PATCH,
-    ];
-}
-
-/// A type which emulates an HTTP request from a peer.
-#[derive(Debug)]
-pub struct LocalRequest<'a: 'b, 'b> {
-    client: Option<&'b mut Client<'a>>,
-    request: request::Builder,
-    body: RequestBody,
-}
-
-impl<'a, 'b> LocalRequest<'a, 'b> {
-    /// Modifies the value of HTTP method of this request.
-    pub fn method<M>(&mut self, method: M) -> &mut LocalRequest<'a, 'b>
-    where
-        Method: HttpTryFrom<M>,
-    {
-        self.request.method(method);
-        self
-    }
-
-    /// Modifies the value of URI of this request.
-    pub fn uri<U>(&mut self, uri: U) -> &mut LocalRequest<'a, 'b>
-    where
-        Uri: HttpTryFrom<U>,
-    {
-        self.request.uri(uri);
-        self
-    }
-
-    /// Inserts a header value into this request.
-    pub fn header<K, V>(&mut self, key: K, value: V) -> &mut LocalRequest<'a, 'b>
-    where
-        HeaderName: HttpTryFrom<K>,
-        HeaderValue: HttpTryFrom<V>,
-    {
-        self.request.header(key, value);
-        self
-    }
-
-    /// Sets a message body of this request.
-    pub fn body(&mut self, body: impl Into<RequestBody>) -> &mut LocalRequest<'a, 'b> {
-        self.body = body.into();
-        self
-    }
-
-    fn take(&mut self) -> LocalRequest<'a, 'b> {
-        LocalRequest {
-            client: self.client.take(),
-            request: mem::replace(&mut self.request, Request::builder()),
-            body: mem::replace(&mut self.body, Default::default()),
-        }
-    }
-
-    /// Creates an HTTP request from the current configuration and retrieve its response.
-    pub fn execute(&mut self) -> Result<Response<Data>, CritError> {
-        let LocalRequest {
-            client,
-            mut request,
-            body: RequestBody(body),
-        } = self.take();
-
-        let client = client.expect("This LocalRequest has already been used.");
-        let request = request.body(body)?;
-
-        let future = client.service.dispatch_request(request);
-        client.runtime.block_on(TestResponseFuture::Initial(future))
+    /// Returns the reference to the underlying Tokio runtime.
+    pub fn runtime(&mut self) -> &mut Runtime {
+        &mut *self.runtime
     }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 #[derive(Debug)]
-enum TestResponseFuture {
-    Initial(AppServiceFuture),
-    Receive(Response<Receive>),
+enum TestResponseFuture<F, Bd: Payload> {
+    Initial(F),
+    Receive(Response<Receive<Bd>>),
     Done,
 }
 
-enum Polled {
-    Response(Response<ResponseBody>),
+enum Polled<Bd> {
+    Response(Response<Bd>),
     Received(Data),
 }
 
-impl Future for TestResponseFuture {
+impl<F, Bd> Future for TestResponseFuture<F, Bd>
+where
+    F: Future<Item = Response<Bd>>,
+    F::Error: Into<CritError>,
+    Bd: Payload,
+{
     type Item = Response<Data>;
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        use self::TestResponseFuture::*;
         loop {
             let polled = match *self {
-                TestResponseFuture::Initial(ref mut f) => {
-                    Some(Polled::Response(try_ready!(f.poll_ready())))
+                Initial(ref mut f) => {
+                    Some(Polled::Response(try_ready!(f.poll().map_err(Into::into))))
                 }
-                TestResponseFuture::Receive(ref mut res) => {
-                    Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))
-                }
+                Receive(ref mut res) => Some(Polled::Received(try_ready!(
+                    res.body_mut().poll().map_err(Into::into)
+                ))),
                 _ => unreachable!("unexpected state"),
             };
 
             match (mem::replace(self, TestResponseFuture::Done), polled) {
                 (TestResponseFuture::Initial(..), Some(Polled::Response(response))) => {
-                    *self = TestResponseFuture::Receive(response.map(Receive::new));
+                    *self = TestResponseFuture::Receive(response.map(self::Receive::new));
                 }
                 (TestResponseFuture::Receive(response), Some(Polled::Received(received))) => {
                     return Ok(response.map(|_| received).into())
@@ -251,81 +171,66 @@ impl Future for TestResponseFuture {
     }
 }
 
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct RequestBody(input::body::RequestBody);
-
-impl RequestBody {
-    fn from_hyp(body: Body) -> RequestBody {
-        RequestBody(input::body::RequestBody::from_hyp(body))
-    }
-}
-
-impl Default for RequestBody {
-    fn default() -> Self {
-        RequestBody::from_hyp(Default::default())
-    }
-}
-
-impl From<()> for RequestBody {
-    fn from(_: ()) -> Self {
-        Default::default()
-    }
-}
-
-macro_rules! impl_from_for_request_body {
-    ($($t:ty,)*) => {$(
-        impl From<$t> for RequestBody {
-            fn from(body: $t) -> Self {
-                RequestBody::from_hyp(body.into())
-            }
-        }
-    )*};
-}
-
-impl_from_for_request_body![
-    &'static str,
-    &'static [u8],
-    Vec<u8>,
-    String,
-    Cow<'static, str>,
-    Cow<'static, [u8]>,
-    Bytes,
-];
-
 // ==== Data ====
 
 #[derive(Debug)]
-pub(crate) struct Receive(ReceiveInner);
-
-#[derive(Debug)]
-enum ReceiveInner {
-    Empty,
-    Sized(Option<Bytes>),
-    Chunked(Body, Vec<Bytes>),
+enum ReceiveState<Bd: Payload> {
+    Init(Bd),
+    ReceiveChunks(Bd, Vec<Bytes>),
+    ReceiveTrailers(Bd, Vec<Bytes>),
+    Gone,
 }
 
-impl Receive {
-    fn new(body: ResponseBody) -> Receive {
-        match body.0 {
-            ResponseBodyKind::Empty => Receive(ReceiveInner::Empty),
-            ResponseBodyKind::Sized(data) => Receive(ReceiveInner::Sized(Some(data))),
-            ResponseBodyKind::Chunked(body) => Receive(ReceiveInner::Chunked(body, vec![])),
+#[derive(Debug)]
+pub(crate) struct Receive<Bd: Payload> {
+    state: ReceiveState<Bd>,
+    content_length: Option<u64>,
+}
+
+impl<Bd: Payload> Receive<Bd> {
+    fn new(body: Bd) -> Receive<Bd> {
+        let content_length = body.content_length();
+        Receive {
+            state: ReceiveState::Init(body),
+            content_length,
         }
     }
+}
 
-    pub(crate) fn poll_ready(&mut self) -> Poll<Data, CritError> {
-        match self.0 {
-            ReceiveInner::Empty => Ok(Async::Ready(Data(DataInner::Empty))),
-            ReceiveInner::Sized(ref mut data) => Ok(Async::Ready(Data(DataInner::Sized(
-                data.take().expect("The response body has already resolved"),
-            )))),
-            ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
-                while let Some(chunk) = try_ready!(body.poll()) {
-                    chunks.push(chunk.into());
+impl<Bd: Payload> Future for Receive<Bd> {
+    type Item = Data;
+    type Error = Bd::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        loop {
+            let trailers = match self.state {
+                ReceiveState::Init(..) => None,
+                ReceiveState::ReceiveChunks(ref mut body, ref mut chunks) => {
+                    while let Some(chunk) = try_ready!(body.poll_data()) {
+                        chunks.push(chunk.collect());
+                    }
+                    None
                 }
-                let chunks = mem::replace(chunks, vec![]);
-                Ok(Async::Ready(Data(DataInner::Chunked(chunks))))
+                ReceiveState::ReceiveTrailers(ref mut body, ..) => try_ready!(body.poll_trailers()),
+                ReceiveState::Gone => panic!("The future has already polled"),
+            };
+
+            let old_state = mem::replace(&mut self.state, ReceiveState::Gone);
+            match old_state {
+                ReceiveState::Init(body) => {
+                    self.state = ReceiveState::ReceiveChunks(body, vec![]);
+                }
+                ReceiveState::ReceiveChunks(body, chunks) => {
+                    self.state = ReceiveState::ReceiveTrailers(body, chunks);
+                }
+                ReceiveState::ReceiveTrailers(_body, chunks) => {
+                    return Ok(Async::Ready(Data {
+                        chunks,
+                        trailers,
+                        content_length: self.content_length,
+                    }))
+                }
+                ReceiveState::Gone => unreachable!("unexpected condition"),
             }
         }
     }
@@ -335,54 +240,31 @@ impl Receive {
 ///
 /// This type is usually used by the testing framework.
 #[derive(Debug)]
-pub struct Data(DataInner);
-
-#[derive(Debug)]
-enum DataInner {
-    Empty,
-    Sized(Bytes),
-    Chunked(Vec<Bytes>),
+pub struct Data {
+    chunks: Vec<Bytes>,
+    trailers: Option<HeaderMap>,
+    content_length: Option<u64>,
 }
 
 #[allow(missing_docs)]
 impl Data {
-    pub fn is_sized(&self) -> bool {
-        match self.0 {
-            DataInner::Empty | DataInner::Sized(..) => true,
-            _ => false,
-        }
+    pub fn chunks(&self) -> &Vec<Bytes> {
+        &self.chunks
     }
 
-    pub fn is_chunked(&self) -> bool {
-        !self.is_sized()
+    pub fn trailers(&self) -> Option<&HeaderMap> {
+        self.trailers.as_ref()
     }
 
-    pub fn content_length(&self) -> Option<usize> {
-        match self.0 {
-            DataInner::Empty => Some(0),
-            DataInner::Sized(ref data) => Some(data.len()),
-            _ => None,
-        }
-    }
-
-    pub fn as_chunks(&self) -> Option<&[Bytes]> {
-        match self.0 {
-            DataInner::Chunked(ref chunks) => Some(&chunks[..]),
-            _ => None,
-        }
+    pub fn content_length(&self) -> Option<u64> {
+        self.content_length
     }
 
     pub fn to_bytes(&self) -> Cow<'_, [u8]> {
-        match self.0 {
-            DataInner::Empty => Cow::Borrowed(&[]),
-            DataInner::Sized(ref data) => Cow::Borrowed(&data[..]),
-            DataInner::Chunked(ref chunks) => {
-                Cow::Owned(chunks.iter().fold(Vec::new(), |mut acc, chunk| {
-                    acc.extend_from_slice(&*chunk);
-                    acc
-                }))
-            }
-        }
+        Cow::Owned(self.chunks().iter().fold(Vec::new(), |mut acc, chunk| {
+            acc.extend_from_slice(&*chunk);
+            acc
+        }))
     }
 
     pub fn to_utf8(&self) -> Result<Cow<'_, str>, str::Utf8Error> {
