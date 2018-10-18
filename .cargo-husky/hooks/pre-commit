@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+
+[[ -n "${DISABLE_GIT_HOOKS}" ]] && {
+    echo "[warn] Git hooks are disabled by user."
+    exit 0
+}
+
+if which cargo-fmt >/dev/null 2>&1; then
+    (set -x; cargo fmt -- --check)
+fi

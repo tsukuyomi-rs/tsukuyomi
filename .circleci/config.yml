@@ -2,11 +2,14 @@ version: 2
 jobs:
   build:
     docker:
-      - image: xd009642/tarpaulin
+      - image: xd009642/tarpaulin:latest-nightly
     steps:
       - checkout
       - run:
           name: Run tarpaulin
           command: >-
+            rustc --version &&
+            cargo --version &&
+            cargo tarpaulin --version &&
             cargo tarpaulin --out Xml &&
             bash <(curl -s https://codecov.io/bash)

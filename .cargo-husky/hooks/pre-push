@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -e
+
+[[ -n "${DISABLE_GIT_HOOKS}" ]] && {
+    echo "[warn] Git hooks are disabled by user."
+    exit 0
+}
+
+BRANCH="$(git symbolic-ref --short HEAD)"
+[[ "${BRANCH:-}" = wip-* ]] && {
+    echo "[info] The current branch is working in progress."
+    exit 0
+}
+
+if rake --version >/dev/null 2>&1; then
+    (set -x; rake TSUKUYOMI_DENY_WARNINGS=1)
+else
+    echo "[warn] 'rake' is not installed."
+fi
