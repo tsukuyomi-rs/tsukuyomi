@@ -63,9 +63,9 @@ pub struct LocalServer<S> {
 impl<S> LocalServer<S>
 where
     S: NewService<ReqBody = Body, ResBody = Body>,
-    S::Service: Send + 'static,
     S::Future: Send + 'static,
-    S::InitError: Into<CritError> + 'static,
+    S::Service: Send + 'static,
+    S::InitError: Send + 'static,
 {
     /// Creates a new instance of `LocalServer` from a configured `App`.
     ///
@@ -86,15 +86,12 @@ where
     }
 
     /// Create a `Client` associated with this server.
-    pub fn client(&mut self) -> Client<'_, S::Service> {
-        let service = self
-            .runtime
-            .block_on(self.new_service.new_service().map_err(Into::into))
-            .expect("failed to construct a Service");
-        Client {
+    pub fn client(&mut self) -> Result<Client<'_, S::Service>, S::InitError> {
+        let service = self.runtime.block_on(self.new_service.new_service())?;
+        Ok(Client {
             service,
             runtime: &mut self.runtime,
-        }
+        })
     }
 }
 
