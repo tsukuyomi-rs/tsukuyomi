@@ -20,12 +20,13 @@
 //! // without the low level I/O.
 //! let mut server = LocalServer::new(app).unwrap();
 //!
+//! let mut client = server.client().unwrap();
+//!
 //! // Emulate an HTTP request and retrieve its response.
 //! let request = Request::get("/hello")
 //!     .body(Default::default())
 //!     .expect("should be a valid HTTP request");
-//! let response = server.client()
-//!     .perform(request)
+//! let response = client.perform(request)
 //!     .expect("unrecoverable error");
 //!
 //! // Do some stuff...
