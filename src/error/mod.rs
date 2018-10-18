@@ -42,13 +42,10 @@ pub use self::never::Never;
 use http::header::HeaderMap;
 use http::{header, Request, Response, StatusCode};
 use std::any::TypeId;
-use std::{error, io};
+use std::io;
 
 use crate::input::RequestBody;
 use crate::output::ResponseBody;
-
-/// A type alias representing a critical error.
-pub type CritError = Box<dyn error::Error + Send + Sync + 'static>;
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -135,7 +132,7 @@ impl HttpError for io::Error {
 
 /// A type which holds all kinds of errors occurring in handlers.
 #[derive(Debug)]
-pub struct Error(::std::result::Result<Box<dyn HttpError>, CritError>);
+pub struct Error(::std::result::Result<Box<dyn HttpError>, crate::server::CritError>);
 
 impl<E> From<E> for Error
 where
@@ -164,7 +161,7 @@ impl Error {
     /// https://docs.rs/hyper/0.12.*/hyper/service/trait.Service.html#associatedtype.Error
     pub fn critical<E>(err: E) -> Error
     where
-        E: Into<CritError>,
+        E: Into<crate::server::CritError>,
     {
         Error(Err(err.into()))
     }
@@ -235,7 +232,7 @@ impl Error {
     pub(crate) fn into_response(
         self,
         request: &Request<RequestBody>,
-    ) -> ::std::result::Result<Response<ResponseBody>, CritError> {
+    ) -> ::std::result::Result<Response<ResponseBody>, crate::server::CritError> {
         let mut err = self.0?;
         let mut response = Response::builder()
             .status(err.status())

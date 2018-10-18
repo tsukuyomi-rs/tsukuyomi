@@ -9,7 +9,8 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, mem};
 
-use crate::error::{CritError, Error, Failure};
+use crate::error::{Error, Failure};
+use crate::server::CritError;
 
 use super::global::with_get_current;
 use super::header::content_type;

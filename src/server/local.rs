@@ -34,37 +34,42 @@
 
 // TODO: emulates some behaviour of Hyper
 
+use std::borrow::Cow;
+use std::io;
+use std::mem;
+use std::str;
+
 use bytes::Bytes;
 use futures::{Async, Future, Poll, Stream};
 use http::header::{HeaderName, HeaderValue};
 use http::{request, HttpTryFrom, Method, Request, Response, Uri};
+use hyper::service::{NewService, Service};
 use hyper::Body;
-use std::borrow::Cow;
-use std::{io, mem, str};
-
 use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
 use tokio::runtime::{self, Runtime};
 
-use crate::app::service::{AppService, AppServiceFuture};
-use crate::app::App;
-use crate::error::CritError;
-use crate::input;
-use crate::output::{ResponseBody, ResponseBodyKind};
+use super::CritError;
 
 /// A local server which emulates an HTTP service without using the low-level transport.
 ///
 /// This type wraps an `App` and a single-threaded Tokio runtime.
 #[derive(Debug)]
-pub struct LocalServer {
-    app: App,
+pub struct LocalServer<S> {
+    new_service: S,
     runtime: Runtime,
 }
 
-impl LocalServer {
+impl<S> LocalServer<S>
+where
+    S: NewService<ReqBody = Body, ResBody = Body>,
+    S::Service: Send + 'static,
+    S::Future: Send + 'static,
+    S::InitError: Into<CritError> + 'static,
+{
     /// Creates a new instance of `LocalServer` from a configured `App`.
     ///
     /// This function will return an error if the construction of the runtime is failed.
-    pub fn new(app: App) -> io::Result<LocalServer> {
+    pub fn new(new_service: S) -> io::Result<LocalServer<S>> {
         let mut pool = ThreadPoolBuilder::new();
         pool.pool_size(1);
 
@@ -73,13 +78,20 @@ impl LocalServer {
             .blocking_threads(1)
             .build()?;
 
-        Ok(LocalServer { app, runtime })
+        Ok(LocalServer {
+            new_service,
+            runtime,
+        })
     }
 
     /// Create a `Client` associated with this server.
-    pub fn client(&mut self) -> Client<'_> {
+    pub fn client(&mut self) -> Client<'_, S::Service> {
+        let service = self
+            .runtime
+            .block_on(self.new_service.new_service().map_err(Into::into))
+            .expect("failed to construct a Service");
         Client {
-            service: self.app.new_service(),
+            service,
             runtime: &mut self.runtime,
         }
     }
@@ -87,8 +99,8 @@ impl LocalServer {
 
 /// A type which emulates a connection to a peer.
 #[derive(Debug)]
-pub struct Client<'a> {
-    service: AppService,
+pub struct Client<'a, S> {
+    service: S,
     runtime: &'a mut Runtime,
 }
 
@@ -99,7 +111,7 @@ macro_rules! impl_methods_for_client {
     )*) => {$(
         $(#[$doc])*
         #[inline]
-        pub fn $name<'b, U>(&'b mut self, uri: U) -> LocalRequest<'a, 'b>
+        pub fn $name<'b, U>(&'b mut self, uri: U) -> LocalRequest<'a, 'b, S>
         where
             Uri: HttpTryFrom<U>,
         {
@@ -108,9 +120,12 @@ macro_rules! impl_methods_for_client {
     )*};
 }
 
-impl<'a> Client<'a> {
+impl<'a, S> Client<'a, S>
+where
+    S: Service<ReqBody = Body, ResBody = Body>,
+{
     /// Create a `LocalRequest` associated with this client.
-    pub fn request<'b, M, U>(&'b mut self, method: M, uri: U) -> LocalRequest<'a, 'b>
+    pub fn request<'b, M, U>(&'b mut self, method: M, uri: U) -> LocalRequest<'a, 'b, S>
     where
         Method: HttpTryFrom<M>,
         Uri: HttpTryFrom<U>,
@@ -144,15 +159,19 @@ impl<'a> Client<'a> {
 
 /// A type which emulates an HTTP request from a peer.
 #[derive(Debug)]
-pub struct LocalRequest<'a: 'b, 'b> {
-    client: Option<&'b mut Client<'a>>,
+pub struct LocalRequest<'a: 'b, 'b, S: 'b> {
+    client: Option<&'b mut Client<'a, S>>,
     request: request::Builder,
-    body: RequestBody,
+    body: Body,
 }
 
-impl<'a, 'b> LocalRequest<'a, 'b> {
+impl<'a, 'b, S> LocalRequest<'a, 'b, S>
+where
+    S: Service<ReqBody = Body, ResBody = Body>,
+    S::Future: Send + 'static,
+{
     /// Modifies the value of HTTP method of this request.
-    pub fn method<M>(&mut self, method: M) -> &mut LocalRequest<'a, 'b>
+    pub fn method<M>(&mut self, method: M) -> &mut LocalRequest<'a, 'b, S>
     where
         Method: HttpTryFrom<M>,
     {
@@ -161,7 +180,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
     }
 
     /// Modifies the value of URI of this request.
-    pub fn uri<U>(&mut self, uri: U) -> &mut LocalRequest<'a, 'b>
+    pub fn uri<U>(&mut self, uri: U) -> &mut LocalRequest<'a, 'b, S>
     where
         Uri: HttpTryFrom<U>,
     {
@@ -170,7 +189,7 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
     }
 
     /// Inserts a header value into this request.
-    pub fn header<K, V>(&mut self, key: K, value: V) -> &mut LocalRequest<'a, 'b>
+    pub fn header<K, V>(&mut self, key: K, value: V) -> &mut LocalRequest<'a, 'b, S>
     where
         HeaderName: HttpTryFrom<K>,
         HeaderValue: HttpTryFrom<V>,
@@ -180,12 +199,12 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
     }
 
     /// Sets a message body of this request.
-    pub fn body(&mut self, body: impl Into<RequestBody>) -> &mut LocalRequest<'a, 'b> {
+    pub fn body(&mut self, body: impl Into<Body>) -> &mut LocalRequest<'a, 'b, S> {
         self.body = body.into();
         self
     }
 
-    fn take(&mut self) -> LocalRequest<'a, 'b> {
+    fn take(&mut self) -> LocalRequest<'a, 'b, S> {
         LocalRequest {
             client: self.client.take(),
             request: mem::replace(&mut self.request, Request::builder()),
@@ -198,31 +217,35 @@ impl<'a, 'b> LocalRequest<'a, 'b> {
         let LocalRequest {
             client,
             mut request,
-            body: RequestBody(body),
+            body,
         } = self.take();
 
         let client = client.expect("This LocalRequest has already been used.");
         let request = request.body(body)?;
 
-        let future = client.service.dispatch_request(request);
+        let future = client.service.call(request);
         client.runtime.block_on(TestResponseFuture::Initial(future))
     }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 #[derive(Debug)]
-enum TestResponseFuture {
-    Initial(AppServiceFuture),
+enum TestResponseFuture<F> {
+    Initial(F),
     Receive(Response<Receive>),
     Done,
 }
 
 enum Polled {
-    Response(Response<ResponseBody>),
+    Response(Response<Body>),
     Received(Data),
 }
 
-impl Future for TestResponseFuture {
+impl<F> Future for TestResponseFuture<F>
+where
+    F: Future<Item = Response<Body>>,
+    F::Error: Into<CritError>,
+{
     type Item = Response<Data>;
     type Error = CritError;
 
@@ -230,7 +253,7 @@ impl Future for TestResponseFuture {
         loop {
             let polled = match *self {
                 TestResponseFuture::Initial(ref mut f) => {
-                    Some(Polled::Response(try_ready!(f.poll_ready())))
+                    Some(Polled::Response(try_ready!(f.poll().map_err(Into::into))))
                 }
                 TestResponseFuture::Receive(ref mut res) => {
                     Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))
@@ -251,83 +274,28 @@ impl Future for TestResponseFuture {
     }
 }
 
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct RequestBody(input::body::RequestBody);
-
-impl RequestBody {
-    fn from_hyp(body: Body) -> RequestBody {
-        RequestBody(input::body::RequestBody::from_hyp(body))
-    }
-}
-
-impl Default for RequestBody {
-    fn default() -> Self {
-        RequestBody::from_hyp(Default::default())
-    }
-}
-
-impl From<()> for RequestBody {
-    fn from(_: ()) -> Self {
-        Default::default()
-    }
-}
-
-macro_rules! impl_from_for_request_body {
-    ($($t:ty,)*) => {$(
-        impl From<$t> for RequestBody {
-            fn from(body: $t) -> Self {
-                RequestBody::from_hyp(body.into())
-            }
-        }
-    )*};
-}
-
-impl_from_for_request_body![
-    &'static str,
-    &'static [u8],
-    Vec<u8>,
-    String,
-    Cow<'static, str>,
-    Cow<'static, [u8]>,
-    Bytes,
-];
-
 // ==== Data ====
 
 #[derive(Debug)]
-pub(crate) struct Receive(ReceiveInner);
-
-#[derive(Debug)]
-enum ReceiveInner {
-    Empty,
-    Sized(Option<Bytes>),
-    Chunked(Body, Vec<Bytes>),
+pub(crate) struct Receive {
+    body: Body,
+    chunks: Vec<Bytes>,
 }
 
 impl Receive {
-    fn new(body: ResponseBody) -> Receive {
-        match body.0 {
-            ResponseBodyKind::Empty => Receive(ReceiveInner::Empty),
-            ResponseBodyKind::Sized(data) => Receive(ReceiveInner::Sized(Some(data))),
-            ResponseBodyKind::Chunked(body) => Receive(ReceiveInner::Chunked(body, vec![])),
+    fn new(body: Body) -> Receive {
+        Receive {
+            body,
+            chunks: vec![],
         }
     }
 
     pub(crate) fn poll_ready(&mut self) -> Poll<Data, CritError> {
-        match self.0 {
-            ReceiveInner::Empty => Ok(Async::Ready(Data(DataInner::Empty))),
-            ReceiveInner::Sized(ref mut data) => Ok(Async::Ready(Data(DataInner::Sized(
-                data.take().expect("The response body has already resolved"),
-            )))),
-            ReceiveInner::Chunked(ref mut body, ref mut chunks) => {
-                while let Some(chunk) = try_ready!(body.poll()) {
-                    chunks.push(chunk.into());
-                }
-                let chunks = mem::replace(chunks, vec![]);
-                Ok(Async::Ready(Data(DataInner::Chunked(chunks))))
-            }
+        while let Some(chunk) = try_ready!(self.body.poll()) {
+            self.chunks.push(chunk.into());
         }
+        let chunks = mem::replace(&mut self.chunks, vec![]);
+        Ok(Async::Ready(Data(chunks)))
     }
 }
 
@@ -335,22 +303,12 @@ impl Receive {
 ///
 /// This type is usually used by the testing framework.
 #[derive(Debug)]
-pub struct Data(DataInner);
-
-#[derive(Debug)]
-enum DataInner {
-    Empty,
-    Sized(Bytes),
-    Chunked(Vec<Bytes>),
-}
+pub struct Data(Vec<Bytes>);
 
 #[allow(missing_docs)]
 impl Data {
     pub fn is_sized(&self) -> bool {
-        match self.0 {
-            DataInner::Empty | DataInner::Sized(..) => true,
-            _ => false,
-        }
+        false
     }
 
     pub fn is_chunked(&self) -> bool {
@@ -358,31 +316,18 @@ impl Data {
     }
 
     pub fn content_length(&self) -> Option<usize> {
-        match self.0 {
-            DataInner::Empty => Some(0),
-            DataInner::Sized(ref data) => Some(data.len()),
-            _ => None,
-        }
+        None
     }
 
     pub fn as_chunks(&self) -> Option<&[Bytes]> {
-        match self.0 {
-            DataInner::Chunked(ref chunks) => Some(&chunks[..]),
-            _ => None,
-        }
+        Some(&self.0[..])
     }
 
     pub fn to_bytes(&self) -> Cow<'_, [u8]> {
-        match self.0 {
-            DataInner::Empty => Cow::Borrowed(&[]),
-            DataInner::Sized(ref data) => Cow::Borrowed(&data[..]),
-            DataInner::Chunked(ref chunks) => {
-                Cow::Owned(chunks.iter().fold(Vec::new(), |mut acc, chunk| {
-                    acc.extend_from_slice(&*chunk);
-                    acc
-                }))
-            }
-        }
+        Cow::Owned(self.0.iter().fold(Vec::new(), |mut acc, chunk| {
+            acc.extend_from_slice(&*chunk);
+            acc
+        }))
     }
 
     pub fn to_utf8(&self) -> Result<Cow<'_, str>, str::Utf8Error> {

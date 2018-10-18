@@ -4,7 +4,6 @@ mod body;
 
 // re-exports
 pub use self::body::ResponseBody;
-pub(crate) use self::body::ResponseBodyKind;
 
 /// The type representing outputs returned from handlers.
 pub type Output = ::http::Response<ResponseBody>;

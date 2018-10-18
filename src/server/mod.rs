@@ -18,6 +18,9 @@ pub use tokio_threadpool::{blocking, BlockingError};
 
 use self::transport::Listener;
 
+/// A type alias representing a critical error.
+pub type CritError = Box<dyn error::Error + Send + Sync + 'static>;
+
 // ==== Server ====
 
 /// A builder for constructing a `Server`.
