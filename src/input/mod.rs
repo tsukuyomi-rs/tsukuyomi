@@ -144,7 +144,7 @@ impl<'task> Input<'task> {
     ///
     /// This method will return a `None` if a value of `T` is not registered in the global storage.
     #[inline]
-    pub fn get<T>(&self) -> Option<&T>
+    pub fn state<T>(&self) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
