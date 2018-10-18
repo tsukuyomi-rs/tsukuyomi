@@ -7,7 +7,7 @@
 //! # extern crate http;
 //! # use tsukuyomi::app::App;
 //! # use tsukuyomi::handler;
-//! # use http::{StatusCode, header};
+//! # use http::{Request, StatusCode, header};
 //! use tsukuyomi::server::local::LocalServer;
 //!
 //! let app = App::builder()
@@ -21,10 +21,12 @@
 //! let mut server = LocalServer::new(app).unwrap();
 //!
 //! // Emulate an HTTP request and retrieve its response.
+//! let request = Request::get("/hello")
+//!     .body(Default::default())
+//!     .expect("should be a valid HTTP request");
 //! let response = server.client()
-//!     .get("/hello")
-//!     .execute()
-//!     .unwrap();
+//!     .perform(request)
+//!     .expect("unrecoverable error");
 //!
 //! // Do some stuff...
 //! assert_eq!(response.status(), StatusCode::OK);
@@ -41,8 +43,7 @@ use std::str;
 
 use bytes::Bytes;
 use futures::{Async, Future, Poll, Stream};
-use http::header::{HeaderName, HeaderValue};
-use http::{request, HttpTryFrom, Method, Request, Response, Uri};
+use http::{Request, Response};
 use hyper::service::{NewService, Service};
 use hyper::Body;
 use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
@@ -104,127 +105,20 @@ pub struct Client<'a, S> {
     runtime: &'a mut Runtime,
 }
 
-macro_rules! impl_methods_for_client {
-    ($(
-        $(#[$doc:meta])*
-        $name:ident => $METHOD:ident,
-    )*) => {$(
-        $(#[$doc])*
-        #[inline]
-        pub fn $name<'b, U>(&'b mut self, uri: U) -> LocalRequest<'a, 'b, S>
-        where
-            Uri: HttpTryFrom<U>,
-        {
-            self.request(Method::$METHOD, uri)
-        }
-    )*};
-}
-
 impl<'a, S> Client<'a, S>
-where
-    S: Service<ReqBody = Body, ResBody = Body>,
-{
-    /// Create a `LocalRequest` associated with this client.
-    pub fn request<'b, M, U>(&'b mut self, method: M, uri: U) -> LocalRequest<'a, 'b, S>
-    where
-        Method: HttpTryFrom<M>,
-        Uri: HttpTryFrom<U>,
-    {
-        let mut request = Request::builder();
-        request.method(method);
-        request.uri(uri);
-
-        LocalRequest {
-            client: Some(self),
-            request,
-            body: Default::default(),
-        }
-    }
-
-    impl_methods_for_client![
-        /// Equivalent to `Client::request(Method::GET, uri)`.
-        get => GET,
-        /// Equivalent to `Client::request(Method::POST, uri)`.
-        post => POST,
-        /// Equivalent to `Client::request(Method::PUT, uri)`.
-        put => PUT,
-        /// Equivalent to `Client::request(Method::DELETE, uri)`.
-        delete => DELETE,
-        /// Equivalent to `Client::request(Method::HEAD, uri)`.
-        head => HEAD,
-        /// Equivalent to `Client::request(Method::PATCH, uri)`.
-        patch => PATCH,
-    ];
-}
-
-/// A type which emulates an HTTP request from a peer.
-#[derive(Debug)]
-pub struct LocalRequest<'a: 'b, 'b, S: 'b> {
-    client: Option<&'b mut Client<'a, S>>,
-    request: request::Builder,
-    body: Body,
-}
-
-impl<'a, 'b, S> LocalRequest<'a, 'b, S>
 where
     S: Service<ReqBody = Body, ResBody = Body>,
     S::Future: Send + 'static,
 {
-    /// Modifies the value of HTTP method of this request.
-    pub fn method<M>(&mut self, method: M) -> &mut LocalRequest<'a, 'b, S>
-    where
-        Method: HttpTryFrom<M>,
-    {
-        self.request.method(method);
-        self
+    /// Applies an HTTP request to this client and get its response.
+    pub fn perform(&mut self, request: Request<Body>) -> Result<Response<Data>, CritError> {
+        let future = TestResponseFuture::Initial(self.service.call(request));
+        self.runtime.block_on(future)
     }
 
-    /// Modifies the value of URI of this request.
-    pub fn uri<U>(&mut self, uri: U) -> &mut LocalRequest<'a, 'b, S>
-    where
-        Uri: HttpTryFrom<U>,
-    {
-        self.request.uri(uri);
-        self
-    }
-
-    /// Inserts a header value into this request.
-    pub fn header<K, V>(&mut self, key: K, value: V) -> &mut LocalRequest<'a, 'b, S>
-    where
-        HeaderName: HttpTryFrom<K>,
-        HeaderValue: HttpTryFrom<V>,
-    {
-        self.request.header(key, value);
-        self
-    }
-
-    /// Sets a message body of this request.
-    pub fn body(&mut self, body: impl Into<Body>) -> &mut LocalRequest<'a, 'b, S> {
-        self.body = body.into();
-        self
-    }
-
-    fn take(&mut self) -> LocalRequest<'a, 'b, S> {
-        LocalRequest {
-            client: self.client.take(),
-            request: mem::replace(&mut self.request, Request::builder()),
-            body: mem::replace(&mut self.body, Default::default()),
-        }
-    }
-
-    /// Creates an HTTP request from the current configuration and retrieve its response.
-    pub fn execute(&mut self) -> Result<Response<Data>, CritError> {
-        let LocalRequest {
-            client,
-            mut request,
-            body,
-        } = self.take();
-
-        let client = client.expect("This LocalRequest has already been used.");
-        let request = request.body(body)?;
-
-        let future = client.service.call(request);
-        client.runtime.block_on(TestResponseFuture::Initial(future))
+    /// Returns the reference to the underlying Tokio runtime.
+    pub fn runtime(&mut self) -> &mut Runtime {
+        &mut *self.runtime
     }
 }
 
