@@ -41,11 +41,12 @@ use std::io;
 use std::mem;
 use std::str;
 
-use bytes::Bytes;
-use futures::{Async, Future, Poll, Stream};
+use bytes::{Buf, Bytes};
+use futures::{Async, Future, Poll};
+use http::header::HeaderMap;
 use http::{Request, Response};
+use hyper::body::Payload;
 use hyper::service::{NewService, Service};
-use hyper::Body;
 use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
 use tokio::runtime::{self, Runtime};
 
@@ -62,9 +63,10 @@ pub struct LocalServer<S> {
 
 impl<S> LocalServer<S>
 where
-    S: NewService<ReqBody = Body, ResBody = Body>,
+    S: NewService,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
+    <S::Service as Service>::ResBody: Payload,
     S::InitError: Send + 'static,
 {
     /// Creates a new instance of `LocalServer` from a configured `App`.
@@ -104,11 +106,12 @@ pub struct Client<'a, S> {
 
 impl<'a, S> Client<'a, S>
 where
-    S: Service<ReqBody = Body, ResBody = Body>,
+    S: Service,
+    S::ResBody: Payload,
     S::Future: Send + 'static,
 {
     /// Applies an HTTP request to this client and get its response.
-    pub fn perform(&mut self, request: Request<Body>) -> Result<Response<Data>, CritError> {
+    pub fn perform(&mut self, request: Request<S::ReqBody>) -> Result<Response<Data>, CritError> {
         let future = TestResponseFuture::Initial(self.service.call(request));
         self.runtime.block_on(future)
     }
@@ -121,40 +124,42 @@ where
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 #[derive(Debug)]
-enum TestResponseFuture<F> {
+enum TestResponseFuture<F, Bd: Payload> {
     Initial(F),
-    Receive(Response<Receive>),
+    Receive(Response<Receive<Bd>>),
     Done,
 }
 
-enum Polled {
-    Response(Response<Body>),
+enum Polled<Bd> {
+    Response(Response<Bd>),
     Received(Data),
 }
 
-impl<F> Future for TestResponseFuture<F>
+impl<F, Bd> Future for TestResponseFuture<F, Bd>
 where
-    F: Future<Item = Response<Body>>,
+    F: Future<Item = Response<Bd>>,
     F::Error: Into<CritError>,
+    Bd: Payload,
 {
     type Item = Response<Data>;
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        use self::TestResponseFuture::*;
         loop {
             let polled = match *self {
-                TestResponseFuture::Initial(ref mut f) => {
+                Initial(ref mut f) => {
                     Some(Polled::Response(try_ready!(f.poll().map_err(Into::into))))
                 }
-                TestResponseFuture::Receive(ref mut res) => {
-                    Some(Polled::Received(try_ready!(res.body_mut().poll_ready())))
-                }
+                Receive(ref mut res) => Some(Polled::Received(try_ready!(
+                    res.body_mut().poll().map_err(Into::into)
+                ))),
                 _ => unreachable!("unexpected state"),
             };
 
             match (mem::replace(self, TestResponseFuture::Done), polled) {
                 (TestResponseFuture::Initial(..), Some(Polled::Response(response))) => {
-                    *self = TestResponseFuture::Receive(response.map(Receive::new));
+                    *self = TestResponseFuture::Receive(response.map(self::Receive::new));
                 }
                 (TestResponseFuture::Receive(response), Some(Polled::Received(received))) => {
                     return Ok(response.map(|_| received).into())
@@ -168,25 +173,65 @@ where
 // ==== Data ====
 
 #[derive(Debug)]
-pub(crate) struct Receive {
-    body: Body,
-    chunks: Vec<Bytes>,
+enum ReceiveState<Bd: Payload> {
+    Init(Bd),
+    ReceiveChunks(Bd, Vec<Bytes>),
+    ReceiveTrailers(Bd, Vec<Bytes>),
+    Gone,
 }
 
-impl Receive {
-    fn new(body: Body) -> Receive {
+#[derive(Debug)]
+pub(crate) struct Receive<Bd: Payload> {
+    state: ReceiveState<Bd>,
+    content_length: Option<u64>,
+}
+
+impl<Bd: Payload> Receive<Bd> {
+    fn new(body: Bd) -> Receive<Bd> {
+        let content_length = body.content_length();
         Receive {
-            body,
-            chunks: vec![],
+            state: ReceiveState::Init(body),
+            content_length,
         }
     }
+}
 
-    pub(crate) fn poll_ready(&mut self) -> Poll<Data, CritError> {
-        while let Some(chunk) = try_ready!(self.body.poll()) {
-            self.chunks.push(chunk.into());
+impl<Bd: Payload> Future for Receive<Bd> {
+    type Item = Data;
+    type Error = Bd::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        loop {
+            let trailers = match self.state {
+                ReceiveState::Init(..) => None,
+                ReceiveState::ReceiveChunks(ref mut body, ref mut chunks) => {
+                    while let Some(chunk) = try_ready!(body.poll_data()) {
+                        chunks.push(chunk.collect());
+                    }
+                    None
+                }
+                ReceiveState::ReceiveTrailers(ref mut body, ..) => try_ready!(body.poll_trailers()),
+                ReceiveState::Gone => panic!("The future has already polled"),
+            };
+
+            let old_state = mem::replace(&mut self.state, ReceiveState::Gone);
+            match old_state {
+                ReceiveState::Init(body) => {
+                    self.state = ReceiveState::ReceiveChunks(body, vec![]);
+                }
+                ReceiveState::ReceiveChunks(body, chunks) => {
+                    self.state = ReceiveState::ReceiveTrailers(body, chunks);
+                }
+                ReceiveState::ReceiveTrailers(_body, chunks) => {
+                    return Ok(Async::Ready(Data {
+                        chunks,
+                        trailers,
+                        content_length: self.content_length,
+                    }))
+                }
+                ReceiveState::Gone => unreachable!("unexpected condition"),
+            }
         }
-        let chunks = mem::replace(&mut self.chunks, vec![]);
-        Ok(Async::Ready(Data(chunks)))
     }
 }
 
@@ -194,28 +239,28 @@ impl Receive {
 ///
 /// This type is usually used by the testing framework.
 #[derive(Debug)]
-pub struct Data(Vec<Bytes>);
+pub struct Data {
+    chunks: Vec<Bytes>,
+    trailers: Option<HeaderMap>,
+    content_length: Option<u64>,
+}
 
 #[allow(missing_docs)]
 impl Data {
-    pub fn is_sized(&self) -> bool {
-        false
+    pub fn chunks(&self) -> &Vec<Bytes> {
+        &self.chunks
     }
 
-    pub fn is_chunked(&self) -> bool {
-        !self.is_sized()
+    pub fn trailers(&self) -> Option<&HeaderMap> {
+        self.trailers.as_ref()
     }
 
-    pub fn content_length(&self) -> Option<usize> {
-        None
-    }
-
-    pub fn as_chunks(&self) -> Option<&[Bytes]> {
-        Some(&self.0[..])
+    pub fn content_length(&self) -> Option<u64> {
+        self.content_length
     }
 
     pub fn to_bytes(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(self.0.iter().fold(Vec::new(), |mut acc, chunk| {
+        Cow::Owned(self.chunks().iter().fold(Vec::new(), |mut acc, chunk| {
             acc.extend_from_slice(&*chunk);
             acc
         }))
