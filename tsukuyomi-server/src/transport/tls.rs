@@ -1,4 +1,4 @@
-use failure::Error;
+use failure::{bail, format_err, Error};
 use rustls::internal::pemfile;
 use rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
 use std::path::PathBuf;

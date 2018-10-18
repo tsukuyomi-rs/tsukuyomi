@@ -1,7 +1,39 @@
-//! The implementation of low level HTTP server.
+//! An implementation of HTTP server based on Hyper, for general purpose.
+
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-server/0.1.0")]
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    nonstandard_style,
+    rust_2018_idioms,
+    rust_2018_compatibility,
+    unused
+)]
+#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
+#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
+
+extern crate bytes;
+extern crate failure;
+#[macro_use]
+extern crate futures;
+extern crate http;
+extern crate hyper;
+#[macro_use]
+extern crate log;
+extern crate tokio;
+extern crate tokio_threadpool;
+
+#[cfg(feature = "tls")]
+extern crate rustls;
+#[cfg(feature = "tls")]
+extern crate tokio_rustls;
 
 pub mod local;
 pub mod transport;
+
+use std::error;
+use std::mem;
+use std::sync::Arc;
 
 use failure::Error;
 use futures::prelude::*;
@@ -9,10 +41,6 @@ use http::Request;
 use hyper::body::{Body, Payload};
 use hyper::server::conn::Http;
 use hyper::service::{NewService, Service};
-use std::error;
-use std::mem;
-use std::sync::Arc;
-use tokio;
 use tokio::runtime::{self, Runtime};
 pub use tokio_threadpool::{blocking, BlockingError};
 

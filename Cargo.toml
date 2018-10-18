@@ -49,11 +49,8 @@ serde = { version = "1.0.66", features = ["derive"] }
 serde_json = "1.0.20"
 time = "0.1.40"
 tokio = "0.1.7"
-tokio-threadpool = "0.1.5"
 
-# for TLS
-rustls = { version = "0.14.0", optional = true }
-tokio-rustls = { version = "0.8.0", optional = true }
+tsukuyomi-server = { version = "0.1.0", path = "tsukuyomi-server" }
 
 # for WebSocket
 base64 = { version = "0.9.2", optional = true }
@@ -75,12 +72,16 @@ secure = [
   "cookie/secure",
 ]
 tls = [
-  "rustls",
-  "tokio-rustls",
+  "tsukuyomi-server/tls",
 ]
 websocket = [
   "base64",
   "sha1",
   "tokio-tungstenite",
   "tungstenite",
+]
+
+[workspace]
+members = [
+  "tsukuyomi-server",
 ]

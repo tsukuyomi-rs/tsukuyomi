@@ -15,6 +15,8 @@
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
+extern crate tsukuyomi_server;
+
 extern crate bytes;
 extern crate cookie;
 extern crate either;
@@ -35,15 +37,9 @@ extern crate serde;
 extern crate serde_json;
 extern crate time;
 extern crate tokio;
-extern crate tokio_threadpool;
 #[cfg(test)]
 #[macro_use]
 extern crate matches;
-
-#[cfg(feature = "tls")]
-extern crate rustls;
-#[cfg(feature = "tls")]
-extern crate tokio_rustls;
 
 #[cfg(feature = "websocket")]
 extern crate base64;
@@ -63,7 +59,12 @@ pub mod json;
 pub mod modifier;
 pub mod output;
 pub(crate) mod recognizer;
-pub mod server;
+
+/// The implementation of low level HTTP server.
+pub mod server {
+    #[doc(no_inline)]
+    pub use tsukuyomi_server::*;
+}
 
 #[cfg(feature = "websocket")]
 pub mod websocket;
