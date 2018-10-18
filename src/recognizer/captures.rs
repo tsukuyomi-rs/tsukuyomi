@@ -49,7 +49,7 @@ pub(crate) struct Captures {
     pub(super) wildcard: Option<(usize, usize)>,
 }
 
-#[allow(missing_docs)]
+/// A proxy object for accessing extracted parameters.
 #[derive(Debug)]
 pub struct Params<'input> {
     path: &'input str,
@@ -57,7 +57,6 @@ pub struct Params<'input> {
     captures: Option<&'input Captures>,
 }
 
-#[allow(missing_docs)]
 impl<'input> Params<'input> {
     pub(crate) fn new(
         path: &'input str,
@@ -72,22 +71,26 @@ impl<'input> Params<'input> {
         }
     }
 
+    /// Returns `true` if the extracted paramater exists.
     pub fn is_empty(&self) -> bool {
         self.captures.map_or(true, |caps| {
             caps.params.is_empty() && caps.wildcard.is_none()
         })
     }
 
+    /// Returns the value of `i`-th parameter, if exists.
     pub fn get(&self, i: usize) -> Option<&str> {
         let &(s, e) = self.captures?.params.get(i)?;
         self.path.get(s..e)
     }
 
+    /// Returns the value of wildcard parameter, if exists.
     pub fn get_wildcard(&self) -> Option<&str> {
         let (s, e) = self.captures?.wildcard?;
         self.path.get(s..e)
     }
 
+    /// Returns the value of parameter whose name is equal to `name`, if exists.
     pub fn name(&self, name: &str) -> Option<&str> {
         match name {
             "*" => self.get_wildcard(),
