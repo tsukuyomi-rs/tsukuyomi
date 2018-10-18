@@ -4,11 +4,11 @@ use futures::Poll;
 use rustls::ServerSession;
 use std::io;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::TcpStream;
+#[cfg(unix)]
+use tokio::net::UnixStream;
 #[cfg(feature = "tls")]
 use tokio_rustls::TlsStream;
-use tokio_tcp::TcpStream;
-#[cfg(unix)]
-use tokio_uds::UnixStream;
 
 #[derive(Debug)]
 pub(super) enum MaybeTls<S> {

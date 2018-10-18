@@ -9,11 +9,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fmt, io, mem};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::{TcpListener, TcpStream};
+#[cfg(unix)]
+use tokio::net::{UnixListener, UnixStream};
 #[cfg(feature = "tls")]
 use tokio_rustls::{Accept as AcceptAsync, TlsAcceptor};
-use tokio_tcp::{TcpListener, TcpStream};
-#[cfg(unix)]
-use tokio_uds::{UnixListener, UnixStream};
 
 use super::io::{Io, MaybeTls};
 #[cfg(feature = "tls")]

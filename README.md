@@ -1,6 +1,6 @@
 <img src="https://raw.githubusercontent.com/tsukuyomi-rs/tsukuyomi/master/tsukuyomi-header.png" alt="header" width="500" />
 
-> A Web framework for Rust.
+> An Asynchronous Web framework for Rust.
 
 ---
 

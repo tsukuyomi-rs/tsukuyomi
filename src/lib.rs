@@ -35,10 +35,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate time;
 extern crate tokio;
-extern crate tokio_tcp;
 extern crate tokio_threadpool;
-#[cfg(unix)]
-extern crate tokio_uds;
 #[cfg(test)]
 #[macro_use]
 extern crate matches;
