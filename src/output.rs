@@ -1,21 +1,93 @@
 //! Components for constructing HTTP responses.
 
-// re-exports
-pub use crate::server::service::http::Body as ResponseBody;
-
-/// The type representing outputs returned from handlers.
-pub type Output = ::http::Response<ResponseBody>;
-
-// ====
-
+use bytes::{Buf, Bytes, IntoBuf};
 use either::Either;
-use futures::{Async, Future, Poll};
-use http::header::HeaderValue;
+use futures::{Async, Future, Poll, Stream};
+use http::header::{HeaderMap, HeaderValue};
 use http::{header, Response, StatusCode};
 
 use crate::error::{Error, HttpError, Never};
 use crate::input::{self, Input};
-use crate::server::service::http::Body;
+use crate::server::service::http::{Body, Payload};
+
+/// A type representing the message body in an HTTP response.
+#[derive(Debug, Default)]
+pub struct ResponseBody(Body);
+
+impl ResponseBody {
+    /// Creates an empty `ResponseBody`.
+    #[inline]
+    pub fn empty() -> ResponseBody {
+        Default::default()
+    }
+
+    /// Wraps a `Stream` into a `ResponseBody`.
+    pub fn wrap_stream<S>(stream: S) -> ResponseBody
+    where
+        S: Stream + Send + 'static,
+        S::Error: Into<crate::server::CritError>,
+        S::Item: IntoBuf,
+    {
+        ResponseBody(Body::wrap_stream(
+            stream.map(|chunk| chunk.into_buf().collect::<Bytes>()),
+        ))
+    }
+}
+
+impl From<()> for ResponseBody {
+    fn from(_: ()) -> Self {
+        ResponseBody(Body::empty())
+    }
+}
+
+macro_rules! impl_response_body {
+    ($($t:ty,)*) => {$(
+        impl From<$t> for ResponseBody {
+            fn from(body: $t) -> Self {
+                ResponseBody(Body::from(body))
+            }
+        }
+    )*};
+}
+
+impl_response_body! {
+    &'static str,
+    &'static [u8],
+    String,
+    Vec<u8>,
+    bytes::Bytes,
+    std::borrow::Cow<'static, str>,
+    std::borrow::Cow<'static, [u8]>,
+    crate::server::service::http::Body,
+}
+
+impl Payload for ResponseBody {
+    type Data = <Body as Payload>::Data;
+    type Error = <Body as Payload>::Error;
+
+    #[inline]
+    fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
+        self.0.poll_data()
+    }
+
+    #[inline]
+    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
+        self.0.poll_trailers()
+    }
+
+    #[inline]
+    fn is_end_stream(&self) -> bool {
+        self.0.is_end_stream()
+    }
+
+    #[inline]
+    fn content_length(&self) -> Option<u64> {
+        self.0.content_length()
+    }
+}
+
+/// The type representing outputs returned from handlers.
+pub type Output = ::http::Response<ResponseBody>;
 
 /// A trait representing the conversion to an HTTP response.
 pub trait Responder {
@@ -52,11 +124,11 @@ where
 }
 
 impl Responder for () {
-    type Body = Body;
+    type Body = ();
     type Error = Never;
 
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        let mut response = Response::new(Body::empty());
+        let mut response = Response::new(());
         *response.status_mut() = StatusCode::NO_CONTENT;
         Ok(response)
     }
@@ -77,7 +149,7 @@ where
     }
 }
 
-#[allow(missing_docs)]
+#[doc(hidden)]
 #[derive(Debug, Fail)]
 #[fail(display = "Not Found")]
 pub struct OptionError {
