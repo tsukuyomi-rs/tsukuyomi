@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 An asynchronous Web framework for Rust
 """
-version = "0.3.0-pre.0"
+version = "0.3.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
@@ -16,9 +16,13 @@ build = "build.rs"
 include = [
   "src/**/*.rs",
   "tests/**/*.rs",
+  "benches/**/*.rs",
+  "examples/**/*.rs",
+  "build.rs",
   "Cargo.toml",
   "README.md",
-  "LICENSE-*",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
 ]
 
 [package.metadata.docs.rs]
@@ -48,7 +52,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = "0.1"
 tower-service = "0.1"
-tsukuyomi-server = { version = "0.1", git = "https://github.com/tsukuyomi-rs/tsukuyomi-server.git" }
+tsukuyomi-server = "0.1"
 
 # for WebSocket
 base64 = { version = "0.9", optional = true }

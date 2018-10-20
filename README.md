@@ -31,8 +31,8 @@ The following features does not currently implemented but will be supported in t
 ## Documentation
 
 * [Examples][examples]
-* [API documentation (released, 0.2.x)][docs-rs]
-* [API documentation (master, 0.3.x)][master-doc]
+* [API documentation (released)][docs-rs]
+* [API documentation (master)][master-doc]
 
 ## Build Status
 
@@ -51,7 +51,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
-[deps-rs]: https://deps.rs/crate/tsukuyomi/0.2.2
+[deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.0
 [travis]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi
 [circleci]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
@@ -62,7 +62,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [docs-rs-badge]: https://docs.rs/tsukuyomi/badge.svg
 [master-doc-badge]: https://img.shields.io/badge/doc-master-blue.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
-[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.2.2/status.svg
+[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.0/status.svg
 [travis-badge]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi.svg?branch=master
 [circleci-badge]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master.svg?style=svg
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg

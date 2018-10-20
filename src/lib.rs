@@ -3,7 +3,7 @@
 
 //! Tsukuyomi is an asynchronous Web framework for Rust.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.2.2")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.3.0")]
 #![warn(
     missing_docs,
     missing_debug_implementations,
@@ -15,7 +15,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
-extern crate tsukuyomi_server as server;
+pub extern crate tsukuyomi_server as server;
 
 extern crate bytes;
 extern crate cookie;

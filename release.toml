@@ -1,0 +1,20 @@
+tag-prefix = "v"
+disable-push = true
+no-dev-version = true
+pre-release-commit-message = "(cargo-release) bump version to {{version}}"
+tag-message = "(cargo-release) version {{version}}"
+
+[[pre-release-replacements]]
+file = "README.md"
+search = "https://deps.rs/crate/tsukuyomi/[a-z0-9\\.-]+"
+replace = "https://deps.rs/crate/tsukuyomi/{{version}}"
+
+[[pre-release-replacements]]
+file = "README.md"
+search = "tsukuyomi = \"[a-z0-9\\.-]+\""
+replace = "tsukuyomi = \"{{version}}\""
+
+[[pre-release-replacements]]
+file = "src/lib.rs"
+search = "https://docs.rs/tsukuyomi/[a-z0-9\\.-]+"
+replace = "https://docs.rs/tsukuyomi/{{version}}"
