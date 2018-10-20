@@ -48,9 +48,9 @@ pub use tungstenite::protocol::Message;
 use tungstenite::protocol::{Role, WebSocketConfig};
 
 use crate::error::{Error, HttpError};
-use crate::input::upgrade::UpgradedIo;
 use crate::input::Input;
 use crate::output::Responder;
+use crate::server::service::http::{Body, UpgradedIo};
 
 #[allow(missing_docs)]
 #[derive(Debug, Fail)]
@@ -134,7 +134,7 @@ where
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
-    let response = handshake(input)?;
+    let response = handshake(input)?.map(|_| Body::default());
 
     input
         .body_mut()

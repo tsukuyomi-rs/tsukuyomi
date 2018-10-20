@@ -3,9 +3,8 @@
 use futures::{self, Async, Poll};
 use http::header::HeaderValue;
 use http::{header, Method, Request, Response, StatusCode};
-use hyper::body::Body;
-use hyper::service::{NewService, Service};
 use std::mem;
+use tower_service::{NewService, Service};
 
 use crate::error::{Error, HttpError};
 use crate::handler::Handle;
@@ -13,6 +12,7 @@ use crate::input::{Input, InputParts, RequestBody};
 use crate::modifier::{AfterHandle, BeforeHandle, Modifier};
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::captures::Captures;
+use crate::server::service::http::Payload;
 use crate::server::CritError;
 
 use super::{App, ModifierId, RouteData, RouteId, ScopeId};
@@ -73,8 +73,8 @@ impl App {
 }
 
 impl NewService for App {
-    type ReqBody = Body;
-    type ResBody = Body;
+    type Request = Request<RequestBody>;
+    type Response = Response<ResponseBody>;
     type Error = CritError;
     type Service = AppService;
     type InitError = CritError;
@@ -104,14 +104,19 @@ impl AppService {
 }
 
 impl Service for AppService {
-    type ReqBody = Body;
-    type ResBody = Body;
+    type Request = Request<RequestBody>;
+    type Response = Response<ResponseBody>;
     type Error = CritError;
     type Future = AppServiceFuture;
 
     #[inline]
-    fn call(&mut self, request: Request<Self::ReqBody>) -> Self::Future {
-        self.dispatch_request(request.map(RequestBody::from_hyp))
+    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
+        Ok(().into())
+    }
+
+    #[inline]
+    fn call(&mut self, request: Self::Request) -> Self::Future {
+        self.dispatch_request(request)
     }
 }
 
@@ -348,11 +353,10 @@ impl AppServiceFuture {
 }
 
 impl futures::Future for AppServiceFuture {
-    type Item = Response<Body>;
+    type Item = Response<ResponseBody>;
     type Error = CritError;
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
         self.poll_ready()
-            .map(|x| x.map(|response| response.map(ResponseBody::into_hyp)))
     }
 }

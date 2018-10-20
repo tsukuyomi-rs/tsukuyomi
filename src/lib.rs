@@ -26,7 +26,6 @@ extern crate filetime;
 #[macro_use]
 extern crate futures;
 extern crate http;
-extern crate hyper;
 #[cfg_attr(test, macro_use)]
 extern crate indexmap;
 #[macro_use]
@@ -36,7 +35,8 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate time;
-extern crate tokio_io;
+extern crate tower_service;
+
 #[cfg(test)]
 #[macro_use]
 extern crate matches;

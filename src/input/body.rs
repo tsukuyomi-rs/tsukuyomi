@@ -1,21 +1,18 @@
 //! Components for receiving incoming request bodies.
 
-use bytes::{Buf, Bytes, BytesMut};
-use futures::{Async, Future, IntoFuture, Poll, Stream};
-use http::header::HeaderMap;
-use hyper::body::{self, Body, Payload as _Payload};
+use bytes::{Bytes, BytesMut};
+use futures::{Async, Future, IntoFuture, Poll};
 use mime;
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::{fmt, mem};
 
 use crate::error::{Error, Failure};
 use crate::server::rt;
+use crate::server::service::http::{Payload as _Payload, RequestBody as RawBody, UpgradedIo};
 use crate::server::CritError;
 
 use super::global::with_get_current;
 use super::header::content_type;
-use super::upgrade::UpgradedIo;
 use super::Input;
 
 // ==== RequestBody ====
@@ -23,26 +20,28 @@ use super::Input;
 /// A type representing a message body in the incoming HTTP request.
 #[derive(Debug)]
 pub struct RequestBody {
-    body: Option<Body>,
+    body: Option<RawBody>,
     is_upgraded: bool,
 }
 
-impl RequestBody {
-    pub(crate) fn from_hyp(body: Body) -> RequestBody {
+impl From<RawBody> for RequestBody {
+    fn from(body: RawBody) -> RequestBody {
         RequestBody {
             body: Some(body),
             is_upgraded: false,
         }
     }
+}
 
+impl RequestBody {
     /// Returns 'true' if the instance of raw message body has already taken away.
     pub fn is_gone(&self) -> bool {
         self.body.is_none()
     }
 
     /// Creates an instance of "Payload" from the raw message body.
-    pub fn payload(&mut self) -> Payload {
-        Payload(self.body.take())
+    pub fn raw(&mut self) -> Option<RawBody> {
+        self.body.take()
     }
 
     /// Creates an instance of "ReadAll" from the raw message body.
@@ -73,122 +72,10 @@ impl RequestBody {
         rt::spawn(
             body.on_upgrade()
                 .map_err(|_| ())
-                .and_then(move |upgraded| on_upgrade(UpgradedIo(upgraded)).into_future()),
+                .and_then(move |upgraded| on_upgrade(upgraded).into_future()),
         );
 
         Ok(())
-    }
-}
-
-// ==== Payload ====
-
-/// A `Payload` representing the raw streaming body in an incoming HTTP request.
-#[derive(Debug)]
-#[must_use = "streams do nothing unless polled"]
-pub struct Payload(Option<Body>);
-
-impl Payload {
-    fn with_body<T>(
-        &mut self,
-        f: impl FnOnce(&mut Body) -> Result<T, CritError>,
-    ) -> Result<T, CritError> {
-        match self.0 {
-            Some(ref mut bd) => f(bd),
-            None => Err(format_err!("").compat().into()),
-        }
-    }
-}
-
-impl body::Payload for Payload {
-    type Data = Chunk;
-    type Error = CritError;
-
-    fn poll_data(&mut self) -> Poll<Option<Chunk>, CritError> {
-        self.with_body(|bd| {
-            bd.poll_data()
-                .map(|x| x.map(|c| c.map(Chunk::from_hyp)))
-                .map_err(Into::into)
-        })
-    }
-
-    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, CritError> {
-        self.with_body(|bd| bd.poll_trailers().map_err(Into::into))
-    }
-
-    fn is_end_stream(&self) -> bool {
-        self.0.as_ref().map_or(true, |bd| bd.is_end_stream())
-    }
-
-    fn content_length(&self) -> Option<u64> {
-        self.0.as_ref().and_then(|bd| bd.content_length())
-    }
-}
-
-impl Stream for Payload {
-    type Item = Chunk;
-    type Error = CritError;
-
-    #[inline]
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        self.poll_data()
-    }
-}
-
-/// A buffer of bytes which will be returned from `Payload`.
-#[derive(Debug)]
-pub struct Chunk(pub(crate) body::Chunk);
-
-impl Chunk {
-    fn from_hyp(chunk: body::Chunk) -> Chunk {
-        Chunk(chunk)
-    }
-
-    /// Converts itself into a `Byte`.
-    pub fn into_bytes(self) -> Bytes {
-        self.0.into_bytes()
-    }
-}
-
-impl Into<Bytes> for Chunk {
-    fn into(self) -> Bytes {
-        self.into_bytes()
-    }
-}
-
-impl AsRef<[u8]> for Chunk {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl Deref for Chunk {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-impl IntoIterator for Chunk {
-    type Item = u8;
-    type IntoIter = <body::Chunk as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl Buf for Chunk {
-    fn remaining(&self) -> usize {
-        self.0.remaining()
-    }
-
-    fn bytes(&self) -> &[u8] {
-        self.0.bytes()
-    }
-
-    fn advance(&mut self, cnt: usize) {
-        self.0.advance(cnt)
     }
 }
 
@@ -203,8 +90,8 @@ pub struct ReadAll {
 
 #[derive(Debug)]
 enum ReadAllState {
-    Init(Option<Body>),
-    Receiving(Body, BytesMut),
+    Init(Option<RawBody>),
+    Receiving(RawBody, BytesMut),
     Done,
 }
 

@@ -67,11 +67,7 @@ fn global_modifier() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server
-        .client()
-        .unwrap()
-        .perform(Default::default())
-        .unwrap();
+    let _ = server.client().unwrap().perform(Request::get("/")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B", "H", "A"]);
 }
 
@@ -101,11 +97,7 @@ fn global_modifier_error_on_before() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server
-        .client()
-        .unwrap()
-        .perform(Default::default())
-        .unwrap();
+    let _ = server.client().unwrap().perform(Request::get("/")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B"]);
 }
 
@@ -145,11 +137,7 @@ fn global_modifiers() {
 
     let mut server = LocalServer::new(app).unwrap();
 
-    let _ = server
-        .client()
-        .unwrap()
-        .perform(Default::default())
-        .unwrap();
+    let _ = server.client().unwrap().perform(Request::get("/")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }
 
@@ -201,7 +189,7 @@ fn scoped_modifier() {
     let _ = server
         .client()
         .unwrap()
-        .perform(Request::get("/path1").body(Default::default()).unwrap())
+        .perform(Request::get("/path1"))
         .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
 
@@ -209,7 +197,7 @@ fn scoped_modifier() {
     let _ = server
         .client()
         .unwrap()
-        .perform(Request::get("/path2").body(Default::default()).unwrap())
+        .perform(Request::get("/path2"))
         .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "H2", "A1"]);
 }
@@ -280,7 +268,7 @@ fn nested_modifiers() {
     let _ = server
         .client()
         .unwrap()
-        .perform(Request::get("/path/to").body(Default::default()).unwrap())
+        .perform(Request::get("/path/to"))
         .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
 
@@ -288,7 +276,7 @@ fn nested_modifiers() {
     let _ = server
         .client()
         .unwrap()
-        .perform(Request::get("/path/to/a").body(Default::default()).unwrap())
+        .perform(Request::get("/path/to/a"))
         .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "B3", "A2", "A1"]);
 }
@@ -342,7 +330,7 @@ fn route_modifiers() {
     let _ = server
         .client()
         .unwrap()
-        .perform(Request::get("/path/to").body(Default::default()).unwrap())
+        .perform(Request::get("/path/to"))
         .unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }

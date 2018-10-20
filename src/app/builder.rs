@@ -16,6 +16,7 @@ use crate::recognizer::{
     uri::{self, Uri},
     Recognizer,
 };
+use crate::server::service::http::Body;
 
 use super::scoped_map;
 use super::{App, AppData, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
@@ -662,7 +663,7 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
     };
 
     Box::new(handler::wrap_ready(move |_| {
-        let mut response = Response::new(());
+        let mut response = Response::new(Body::default());
         response
             .headers_mut()
             .insert(header::ALLOW, allowed_methods.clone());

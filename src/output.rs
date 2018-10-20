@@ -1,9 +1,7 @@
 //! Components for constructing HTTP responses.
 
-mod body;
-
 // re-exports
-pub use self::body::ResponseBody;
+pub use crate::server::service::http::Body as ResponseBody;
 
 /// The type representing outputs returned from handlers.
 pub type Output = ::http::Response<ResponseBody>;
@@ -17,6 +15,7 @@ use http::{header, Response, StatusCode};
 
 use crate::error::{Error, HttpError, Never};
 use crate::input::{self, Input};
+use crate::server::service::http::Body;
 
 /// A trait representing the conversion to an HTTP response.
 pub trait Responder {
@@ -53,11 +52,11 @@ where
 }
 
 impl Responder for () {
-    type Body = ();
+    type Body = Body;
     type Error = Never;
 
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        let mut response = Response::new(());
+        let mut response = Response::new(Body::empty());
         *response.status_mut() = StatusCode::NO_CONTENT;
         Ok(response)
     }
