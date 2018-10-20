@@ -127,7 +127,7 @@ impl<T: DeserializeOwned> FromData for Json<T> {
     fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Json<T>, Self::Error> {
         if let Some(mime) = content_type(input)? {
             if *mime != mime::APPLICATION_JSON {
-                return Err(Failure::bad_request(format_err!(
+                return Err(Failure::bad_request(failure::format_err!(
                     "The value of Content-type is not equal to application/json"
                 )));
             }
@@ -172,7 +172,7 @@ impl Responder for JsonValue {
 }
 
 /// An error type representing a JSON error response.
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 #[fail(display = "{}", cause)]
 pub struct JsonError {
     cause: Box<dyn HttpError>,
@@ -215,7 +215,7 @@ impl HttpError for JsonError {
     }
 
     fn body(&mut self, _: &Request<RequestBody>) -> ResponseBody {
-        json!({
+        serde_json::json!({
             "code": self.status().as_u16(),
             "description": self.to_string(),
         }).to_string()

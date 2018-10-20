@@ -20,25 +20,20 @@ extern crate tsukuyomi_server as server;
 extern crate bytes;
 extern crate cookie;
 extern crate either;
-#[macro_use]
 extern crate failure;
 extern crate filetime;
-#[macro_use]
 extern crate futures;
 extern crate http;
 #[cfg_attr(test, macro_use)]
 extern crate indexmap;
-#[macro_use]
 extern crate log;
 extern crate mime;
 extern crate serde;
-#[macro_use]
 extern crate serde_json;
 extern crate time;
 extern crate tower_service;
 
 #[cfg(test)]
-#[macro_use]
 extern crate matches;
 
 #[cfg(feature = "websocket")]

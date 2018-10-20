@@ -103,7 +103,7 @@ impl ReadAll {
             match self.state {
                 Init(..) => {}
                 Receiving(ref mut body, ref mut buf) => {
-                    while let Some(chunk) = try_ready!(body.poll_data()) {
+                    while let Some(chunk) = futures::try_ready!(body.poll_data()) {
                         buf.extend_from_slice(&*chunk);
                     }
                 }
@@ -115,7 +115,7 @@ impl ReadAll {
                     self.state = Receiving(body, BytesMut::new());
                     continue;
                 }
-                Init(None) => return Err(format_err!("").compat().into()),
+                Init(None) => return Err(failure::format_err!("").compat().into()),
                 Receiving(_body, buf) => {
                     // debug_assert!(body.is_end_stream());
                     return Ok(Async::Ready(buf.freeze()));
@@ -169,7 +169,7 @@ where
 {
     /// Attempts to convert the incoming message data into an value of `T`.
     pub fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, Error> {
-        let data = try_ready!(self.read_all.poll().map_err(Error::critical));
+        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
         T::from_data(data, input)
             .map(Async::Ready)
             .map_err(Into::into)
@@ -184,7 +184,7 @@ where
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let data = try_ready!(self.read_all.poll().map_err(Error::critical));
+        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
         with_get_current(|input| T::from_data(data, input))
             .map(Async::Ready)
             .map_err(Into::into)
@@ -206,14 +206,14 @@ impl FromData for String {
     fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error> {
         if let Some(m) = content_type(input)? {
             if m.type_() != mime::TEXT || m.subtype() != mime::PLAIN {
-                return Err(Failure::bad_request(format_err!(
+                return Err(Failure::bad_request(failure::format_err!(
                     "the content type must be text/plain"
                 )));
             }
             if m.get_param("charset")
                 .map_or(true, |charset| charset != "utf-8")
             {
-                return Err(Failure::bad_request(format_err!(
+                return Err(Failure::bad_request(failure::format_err!(
                     "the charset must be utf-8"
                 )));
             }

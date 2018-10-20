@@ -79,11 +79,11 @@ impl Node {
                     return Ok(());
                 }
 
-                Some(b'*') if n.children.is_empty() => bail!("'catch-all' conflict"),
+                Some(b'*') if n.children.is_empty() => failure::bail!("'catch-all' conflict"),
 
                 Some(b':') | Some(b'*') => {
                     if n.children.iter().any(|ch| !ch.is_wildcard()) {
-                        bail!("A static node has already inserted at wildcard position.");
+                        failure::bail!("A static node has already inserted at wildcard position.");
                     }
 
                     n = &mut { n }.children[0];
@@ -96,7 +96,7 @@ impl Node {
 
                 Some(&c) => {
                     if n.children.iter().any(|ch| ch.is_wildcard()) {
-                        bail!("A wildcard node has already inserted.");
+                        failure::bail!("A wildcard node has already inserted.");
                     }
 
                     // Check if a child with the next path byte exists
@@ -122,11 +122,11 @@ impl Node {
         }
 
         if n.children.iter().any(|ch| ch.path == PathKind::CatchAll) {
-            bail!("catch-all conflict");
+            failure::bail!("catch-all conflict");
         }
 
         if n.leaf.is_some() {
-            bail!("normal path conflict");
+            failure::bail!("normal path conflict");
         }
         n.leaf = Some(value);
 
@@ -143,7 +143,7 @@ impl Node {
             let path_kind = match path[pos] {
                 b':' => PathKind::Param,
                 b'*' => PathKind::CatchAll,
-                c => bail!("unexpected parameter type: '{}'", c),
+                c => failure::bail!("unexpected parameter type: '{}'", c),
             };
             n = { n }.add_child(path_kind)?;
             pos = i;
@@ -157,7 +157,7 @@ impl Node {
         }
 
         if n.leaf.is_some() {
-            bail!("normal path conflict");
+            failure::bail!("normal path conflict");
         }
         n.leaf = Some(value);
 
@@ -315,20 +315,22 @@ fn find_wildcard_begin(path: &[u8], offset: usize) -> usize {
 fn find_wildcard_end(path: &[u8], offset: usize) -> Result<usize, Error> {
     debug_assert!(path[offset] == b':' || path[offset] == b'*');
     if offset > 0 && path[offset - 1] != b'/' {
-        bail!("a wildcard character (':' or '*') must be located at the next of slash");
+        failure::bail!("a wildcard character (':' or '*') must be located at the next of slash");
     }
     let mut end = 1;
     while offset + end < path.len() && path[offset + end] != b'/' {
         match path[offset + end] {
-            b':' | b'*' => bail!("wrong wildcard character (':' or '*') in a path segment"),
+            b':' | b'*' => {
+                failure::bail!("wrong wildcard character (':' or '*') in a path segment")
+            }
             _ => end += 1,
         }
     }
     if end == 1 {
-        bail!("empty wildcard name");
+        failure::bail!("empty wildcard name");
     }
     if path[offset] == b'*' && offset + end < path.len() {
-        bail!("a 'catch-all' param must be located at the end of path");
+        failure::bail!("a 'catch-all' param must be located at the end of path");
     }
     Ok(offset + end)
 }

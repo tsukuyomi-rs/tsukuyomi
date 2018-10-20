@@ -4,7 +4,6 @@ use std::fmt;
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use failure::{Error, Fail};
 use http::header::HeaderValue;
 use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
@@ -19,7 +18,9 @@ use crate::recognizer::{
 use crate::server::service::http::Body;
 
 use super::scoped_map;
-use super::{App, AppData, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId};
+use super::{
+    App, AppData, AppError, AppResult, Config, ModifierId, RouteData, RouteId, ScopeData, ScopeId,
+};
 
 /// A builder object for constructing an instance of `App`.
 pub struct AppBuilder {
@@ -30,8 +31,7 @@ pub struct AppBuilder {
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     globals: scoped_map::Builder,
     prefix: Option<Uri>,
-
-    result: Result<(), Error>,
+    result: AppResult<()>,
 }
 
 struct ScopeBuilder {
@@ -100,7 +100,7 @@ impl AppBuilder {
         }
     }
 
-    fn modify(&mut self, f: impl FnOnce(&mut Self) -> Result<(), Error>) {
+    fn modify(&mut self, f: impl FnOnce(&mut Self) -> AppResult<()>) {
         if self.result.is_ok() {
             self.result = f(self);
         }
@@ -326,12 +326,12 @@ impl AppBuilder {
                 ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
                 ScopeId::Global => self.prefix = Some(prefix),
             },
-            Err(err) => self.result = Err(err),
+            Err(err) => self.result = Err(AppError::from_failure(err)),
         }
     }
 
     /// Creates a configured `App` using the current settings.
-    pub fn finish(self) -> Result<App, Error> {
+    pub fn finish(self) -> AppResult<App> {
         let AppBuilder {
             routes,
             config,
@@ -349,7 +349,7 @@ impl AppBuilder {
         let mut routes: Vec<RouteData> = routes
             .into_iter()
             .enumerate()
-            .map(|(route_id, route)| -> Result<RouteData, Error> {
+            .map(|(route_id, route)| -> AppResult<RouteData> {
                 // build absolute URI.
                 let mut uris = vec![&route.uri];
                 let mut current = route.scope_id.local_id();
@@ -358,11 +358,11 @@ impl AppBuilder {
                     current = scope.parent.local_id();
                 }
                 uris.extend(prefix.as_ref());
-                let uri = uri::join_all(uris.into_iter().rev())?;
+                let uri = uri::join_all(uris.into_iter().rev()).map_err(AppError::from_failure)?;
 
-                let handler = route
-                    .handler
-                    .ok_or_else(|| format_err!("default handler is not supported"))?;
+                let handler = route.handler.ok_or_else(|| {
+                    AppError::from_failure(failure::format_err!("default handler is not supported"))
+                })?;
 
                 // calculate the modifier identifiers.
                 let mut modifier_ids: Vec<_> = (0..modifiers.len())
@@ -403,7 +403,9 @@ impl AppBuilder {
                     .or_insert_with(IndexMap::<Method, usize>::new);
 
                 if methods.contains_key(&route.method) {
-                    bail!("Adding routes with duplicate URI and method is currenly not supported.");
+                    return Err(AppError::from_failure(failure::format_err!(
+                        "Adding routes with duplicate URI and method is currenly not supported."
+                    )));
                 }
 
                 methods.insert(route.method.clone(), i);
@@ -434,7 +436,7 @@ impl AppBuilder {
                     });
                 }
 
-                recognizer.add_route(uri)?;
+                recognizer.add_route(uri).map_err(AppError::from_failure)?;
                 route_ids.push(methods);
             }
 
@@ -570,12 +572,11 @@ impl<'a> Route<'a> {
     pub fn method<M>(&mut self, method: M) -> &mut Self
     where
         Method: HttpTryFrom<M>,
-        <Method as HttpTryFrom<M>>::Error: Fail,
     {
         if self.builder.result.is_ok() {
             match Method::try_from(method) {
                 Ok(method) => self.route.method = method,
-                Err(err) => self.builder.result = Err(Error::from(err.into())),
+                Err(err) => self.builder.result = Err(AppError::from_failure(err.into())),
             }
         }
         self
@@ -586,7 +587,7 @@ impl<'a> Route<'a> {
         if self.builder.result.is_ok() {
             match uri.parse() {
                 Ok(uri) => self.route.uri = uri,
-                Err(err) => self.builder.result = Err(err),
+                Err(err) => self.builder.result = Err(AppError::from_failure(err)),
             }
         }
         self
@@ -636,7 +637,6 @@ where
     A: AsRef<str>,
     Method: HttpTryFrom<B>,
     C: Handler + Send + Sync + 'static,
-    <Method as HttpTryFrom<B>>::Error: Fail,
 {
     fn configure(self, route: &mut Route<'_>) {
         route.uri(self.0.as_ref());

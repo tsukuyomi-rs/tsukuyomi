@@ -1,4 +1,5 @@
 use http::{Method, Response, StatusCode};
+use matches::assert_matches;
 
 use super::*;
 use crate::error::HttpError;

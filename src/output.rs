@@ -150,7 +150,7 @@ where
 }
 
 #[doc(hidden)]
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 #[fail(display = "Not Found")]
 pub struct OptionError {
     _priv: (),
@@ -239,7 +239,7 @@ where
     type Output = F::Item;
 
     fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
-        let x = try_ready!(input::with_set_current(input, || Future::poll(self)));
+        let x = futures::try_ready!(input::with_set_current(input, || Future::poll(self)));
         x.respond_to(input)
             .map(|res| Async::Ready(res.map(Into::into)))
             .map_err(Into::into)

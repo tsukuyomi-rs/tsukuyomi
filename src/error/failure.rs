@@ -4,7 +4,7 @@ use http::StatusCode;
 use super::HttpError;
 
 /// An instance of `HttpError` which associates HTTP status code with a value of `failure::Error`.
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 #[fail(display = "{}", err)]
 pub struct Failure {
     status: StatusCode,

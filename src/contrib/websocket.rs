@@ -53,7 +53,7 @@ use crate::output::Responder;
 use crate::server::service::http::{Body, UpgradedIo};
 
 #[allow(missing_docs)]
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 pub enum HandshakeError {
     #[fail(display = "The header is missing: `{}'", name)]
     MissingHeader { name: &'static str },

@@ -73,11 +73,11 @@ impl FromStr for Uri {
 
     fn from_str(mut s: &str) -> Result<Uri, Self::Err> {
         if !s.is_ascii() {
-            bail!("The URI is not ASCII");
+            failure::bail!("The URI is not ASCII");
         }
 
         if !s.starts_with('/') {
-            bail!("invalid URI")
+            failure::bail!("invalid URI")
         }
 
         if s == "/" {
@@ -93,17 +93,17 @@ impl FromStr for Uri {
         let mut names: Option<CaptureNames> = None;
         for segment in s[1..].split('/') {
             if segment.is_empty() {
-                bail!("empty segment");
+                failure::bail!("empty segment");
             }
             if names.as_ref().map_or(false, |names| names.wildcard) {
-                bail!("The wildcard parameter has already set.");
+                failure::bail!("The wildcard parameter has already set.");
             }
 
             if segment
                 .get(1..)
                 .map_or(false, |s| s.bytes().any(|b| b == b':' || b == b'*'))
             {
-                bail!("invalid character in a segment");
+                failure::bail!("invalid character in a segment");
             }
             match segment.as_bytes()[0] {
                 c @ b':' | c @ b'*' => {

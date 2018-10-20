@@ -14,6 +14,7 @@ use filetime::FileTime;
 use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use http::{header, Response, StatusCode};
+use log::trace;
 use time::{self, Timespec};
 
 use crate::error::Failure;
@@ -52,15 +53,15 @@ impl ETag {
 
     fn parse_inner(weak: bool, s: &str) -> Result<ETag, failure::Error> {
         if s.len() < 2 {
-            bail!("");
+            failure::bail!("");
         }
         if !s.starts_with('"') || !s.ends_with('"') {
-            bail!("");
+            failure::bail!("");
         }
 
         let tag = &s[1..s.len() - 1];
         if !tag.is_ascii() {
-            bail!("");
+            failure::bail!("");
         }
 
         Ok(ETag {
@@ -81,8 +82,8 @@ impl FromStr for ETag {
         match s.get(0..3) {
             Some("W/\"") if s[2..].starts_with('"') => ETag::parse_inner(true, &s[2..]),
             Some(t) if t.starts_with('"') => ETag::parse_inner(false, s),
-            Some(..) => bail!(""),
-            None => bail!(""),
+            Some(..) => failure::bail!(""),
+            None => failure::bail!(""),
         }
     }
 }
@@ -276,7 +277,7 @@ impl Future for OpenFuture {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (file, meta) = try_ready!(blocking_io(|| {
+        let (file, meta) = futures::try_ready!(blocking_io(|| {
             let file = File::open(&self.path)?;
             let meta = file.metadata()?;
             Ok((file, meta))
@@ -331,7 +332,7 @@ impl Stream for ReadStream {
                 } => {
                     trace!("ReadStream::poll(): polling on the mode State::Reading");
 
-                    let buf = try_ready!(blocking_io(|| {
+                    let buf = futures::try_ready!(blocking_io(|| {
                         let mut buf = BytesMut::with_capacity(buf_size);
                         if !buf.has_remaining_mut() {
                             buf.reserve(buf_size);

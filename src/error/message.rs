@@ -8,7 +8,7 @@ use crate::output::ResponseBody;
 use super::HttpError;
 
 /// An instance of `HttpError` which holds an HTTP status code and the message string.
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 #[fail(display = "{}", message)]
 pub struct ErrorMessage {
     status: StatusCode,

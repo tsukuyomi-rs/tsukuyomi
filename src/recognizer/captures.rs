@@ -11,15 +11,15 @@ pub(crate) struct CaptureNames {
 impl CaptureNames {
     pub(super) fn append(&mut self, name: impl Into<String>) -> Result<(), Error> {
         if self.wildcard {
-            bail!("The wildcard parameter has already set");
+            failure::bail!("The wildcard parameter has already set");
         }
 
         let name = name.into();
         if name.is_empty() {
-            bail!("empty parameter name");
+            failure::bail!("empty parameter name");
         }
         if !self.params.insert(name) {
-            bail!("the duplicated parameter name");
+            failure::bail!("the duplicated parameter name");
         }
         Ok(())
     }
@@ -36,7 +36,7 @@ impl CaptureNames {
 
     pub(super) fn set_wildcard(&mut self) -> Result<(), Error> {
         if self.wildcard {
-            bail!("The wildcard parameter has already set");
+            failure::bail!("The wildcard parameter has already set");
         }
         self.wildcard = true;
         Ok(())

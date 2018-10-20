@@ -1,7 +1,7 @@
 //! Components for constructing HTTP applications.
 
 pub mod builder;
-pub mod service;
+mod service;
 
 #[macro_use]
 mod scoped_map;
@@ -23,10 +23,21 @@ use self::builder::AppBuilder;
 use self::scoped_map::ScopedMap;
 pub use self::service::RecognizeError;
 
-/// A type alias of `Result<T, E>` which will be returned from `run`.
-///
-/// This typed is intended to be used as the return type of `main()`.
-pub type AppResult<T> = ::std::result::Result<T, ::failure::Error>;
+/// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
+pub type AppResult<T> = std::result::Result<T, AppError>;
+
+/// An error type which will be thrown from `AppBuilder`.
+#[derive(Debug, failure::Fail)]
+#[fail(display = "{}", inner)]
+pub struct AppError {
+    inner: failure::Error,
+}
+
+impl AppError {
+    fn from_failure(err: impl Into<failure::Error>) -> AppError {
+        AppError { inner: err.into() }
+    }
+}
 
 #[derive(Debug)]
 struct Config {

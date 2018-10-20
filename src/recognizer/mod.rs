@@ -26,7 +26,7 @@ impl Recognizer {
         let uri = uri.try_into().map_err(Into::<Error>::into)?;
 
         if !uri.as_str().is_ascii() {
-            bail!("The path must be a sequence of ASCII characters");
+            failure::bail!("The path must be a sequence of ASCII characters");
         }
 
         let index = self.uris.len();

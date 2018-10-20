@@ -1,6 +1,6 @@
 //! The definition of components for serving an HTTP application by using `App`.
 
-use futures::{self, Async, Poll};
+use futures::{Async, Future, Poll};
 use http::header::HeaderValue;
 use http::{header, Method, Request, Response, StatusCode};
 use std::mem;
@@ -21,7 +21,7 @@ use super::{App, ModifierId, RouteData, RouteId, ScopeId};
 ///
 /// The value of this type cannot be modified by the `Modifier`s since they will be
 /// thrown before the scope will be determined.
-#[derive(Debug, Fail)]
+#[derive(Debug, failure::Fail)]
 pub enum RecognizeError {
     /// The request path is not matched to any routes.
     #[fail(display = "Not Found")]
@@ -42,11 +42,6 @@ impl HttpError for RecognizeError {
 }
 
 impl App {
-    /// Creates a new `AppService` to manage a session.
-    pub fn new_service(&self) -> AppService {
-        AppService { app: self.clone() }
-    }
-
     pub(super) fn recognize(
         &self,
         path: &str,
@@ -81,7 +76,7 @@ impl NewService for App {
     type Future = futures::future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
-        futures::future::ok(self.new_service())
+        futures::future::ok(AppService { app: self.clone() })
     }
 }
 
@@ -89,18 +84,6 @@ impl NewService for App {
 #[derive(Debug)]
 pub struct AppService {
     app: App,
-}
-
-impl AppService {
-    #[allow(missing_docs)]
-    pub fn dispatch_request(&mut self, request: Request<RequestBody>) -> AppServiceFuture {
-        AppServiceFuture {
-            app: self.app.clone(),
-            request: Some(request),
-            parts: None,
-            status: AppServiceFutureStatus::Start,
-        }
-    }
 }
 
 impl Service for AppService {
@@ -111,12 +94,17 @@ impl Service for AppService {
 
     #[inline]
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        Ok(().into())
+        Ok(Async::Ready(()))
     }
 
     #[inline]
     fn call(&mut self, request: Self::Request) -> Self::Future {
-        self.dispatch_request(request)
+        AppServiceFuture {
+            app: self.app.clone(),
+            request: Some(request),
+            parts: None,
+            status: AppServiceFutureStatus::Start,
+        }
     }
 }
 
@@ -306,26 +294,6 @@ impl AppServiceFuture {
         result.map(Async::Ready)
     }
 
-    #[allow(missing_docs)]
-    pub fn poll_ready(&mut self) -> Poll<Response<ResponseBody>, CritError> {
-        match self.poll_in_flight() {
-            Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(err) => {
-                self.status = AppServiceFutureStatus::Done;
-                let request = self.request.take().expect("This future has already polled");
-                drop(self.parts.take());
-
-                self.app
-                    .data
-                    .error_handler
-                    .handle_error(err)
-                    .into_response(&request)
-                    .map(Async::Ready)
-            }
-        }
-    }
-
     fn handle_response(&mut self, mut output: Output) -> Result<Response<ResponseBody>, CritError> {
         let _request = self
             .request
@@ -352,11 +320,26 @@ impl AppServiceFuture {
     }
 }
 
-impl futures::Future for AppServiceFuture {
+impl Future for AppServiceFuture {
     type Item = Response<ResponseBody>;
     type Error = CritError;
 
-    fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        self.poll_ready()
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self.poll_in_flight() {
+            Ok(Async::Ready(output)) => self.handle_response(output).map(Async::Ready),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(err) => {
+                self.status = AppServiceFutureStatus::Done;
+                let request = self.request.take().expect("This future has already polled");
+                drop(self.parts.take());
+
+                self.app
+                    .data
+                    .error_handler
+                    .handle_error(err)
+                    .into_response(&request)
+                    .map(Async::Ready)
+            }
+        }
     }
 }
