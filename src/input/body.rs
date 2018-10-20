@@ -205,7 +205,7 @@ impl FromData for String {
 
     fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error> {
         if let Some(m) = content_type(input)? {
-            if *m != mime::TEXT_PLAIN {
+            if m.type_() != mime::TEXT || m.subtype() != mime::PLAIN {
                 return Err(Failure::bad_request(format_err!(
                     "the content type must be text/plain"
                 )));
