@@ -8,6 +8,7 @@
 [![Crates.io (Downloads)][downloads-badge]][crates-io]
 [![Docs.rs][docs-rs-badge]][docs-rs]
 [![Master Doc][master-doc-badge]][master-doc]
+[![Minimal Rust Version: 1.30.0][rust-version-badge]][rust-version]
 [![dependency status][deps-rs-badge]][deps-rs]
 [![Gitter][gitter-badge]][gitter]
 
@@ -19,13 +20,13 @@
 * Support for both TCP and Unix domain socket
 * Custom error handling
 * Basic support for Cookie management
-* Middleware support
+* Middlewares
+* Embedded WebSocket handling
 
 The following features does not currently implemented but will be supported in the future version:
 
 * Custom session storage
 * Authentication
-* Embedded WebSocket handling
 
 ## Documentation
 
@@ -46,6 +47,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 
 [crates-io]: https://crates.io/crates/tsukuyomi
 [docs-rs]: https://docs.rs/tsukuyomi
+[rust-version]: https://www.rust-lang.org
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
@@ -56,6 +58,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
 [downloads-badge]: https://img.shields.io/crates/d/tsukuyomi.svg
+[rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0-lightgray.svg
 [docs-rs-badge]: https://docs.rs/tsukuyomi/badge.svg
 [master-doc-badge]: https://img.shields.io/badge/doc-master-blue.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
