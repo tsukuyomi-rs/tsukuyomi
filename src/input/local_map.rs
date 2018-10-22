@@ -49,6 +49,41 @@ macro_rules! local_key {
             $vis static $NAME: $t;
         )*);
     };
+    ($(
+        $(#[$m:meta])*
+        $vis:vis static $NAME:ident : $t:ty
+    );+) => {
+        local_key!($(
+            $(#[$m])*
+            $vis static $NAME: $t;
+        )*);
+    };
+
+    ($(
+        $(#[$m:meta])*
+        $vis:vis const $NAME:ident : $t:ty;
+    )*) => {$(
+        $(#[$m])*
+        $vis const $NAME: $crate::input::local_map::LocalKey<$t> = {
+            fn __type_id() -> ::std::any::TypeId {
+                struct __A;
+                ::std::any::TypeId::of::<__A>()
+            }
+            $crate::input::local_map::LocalKey {
+                __type_id,
+                __marker: ::std::marker::PhantomData,
+            }
+        };
+    )*};
+    ($(
+        $(#[$m:meta])*
+        $vis:vis const $NAME:ident : $t:ty
+    );+) => {
+        local_key!($(
+            $(#[$m])*
+            $vis const $NAME: $t;
+        )*);
+    };
 }
 
 /// A type representing a key for request-local data stored in a `LocalMap`.
@@ -388,5 +423,13 @@ mod tests {
         }
 
         assert!(!map.contains_key(&KEY));
+    }
+
+    #[test]
+    fn local_key_const() {
+        let mut map = LocalMap::default();
+        local_key!(const KEY: String);
+        map.insert(&KEY, "foo".into());
+        assert!(map.contains_key(&KEY));
     }
 }
