@@ -49,6 +49,17 @@ where
     }
 }
 
+/// A helper function which creats an instance of `Handler` for use as a placeholder.
+pub fn unimplemented() -> impl Handler {
+    self::wrap_ready(|_| {
+        Err::<(), crate::error::Error>(
+            crate::error::Failure::internal_server_error(failure::format_err!(
+                "not implemented yet"
+            )).into(),
+        )
+    })
+}
+
 /// A type representing the return value from `Handler::handle`.
 pub struct Handle(HandleKind);
 
