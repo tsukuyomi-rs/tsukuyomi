@@ -405,11 +405,19 @@ impl AppBuilder {
 
                 if methods.contains_key(&route.method) {
                     return Err(AppError::from_failure(failure::format_err!(
-                        "Adding routes with duplicate URI and method is currenly not supported."
+                        "Adding routes with duplicate URI and method is currenly not supported. \
+                         (uri={}, method={})",
+                        route.uri,
+                        route.method
                     )));
                 }
 
                 methods.insert(route.method.clone(), i);
+            }
+
+            log::debug!("collected routes:");
+            for (uri, methods) in &collected_routes {
+                log::debug!(" - {} {:?}", uri, methods.keys().collect::<Vec<_>>());
             }
 
             let mut recognizer = Recognizer::default();
