@@ -18,3 +18,13 @@ replace = "tsukuyomi = \"{{version}}\""
 file = "src/lib.rs"
 search = "https://docs.rs/tsukuyomi/[a-z0-9\\.-]+"
 replace = "https://docs.rs/tsukuyomi/{{version}}"
+
+[[pre-release-replacements]]
+file = "changelog/current.md"
+search = "Unreleased"
+replace = "{{version}}"
+
+[[pre-release-replacements]]
+file = "changelog/current.md"
+search = "ReleaseDate"
+replace = "{{date}}"
