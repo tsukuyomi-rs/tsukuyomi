@@ -1,8 +1,10 @@
 //! The basic components for serving static files.
 
 use std::borrow::Cow;
+use std::fs;
 use std::fs::{File, Metadata};
-use std::io::{self, Read as _Read};
+use std::io;
+use std::io::Read as _Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
@@ -15,9 +17,11 @@ use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use http::{header, Response, StatusCode};
 use log::trace;
-use time::{self, Timespec};
+use time::Timespec;
 
+use crate::app::builder::{Scope, ScopeConfig};
 use crate::error::Failure;
+use crate::handler::wrap_async;
 use crate::input::Input;
 use crate::output::{Responder, ResponseBody};
 use crate::server::rt::blocking;
@@ -389,4 +393,77 @@ fn block_size(meta: &Metadata) -> usize {
 #[cfg(not(unix))]
 fn block_size(_: &Metadata) -> usize {
     DEFAULT_BUF_SIZE
+}
+
+// ==== Staticfiles ====
+
+/// A configuration type for adding entries in the directory to the route.
+#[derive(Debug)]
+pub struct Staticfiles {
+    root_dir: PathBuf,
+}
+
+impl Staticfiles {
+    /// Create a new `Staticfiles` with the specified directory path.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use tsukuyomi::app::App;
+    /// use tsukuyomi::contrib::fs::Staticfiles;
+    ///
+    /// # fn main() -> tsukuyomi::app::AppResult<()> {
+    /// let app = App::builder()
+    ///     .scope(Staticfiles::new("./public"))
+    ///     .finish()?;
+    /// # drop(app);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(root_dir: impl Into<PathBuf>) -> Staticfiles {
+        Staticfiles {
+            root_dir: root_dir.into(),
+        }
+    }
+
+    fn configure_inner(self, scope: &mut Scope<'_>) -> io::Result<()> {
+        let read_dir = fs::read_dir(&self.root_dir)?;
+        for entry in read_dir {
+            let entry = entry?;
+            register_handler(scope, &entry)?;
+        }
+        Ok(())
+    }
+}
+
+impl ScopeConfig for Staticfiles {
+    fn configure(self, scope: &mut Scope<'_>) {
+        if let Err(err) = self.configure_inner(scope) {
+            scope.mark_error(err);
+        }
+    }
+}
+
+fn register_handler(scope: &mut Scope<'_>, entry: &fs::DirEntry) -> io::Result<()> {
+    let file_type = entry.file_type()?;
+    if file_type.is_dir() {
+        let prefix = format!("/{}/*path", entry.file_name().to_string_lossy());
+        let root_dir = entry.path();
+        scope.route((
+            prefix,
+            wrap_async(move |input| {
+                let path = input
+                    .params()
+                    .get_wildcard()
+                    .map(|suffix| root_dir.join(suffix))
+                    .expect("missing wildcard parameter");
+                NamedFile::open(path)
+            }),
+        ));
+    } else if file_type.is_file() {
+        let prefix = format!("/{}", entry.file_name().to_string_lossy());
+        let path = entry.path();
+        scope.route((prefix, wrap_async(move |_| NamedFile::open(path.clone()))));
+    }
+    Ok(())
 }
