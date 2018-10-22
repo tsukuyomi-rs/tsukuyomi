@@ -1,5 +1,6 @@
 //! `Handler` and supplemental components.
 
+use either::Either;
 use futures::{Async, Poll};
 use std::fmt;
 use std::sync::Arc;
@@ -31,6 +32,20 @@ where
     #[inline]
     fn handle(&self, input: &mut Input<'_>) -> Handle {
         (**self).handle(input)
+    }
+}
+
+impl<L, R> Handler for Either<L, R>
+where
+    L: Handler,
+    R: Handler,
+{
+    #[inline]
+    fn handle(&self, input: &mut Input<'_>) -> Handle {
+        match self {
+            Either::Left(ref handler) => handler.handle(input),
+            Either::Right(ref handler) => handler.handle(input),
+        }
     }
 }
 

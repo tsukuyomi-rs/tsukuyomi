@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use bytes::BytesMut;
+use either::Either;
 use http::header::HeaderValue;
 use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
@@ -542,6 +543,30 @@ where
     }
 }
 
+impl<T> ScopeConfig for Option<T>
+where
+    T: ScopeConfig,
+{
+    fn configure(self, scope: &mut Scope<'_>) {
+        if let Some(config) = self {
+            config.configure(scope);
+        }
+    }
+}
+
+impl<L, R> ScopeConfig for Either<L, R>
+where
+    L: ScopeConfig,
+    R: ScopeConfig,
+{
+    fn configure(self, scope: &mut Scope<'_>) {
+        match self {
+            Either::Left(config) => config.configure(scope),
+            Either::Right(config) => config.configure(scope),
+        }
+    }
+}
+
 /// A helper struct for instantiating a `ScopeConfig` from a prefix URI and a function.
 #[derive(Debug)]
 pub struct Mount<P, F>(pub P, pub F);
@@ -642,6 +667,30 @@ where
         route.uri(self.0.as_ref());
         route.method(self.1);
         route.handler(self.2);
+    }
+}
+
+impl<T> RouteConfig for Option<T>
+where
+    T: RouteConfig,
+{
+    fn configure(self, route: &mut Route<'_>) {
+        if let Some(config) = self {
+            config.configure(route)
+        }
+    }
+}
+
+impl<L, R> RouteConfig for Either<L, R>
+where
+    L: RouteConfig,
+    R: RouteConfig,
+{
+    fn configure(self, route: &mut Route<'_>) {
+        match self {
+            Either::Left(config) => config.configure(route),
+            Either::Right(config) => config.configure(route),
+        }
     }
 }
 
