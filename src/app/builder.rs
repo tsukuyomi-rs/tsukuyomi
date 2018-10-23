@@ -149,6 +149,10 @@ impl AppBuilder {
     }
 
     fn new_route(&mut self, scope_id: ScopeId, config: impl RouteConfig) {
+        if self.result.is_err() {
+            return;
+        }
+
         let mut route = RouteBuilder {
             scope_id,
             uri: Uri::root(),
@@ -200,6 +204,10 @@ impl AppBuilder {
     }
 
     fn new_scope(&mut self, parent: ScopeId, config: impl ScopeConfig) {
+        if self.result.is_err() {
+            return;
+        }
+
         let id = ScopeId::Local(self.scopes.len());
         let mut chain = parent
             .local_id()
@@ -279,7 +287,9 @@ impl AppBuilder {
         mut self,
         error_handler: impl ErrorHandler + Send + Sync + 'static,
     ) -> Self {
-        self.error_handler = Some(Box::new(error_handler));
+        if self.result.is_ok() {
+            self.error_handler = Some(Box::new(error_handler));
+        }
         self
     }
 
@@ -290,9 +300,11 @@ impl AppBuilder {
     }
 
     fn add_modifier(&mut self, id: ScopeId, modifier: impl Modifier + Send + Sync + 'static) {
-        match id {
-            ScopeId::Global => self.modifiers.push(Box::new(modifier)),
-            ScopeId::Local(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
+        if self.result.is_ok() {
+            match id {
+                ScopeId::Global => self.modifiers.push(Box::new(modifier)),
+                ScopeId::Local(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
+            }
         }
     }
 
@@ -309,7 +321,9 @@ impl AppBuilder {
     where
         T: Send + Sync + 'static,
     {
-        self.globals.set(value, id);
+        if self.result.is_ok() {
+            self.globals.set(value, id);
+        }
     }
 
     /// Sets the prefix of URIs.
@@ -327,8 +341,12 @@ impl AppBuilder {
                 ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
                 ScopeId::Global => self.prefix = Some(prefix),
             },
-            Err(err) => self.result = Err(AppError::from_failure(err)),
+            Err(err) => self.mark_error(err),
         }
+    }
+
+    fn mark_error(&mut self, err: impl Into<failure::Error>) {
+        self.result = Err(AppError::from_failure(err));
     }
 
     /// Creates a configured `App` using the current settings.
@@ -344,7 +362,10 @@ impl AppBuilder {
             prefix,
         } = self;
 
-        result?;
+        if let Err(err) = result {
+            log::debug!("error before building App: {}", err);
+            return Err(err);
+        }
 
         // finalize endpoints based on the created scope information.
         let mut routes: Vec<RouteData> = routes
@@ -534,6 +555,15 @@ impl<'a> Scope<'a> {
         self.builder.add_modifier(self.id, modifier);
         self
     }
+
+    /// Report an error to the builder context.
+    ///
+    /// After calling this method, all operations in the builder are invalidated and
+    /// `AppBuilder::finish()` always returns an error.
+    pub fn mark_error(&mut self, err: impl Into<failure::Error>) -> &mut Self {
+        self.builder.mark_error(err);
+        self
+    }
 }
 
 /// Trait representing a set of configuration for setting a scope.
@@ -628,13 +658,26 @@ impl<'a> Route<'a> {
 
     /// Register a `Modifier` to this route.
     pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
-        self.route.modifiers.push(Box::new(modifier));
+        if self.builder.result.is_ok() {
+            self.route.modifiers.push(Box::new(modifier));
+        }
         self
     }
 
     /// Sets a `Handler` to this route.
     pub fn handler(&mut self, handler: impl Handler + Send + Sync + 'static) -> &mut Self {
-        self.route.handler = Some(Box::new(handler));
+        if self.builder.result.is_ok() {
+            self.route.handler = Some(Box::new(handler));
+        }
+        self
+    }
+
+    /// Report an error to the builder context.
+    ///
+    /// After calling this method, all operations in the builder are invalidated and
+    /// `AppBuilder::finish()` always returns an error.
+    pub fn mark_error(&mut self, err: impl Into<failure::Error>) -> &mut Self {
+        self.builder.mark_error(err);
         self
     }
 }
