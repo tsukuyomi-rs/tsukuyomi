@@ -1,7 +1,4 @@
-#![allow(missing_docs)]
-
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt;
 
 use cookie::Cookie;
@@ -11,65 +8,11 @@ use time::Duration;
 
 use crate::error::Result;
 use crate::input::{Cookies, Input};
-use crate::local_key;
 use crate::modifier::{AfterHandle, BeforeHandle, Modifier};
 use crate::output::Output;
 use crate::util::BuilderExt;
 
-#[derive(Debug)]
-pub struct Session {
-    state: SessionState,
-}
-
-#[derive(Debug)]
-enum SessionState {
-    Empty,
-    Some(HashMap<String, String>),
-    Clear,
-}
-
-impl Session {
-    local_key!(const KEY: Session);
-
-    pub fn get(&self, name: &str) -> Option<&str> {
-        match self.state {
-            SessionState::Some(ref map) => map.get(name).map(|s| &**s),
-            _ => None,
-        }
-    }
-
-    pub fn set(&mut self, name: &str, value: String) -> Option<String> {
-        match self.state {
-            SessionState::Empty => {}
-            SessionState::Some(ref mut map) => return map.insert(name.to_owned(), value),
-            SessionState::Clear => return None,
-        }
-
-        match std::mem::replace(&mut self.state, SessionState::Empty) {
-            SessionState::Empty => {
-                self.state = SessionState::Some({
-                    let mut map = HashMap::new();
-                    map.insert(name.to_owned(), value);
-                    map
-                });
-                None
-            }
-            SessionState::Some(..) | SessionState::Clear => unreachable!(),
-        }
-    }
-
-    pub fn remove(&mut self, name: &str) {
-        if let SessionState::Some(ref mut map) = self.state {
-            map.remove(name);
-        }
-    }
-
-    pub fn clear(&mut self) {
-        self.state = SessionState::Clear;
-    }
-}
-
-// ==== CookieSessionBackend ====
+use super::{Session, SessionState};
 
 #[cfg(feature = "secure")]
 enum Security {
@@ -161,24 +104,18 @@ impl CookieSessionBackend {
         }
     }
 
-    fn extract_session_values(&self, input: &mut Input<'_>) -> Result<Session> {
-        let mut cookies = input.cookies()?;
-        match self.security.get(&*self.cookie_name, &mut cookies) {
-            Some(cookie) => {
-                let values = serde_json::from_str(cookie.value())
-                    .map_err(crate::error::Failure::bad_request)?;
-                Ok(Session {
-                    state: SessionState::Some(values),
-                })
-            }
-            None => Ok(Session {
-                state: SessionState::Empty,
-            }),
-        }
-    }
-
     fn before_handle_inner(&self, input: &mut Input<'_>) -> Result<Option<Output>> {
-        let session = self.extract_session_values(input)?;
+        let session = {
+            let mut cookies = input.cookies()?;
+            match self.security.get(&*self.cookie_name, &mut cookies) {
+                Some(cookie) => {
+                    let map = serde_json::from_str(cookie.value())
+                        .map_err(crate::error::Failure::bad_request)?;
+                    Session::some(map)
+                }
+                None => Session::empty(),
+            }
+        };
         input.locals_mut().insert(&Session::KEY, session);
         Ok(None)
     }
