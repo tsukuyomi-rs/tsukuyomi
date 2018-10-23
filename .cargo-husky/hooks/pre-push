@@ -13,6 +13,11 @@ BRANCH="$(git symbolic-ref --short HEAD)"
     exit 0
 }
 
+[[ -z $(git status --porcelain) ]] || {
+    echo '[error] The repository is dirty.'
+    exit 1
+}
+
 if rake --version >/dev/null 2>&1; then
     (set -x; rake TSUKUYOMI_DENY_WARNINGS=1)
 else
