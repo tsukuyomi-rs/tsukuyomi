@@ -1,0 +1,34 @@
+jobs:
+  - job: Windows
+    pool:
+      vmImage: 'vs2017-win2016'
+    steps:
+    - script: |
+        curl -sSf -o rustup-init.exe https://win.rustup.rs
+        rustup-init.exe -y --default-toolchain beta
+        set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+        echo "##vso[task.setvariable variable=PATH;]%PATH%;%USERPROFILE%\.cargo\bin"
+        rustup --version
+        rustc --version
+        cargo --version
+        rake --version
+      displayName: 'Install Rust Toolchain'
+    - script: |
+        rake TSUKUYOMI_DENY_WARNINGS=1
+      displayName: 'Run Test Script'
+      
+  - job: macOS
+    pool:
+      vmImage: 'macOS-10.13'
+    steps:
+    - script: |
+        curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain beta -y
+        echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
+        rustup --version
+        rustc --version
+        cargo --version
+        rake --version
+      displayName: 'Install Rust Toolchain'
+    - script: |
+        rake TSUKUYOMI_DENY_WARNINGS=1
+      displayName: 'Run Test Script'
