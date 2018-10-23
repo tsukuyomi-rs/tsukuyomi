@@ -45,6 +45,11 @@ extern crate tokio_tungstenite;
 #[cfg(feature = "websocket")]
 extern crate tungstenite;
 
+#[cfg(feature = "session-redis")]
+extern crate redis;
+#[cfg(feature = "session-redis")]
+extern crate uuid;
+
 pub mod app;
 pub mod contrib;
 pub mod error;
@@ -53,3 +58,4 @@ pub mod input;
 pub mod modifier;
 pub mod output;
 pub(crate) mod recognizer;
+mod util;
