@@ -60,6 +60,7 @@ impl Security {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
 pub struct CookieSessionBackend {
     security: Security,
@@ -69,7 +70,7 @@ pub struct CookieSessionBackend {
 
 impl CookieSessionBackend {
     fn new(security: Security) -> Self {
-        CookieSessionBackend {
+        Self {
             security,
             cookie_name: "session".into(),
             max_age: None,

@@ -28,7 +28,7 @@ impl fmt::Debug for PathKind {
 }
 
 impl PathKind {
-    fn segment(path: impl Into<Vec<u8>>) -> PathKind {
+    fn segment(path: impl Into<Vec<u8>>) -> Self {
         PathKind::Segment(path.into())
     }
 }
@@ -41,8 +41,8 @@ struct Node {
 }
 
 impl Node {
-    fn new(path: PathKind) -> Node {
-        Node {
+    fn new(path: PathKind) -> Self {
+        Self {
             path,
             leaf: None,
             children: vec![],
@@ -107,7 +107,7 @@ impl Node {
 
                     // Otherwise, insert a new child node from remaining path.
                     let pos = find_wildcard_begin(path, offset);
-                    let mut ch = Node {
+                    let mut ch = Self {
                         path: PathKind::Segment(path[offset..pos].to_owned()),
                         leaf: None,
                         children: vec![],
@@ -150,9 +150,9 @@ impl Node {
 
             // Insert a normal node
             if pos < path.len() {
-                let i = find_wildcard_begin(path, pos);
-                n = { n }.add_child(PathKind::segment(&path[pos..i]))?;
-                pos = i;
+                let index = find_wildcard_begin(path, pos);
+                n = { n }.add_child(PathKind::segment(&path[pos..index]))?;
+                pos = index;
             }
         }
 
@@ -226,8 +226,8 @@ impl Node {
         }
     }
 
-    fn add_child(&mut self, path: PathKind) -> Result<&mut Node, Error> {
-        self.children.push(Node::new(path));
+    fn add_child(&mut self, path: PathKind) -> Result<&mut Self, Error> {
+        self.children.push(Self::new(path));
         Ok(self.children.iter_mut().last().unwrap())
     }
 
@@ -236,7 +236,7 @@ impl Node {
             PathKind::Segment(ref s) => (s[..i].to_owned(), s[i..].to_owned()),
             _ => panic!("unexpected condition"),
         };
-        let child = Node {
+        let child = Self {
             path: PathKind::Segment(p2),
             leaf: self.leaf.take(),
             children: mem::replace(&mut self.children, vec![]),
@@ -308,8 +308,7 @@ fn find_wildcard_begin(path: &[u8], offset: usize) -> usize {
     path.into_iter()
         .skip(offset)
         .position(|&b| b == b':' || b == b'*')
-        .map(|i| i + offset)
-        .unwrap_or_else(|| path.len())
+        .map_or_else(|| path.len(), |i| i + offset)
 }
 
 fn find_wildcard_end(path: &[u8], offset: usize) -> Result<usize, Error> {

@@ -48,7 +48,7 @@ enum UriKind {
 }
 
 impl PartialEq for Uri {
-    fn eq(&self, other: &Uri) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (&UriKind::Root, &UriKind::Root) => true,
             (&UriKind::Segments(ref s, ..), &UriKind::Segments(ref o, ..)) if s == o => true,
@@ -71,7 +71,7 @@ impl Hash for Uri {
 impl FromStr for Uri {
     type Err = Error;
 
-    fn from_str(mut s: &str) -> Result<Uri, Self::Err> {
+    fn from_str(mut s: &str) -> Result<Self, Self::Err> {
         if !s.is_ascii() {
             failure::bail!("The URI is not ASCII");
         }
@@ -81,7 +81,7 @@ impl FromStr for Uri {
         }
 
         if s == "/" {
-            return Ok(Uri::root());
+            return Ok(Self::root());
         }
 
         let mut has_trailing_slash = false;
@@ -119,29 +119,29 @@ impl FromStr for Uri {
         }
 
         if has_trailing_slash {
-            Ok(Uri::segments(format!("{}/", s), names))
+            Ok(Self::segments(format!("{}/", s), names))
         } else {
-            Ok(Uri::segments(s, names))
+            Ok(Self::segments(s, names))
         }
     }
 }
 
 impl Uri {
-    pub(crate) fn root() -> Uri {
+    pub(crate) fn root() -> Self {
         Uri(UriKind::Root)
     }
 
-    fn segments(s: impl Into<String>, names: Option<CaptureNames>) -> Uri {
+    fn segments(s: impl Into<String>, names: Option<CaptureNames>) -> Self {
         Uri(UriKind::Segments(s.into(), names))
     }
 
     #[cfg(test)]
-    fn static_(s: impl Into<String>) -> Uri {
-        Uri::segments(s, None)
+    fn static_(s: impl Into<String>) -> Self {
+        Self::segments(s, None)
     }
 
     #[cfg(test)]
-    fn captured(s: impl Into<String>, names: CaptureNames) -> Uri {
+    fn captured(s: impl Into<String>, names: CaptureNames) -> Self {
         Uri(UriKind::Segments(s.into(), Some(names)))
     }
 
@@ -159,30 +159,30 @@ impl Uri {
         }
     }
 
-    fn join(self, other: impl AsRef<Uri>) -> Result<Uri, Error> {
+    fn join(self, other: impl AsRef<Self>) -> Result<Self, Error> {
         match self.0 {
             UriKind::Root => Ok(other.as_ref().clone()),
-            UriKind::Segments(mut s, mut names) => match other.as_ref().0 {
-                UriKind::Root => Ok(Uri::segments(s, names)),
-                UriKind::Segments(ref o, ref onames) => {
-                    s += if s.ends_with('/') {
-                        o.trim_left_matches('/')
+            UriKind::Segments(mut segment, mut names) => match other.as_ref().0 {
+                UriKind::Root => Ok(Self::segments(segment, names)),
+                UriKind::Segments(ref other_segment, ref other_names) => {
+                    segment += if segment.ends_with('/') {
+                        other_segment.trim_left_matches('/')
                     } else {
-                        o
+                        other_segment
                     };
-                    match (&mut names, onames) {
-                        (&mut Some(ref mut names), &Some(ref onames)) => {
-                            names.extend(onames.params.iter().cloned())?;
-                            if onames.wildcard {
+                    match (&mut names, other_names) {
+                        (&mut Some(ref mut names), &Some(ref other_names)) => {
+                            names.extend(other_names.params.iter().cloned())?;
+                            if other_names.wildcard {
                                 names.set_wildcard()?;
                             }
                         }
-                        (ref mut names @ None, &Some(ref onames)) => {
-                            **names = Some(onames.clone());
+                        (ref mut names @ None, &Some(ref other_names)) => {
+                            **names = Some(other_names.clone());
                         }
                         (_, &None) => {}
                     }
-                    Ok(Uri::segments(s, names))
+                    Ok(Self::segments(segment, names))
                 }
             },
         }
@@ -190,7 +190,7 @@ impl Uri {
 }
 
 impl AsRef<Uri> for Uri {
-    fn as_ref(&self) -> &Uri {
+    fn as_ref(&self) -> &Self {
         self
     }
 }
@@ -201,6 +201,7 @@ impl fmt::Display for Uri {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(non_ascii_literal))]
 #[cfg(test)]
 mod tests {
     use super::*;

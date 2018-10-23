@@ -92,21 +92,21 @@ impl<E> From<Result<Option<Output>, E>> for BeforeHandle
 where
     Error: From<E>,
 {
-    fn from(result: Result<Option<Output>, E>) -> BeforeHandle {
-        BeforeHandle::ready(result.map_err(Into::into))
+    fn from(result: Result<Option<Output>, E>) -> Self {
+        Self::ready(result.map_err(Into::into))
     }
 }
 
 impl BeforeHandle {
     /// Creates a `BeforeHandle` from an immediately value.
-    pub fn ready(result: Result<Option<Output>, Error>) -> BeforeHandle {
+    pub fn ready(result: Result<Option<Output>, Error>) -> Self {
         BeforeHandle(BeforeHandleState::Ready(Some(result)))
     }
 
     /// Creates a `BeforeHandle` from a closure repsenting an asynchronous computation.
     pub fn polling(
         f: impl FnMut(&mut Input<'_>) -> Poll<Option<Output>, Error> + Send + 'static,
-    ) -> BeforeHandle {
+    ) -> Self {
         BeforeHandle(BeforeHandleState::Polling(Box::new(f)))
     }
 
@@ -114,8 +114,8 @@ impl BeforeHandle {
     #[inline(always)]
     pub fn wrap_future(
         mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static,
-    ) -> BeforeHandle {
-        BeforeHandle::polling(move |input| input::with_set_current(input, || future.poll()))
+    ) -> Self {
+        Self::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Option<Output>, Error> {
@@ -158,21 +158,19 @@ where
     T: Into<Output>,
     Error: From<E>,
 {
-    fn from(result: Result<T, E>) -> AfterHandle {
-        AfterHandle::ready(result.map(Into::into).map_err(Into::into))
+    fn from(result: Result<T, E>) -> Self {
+        Self::ready(result.map(Into::into).map_err(Into::into))
     }
 }
 
 impl AfterHandle {
     /// Creates an `AfterHandle` from an immediately value.
-    pub fn ready(result: Result<Output, Error>) -> AfterHandle {
+    pub fn ready(result: Result<Output, Error>) -> Self {
         AfterHandle(AfterHandleState::Ready(Some(result)))
     }
 
     /// Creates an `AfterHandle` from a closure repsenting an asynchronous computation.
-    pub fn polling(
-        f: impl FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static,
-    ) -> AfterHandle {
+    pub fn polling(f: impl FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static) -> Self {
         AfterHandle(AfterHandleState::Polling(Box::new(f)))
     }
 
@@ -180,8 +178,8 @@ impl AfterHandle {
     #[inline(always)]
     pub fn wrap_future(
         mut future: impl Future<Item = Output, Error = Error> + Send + 'static,
-    ) -> AfterHandle {
-        AfterHandle::polling(move |input| input::with_set_current(input, || future.poll()))
+    ) -> Self {
+        Self::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {

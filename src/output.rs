@@ -17,12 +17,12 @@ pub struct ResponseBody(Body);
 impl ResponseBody {
     /// Creates an empty `ResponseBody`.
     #[inline]
-    pub fn empty() -> ResponseBody {
-        Default::default()
+    pub fn empty() -> Self {
+        Self::default()
     }
 
     /// Wraps a `Stream` into a `ResponseBody`.
-    pub fn wrap_stream<S>(stream: S) -> ResponseBody
+    pub fn wrap_stream<S>(stream: S) -> Self
     where
         S: Stream + Send + 'static,
         S::Error: Into<crate::server::CritError>,
@@ -162,6 +162,7 @@ impl HttpError for OptionError {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<T, E> Responder for Result<T, E>
 where
     T: Responder,
@@ -178,6 +179,7 @@ where
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<T> Responder for Response<T>
 where
     T: Into<ResponseBody>,
@@ -185,7 +187,7 @@ where
     type Body = T;
     type Error = Never;
 
-    #[inline(always)]
+    #[inline]
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(self)
     }
@@ -195,7 +197,7 @@ impl Responder for &'static str {
     type Body = Self;
     type Error = Never;
 
-    #[inline(always)]
+    #[inline]
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(text_response(self))
     }
@@ -205,7 +207,7 @@ impl Responder for String {
     type Body = Self;
     type Error = Never;
 
-    #[inline(always)]
+    #[inline]
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(text_response(self))
     }
@@ -230,6 +232,7 @@ pub trait AsyncResponder: Send + 'static + sealed::Sealed {
     fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error>;
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<F> AsyncResponder for F
 where
     F: Future + Send + 'static,

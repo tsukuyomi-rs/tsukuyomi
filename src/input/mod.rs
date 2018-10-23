@@ -68,8 +68,8 @@ pub(crate) struct InputParts {
 }
 
 impl InputParts {
-    pub(crate) fn new(route: RouteId, captures: Option<Captures>) -> InputParts {
-        InputParts {
+    pub(crate) fn new(route: RouteId, captures: Option<Captures>) -> Self {
+        Self {
             route,
             captures,
             cookies: CookieManager::default(),

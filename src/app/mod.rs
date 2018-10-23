@@ -24,9 +24,11 @@ use self::scoped_map::ScopedMap;
 pub use self::service::RecognizeError;
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub type AppResult<T> = std::result::Result<T, AppError>;
 
 /// An error type which will be thrown from `AppBuilder`.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, failure::Fail)]
 #[fail(display = "{}", inner)]
 pub struct AppError {
@@ -34,8 +36,8 @@ pub struct AppError {
 }
 
 impl AppError {
-    fn from_failure(err: impl Into<failure::Error>) -> AppError {
-        AppError { inner: err.into() }
+    fn from_failure(err: impl Into<failure::Error>) -> Self {
+        Self { inner: err.into() }
     }
 }
 
@@ -48,7 +50,7 @@ struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Config {
+        Self {
             fallback_head: true,
             fallback_options: true,
             _priv: (),

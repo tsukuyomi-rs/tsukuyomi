@@ -26,29 +26,29 @@ impl<T> fmt::Debug for TypedScopedValue<T> {
 }
 
 impl<T> TypedScopedValue<T> {
-    fn new(value: T, id: ScopeId) -> TypedScopedValue<T> {
+    fn new(value: T, id: ScopeId) -> Self {
         match id {
             ScopeId::Global => Self::new_global(value),
             ScopeId::Local(pos) => Self::new_local(value, pos),
         }
     }
 
-    fn new_global(value: T) -> TypedScopedValue<T> {
-        TypedScopedValue {
+    fn new_global(value: T) -> Self {
+        Self {
             global: Some(value),
             locals: vec![],
             forward_ids: vec![],
         }
     }
 
-    fn new_local(value: T, pos: usize) -> TypedScopedValue<T> {
+    fn new_local(value: T, pos: usize) -> Self {
         let mut locals = Vec::with_capacity(pos);
         for _ in 0..pos {
             locals.push(None);
         }
         locals.push(Some(value));
 
-        TypedScopedValue {
+        Self {
             global: None,
             locals,
             forward_ids: vec![],
@@ -154,7 +154,7 @@ impl dyn ScopedValue {
 struct IdentHash(u64);
 
 impl Default for IdentHash {
-    fn default() -> IdentHash {
+    fn default() -> Self {
         IdentHash(0)
     }
 }

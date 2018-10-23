@@ -14,6 +14,7 @@
 )]
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
+#![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
 pub extern crate tsukuyomi_server as server;
 

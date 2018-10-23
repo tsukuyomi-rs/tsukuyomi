@@ -3,6 +3,7 @@
 use super::Error;
 
 /// A trait representing a global error handlers.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait ErrorHandler {
     /// Modifies a specified error value
     ///

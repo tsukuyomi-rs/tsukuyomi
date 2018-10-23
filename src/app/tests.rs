@@ -5,9 +5,10 @@ use super::*;
 use crate::error::HttpError;
 use crate::handler::Handle;
 use crate::input::Input;
+use crate::output::ResponseBody;
 
 fn dummy_handler(_: &mut Input<'_>) -> Handle {
-    Handle::ready(Ok(Response::new(Default::default())))
+    Handle::ready(Ok(Response::new(ResponseBody::empty())))
 }
 
 #[test]

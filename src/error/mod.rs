@@ -51,6 +51,7 @@ use crate::output::ResponseBody;
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 /// A trait representing error values to be converted into an HTTP response.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait HttpError: ::failure::Fail {
     /// Returns an HTTP status code associated with this value.
     ///
@@ -79,7 +80,7 @@ pub trait HttpError: ::failure::Fail {
 
 impl dyn HttpError {
     #[allow(missing_docs)]
-    #[inline(always)]
+    #[inline]
     pub fn is<T: HttpError>(&self) -> bool {
         self.__private_type_id__() == TypeId::of::<T>()
     }
@@ -109,8 +110,9 @@ pub trait BoxHttpErrorExt {
     fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Box<dyn HttpError>>;
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl BoxHttpErrorExt for Box<dyn HttpError> {
-    fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Box<dyn HttpError>> {
+    fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Self> {
         if self.is::<T>() {
             unsafe { Ok(Box::from_raw(Box::into_raw(self) as *mut T)) }
         } else {
@@ -119,7 +121,7 @@ impl BoxHttpErrorExt for Box<dyn HttpError> {
     }
 }
 
-/// The implementation of HttpError for the standard I/O error.
+/// The implementation of `HttpError` for the standard I/O error.
 impl HttpError for io::Error {
     fn status(&self) -> StatusCode {
         match self.kind() {
@@ -138,14 +140,14 @@ impl<E> From<E> for Error
 where
     E: HttpError,
 {
-    fn from(err: E) -> Error {
-        Error::new(Box::new(err) as Box<dyn HttpError>)
+    fn from(err: E) -> Self {
+        Self::new(Box::new(err) as Box<dyn HttpError>)
     }
 }
 
 impl Error {
     /// Creates an `Error` from the specified value implementing `HttpError`.
-    pub fn new(err: impl Into<Box<dyn HttpError>>) -> Error {
+    pub fn new(err: impl Into<Box<dyn HttpError>>) -> Self {
         Error(Ok(err.into()))
     }
 
@@ -159,7 +161,7 @@ impl Error {
     ///
     /// [hyper-service-error]:
     /// https://docs.rs/hyper/0.12.*/hyper/service/trait.Service.html#associatedtype.Error
-    pub fn critical<E>(err: E) -> Error
+    pub fn critical<E>(err: E) -> Self
     where
         E: Into<crate::server::CritError>,
     {
@@ -184,7 +186,7 @@ impl Error {
     /// Consumes `self` and converts its value into a boxed `HttpError`.
     ///
     /// If the value is a criticial error, it returns `self` wrapped in `Err`.
-    pub fn into_http_error(self) -> ::std::result::Result<Box<dyn HttpError>, Error> {
+    pub fn into_http_error(self) -> ::std::result::Result<Box<dyn HttpError>, Self> {
         match self.0 {
             Ok(e) => Ok(e),
             Err(e) => Err(Error(Err(e))),
@@ -192,7 +194,7 @@ impl Error {
     }
 
     /// Attempts to downcast this error value into the specified concrete type.
-    pub fn downcast<T: HttpError>(self) -> ::std::result::Result<T, Error> {
+    pub fn downcast<T: HttpError>(self) -> ::std::result::Result<T, Self> {
         match self.0 {
             Ok(e) => e.downcast().map(|e| *e).map_err(|e| Error(Ok(e))),
             Err(e) => Err(Error(Err(e))),
@@ -219,7 +221,7 @@ impl Error {
     /// Attempts to convert the internal value of `HttpError` into a specified type.
     ///
     /// This method does nothing if the type id of internal value is equal to `T`.
-    pub fn map<T: HttpError>(self, f: impl FnOnce(Box<dyn HttpError>) -> T) -> Error {
+    pub fn map<T: HttpError>(self, f: impl FnOnce(Box<dyn HttpError>) -> T) -> Self {
         Error(match self.0 {
             Ok(e) => match e.downcast::<T>() {
                 Ok(e) => Ok(e),

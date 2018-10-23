@@ -60,6 +60,11 @@ pub fn unimplemented() -> impl Handler {
     })
 }
 
+#[allow(missing_docs)]
+pub fn a() {
+    unimplemented!()
+}
+
 /// A type representing the return value from `Handler::handle`.
 pub struct Handle(HandleKind);
 
@@ -78,12 +83,12 @@ impl fmt::Debug for Handle {
 
 impl Handle {
     #[doc(hidden)]
-    pub fn ready(result: Result<Output, Error>) -> Handle {
+    pub fn ready(result: Result<Output, Error>) -> Self {
         Handle(HandleKind::Ready(Some(result)))
     }
 
     #[doc(hidden)]
-    pub fn wrap_async(mut x: impl AsyncResponder) -> Handle {
+    pub fn wrap_async(mut x: impl AsyncResponder) -> Self {
         Handle(HandleKind::Async(Box::new(move |input| {
             x.poll_respond_to(input)
         })))

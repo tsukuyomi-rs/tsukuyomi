@@ -124,7 +124,7 @@ impl<T> Deref for Json<T> {
 impl<T: DeserializeOwned> FromData for Json<T> {
     type Error = Failure;
 
-    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Json<T>, Self::Error> {
+    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error> {
         if let Some(mime) = content_type(input)? {
             if *mime != mime::APPLICATION_JSON {
                 return Err(Failure::bad_request(failure::format_err!(
@@ -153,11 +153,12 @@ impl<T: Serialize + HttpResponse> Responder for Json<T> {
 }
 
 /// A general JSON value.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
 pub struct JsonValue(serde_json::Value);
 
 impl From<serde_json::Value> for JsonValue {
-    fn from(val: serde_json::Value) -> JsonValue {
+    fn from(val: serde_json::Value) -> Self {
         JsonValue(val)
     }
 }
@@ -172,6 +173,7 @@ impl Responder for JsonValue {
 }
 
 /// An error type representing a JSON error response.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, failure::Fail)]
 #[fail(display = "{}", cause)]
 pub struct JsonError {
@@ -180,8 +182,8 @@ pub struct JsonError {
 
 impl JsonError {
     /// Creates a "JsonError" from the provided error value.
-    pub fn new(cause: impl Into<Box<dyn HttpError>>) -> JsonError {
-        JsonError {
+    pub fn new(cause: impl Into<Box<dyn HttpError>>) -> Self {
+        Self {
             cause: cause.into(),
         }
     }
@@ -197,7 +199,7 @@ where
     E: Into<Box<dyn HttpError>>,
 {
     fn from(cause: E) -> Self {
-        JsonError::new(cause)
+        Self::new(cause)
     }
 }
 
@@ -224,6 +226,7 @@ impl HttpError for JsonError {
 }
 
 /// An error handler for creating JSON error responses.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
 pub struct JsonErrorHandler {
     _priv: (),
@@ -231,8 +234,8 @@ pub struct JsonErrorHandler {
 
 impl JsonErrorHandler {
     #[allow(missing_docs)]
-    pub fn new() -> JsonErrorHandler {
-        Default::default()
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

@@ -42,9 +42,9 @@ struct ETag {
 }
 
 impl ETag {
-    fn from_metadata(metadata: &Metadata) -> ETag {
+    fn from_metadata(metadata: &Metadata) -> Self {
         let last_modified = FileTime::from_last_modification_time(&metadata);
-        ETag {
+        Self {
             weak: true,
             tag: format!(
                 "{:x}-{:x}.{:x}",
@@ -55,7 +55,7 @@ impl ETag {
         }
     }
 
-    fn parse_inner(weak: bool, s: &str) -> Result<ETag, failure::Error> {
+    fn parse_inner(weak: bool, s: &str) -> Result<Self, failure::Error> {
         if s.len() < 2 {
             failure::bail!("");
         }
@@ -68,13 +68,13 @@ impl ETag {
             failure::bail!("");
         }
 
-        Ok(ETag {
+        Ok(Self {
             weak,
             tag: tag.to_owned(),
         })
     }
 
-    fn eq(&self, other: &ETag) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.tag == other.tag && (self.weak || !other.weak)
     }
 }
@@ -84,10 +84,10 @@ impl FromStr for ETag {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.get(0..3) {
-            Some("W/\"") if s[2..].starts_with('"') => ETag::parse_inner(true, &s[2..]),
-            Some(t) if t.starts_with('"') => ETag::parse_inner(false, s),
-            Some(..) => failure::bail!(""),
-            None => failure::bail!(""),
+            Some("W/\"") if s[2..].starts_with('"') => Self::parse_inner(true, &s[2..]),
+            Some(t) if t.starts_with('"') => Self::parse_inner(false, s),
+            Some(..) => failure::bail!("invalid string to parse ETag"),
+            None => failure::bail!("empty string to parse ETag"),
         }
     }
 }
@@ -179,6 +179,7 @@ impl NamedFile {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_sign_loss))]
     fn is_modified(&self, headers: &HeaderMap) -> Result<bool, Failure> {
         if let Some(h) = headers.get(header::IF_NONE_MATCH) {
             trace!("NamedFile::is_modified(): validate If-None-Match");
@@ -227,6 +228,7 @@ impl NamedFile {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_possible_wrap))]
     fn last_modified(&self) -> Result<String, time::ParseError> {
         let tm = time::at(Timespec::new(
             self.last_modified.seconds(),
@@ -246,7 +248,7 @@ impl Responder for NamedFile {
         if !self.is_modified(input.headers())? {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_MODIFIED)
-                .body(Default::default())
+                .body(ResponseBody::empty())
                 .unwrap());
         }
 
@@ -315,7 +317,7 @@ enum State {
 }
 
 impl ReadStream {
-    fn new(file: File, meta: Metadata, buf_size: Option<usize>) -> ReadStream {
+    fn new(file: File, meta: Metadata, buf_size: Option<usize>) -> Self {
         let buf_size = finalize_block_size(buf_size, &meta);
         drop(meta);
         ReadStream(State::Reading { file, buf_size })
@@ -368,7 +370,7 @@ impl Stream for ReadStream {
 }
 
 #[allow(dead_code)]
-const DEFAULT_BUF_SIZE: usize = 8192;
+const DEFAULT_BUF_SIZE: u64 = 8192;
 
 fn blocking_io<T>(f: impl FnOnce() -> io::Result<T>) -> Poll<T, io::Error> {
     match blocking(f) {
@@ -377,21 +379,24 @@ fn blocking_io<T>(f: impl FnOnce() -> io::Result<T>) -> Poll<T, io::Error> {
         Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
     }
 }
+
+// FIXME: replace usize to u64
+#[cfg_attr(feature = "cargo-clippy", allow(cast_possible_truncation))]
 fn finalize_block_size(buf_size: Option<usize>, meta: &Metadata) -> usize {
     match buf_size {
-        Some(n) => cmp::min(meta.len() as usize, n),
-        None => cmp::min(meta.len() as usize, block_size(&meta)),
+        Some(n) => cmp::min(meta.len(), n as u64) as usize,
+        None => cmp::min(meta.len(), block_size(&meta)) as usize,
     }
 }
 
 #[cfg(unix)]
-fn block_size(meta: &Metadata) -> usize {
+fn block_size(meta: &Metadata) -> u64 {
     use std::os::unix::fs::MetadataExt;
-    meta.blksize() as usize
+    meta.blksize()
 }
 
 #[cfg(not(unix))]
-fn block_size(_: &Metadata) -> usize {
+fn block_size(_: &Metadata) -> u64 {
     DEFAULT_BUF_SIZE
 }
 
@@ -420,8 +425,8 @@ impl Staticfiles {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(root_dir: impl Into<PathBuf>) -> Staticfiles {
-        Staticfiles {
+    pub fn new(root_dir: impl Into<PathBuf>) -> Self {
+        Self {
             root_dir: root_dir.into(),
         }
     }

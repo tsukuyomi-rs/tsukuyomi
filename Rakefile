@@ -1,7 +1,7 @@
 require 'rake'
 
 task :test do
-    sh "cargo clippy --tests || true"
+    sh "if cargo clippy --version; then cargo clippy --all-targets; fi"
     sh "cargo test"
     sh "cargo test --all-features"
     sh "cargo test --no-default-features"

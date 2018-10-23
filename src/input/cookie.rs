@@ -12,27 +12,26 @@ pub(crate) struct CookieManager {
 
 impl CookieManager {
     pub(crate) fn init(&mut self, h: &HeaderMap) -> Result<Cookies<'_>, Error> {
-        match self.jar {
-            Some(ref mut jar) => Ok(Cookies {
+        if let Some(ref mut jar) = self.jar {
+            Ok(Cookies {
                 jar,
                 _marker: PhantomData,
-            }),
-            None => {
-                let mut jar = CookieJar::new();
-                for raw in h.get_all(header::COOKIE) {
-                    let raw_s = raw.to_str().map_err(crate::error::Failure::bad_request)?;
-                    for s in raw_s.split(';').map(|s| s.trim()) {
-                        let cookie = Cookie::parse_encoded(s)
-                            .map_err(crate::error::Failure::bad_request)?
-                            .into_owned();
-                        jar.add_original(cookie);
-                    }
+            })
+        } else {
+            let mut jar = CookieJar::new();
+            for raw in h.get_all(header::COOKIE) {
+                let raw_s = raw.to_str().map_err(crate::error::Failure::bad_request)?;
+                for s in raw_s.split(';').map(|s| s.trim()) {
+                    let cookie = Cookie::parse_encoded(s)
+                        .map_err(crate::error::Failure::bad_request)?
+                        .into_owned();
+                    jar.add_original(cookie);
                 }
-                Ok(Cookies {
-                    jar: self.jar.get_or_insert(jar),
-                    _marker: PhantomData,
-                })
             }
+            Ok(Cookies {
+                jar: self.jar.get_or_insert(jar),
+                _marker: PhantomData,
+            })
         }
     }
 

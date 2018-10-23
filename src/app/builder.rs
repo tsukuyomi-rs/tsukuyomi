@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "cargo-clippy", allow(stutter))]
+
 //! Components for building an `App`.
 
 use std::fmt;
@@ -87,14 +89,14 @@ impl fmt::Debug for AppBuilder {
 }
 
 impl AppBuilder {
-    pub(super) fn new() -> AppBuilder {
-        AppBuilder {
+    pub(super) fn new() -> Self {
+        Self {
             routes: vec![],
             scopes: vec![],
-            config: Default::default(),
+            config: Config::default(),
             error_handler: None,
             modifiers: vec![],
-            globals: Default::default(),
+            globals: scoped_map::Builder::default(),
             prefix: None,
 
             result: Ok(()),
@@ -351,7 +353,7 @@ impl AppBuilder {
 
     /// Creates a configured `App` using the current settings.
     pub fn finish(self) -> AppResult<App> {
-        let AppBuilder {
+        let Self {
             routes,
             config,
             result,
@@ -614,7 +616,7 @@ where
     P: AsRef<str>,
     F: FnOnce(&mut Scope<'_>),
 {
-    #[inline(always)]
+    #[inline]
     fn configure(self, scope: &mut Scope<'_>) {
         scope.prefix(self.0.as_ref());
         (self.1)(scope);

@@ -18,6 +18,7 @@ use super::Input;
 // ==== RequestBody ====
 
 /// A type representing a message body in the incoming HTTP request.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
 pub struct RequestBody {
     body: Option<RawBody>,
@@ -25,8 +26,8 @@ pub struct RequestBody {
 }
 
 impl From<RawBody> for RequestBody {
-    fn from(body: RawBody) -> RequestBody {
-        RequestBody {
+    fn from(body: RawBody) -> Self {
+        Self {
             body: Some(body),
             is_upgraded: false,
         }
@@ -219,6 +220,6 @@ impl FromData for String {
             }
         }
 
-        String::from_utf8(data.to_vec()).map_err(Failure::bad_request)
+        Self::from_utf8(data.to_vec()).map_err(Failure::bad_request)
     }
 }

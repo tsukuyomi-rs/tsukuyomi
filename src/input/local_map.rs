@@ -100,7 +100,7 @@ pub struct LocalKey<T: Send + 'static> {
 }
 
 impl<T: Send + 'static> LocalKey<T> {
-    #[inline(always)]
+    #[inline]
     fn type_id(&'static self) -> TypeId {
         (self.__type_id)()
     }
@@ -152,6 +152,7 @@ trait BoxDowncastExt {
     unsafe fn downcast_unchecked<T: Send + 'static>(self) -> Box<T>;
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl BoxDowncastExt for Box<dyn Opaque> {
     unsafe fn downcast_unchecked<T: Send + 'static>(self) -> Box<T> {
         Box::from_raw(Box::into_raw(self) as *mut T)

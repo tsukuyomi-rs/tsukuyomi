@@ -3,7 +3,8 @@ use std::fmt;
 
 use super::HttpError;
 
-/// A helper type emulating the standard never_type (`!`).
+/// A helper type emulating the standard `never_type` (`!`).
+#[cfg_attr(feature = "cargo-clippy", allow(stutter, empty_enum))]
 #[derive(Debug)]
 pub enum Never {}
 

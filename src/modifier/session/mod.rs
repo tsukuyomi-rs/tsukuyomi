@@ -19,16 +19,16 @@ enum SessionState {
 }
 
 impl Session {
-    local_key!(const KEY: Session);
+    local_key!(const KEY: Self);
 
-    fn empty() -> Session {
-        Session {
+    fn empty() -> Self {
+        Self {
             state: SessionState::Empty,
         }
     }
 
-    fn some(map: HashMap<String, String>) -> Session {
-        Session {
+    fn some(map: HashMap<String, String>) -> Self {
+        Self {
             state: SessionState::Some(map),
         }
     }
@@ -77,6 +77,7 @@ mod ext {
     use super::Session;
     use crate::input::Input;
 
+    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
     pub trait InputSessionExt: Sealed {
         fn session(&mut self) -> Option<&mut Session>;
     }

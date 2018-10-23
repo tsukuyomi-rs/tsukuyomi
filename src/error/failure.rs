@@ -13,21 +13,21 @@ pub struct Failure {
 
 impl Failure {
     /// Create a new `Failure` from the specified HTTP status code and an error value.
-    pub fn new(status: StatusCode, err: impl Into<Error>) -> Failure {
-        Failure {
+    pub fn new(status: StatusCode, err: impl Into<Error>) -> Self {
+        Self {
             err: err.into(),
             status,
         }
     }
 
     /// Creates an HTTP error representing "400 Bad Request" from the provided error value.
-    pub fn bad_request(err: impl Into<Error>) -> Failure {
-        Failure::new(StatusCode::BAD_REQUEST, err)
+    pub fn bad_request(err: impl Into<Error>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, err)
     }
 
     /// Creates an HTTP error representing "500 Internal Server Error", from the provided error value .
-    pub fn internal_server_error(err: impl Into<Error>) -> Failure {
-        Failure::new(StatusCode::INTERNAL_SERVER_ERROR, err)
+    pub fn internal_server_error(err: impl Into<Error>) -> Self {
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, err)
     }
 }
 

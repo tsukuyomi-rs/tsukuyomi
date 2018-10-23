@@ -8,6 +8,7 @@ use crate::output::ResponseBody;
 use super::HttpError;
 
 /// An instance of `HttpError` which holds an HTTP status code and the message string.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, failure::Fail)]
 #[fail(display = "{}", message)]
 pub struct ErrorMessage {
@@ -17,8 +18,8 @@ pub struct ErrorMessage {
 
 impl ErrorMessage {
     /// Creates an `ErrorMessage` from the provided components.
-    pub fn new(status: StatusCode, message: impl Into<Cow<'static, str>>) -> ErrorMessage {
-        ErrorMessage {
+    pub fn new(status: StatusCode, message: impl Into<Cow<'static, str>>) -> Self {
+        Self {
             status,
             message: message.into(),
         }
@@ -31,7 +32,7 @@ impl HttpError for ErrorMessage {
     }
 
     fn body(&mut self, _: &Request<RequestBody>) -> ResponseBody {
-        mem::replace(&mut self.message, Default::default()).into()
+        mem::replace(&mut self.message, Cow::default()).into()
     }
 }
 
