@@ -1,7 +1,16 @@
 require 'rake'
 
+if system('cargo clippy --version') then
+    task :clippy do
+        sh "cargo clippy --all-targets"
+    end
+else
+    task :clippy do
+        puts "'clippy' is not installed."
+    end
+end
+
 task :test do
-    sh "if cargo clippy --version; then cargo clippy --all-targets; fi"
     sh "cargo test"
     sh "cargo test --all-features"
     sh "cargo test --no-default-features"
@@ -12,4 +21,4 @@ task :install_hooks do
     sh "cargo check -p cargo-husky"
 end
 
-task default: :test
+task default: [:clippy, :test]
