@@ -33,6 +33,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate time;
 extern crate tower_service;
+extern crate walkdir;
 
 #[cfg(test)]
 extern crate matches;

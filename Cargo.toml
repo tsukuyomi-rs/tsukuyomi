@@ -53,6 +53,7 @@ serde_json = "1"
 time = "0.1"
 tower-service = "0.1"
 tsukuyomi-server = "0.1"
+walkdir = "2"
 
 # for WebSocket
 base64 = { version = "0.9", optional = true }
