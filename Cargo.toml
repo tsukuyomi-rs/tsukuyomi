@@ -57,7 +57,7 @@ walkdir = "2"
 
 # for WebSocket
 base64 = { version = "0.9", optional = true }
-sha1 = { version = "0.6", optional = true }
+sha-1 = { version = "0.8", optional = true }
 tokio-tungstenite = { version = "0.6", optional = true }
 tungstenite = { version = "0.6", optional = true }
 
@@ -87,7 +87,7 @@ session-redis = [
 ]
 websocket = [
   "base64",
-  "sha1",
+  "sha-1",
   "tokio-tungstenite",
   "tungstenite",
 ]

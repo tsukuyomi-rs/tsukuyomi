@@ -41,7 +41,7 @@
 use base64;
 use futures::prelude::*;
 use http::{header, Response, StatusCode};
-use sha1;
+use sha1::{Digest, Sha1};
 
 use tokio_tungstenite::WebSocketStream;
 pub use tungstenite::protocol::Message;
@@ -100,10 +100,10 @@ pub fn handshake(input: &mut Input<'_>) -> Result<Response<()>, HandshakeError> 
                 Err(HandshakeError::InvalidSecWebSocketKey)?;
             }
 
-            let mut m = sha1::Sha1::new();
-            m.update(h.as_bytes());
-            m.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-            base64::encode(&m.digest().bytes()[..])
+            let mut m = Sha1::new();
+            m.input(h.as_bytes());
+            m.input(&b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"[..]);
+            base64::encode(&*m.result())
         }
         None => Err(HandshakeError::MissingHeader {
             name: "Sec-WebSocket-Key",
