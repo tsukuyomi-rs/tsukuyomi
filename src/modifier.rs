@@ -32,8 +32,6 @@
 //! # }
 //! ```
 
-pub mod session;
-
 use futures::{self, Future, Poll};
 use std::fmt;
 

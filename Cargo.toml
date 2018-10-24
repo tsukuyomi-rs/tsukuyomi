@@ -61,10 +61,6 @@ sha-1 = { version = "0.8", optional = true }
 tokio-tungstenite = { version = "0.6", optional = true }
 tungstenite = { version = "0.6", optional = true }
 
-# for Redis session backend
-redis = { version = "0.9", optional = true }
-uuid = { version = "0.7", optional = true, features = ["v4"] }
-
 [dev-dependencies]
 matches = "0.1"
 
@@ -80,10 +76,6 @@ secure = [
 ]
 tls = [
   "tsukuyomi-server/tls",
-]
-session-redis = [
-  "redis",
-  "uuid",
 ]
 websocket = [
   "base64",
