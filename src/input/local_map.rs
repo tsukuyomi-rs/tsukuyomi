@@ -49,15 +49,6 @@ macro_rules! local_key {
             $vis static $NAME: $t;
         )*);
     };
-    ($(
-        $(#[$m:meta])*
-        $vis:vis static $NAME:ident : $t:ty
-    );+) => {
-        local_key!($(
-            $(#[$m])*
-            $vis static $NAME: $t;
-        )*);
-    };
 
     ($(
         $(#[$m:meta])*

@@ -60,11 +60,6 @@ pub fn unimplemented() -> impl Handler {
     })
 }
 
-#[allow(missing_docs)]
-pub fn a() {
-    unimplemented!()
-}
-
 /// A type representing the return value from `Handler::handle`.
 pub struct Handle(HandleKind);
 
