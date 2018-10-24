@@ -1,6 +1,3 @@
-// FIXME: remove this feature gate as soon as the rustc version used in docs.rs is updated
-#![cfg_attr(tsukuyomi_inject_extern_prelude, feature(extern_prelude))]
-
 //! Tsukuyomi is an asynchronous Web framework for Rust.
 
 #![doc(html_root_url = "https://docs.rs/tsukuyomi/0.3.1")]

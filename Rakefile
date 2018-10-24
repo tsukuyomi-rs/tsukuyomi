@@ -1,7 +1,15 @@
 require 'open3'
 
+def has_rustfmt?
+    Open3.capture3("cargo fmt --version")[2].success?
+end
+
 def has_clippy?
     Open3.capture3("cargo clippy --version")[2].success?
+end
+
+task :fmt_check do
+    sh "cargo fmt -- --check" if has_rustfmt?
 end
 
 task :clippy do
@@ -18,7 +26,7 @@ task :test do
     sh "cargo test --no-default-features"
 end
 
-task pre_release: [:test, :clippy] do
+task pre_release: [:fmt_check, :test, :clippy] do
     sh "cargo publish --dry-run"
 end
 
