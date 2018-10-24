@@ -1,13 +1,11 @@
-require 'rake'
+require 'open3'
 
-if system('cargo clippy --version') then
-    task :clippy do
-        sh "cargo clippy --all-targets"
-    end
-else
-    task :clippy do
-        puts "'clippy' is not installed."
-    end
+def has_clippy?
+    Open3.capture3("cargo clippy --version")[2].success?
+end
+
+task :clippy do
+    sh "cargo clippy --all-features --all-targets" if has_clippy?
 end
 
 task :test do
@@ -21,4 +19,4 @@ task :install_hooks do
     sh "cargo check -p cargo-husky"
 end
 
-task default: [:clippy, :test]
+task default: [:test, :clippy]

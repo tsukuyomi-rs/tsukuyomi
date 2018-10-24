@@ -16,6 +16,7 @@ use crate::output::Output;
 
 use super::{Session, SessionState};
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
 pub struct RedisSessionBackend {
     client: Client,
@@ -26,7 +27,7 @@ pub struct RedisSessionBackend {
 
 impl RedisSessionBackend {
     pub fn new(client: Client) -> Self {
-        RedisSessionBackend {
+        Self {
             client,
             key_prefix: "tsukuyomi-session".into(),
             cookie_name: "session-id".into(),
@@ -162,6 +163,7 @@ impl Modifier for RedisSessionBackend {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[allow(missing_debug_implementations)]
 struct RedisSessionContext {
     conn: Connection,
@@ -211,8 +213,8 @@ mod imp {
             future: RedisFuture<Connection>,
             key_name: Option<String>,
             session_id: Option<Uuid>,
-        ) -> ReadFuture {
-            ReadFuture {
+        ) -> Self {
+            Self {
                 state: ReadFutureState::Connecting {
                     future,
                     key_name,
