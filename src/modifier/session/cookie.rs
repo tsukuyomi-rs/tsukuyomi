@@ -1,3 +1,5 @@
+//! Session backend using Cookie as storage.
+
 use std::borrow::Cow;
 use std::fmt;
 

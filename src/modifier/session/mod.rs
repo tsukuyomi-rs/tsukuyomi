@@ -1,3 +1,6 @@
+//! **\[experimental\]**
+//! Modifiers for supporting session management.
+
 #![allow(missing_docs)]
 
 pub mod cookie;

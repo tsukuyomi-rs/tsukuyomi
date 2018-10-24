@@ -1,3 +1,5 @@
+//! Session backend using Redis.
+
 #![cfg(feature = "session-redis")]
 
 use std::borrow::Cow;
