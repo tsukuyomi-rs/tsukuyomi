@@ -12,7 +12,9 @@ use std::ops::Deref;
 
 use crate::error::ErrorHandler;
 use crate::error::{Error, Failure, HttpError, Never};
-use crate::input::body::{FromData, RequestBody};
+#[allow(deprecated)]
+use crate::input::body::FromData;
+use crate::input::body::RequestBody;
 use crate::input::header::content_type;
 use crate::input::Input;
 use crate::modifier::{AfterHandle, Modifier};
@@ -121,6 +123,7 @@ impl<T> Deref for Json<T> {
     }
 }
 
+#[allow(deprecated)]
 impl<T: DeserializeOwned> FromData for Json<T> {
     type Error = Failure;
 

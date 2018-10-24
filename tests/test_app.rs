@@ -1,11 +1,15 @@
 extern crate cookie;
+extern crate futures;
 extern crate http;
 extern crate time;
 extern crate tsukuyomi;
 extern crate tsukuyomi_server;
 
+use futures::prelude::*;
+
 use tsukuyomi::app::App;
 use tsukuyomi::handler;
+use tsukuyomi::input::body::Plain;
 use tsukuyomi_server::local::LocalServer;
 
 use http::{header, Method, Request, StatusCode};
@@ -59,7 +63,7 @@ fn test_case3_post_body() {
         .route((
             "/hello",
             Method::POST,
-            handler::wrap_async(|input| input.body_mut().read_all().convert_to::<String>()),
+            handler::wrap_async(|input| input.extract::<Plain>().map(Plain::into_inner)),
         )).finish()
         .unwrap();
     let mut server = LocalServer::new(app).unwrap();

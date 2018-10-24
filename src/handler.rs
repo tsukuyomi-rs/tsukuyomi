@@ -159,12 +159,16 @@ where
 /// # Examples
 ///
 /// ```
+/// # extern crate futures;
+/// # extern crate tsukuyomi;
+/// # use futures::prelude::*;
 /// # use tsukuyomi::app::App;
 /// # use tsukuyomi::input::Input;
+/// # use tsukuyomi::input::body::Plain;
 /// # use tsukuyomi::output::AsyncResponder;
 /// # use tsukuyomi::handler::wrap_async;
 /// fn handler(input: &mut Input) -> impl AsyncResponder<Output = String> {
-///     input.body_mut().read_all().convert_to()
+///     input.extract::<Plain>().map(Plain::into_inner)
 /// }
 ///
 /// # fn main() -> tsukuyomi::app::AppResult<()> {
@@ -215,4 +219,46 @@ where
     }
 
     AsyncHandler(f)
+}
+
+// not a public API.
+#[doc(hidden)]
+pub mod private {
+    pub use futures::Future;
+}
+
+#[macro_export]
+macro_rules! handler {
+    ($vis:vis fn $name:ident () -> $ret:ty {
+        $($bd:stmt),*
+    }) => {
+        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
+            fn inner(_: ()) -> $ret {
+                $($bd)*
+            }
+            {
+                use $crate::handler::private::Future;
+                $crate::handler::Handle::wrap_async(
+                    input.extract::<()>().and_then(inner)
+                )
+            }
+        }
+    };
+
+    ($vis:vis fn $name:ident ($( $arg:ident : $t:ty ),+) -> $ret:ty {
+        $($bd:stmt),*
+    }) => {
+        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
+            fn inner( ($($arg,)+) : ($($t,)+) ) -> $ret {
+                $($bd)*
+            }
+            {
+                use $crate::handler::private::Future;
+                $crate::handler::Handle::wrap_async(
+                    input.extract::<($($t,)+)>()
+                        .and_then(inner)
+                )
+            }
+        }
+    };
 }

@@ -50,6 +50,8 @@ mime = "0.3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_plain = "0.3"
+serde_urlencoded = "0.5"
 time = "0.1"
 tower-service = "0.1"
 tsukuyomi-server = "0.1"
