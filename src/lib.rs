@@ -44,6 +44,11 @@ extern crate tokio_tungstenite;
 #[cfg(feature = "websocket")]
 extern crate tungstenite;
 
+#[cfg(feature = "askama")]
+extern crate askama;
+#[cfg(feature = "askama")]
+extern crate mime_guess;
+
 pub mod app;
 pub mod contrib;
 pub mod error;

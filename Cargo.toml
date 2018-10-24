@@ -61,6 +61,10 @@ sha-1 = { version = "0.8", optional = true }
 tokio-tungstenite = { version = "0.6", optional = true }
 tungstenite = { version = "0.6", optional = true }
 
+# for Askama
+askama = { version = "0.7", optional = true }
+mime_guess = { version = "2.0.0-alpha.6", optional = true }
+
 [dev-dependencies]
 matches = "0.1"
 
