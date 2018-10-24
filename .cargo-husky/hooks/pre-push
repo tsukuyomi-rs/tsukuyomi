@@ -19,7 +19,7 @@ BRANCH="$(git symbolic-ref --short HEAD)"
 }
 
 if rake --version >/dev/null 2>&1; then
-    (set -x; rake TSUKUYOMI_DENY_WARNINGS=1)
+    (set -x; rake test TSUKUYOMI_DENY_WARNINGS=1)
 else
     echo "[warn] 'rake' is not installed."
 fi

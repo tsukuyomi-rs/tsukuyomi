@@ -8,6 +8,10 @@ task :clippy do
     sh "cargo clippy --all-features --all-targets" if has_clippy?
 end
 
+task :check do
+    sh "cargo check --all-features --all-targets"
+end
+
 task :test do
     sh "cargo test"
     sh "cargo test --all-features"
@@ -23,4 +27,4 @@ task :install_hooks do
     sh "cargo check -p cargo-husky"
 end
 
-task default: [:test, :clippy]
+task default: [:check, :clippy]

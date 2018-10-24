@@ -24,7 +24,7 @@ matrix:
       script: >-
         cargo update &&
         cargo fmt -- --check &&
-        rake TSUKUYOMI_DENY_WARNINGS=1
+        rake test TSUKUYOMI_DENY_WARNINGS=1
 
     # FIXME: enable after releasing 1.30.0
     # - rust: 1.30.0
