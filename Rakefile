@@ -14,6 +14,10 @@ task :test do
     sh "cargo test --no-default-features"
 end
 
+task pre_release: [:test, :clippy] do
+    sh "cargo publish --dry-run"
+end
+
 task :install_hooks do
     sh "cargo clean -p cargo-husky"
     sh "cargo check -p cargo-husky"

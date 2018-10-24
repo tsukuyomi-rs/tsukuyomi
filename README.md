@@ -51,7 +51,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
-[deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.0
+[deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.1
 [travis]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi
 [azure-pipelines]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_build/latest?definitionId=1
 [circleci]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master
@@ -63,7 +63,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [docs-rs-badge]: https://docs.rs/tsukuyomi/badge.svg
 [master-doc-badge]: https://img.shields.io/badge/doc-master-blue.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
-[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.0/status.svg
+[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.1/status.svg
 [travis-badge]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi.svg?branch=master
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
 [circleci-badge]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master.svg?style=svg

@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 An asynchronous Web framework for Rust
 """
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
