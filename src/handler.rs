@@ -9,6 +9,8 @@ use crate::error::Error;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
+pub use crate::define_handler;
+
 /// A trait representing handler functions.
 pub trait Handler {
     /// Applies an incoming request to this handler.
@@ -66,35 +68,51 @@ pub struct Handle(HandleKind);
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum HandleKind {
     Ready(Option<Result<Output, Error>>),
-    Async(Box<dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static>),
+    Polling(Box<dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Handle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Handle").finish()
+        match self.0 {
+            HandleKind::Ready(ref res) => f.debug_tuple("Ready").field(res).finish(),
+            HandleKind::Polling(..) => f.debug_tuple("Polling").finish(),
+        }
     }
 }
 
 impl Handle {
-    #[doc(hidden)]
+    /// Creates a `Handle` from an immediately value.
     pub fn ready(result: Result<Output, Error>) -> Self {
         Handle(HandleKind::Ready(Some(result)))
     }
 
+    /// Creates a `Handle` from a closure representing an asynchronous computation.
+    pub fn polling<F>(f: F) -> Self
+    where
+        F: FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static,
+    {
+        Handle(HandleKind::Polling(Box::new(f)))
+    }
+
     #[doc(hidden)]
+    #[deprecated(
+        since = "0.3.3",
+        note = "This method will remove in the future version"
+    )]
+    #[inline]
     pub fn wrap_async<F>(mut x: F) -> Self
     where
         F: Future + Send + 'static,
         F::Item: Responder,
         Error: From<F::Error>,
     {
-        Handle(HandleKind::Async(Box::new(move |input| {
+        Self::polling(move |input| {
             futures::try_ready!(crate::input::with_set_current(input, || x.poll()))
                 .respond_to(input)
                 .map(|response| Async::Ready(response.map(Into::into)))
                 .map_err(Into::into)
-        })))
+        })
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
@@ -103,7 +121,7 @@ impl Handle {
                 .take()
                 .expect("this future has already polled")
                 .map(Async::Ready),
-            HandleKind::Async(ref mut f) => (f)(input),
+            HandleKind::Polling(ref mut f) => (f)(input),
         }
     }
 }
@@ -203,6 +221,7 @@ where
         R::Item: Responder,
         Error: From<R::Error>,
     {
+        #[allow(deprecated)]
         fn handle(&self, input: &mut Input<'_>) -> Handle {
             Handle::wrap_async((self.0)(input))
         }
@@ -215,40 +234,103 @@ where
 #[doc(hidden)]
 pub mod private {
     pub use futures::Future;
+    use futures::{Async, IntoFuture};
+
+    use super::Handle;
+    use crate::error::Error;
+    use crate::input::{FromInput, Input};
+    use crate::output::Responder;
+
+    pub fn handle_ready<F, T, R>(input: &mut Input<'_>, f: F) -> Handle
+    where
+        F: FnOnce(T) -> R + Send + 'static,
+        T: FromInput,
+        T: Send + 'static,
+        T::Ctx: Send + 'static,
+        R: Responder,
+    {
+        let mut future = input.extract::<T>().map(f);
+        Handle::polling(move |input| {
+            futures::try_ready!(future.poll())
+                .respond_to(input)
+                .map(|response| Async::Ready(response.map(Into::into)))
+                .map_err(Into::into)
+        })
+    }
+
+    pub fn handle_async<F, T, R>(input: &mut Input<'_>, f: F) -> Handle
+    where
+        F: FnOnce(T) -> R + Send + 'static,
+        T: FromInput,
+        T: Send + 'static,
+        T::Ctx: Send + 'static,
+        R: IntoFuture<Error = Error> + 'static,
+        R::Future: Send + 'static,
+        R::Item: Responder,
+    {
+        let mut future = input.extract::<T>().and_then(f);
+        Handle::polling(move |input| {
+            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
+                .respond_to(input)
+                .map(|response| Async::Ready(response.map(Into::into)))
+                .map_err(Into::into)
+        })
+    }
 }
 
 #[macro_export]
-macro_rules! handler {
-    ($vis:vis fn $name:ident () -> $ret:ty {
-        $($bd:stmt),*
-    }) => {
+macro_rules! define_handler {
+    (
+        @ready
+        $vis:vis fn $name:ident () -> $ret:ty {
+            $($bd:stmt),*
+        }
+    ) => {
         $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
             fn inner(_: ()) -> $ret {
                 $($bd)*
             }
-            {
-                use $crate::handler::private::Future;
-                $crate::handler::Handle::wrap_async(
-                    input.extract::<()>().and_then(inner)
-                )
-            }
+            $crate::handler::private::handle_ready(input, inner)
         }
     };
 
-    ($vis:vis fn $name:ident ($( $arg:ident : $t:ty ),+) -> $ret:ty {
-        $($bd:stmt),*
-    }) => {
+    (
+        @ready
+        $vis:vis fn $name:ident ($( $arg:ident : $t:ty ),+) -> $ret:ty {
+            $($bd:stmt),*
+        }
+    ) => {
         $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
             fn inner( ($($arg,)+) : ($($t,)+) ) -> $ret {
                 $($bd)*
             }
-            {
-                use $crate::handler::private::Future;
-                $crate::handler::Handle::wrap_async(
-                    input.extract::<($($t,)+)>()
-                        .and_then(inner)
-                )
+            $crate::handler::private::handle_ready(input, inner)
+        }
+    };
+
+    (
+        $vis:vis fn $name:ident () -> $ret:ty {
+            $($bd:stmt),*
+        }
+    ) => {
+        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
+            fn inner(_: ()) -> $ret {
+                $($bd)*
             }
+            $crate::handler::private::handle_async(input, inner)
+        }
+    };
+
+    (
+        $vis:vis fn $name:ident ($( $arg:ident : $t:ty ),+) -> $ret:ty {
+            $($bd:stmt),*
+        }
+    ) => {
+        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
+            fn inner( ($($arg,)+) : ($($t,)+) ) -> $ret {
+                $($bd)*
+            }
+            $crate::handler::private::handle_async(input, inner)
         }
     };
 }
