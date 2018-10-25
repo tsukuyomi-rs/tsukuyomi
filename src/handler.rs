@@ -1,13 +1,13 @@
 //! `Handler` and supplemental components.
 
 use either::Either;
-use futures::{Async, Poll};
+use futures::{Async, Future, Poll};
 use std::fmt;
 use std::sync::Arc;
 
 use crate::error::Error;
 use crate::input::Input;
-use crate::output::{AsyncResponder, Output, Responder};
+use crate::output::{Output, Responder};
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -83,9 +83,17 @@ impl Handle {
     }
 
     #[doc(hidden)]
-    pub fn wrap_async(mut x: impl AsyncResponder) -> Self {
+    pub fn wrap_async<F>(mut x: F) -> Self
+    where
+        F: Future + Send + 'static,
+        F::Item: Responder,
+        Error: From<F::Error>,
+    {
         Handle(HandleKind::Async(Box::new(move |input| {
-            x.poll_respond_to(input)
+            futures::try_ready!(crate::input::with_set_current(input, || x.poll()))
+                .respond_to(input)
+                .map(|response| Async::Ready(response.map(Into::into)))
+                .map_err(Into::into)
         })))
     }
 
@@ -164,10 +172,10 @@ where
 /// # use futures::prelude::*;
 /// # use tsukuyomi::app::App;
 /// # use tsukuyomi::input::Input;
+/// # use tsukuyomi::error::Error;
 /// # use tsukuyomi::input::body::Plain;
-/// # use tsukuyomi::output::AsyncResponder;
 /// # use tsukuyomi::handler::wrap_async;
-/// fn handler(input: &mut Input) -> impl AsyncResponder<Output = String> {
+/// fn handler(input: &mut Input) -> impl Future<Error = Error, Item = String> {
 ///     input.extract::<Plain>().map(Plain::into_inner)
 /// }
 ///
@@ -179,31 +187,11 @@ where
 /// # Ok(())
 /// # }
 /// ```
-///
-/// ```ignore
-/// # extern crate tsukuyomi;
-/// # extern crate futures_await as futures;
-/// # use tsukuyomi::app::App;
-/// # use tsukuyomi::error::Error;
-/// # use tsukuyomi::input::Input;
-/// # use tsukuyomi::output::Responder;
-/// # use tsukuyomi::handler::wrap_async;
-/// # use futures::prelude::*;
-/// #[async]
-/// fn handler() -> tsukuyomi::Result<impl Responder> {
-///     Ok("Hello")
-/// }
-///
-/// # fn main() -> tsukuyomi::AppResult<()> {
-/// let app = App::builder()
-///     .route(("/posts", wrap_async(handler)))
-///     .finish()?;
-/// # Ok(())
-/// # }
-/// ```
 pub fn wrap_async<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
 where
-    R: AsyncResponder,
+    R: Future + Send + 'static,
+    R::Item: Responder,
+    Error: From<R::Error>,
 {
     #[allow(missing_debug_implementations)]
     struct AsyncHandler<T>(T);
@@ -211,7 +199,9 @@ where
     impl<T, R> Handler for AsyncHandler<T>
     where
         T: Fn(&mut Input<'_>) -> R,
-        R: AsyncResponder,
+        R: Future + Send + 'static,
+        R::Item: Responder,
+        Error: From<R::Error>,
     {
         fn handle(&self, input: &mut Input<'_>) -> Handle {
             Handle::wrap_async((self.0)(input))

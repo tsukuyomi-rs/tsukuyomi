@@ -226,17 +226,18 @@ fn text_response<T>(body: T) -> Response<T> {
     response
 }
 
-/// The async variant of `Responder`.
+#[doc(hidden)]
+#[deprecated(
+    since = "0.3.3",
+    note = "This trait will remove in the future version."
+)]
 pub trait AsyncResponder: Send + 'static + sealed::Sealed {
-    /// The inner type of this responder.
     type Output: Responder;
-
-    /// Polls for a result of inner `Responder`.
-    // FIXME: replace the receiver type with PinMut<Self>
     fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error>;
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+#[allow(deprecated)]
 impl<F> AsyncResponder for F
 where
     F: Future + Send + 'static,
@@ -252,25 +253,6 @@ where
             .map_err(Into::into)
     }
 }
-
-// TODO: switch bracket impls to std::future::Future
-//
-//   impl<F> AsyncResponder for F
-//   where
-//       F: Future + Send + 'static,
-//       F::Output: Responder,
-//   {
-//       type Output = F::Output;
-//
-//       fn poll_respond_to(
-//           self: PinMut<Self>,
-//           cx: &mut Context,
-//           input: &mut Input,
-//       ) -> Poll<Result<Output, Error>> {
-//           let x = ready!(input::with_set_current(input, || Future::poll(self, cx)));
-//           Poll::Ready(x.respond_to(input))
-//       }
-//   }
 
 mod sealed {
     use futures::Future;

@@ -189,13 +189,13 @@ impl<'task> Input<'task> {
     /// ```
     /// # extern crate tsukuyomi;
     /// # extern crate futures;
-    /// # use tsukuyomi::output::AsyncResponder;
+    /// # use tsukuyomi::error::Error;
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::input::body::Plain;
     /// # use futures::prelude::*;
     /// #
     /// # #[allow(dead_code)]
-    /// fn handler(input: &mut Input) -> impl AsyncResponder {
+    /// fn handler(input: &mut Input) -> impl Future<Error = Error, Item = String> {
     ///     input.extract::<Plain>()
     ///         .and_then(|body_string| {
     ///             // ...

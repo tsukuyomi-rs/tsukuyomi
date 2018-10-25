@@ -140,12 +140,14 @@ impl NamedFile {
     /// # Examples
     ///
     /// ```
+    /// # extern crate futures;
+    /// # extern crate tsukuyomi;
+    /// # use futures::prelude::*;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::output::AsyncResponder;
     /// # use tsukuyomi::contrib::fs::NamedFile;
     /// #
     /// # #[allow(dead_code)]
-    /// fn handler(_: &mut Input) -> impl AsyncResponder {
+    /// fn handler(_: &mut Input) -> impl Future<Error = std::io::Error, Item = NamedFile> {
     ///     NamedFile::open("/path/to/index.html")
     /// }
     /// ```
@@ -161,13 +163,15 @@ impl NamedFile {
     /// # Examples
     ///
     /// ```
+    /// # extern crate futures;
+    /// # extern crate tsukuyomi;
+    /// # use futures::prelude::*;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::output::AsyncResponder;
     /// # use tsukuyomi::contrib::fs::{NamedFile, OpenConfig};
     /// use std::time::Duration;
     ///
     /// # #[allow(dead_code)]
-    /// fn handler(_: &mut Input) -> impl AsyncResponder {
+    /// fn handler(_: &mut Input) -> impl Future<Error = std::io::Error, Item = NamedFile> {
     ///     NamedFile::open_with_config(
     ///         "/path/to/index.html",
     ///         OpenConfig {
