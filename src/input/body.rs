@@ -320,12 +320,12 @@ where
     type Ctx = ();
 
     fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        if let Some(mime) = content_type(input)? {
-            if *mime != mime::APPLICATION_JSON {
-                return Err(crate::error::bad_request(
-                    "The content type must be `application/json`",
-                ).into());
-            }
+        let mime = content_type(input)?
+            .ok_or_else(|| crate::error::bad_request("missing content-type"))?;
+        if *mime != mime::APPLICATION_JSON {
+            return Err(
+                crate::error::bad_request("The content type must be `application/json`").into(),
+            );
         }
         Ok(Preflight::Partial(()))
     }
@@ -366,12 +366,12 @@ where
     type Ctx = ();
 
     fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        if let Some(mime) = content_type(input)? {
-            if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
-                return Err(crate::error::bad_request(
-                    "The content type must be `application/x-www-form-urlencoded`",
-                ).into());
-            }
+        let mime = content_type(input)?
+            .ok_or_else(|| crate::error::bad_request("missing content-type"))?;
+        if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
+            return Err(crate::error::bad_request(
+                "The content type must be `application/x-www-form-urlencoded`",
+            ).into());
         }
         Ok(Preflight::Partial(()))
     }
