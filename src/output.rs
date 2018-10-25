@@ -66,21 +66,25 @@ impl Payload for ResponseBody {
     type Error = <Body as Payload>::Error;
 
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
         self.0.poll_data()
     }
 
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
         self.0.poll_trailers()
     }
 
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn is_end_stream(&self) -> bool {
         self.0.is_end_stream()
     }
 
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn content_length(&self) -> Option<u64> {
         self.0.content_length()
     }

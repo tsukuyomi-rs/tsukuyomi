@@ -47,6 +47,7 @@ pub trait Modifier {
     ///
     /// By default, this method does nothing.
     #[allow(unused_variables)]
+    #[cfg_attr(tarpaulin, skip)]
     fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
         BeforeHandle::ready(Ok(None))
     }
@@ -55,6 +56,7 @@ pub trait Modifier {
     ///
     /// By default, this method does nothing and immediately return the provided `Output`.
     #[allow(unused_variables)]
+    #[cfg_attr(tarpaulin, skip)]
     fn after_handle(&self, input: &mut Input<'_>, result: Result<Output, Error>) -> AfterHandle {
         AfterHandle::ready(result)
     }

@@ -162,6 +162,7 @@ pub struct ConvertTo<T> {
 }
 
 #[allow(deprecated)]
+#[cfg_attr(tarpaulin, skip)]
 impl<T> fmt::Debug for ConvertTo<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConvertTo")
@@ -238,12 +239,14 @@ pub struct Plain<T = String>(pub T);
 
 impl<T> Plain<T> {
     #[allow(missing_docs)]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 impl AsRef<str> for Plain<String> {
+    #[cfg_attr(tarpaulin, skip)]
     fn as_ref(&self) -> &str {
         self.0.as_ref()
     }
@@ -252,6 +255,7 @@ impl AsRef<str> for Plain<String> {
 impl<T> std::ops::Deref for Plain<T> {
     type Target = T;
 
+    #[cfg_attr(tarpaulin, skip)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -298,6 +302,7 @@ pub struct Json<T>(pub T);
 
 impl<T> Json<T> {
     #[allow(missing_docs)]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -306,6 +311,7 @@ impl<T> Json<T> {
 impl<T> std::ops::Deref for Json<T> {
     type Target = T;
 
+    #[cfg_attr(tarpaulin, skip)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -344,6 +350,7 @@ pub struct Urlencoded<T>(pub T);
 
 impl<T> Urlencoded<T> {
     #[allow(missing_docs)]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -352,6 +359,7 @@ impl<T> Urlencoded<T> {
 impl<T> std::ops::Deref for Urlencoded<T> {
     type Target = T;
 
+    #[cfg_attr(tarpaulin, skip)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }

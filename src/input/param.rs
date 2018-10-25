@@ -82,6 +82,7 @@ pub struct Param<T>(pub T);
 
 impl<T> Param<T> {
     #[allow(missing_docs)]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -90,12 +91,14 @@ impl<T> Param<T> {
 impl<T> Deref for Param<T> {
     type Target = T;
 
+    #[cfg_attr(tarpaulin, skip)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl<T> DerefMut for Param<T> {
+    #[cfg_attr(tarpaulin, skip)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -138,6 +141,7 @@ pub struct Wildcard<T>(pub T);
 
 impl<T> Wildcard<T> {
     #[allow(missing_docs)]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -146,12 +150,14 @@ impl<T> Wildcard<T> {
 impl<T> Deref for Wildcard<T> {
     type Target = T;
 
+    #[cfg_attr(tarpaulin, skip)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl<T> DerefMut for Wildcard<T> {
+    #[cfg_attr(tarpaulin, skip)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

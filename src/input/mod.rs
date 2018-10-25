@@ -95,42 +95,49 @@ pub struct Input<'task> {
 impl<'task> Input<'task> {
     /// Returns a reference to the HTTP method of the request.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn method(&self) -> &http::Method {
         self.request.method()
     }
 
     /// Returns a reference to the URI of the request.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn uri(&self) -> &http::Uri {
         self.request.uri()
     }
 
     /// Returns a reference to the HTTP version of the request.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn version(&self) -> http::Version {
         self.request.version()
     }
 
     /// Returns a reference to the header map in the request.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn headers(&self) -> &http::HeaderMap {
         self.request.headers()
     }
 
     /// Returns a reference to the extensions map in the request.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn extensions(&self) -> &http::Extensions {
         self.request.extensions()
     }
 
     /// Returns a reference to the instance of `RequestBody`.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn body(&self) -> &RequestBody {
         self.request.body()
     }
 
     /// Returns a mutable reference to the instance of `RequestBody`.
     #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     pub fn body_mut(&mut self) -> &mut RequestBody {
         self.request.body_mut()
     }
@@ -164,11 +171,13 @@ impl<'task> Input<'task> {
     }
 
     /// Returns a reference to `LocalMap` for managing request-local data.
+    #[cfg_attr(tarpaulin, skip)]
     pub fn locals(&self) -> &LocalMap {
         &self.parts.locals
     }
 
     /// Returns a mutable reference to `LocalMap` for managing request-local data.
+    #[cfg_attr(tarpaulin, skip)]
     pub fn locals_mut(&mut self) -> &mut LocalMap {
         &mut self.parts.locals
     }
