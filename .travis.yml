@@ -18,7 +18,7 @@ matrix:
   allow_failures:
     - rust: nightly
   include:
-    - rust: beta
+    - rust: stable
       before_script:
         - rustup component add rustfmt-preview clippy-preview
       script: >-
@@ -26,12 +26,11 @@ matrix:
         cargo fmt -- --check &&
         rake test TSUKUYOMI_DENY_WARNINGS=1
 
-    # FIXME: enable after releasing 1.30.0
-    # - rust: 1.30.0
-    # - rust: beta
+    - rust: 1.30.0
+    - rust: beta
     - rust: nightly
 
-    - rust: beta # FIXME: switch to stable
+    - rust: stable
       env: DEPLOY_API_DOC
       script: >-
         rm -rf target/doc &&

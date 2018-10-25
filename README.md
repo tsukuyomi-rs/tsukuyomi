@@ -59,7 +59,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
 [downloads-badge]: https://img.shields.io/crates/d/tsukuyomi.svg
-[rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0-lightgray.svg
+[rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
 [docs-rs-badge]: https://docs.rs/tsukuyomi/badge.svg
 [master-doc-badge]: https://img.shields.io/badge/doc-master-blue.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
