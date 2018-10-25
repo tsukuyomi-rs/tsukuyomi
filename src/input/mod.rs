@@ -3,16 +3,18 @@
 pub mod body;
 #[macro_use]
 pub mod local_map;
+pub mod param;
 
 mod cookie;
+mod from_input;
 mod global;
 
 // re-exports
 pub use self::body::RequestBody;
 pub use self::cookie::Cookies;
+pub use self::from_input::FromInput;
 pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
-pub use crate::recognizer::captures::Params;
 
 #[allow(missing_docs)]
 pub mod header {
@@ -55,6 +57,7 @@ use crate::error::Error;
 use crate::recognizer::captures::Captures;
 
 use self::cookie::CookieManager;
+use self::from_input::Preflight;
 use self::local_map::LocalMap;
 
 /// The inner parts of `Input`.
@@ -64,6 +67,7 @@ pub(crate) struct InputParts {
     pub(crate) captures: Option<Captures>,
     pub(crate) cookies: CookieManager,
     pub(crate) locals: LocalMap,
+    cursor: usize,
     _priv: (),
 }
 
@@ -74,6 +78,7 @@ impl InputParts {
             captures,
             cookies: CookieManager::default(),
             locals: LocalMap::default(),
+            cursor: 0,
             _priv: (),
         }
     }
@@ -131,8 +136,8 @@ impl<'task> Input<'task> {
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
-    pub fn params(&self) -> Params<'_> {
-        Params::new(
+    pub fn params(&self) -> self::param::Params<'_> {
+        self::param::Params::new(
             self.request.uri().path(),
             self.app.uri(self.parts.route).capture_names(),
             self.parts.captures.as_ref(),
@@ -166,5 +171,54 @@ impl<'task> Input<'task> {
     /// Returns a mutable reference to `LocalMap` for managing request-local data.
     pub fn locals_mut(&mut self) -> &mut LocalMap {
         &mut self.parts.locals
+    }
+
+    /// Creates a `Future` which extracts a value from this `Input`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # extern crate tsukuyomi;
+    /// # extern crate futures;
+    /// # use tsukuyomi::output::AsyncResponder;
+    /// # use tsukuyomi::input::Input;
+    /// # use tsukuyomi::input::body::Plain;
+    /// # use futures::prelude::*;
+    /// #
+    /// # #[allow(dead_code)]
+    /// fn handler(input: &mut Input) -> impl AsyncResponder {
+    ///     input.extract::<Plain>()
+    ///         .and_then(|body_string| {
+    ///             // ...
+    /// #           Ok(body_string.into_inner())
+    ///         })
+    /// }
+    /// #
+    /// # fn main() {}
+    /// ```
+    pub fn extract<T>(&mut self) -> impl futures::Future<Item = T, Error = Error>
+    where
+        T: FromInput,
+    {
+        use futures::future;
+        use futures::future::Either;
+        use futures::Future;
+
+        match T::preflight(self) {
+            Ok(Preflight::Completed(data)) => Either::A(future::ok(data)),
+            Err(preflight_err) => Either::A(future::err(preflight_err.into())),
+            Ok(Preflight::Partial(cx)) => Either::B(
+                self.body_mut()
+                    .read_all()
+                    .map_err(Error::critical)
+                    .and_then(move |data| {
+                        with_get_current(|input| T::extract(&data, input, cx)).map_err(Into::into)
+                    }),
+            ),
+        }
+    }
+
+    fn cursor(&mut self) -> &mut usize {
+        &mut self.parts.cursor
     }
 }
