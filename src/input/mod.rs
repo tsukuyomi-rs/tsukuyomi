@@ -12,7 +12,7 @@ mod global;
 // re-exports
 pub use self::body::RequestBody;
 pub use self::cookie::Cookies;
-pub use self::from_input::FromInput;
+pub use self::from_input::{FromInput, State};
 pub(crate) use self::global::with_set_current;
 pub use self::global::{is_set_current, with_get_current};
 
