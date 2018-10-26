@@ -5,12 +5,10 @@ authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [lib]
-name = "tsukuyomi_codegen"
-path = "lib.rs"
 proc-macro = true
 
 [dependencies]
 proc-macro2 = "0.4.20"
-syn = "0.15.14"
-quote = "0.6.8"
-
+quote = "0.6"
+syn = { version = "0.15", features = ["full", "extra-traits"] }
+synstructure = "0.10"

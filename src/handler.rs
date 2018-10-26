@@ -9,7 +9,7 @@ use crate::error::Error;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
-pub use crate::define_handler;
+pub use crate::codegen::handler;
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -277,61 +277,4 @@ pub mod private {
                 .map_err(Into::into)
         })
     }
-}
-
-#[macro_export]
-macro_rules! define_handler {
-    (
-        @ready
-        $vis:vis fn $name:ident () -> $ret:ty {
-            $($bd:stmt),*
-        }
-    ) => {
-        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
-            fn inner(_: ()) -> $ret {
-                $($bd)*
-            }
-            $crate::handler::private::handle_ready(input, inner)
-        }
-    };
-
-    (
-        @ready
-        $vis:vis fn $name:ident ($( $arg:ident : $t:ty ),+) -> $ret:ty {
-            $($bd:stmt),*
-        }
-    ) => {
-        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
-            fn inner( ($($arg,)+) : ($($t,)+) ) -> $ret {
-                $($bd)*
-            }
-            $crate::handler::private::handle_ready(input, inner)
-        }
-    };
-
-    (
-        $vis:vis fn $name:ident () -> $ret:ty {
-            $($bd:stmt),*
-        }
-    ) => {
-        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
-            fn inner(_: ()) -> $ret {
-                $($bd)*
-            }
-            $crate::handler::private::handle_async(input, inner)
-        }
-    };
-
-    (
-        $vis:vis fn $name:ident ($( $arg:ident : $t:ty ),+) -> $ret:ty {
-            $($bd:stmt),*
-        }
-    ) => {
-        $vis fn $name(input: &mut $crate::input::Input<'_>) -> $crate::handler::Handle {
-            fn inner( ($($arg,)+) : ($($t,)+) ) -> $ret {
-                $($bd)*
-            }
-            $crate::handler::private::handle_async(input, inner)
-        }
-    };
 }
