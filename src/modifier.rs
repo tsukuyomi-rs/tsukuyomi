@@ -110,8 +110,12 @@ impl BeforeHandle {
         BeforeHandle(BeforeHandleState::Polling(Box::new(f)))
     }
 
-    /// Creates a `BeforeHandle` from a future.
-    #[inline(always)]
+    #[doc(hidden)]
+    #[deprecated(
+        since = "0.3.3",
+        note = "use `BeforeHandle::polling` instead."
+    )]
+    #[inline]
     pub fn wrap_future(
         mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static,
     ) -> Self {
@@ -174,8 +178,12 @@ impl AfterHandle {
         AfterHandle(AfterHandleState::Polling(Box::new(f)))
     }
 
-    /// Creates an `AfterHandle` from a `Future`.
-    #[inline(always)]
+    #[doc(hidden)]
+    #[deprecated(
+        since = "0.3.3",
+        note = "use `AfterHandle::polling` instead."
+    )]
+    #[inline]
     pub fn wrap_future(
         mut future: impl Future<Item = Output, Error = Error> + Send + 'static,
     ) -> Self {
