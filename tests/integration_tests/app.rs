@@ -1,6 +1,6 @@
 use tsukuyomi::app::App;
+use tsukuyomi::extract::body::Plain;
 use tsukuyomi::handler;
-use tsukuyomi::input::body::Plain;
 
 use futures::prelude::*;
 use http::{header, Method, Request, StatusCode};

@@ -189,9 +189,9 @@ where
 /// # extern crate tsukuyomi;
 /// # use futures::prelude::*;
 /// # use tsukuyomi::app::App;
-/// # use tsukuyomi::input::Input;
 /// # use tsukuyomi::error::Error;
-/// # use tsukuyomi::input::body::Plain;
+/// # use tsukuyomi::input::Input;
+/// # use tsukuyomi::extract::body::Plain;
 /// # use tsukuyomi::handler::wrap_async;
 /// fn handler(input: &mut Input) -> impl Future<Error = Error, Item = String> {
 ///     input.extract::<Plain>().map(Plain::into_inner)
@@ -238,7 +238,8 @@ pub mod private {
 
     use super::Handle;
     use crate::error::Error;
-    use crate::input::{FromInput, Input};
+    use crate::extract::FromInput;
+    use crate::input::Input;
     use crate::output::Responder;
 
     pub fn handle_ready<F, T, R>(input: &mut Input<'_>, f: F) -> Handle

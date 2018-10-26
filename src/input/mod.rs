@@ -1,20 +1,11 @@
 //! Components for parsing incoming HTTP requests and accessing the global or request-local data.
 
-pub mod body;
 #[macro_use]
 pub mod local_map;
-pub mod param;
-
+pub mod body;
 mod cookie;
-mod from_input;
 mod global;
-
-// re-exports
-pub use self::body::RequestBody;
-pub use self::cookie::Cookies;
-pub use self::from_input::{FromInput, State};
-pub(crate) use self::global::with_set_current;
-pub use self::global::{is_set_current, with_get_current};
+pub mod param;
 
 #[allow(missing_docs)]
 pub mod header {
@@ -48,16 +39,24 @@ pub mod header {
     }
 }
 
+// re-exports
+pub use self::body::RequestBody;
+pub use self::cookie::Cookies;
+pub(crate) use self::global::with_set_current;
+pub use self::global::{is_set_current, with_get_current};
+
 // ====
 
+use futures::future::Either;
+use futures::{future, Future};
 use http::Request;
 
 use crate::app::{App, RouteId};
 use crate::error::Error;
+use crate::extract::{FromInput, Preflight};
 use crate::recognizer::captures::Captures;
 
 use self::cookie::CookieManager;
-use self::from_input::Preflight;
 use self::local_map::LocalMap;
 
 /// The inner parts of `Input`.
@@ -166,7 +165,7 @@ impl<'task> Input<'task> {
     ///
     /// This function will perform parsing when called at first, and returns an `Err`
     /// if the value of header field is invalid.
-    pub fn cookies(&mut self) -> Result<Cookies<'_>, Error> {
+    pub fn cookies(&mut self) -> Result<self::cookie::Cookies<'_>, Error> {
         self.parts.cookies.init(self.request.headers())
     }
 
@@ -182,6 +181,10 @@ impl<'task> Input<'task> {
         &mut self.parts.locals
     }
 
+    pub(crate) fn cursor(&mut self) -> &mut usize {
+        &mut self.parts.cursor
+    }
+
     /// Creates a `Future` which extracts a value from this `Input`.
     ///
     /// # Example
@@ -189,10 +192,10 @@ impl<'task> Input<'task> {
     /// ```
     /// # extern crate tsukuyomi;
     /// # extern crate futures;
+    /// # use futures::prelude::*;
     /// # use tsukuyomi::error::Error;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::input::body::Plain;
-    /// # use futures::prelude::*;
+    /// # use tsukuyomi::extract::body::Plain;
     /// #
     /// # #[allow(dead_code)]
     /// fn handler(input: &mut Input) -> impl Future<Error = Error, Item = String> {
@@ -205,29 +208,21 @@ impl<'task> Input<'task> {
     /// #
     /// # fn main() {}
     /// ```
-    pub fn extract<T>(&mut self) -> impl futures::Future<Item = T, Error = Error>
+    pub fn extract<T>(&mut self) -> impl Future<Item = T, Error = Error>
     where
         T: FromInput,
     {
-        use futures::future;
-        use futures::future::Either;
-        use futures::Future;
-
         match T::preflight(self) {
             Ok(Preflight::Completed(data)) => Either::A(future::ok(data)),
             Err(preflight_err) => Either::A(future::err(preflight_err.into())),
-            Ok(Preflight::Partial(cx)) => Either::B(
+            Ok(Preflight::Incomplete(cx)) => Either::B(
                 self.body_mut()
                     .read_all()
                     .map_err(Error::critical)
                     .and_then(move |data| {
-                        with_get_current(|input| T::extract(&data, input, cx)).map_err(Into::into)
+                        with_get_current(|input| T::finalize(&data, input, cx)).map_err(Into::into)
                     }),
             ),
         }
-    }
-
-    fn cursor(&mut self) -> &mut usize {
-        &mut self.parts.cursor
     }
 }

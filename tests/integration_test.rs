@@ -1,4 +1,5 @@
 extern crate cookie;
+extern crate either;
 extern crate futures;
 extern crate http;
 extern crate serde;

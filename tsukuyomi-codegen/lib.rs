@@ -15,7 +15,7 @@ pub fn LocalData(input: TokenStream) -> TokenStream {
     let ident = &input.ident;
     (quote::quote!{
         use tsukuyomi::input::local_map::local_key;
-        impl LocalData for #ident {
+        impl tsukuyomi::input::local_map::LocalData for #ident {
             local_key!(const KEY: Self);
         }
     }).into()
