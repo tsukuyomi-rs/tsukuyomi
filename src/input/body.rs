@@ -3,7 +3,6 @@
 use bytes::{Bytes, BytesMut};
 use futures::{Async, Future, IntoFuture, Poll};
 use mime;
-use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 use std::{fmt, mem};
 
@@ -12,7 +11,6 @@ use crate::server::rt;
 use crate::server::service::http::{Payload as _Payload, RequestBody as RawBody, UpgradedIo};
 use crate::server::CritError;
 
-use super::from_input::{FromInput, FromInputImpl, Preflight};
 use super::global::with_get_current;
 use super::header::content_type;
 use super::Input;
@@ -229,164 +227,5 @@ impl FromData for String {
         }
 
         Self::from_utf8(data.to_vec()).map_err(Failure::bad_request)
-    }
-}
-
-/// The instance of `FromInput` which parses the message body as an UTF-8 string
-/// and converts it into a value by using `serde_plain`.
-#[derive(Debug)]
-pub struct Plain<T = String>(pub T);
-
-impl<T> Plain<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl AsRef<str> for Plain<String> {
-    #[cfg_attr(tarpaulin, skip)]
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
-    }
-}
-
-impl<T> std::ops::Deref for Plain<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FromInput for Plain<T> where T: DeserializeOwned + 'static {}
-impl<T> FromInputImpl for Plain<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    type Error = Error;
-    type Ctx = ();
-
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        if let Some(mime) = content_type(input)? {
-            if mime.type_() != mime::TEXT || mime.subtype() != mime::PLAIN {
-                return Err(crate::error::bad_request(
-                    "The content type must be equal to `text/plain`.",
-                ).into());
-            }
-            if let Some(charset) = mime.get_param("charset") {
-                if charset != "utf-8" {
-                    return Err(crate::error::bad_request(
-                        "The charset in content type must be `utf-8`.",
-                    ).into());
-                }
-            }
-        }
-        Ok(Preflight::Partial(()))
-    }
-
-    fn extract(data: &Bytes, _: &mut Input<'_>, _: ()) -> Result<Self, Self::Error> {
-        let s = std::str::from_utf8(&*data).map_err(Failure::bad_request)?;
-        serde_plain::from_str(s)
-            .map_err(|err| Failure::bad_request(err).into())
-            .map(Plain)
-    }
-}
-
-/// The instance of `FromInput` which deserializes the message body
-/// into a JSON value by using `serde_json`.
-#[derive(Debug)]
-pub struct Json<T>(pub T);
-
-impl<T> Json<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> std::ops::Deref for Json<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FromInput for Json<T> where T: DeserializeOwned + 'static {}
-impl<T> FromInputImpl for Json<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    type Error = Error;
-    type Ctx = ();
-
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        let mime = content_type(input)?
-            .ok_or_else(|| crate::error::bad_request("missing content-type"))?;
-        if *mime != mime::APPLICATION_JSON {
-            return Err(
-                crate::error::bad_request("The content type must be `application/json`").into(),
-            );
-        }
-        Ok(Preflight::Partial(()))
-    }
-
-    fn extract(data: &Bytes, _: &mut Input<'_>, _: ()) -> Result<Self, Self::Error> {
-        serde_json::from_slice(&*data)
-            .map_err(|err| Failure::bad_request(err).into())
-            .map(Json)
-    }
-}
-
-/// The instance of `FromInput` which deserializes the message body
-/// into a value by using `serde_urlencoded`.
-#[derive(Debug)]
-pub struct Urlencoded<T>(pub T);
-
-impl<T> Urlencoded<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> std::ops::Deref for Urlencoded<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FromInput for Urlencoded<T> where T: DeserializeOwned + 'static {}
-impl<T> FromInputImpl for Urlencoded<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    type Error = Error;
-    type Ctx = ();
-
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        let mime = content_type(input)?
-            .ok_or_else(|| crate::error::bad_request("missing content-type"))?;
-        if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
-            return Err(crate::error::bad_request(
-                "The content type must be `application/x-www-form-urlencoded`",
-            ).into());
-        }
-        Ok(Preflight::Partial(()))
-    }
-
-    fn extract(data: &Bytes, _: &mut Input<'_>, _: ()) -> Result<Self, Self::Error> {
-        serde_urlencoded::from_bytes(&*data)
-            .map_err(|err| Failure::bad_request(err).into())
-            .map(Urlencoded)
     }
 }

@@ -1,10 +1,10 @@
 extern crate tsukuyomi;
 
 use tsukuyomi::error::Result;
+use tsukuyomi::extract::body::Json;
+use tsukuyomi::extract::param::Param;
 use tsukuyomi::handler::define_handler;
 use tsukuyomi::handler::Handler;
-use tsukuyomi::input::body::Json;
-use tsukuyomi::input::param::Param;
 
 fn assert_impl<T: Handler>(handler: T) {
     drop(handler);
