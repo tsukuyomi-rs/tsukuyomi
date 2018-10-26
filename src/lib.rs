@@ -13,6 +13,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
+extern crate tsukuyomi_codegen as codegen;
 pub extern crate tsukuyomi_server as server;
 
 extern crate bytes;

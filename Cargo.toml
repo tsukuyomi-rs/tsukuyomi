@@ -38,6 +38,8 @@ rustdoc-args = ["--cfg", "tsukuyomi_inject_extern_prelude"]
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+tsukuyomi-codegen = { version = "0.1.0", path = "tsukuyomi-codegen" }
+
 bytes = "0.4"
 cookie = { version = "0.11", features = ["percent-encode"] }
 either = "1.5"
@@ -88,4 +90,9 @@ websocket = [
   "sha-1",
   "tokio-tungstenite",
   "tungstenite",
+]
+
+[workspace]
+members = [
+  "tsukuyomi-codegen",
 ]
