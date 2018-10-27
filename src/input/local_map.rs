@@ -338,64 +338,6 @@ where
     }
 }
 
-/// A trait which represents a value in the local map.
-///
-/// The type which implements this trait has an unique `LocalKey` and can access
-/// its data in the local map using its key.
-///
-/// # Example
-///
-/// ```
-/// use tsukuyomi::input::local_map::{local_key, LocalData};
-///
-/// # #[allow(dead_code)]
-/// struct Session;
-///
-/// impl LocalData for Session {
-///     local_key!(const KEY: Self);
-/// }
-/// ```
-#[allow(missing_docs)]
-pub trait LocalData: Sized + Send + 'static {
-    const KEY: LocalKey<Self>;
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn get(map: &LocalMap) -> Option<&Self> {
-        map.get(&Self::KEY)
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn get_mut(map: &mut LocalMap) -> Option<&mut Self> {
-        map.get_mut(&Self::KEY)
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn contains(map: &LocalMap) -> bool {
-        map.contains_key(&Self::KEY)
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn insert_into(self, map: &mut LocalMap) -> Option<Self> {
-        map.insert(&Self::KEY, self)
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn remove(map: &mut LocalMap) -> Option<Self> {
-        map.remove(&Self::KEY)
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn entry(map: &mut LocalMap) -> Entry<'_, Self> {
-        map.entry(&Self::KEY)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

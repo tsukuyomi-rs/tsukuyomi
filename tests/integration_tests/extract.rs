@@ -1,5 +1,6 @@
 use tsukuyomi::app::App;
 use tsukuyomi::extractor::body::{Json, Plain, Urlencoded};
+use tsukuyomi::extractor::ExtractorExt;
 use tsukuyomi::handler::with_extractor;
 
 use either::Either;
@@ -175,22 +176,24 @@ fn urlencoded_body() {
 
 #[test]
 fn local_data() {
-    use tsukuyomi::extractor::{Directly, Local};
-    use tsukuyomi::input::local_map::{local_key, LocalData};
+    use tsukuyomi::extractor::LocalExtractor;
+    use tsukuyomi::input::local_map::local_key;
+    use tsukuyomi::input::Input;
+    use tsukuyomi::modifier::{BeforeHandle, Modifier};
 
     #[derive(Clone)]
     struct MyData(String);
 
-    impl LocalData for MyData {
+    impl MyData {
         local_key!(const KEY: Self);
     }
 
-    use tsukuyomi::input::Input;
-    use tsukuyomi::modifier::{BeforeHandle, Modifier};
     struct MyModifier;
     impl Modifier for MyModifier {
         fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
-            MyData("dummy".into()).insert_into(input.locals_mut());
+            input
+                .locals_mut()
+                .insert(&MyData::KEY, MyData("dummy".into()));
             BeforeHandle::ready(Ok(None))
         }
     }
@@ -198,9 +201,7 @@ fn local_data() {
     let mut server = local_server({
         App::builder().modifier(MyModifier).route((
             "/",
-            with_extractor((Directly::default(),), |x: Local<MyData>| {
-                Ok(x.with(Clone::clone).0)
-            }),
+            with_extractor((LocalExtractor::new(&MyData::KEY),), |x: MyData| Ok(x.0)),
         ))
     });
 
@@ -210,21 +211,19 @@ fn local_data() {
 
 #[test]
 fn missing_local_data() {
-    use tsukuyomi::extractor::{Directly, Local};
-    use tsukuyomi::input::local_map::{local_key, LocalData};
+    use tsukuyomi::extractor::LocalExtractor;
+    use tsukuyomi::input::local_map::local_key;
 
     #[derive(Clone)]
     struct MyData(String);
 
-    impl LocalData for MyData {
+    impl MyData {
         local_key!(const KEY: Self);
     }
 
     let mut server = local_server(App::builder().route((
         "/",
-        with_extractor((Directly::default(),), |x: Local<MyData>| {
-            Ok(x.with(Clone::clone).0)
-        }),
+        with_extractor((LocalExtractor::new(&MyData::KEY),), |x: MyData| Ok(x.0)),
     )));
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -232,25 +231,149 @@ fn missing_local_data() {
 }
 
 #[test]
-fn either() {
-    use tsukuyomi::extractor::EitherOf;
-
+fn optional() {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
         name: String,
     }
 
+    let extractor = Json::default().optional();
+
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor(
-            (EitherOf::new(Json::default(), Urlencoded::default()),),
-            |params: Either<Params, Params>| {
-                let params = params.into_inner();
+        with_extractor((extractor,), |params: Option<Params>| {
+            if let Some(params) = params {
                 Ok(format!("{},{}", params.id, params.name))
-            },
-        ),
+            } else {
+                Err(tsukuyomi::error::internal_server_error("####none####").into())
+            }
+        }),
+    )));
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "application/json")
+                .body(&br#"{"id":23, "name":"bob"}"#[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(&b"id=23&name=bob"[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 500);
+    assert_eq!(response.body().to_utf8().unwrap(), "####none####");
+}
+
+#[test]
+fn fallible() {
+    #[derive(Debug, serde::Deserialize)]
+    struct Params {
+        id: u32,
+        name: String,
+    }
+
+    let extractor = Json::default().fallible();
+
+    let mut server = local_server(App::builder().route((
+        "/",
+        "POST",
+        with_extractor((extractor,), |params: Result<Params, _>| {
+            if let Ok(params) = params {
+                Ok(format!("{},{}", params.id, params.name))
+            } else {
+                Err(tsukuyomi::error::internal_server_error("####err####").into())
+            }
+        }),
+    )));
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "application/json")
+                .body(&br#"{"id":23, "name":"bob"}"#[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(&b"id=23&name=bob"[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 500);
+    assert_eq!(response.body().to_utf8().unwrap(), "####err####");
+}
+
+#[test]
+fn either_or() {
+    #[derive(Debug, serde::Deserialize)]
+    struct Params {
+        id: u32,
+        name: String,
+    }
+
+    let extractor = Json::default().either_or(Urlencoded::default());
+
+    let mut server = local_server(App::builder().route((
+        "/",
+        "POST",
+        with_extractor((extractor,), |params: Either<Params, Params>| {
+            let params = params.into_inner();
+            Ok(format!("{},{}", params.id, params.name))
+        }),
+    )));
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "application/json")
+                .body(&br#"{"id":23, "name":"bob"}"#[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(&b"id=23&name=bob"[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+
+    let response = server
+        .perform(
+            Request::post("/")
+                .header("content-type", "text/plain; charset=utf-8")
+                .body(&b"///invalid string"[..]),
+        ).unwrap();
+    assert_eq!(response.status().as_u16(), 400);
+}
+
+#[test]
+fn either_or_strict() {
+    #[derive(Debug, serde::Deserialize)]
+    struct Params {
+        id: u32,
+        name: String,
+    }
+
+    let extractor = Json::default().either_or(Urlencoded::default()).strict();
+
+    let mut server = local_server(App::builder().route((
+        "/",
+        "POST",
+        with_extractor((extractor,), |params: Params| {
+            Ok(format!("{},{}", params.id, params.name))
+        }),
     )));
 
     let response = server

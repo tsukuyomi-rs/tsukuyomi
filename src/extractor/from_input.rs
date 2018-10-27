@@ -4,80 +4,84 @@ use std::marker::PhantomData;
 
 use crate::error::{Error, Never};
 use crate::extractor::{Extractor, Preflight};
-use crate::input::local_map::LocalData;
+use crate::input::local_map::LocalKey;
 use crate::input::Input;
 
-/// A trait representing the general data extraction from the incoming request.
-pub trait FromInput: Sized + 'static {
-    /// The error type which will be returned from `from_input`.
-    type Error: Into<Error>;
-
-    /// Extract the data from the current context.
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error>;
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct Directly<T>(PhantomData<fn() -> T>);
-
-impl<T> Default for Directly<T> {
-    fn default() -> Self {
-        Directly(PhantomData)
-    }
-}
-
-impl<T> fmt::Debug for Directly<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Directly").finish()
-    }
-}
-
-impl<T> Extractor for Directly<T>
-where
-    T: FromInput,
-{
-    type Out = T;
-    type Error = T::Error;
-    type Ctx = ();
-
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        T::from_input(input).map(Preflight::Completed)
-    }
+pub trait HasExtractor: Sized {
+    type Extractor: Extractor<Out = Self>;
+    fn extractor() -> Self::Extractor;
 }
 
 // ---- implementors ----
 
-impl FromInput for http::Method {
-    type Error = Never;
+pub struct RequestExtractor<T>(fn(&mut Input<'_>) -> T);
 
-    #[inline]
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error> {
-        Ok(input.method().clone())
+impl<T> fmt::Debug for RequestExtractor<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RequestExtractor").finish()
     }
 }
 
-impl FromInput for http::Uri {
+impl<T> Extractor for RequestExtractor<T> {
+    type Out = T;
     type Error = Never;
+    type Ctx = ();
 
-    #[inline]
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error> {
-        Ok(input.uri().clone())
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+        Ok(Preflight::Completed((self.0)(input)))
     }
 }
 
-impl FromInput for http::Version {
-    type Error = Never;
+impl HasExtractor for http::Method {
+    type Extractor = RequestExtractor<Self>;
 
     #[inline]
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error> {
-        Ok(input.version())
+    fn extractor() -> Self::Extractor {
+        RequestExtractor(|input| input.method().clone())
     }
 }
+
+impl HasExtractor for http::Uri {
+    type Extractor = RequestExtractor<Self>;
+
+    #[inline]
+    fn extractor() -> Self::Extractor {
+        RequestExtractor(|input| input.uri().clone())
+    }
+}
+
+impl HasExtractor for http::Version {
+    type Extractor = RequestExtractor<Self>;
+
+    #[inline]
+    fn extractor() -> Self::Extractor {
+        RequestExtractor(|input| input.version())
+    }
+}
+
+// ==== Extension ====
 
 /// A proxy object for accessing the value in the protocol extensions.
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-#[derive(Debug)]
 pub struct Extension<T> {
     _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
+}
+
+impl<T> fmt::Debug for Extension<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Extension").finish()
+    }
+}
+
+impl<T> HasExtractor for Extension<T>
+where
+    T: Send + Sync + 'static,
+{
+    type Extractor = ExtensionExtractor<T>;
+
+    fn extractor() -> Self::Extractor {
+        ExtensionExtractor(PhantomData)
+    }
 }
 
 impl<T> Extension<T>
@@ -93,28 +97,56 @@ where
     }
 }
 
-impl<T> FromInput for Extension<T>
+pub struct ExtensionExtractor<T>(PhantomData<fn() -> T>);
+
+impl<T> fmt::Debug for ExtensionExtractor<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExtensionExtractor").finish()
+    }
+}
+
+impl<T> Extractor for ExtensionExtractor<T>
 where
     T: Send + Sync + 'static,
 {
+    type Out = Extension<T>;
     type Error = Error;
+    type Ctx = ();
 
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error> {
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
         if input.extensions().get::<T>().is_some() {
-            Ok(Self {
+            Ok(Preflight::Completed(Extension {
                 _marker: PhantomData,
-            })
+            }))
         } else {
             Err(crate::error::internal_server_error("missing extension").into())
         }
     }
 }
 
+// ==== State ====
+
 /// A proxy object for accessing the global state.
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-#[derive(Debug)]
 pub struct State<T> {
     _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
+}
+
+impl<T> fmt::Debug for State<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("State").finish()
+    }
+}
+
+impl<T> HasExtractor for State<T>
+where
+    T: Send + Sync + 'static,
+{
+    type Extractor = StateExtractor<T>;
+
+    fn extractor() -> Self::Extractor {
+        StateExtractor(PhantomData)
+    }
 }
 
 impl<T> State<T>
@@ -130,17 +162,27 @@ where
     }
 }
 
-impl<T> FromInput for State<T>
+pub struct StateExtractor<T>(PhantomData<fn() -> T>);
+
+impl<T> fmt::Debug for StateExtractor<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StateExtractor").finish()
+    }
+}
+
+impl<T> Extractor for StateExtractor<T>
 where
     T: Send + Sync + 'static,
 {
+    type Out = State<T>;
     type Error = Error;
+    type Ctx = ();
 
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error> {
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
         if input.state::<T>().is_some() {
-            Ok(Self {
+            Ok(Preflight::Completed(State {
                 _marker: PhantomData,
-            })
+            }))
         } else {
             Err(crate::error::internal_server_error("missing state").into())
         }
@@ -149,44 +191,34 @@ where
 
 // ==== Local ====
 
-/// A proxy object for accessing local data from handler functions.
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
 #[derive(Debug)]
-pub struct Local<T> {
-    _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
+pub struct LocalExtractor<T>
+where
+    T: Send + 'static,
+{
+    key: &'static LocalKey<T>,
 }
 
-#[allow(missing_docs)]
-impl<T> Local<T>
+impl<T> LocalExtractor<T>
 where
-    T: LocalData,
+    T: Send + 'static,
 {
-    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        crate::input::with_get_current(|input| {
-            let value = T::get(input.locals()).expect("should be Some");
-            f(value)
-        })
-    }
-
-    pub fn with_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
-        crate::input::with_get_current(|input| {
-            let value = T::get_mut(input.locals_mut()).expect("should be Some");
-            f(value)
-        })
+    pub fn new(key: &'static LocalKey<T>) -> Self {
+        Self { key }
     }
 }
 
-impl<T> FromInput for Local<T>
+impl<T> Extractor for LocalExtractor<T>
 where
-    T: LocalData,
+    T: Send + 'static,
 {
+    type Out = T;
     type Error = Error;
+    type Ctx = ();
 
-    fn from_input(input: &mut Input<'_>) -> Result<Self, Self::Error> {
-        if input.locals().contains_key(&T::KEY) {
-            Ok(Self {
-                _marker: PhantomData,
-            })
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+        if let Some(value) = input.locals_mut().remove(self.key) {
+            Ok(Preflight::Completed(value))
         } else {
             Err(crate::error::internal_server_error("missing local value").into())
         }

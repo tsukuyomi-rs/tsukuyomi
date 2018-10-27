@@ -10,14 +10,13 @@ pub mod param;
 pub mod query;
 pub mod verb;
 
-pub use self::from_input::{Directly, Extension, FromInput, Local, State};
+pub use self::from_input::{Extension, HasExtractor, LocalExtractor, State};
 
 // ==== impl ====
 
 use std::fmt;
 
 use bytes::Bytes;
-use derive_more::From;
 use either::Either;
 use futures::Future;
 
@@ -41,7 +40,114 @@ pub trait Extractor {
     }
 }
 
-#[derive(Debug, Default, From)]
+pub enum Preflight<E: Extractor + ?Sized> {
+    Completed(E::Out),
+    Incomplete(E::Ctx),
+}
+
+impl<E> fmt::Debug for Preflight<E>
+where
+    E: Extractor + ?Sized,
+    E::Out: fmt::Debug,
+    E::Ctx: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Preflight::Completed(ref out) => f.debug_tuple("Completed").field(out).finish(),
+            Preflight::Incomplete(ref cx) => f.debug_tuple("Incomplete").field(cx).finish(),
+        }
+    }
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+impl<E> Preflight<E>
+where
+    E: Extractor + ?Sized,
+{
+    #[allow(missing_docs)]
+    pub fn map_completed<U>(self, f: impl FnOnce(E::Out) -> U::Out) -> Preflight<U>
+    where
+        U: Extractor<Ctx = E::Ctx> + ?Sized,
+    {
+        match self {
+            Preflight::Completed(x) => Preflight::Completed(f(x)),
+            Preflight::Incomplete(cx) => Preflight::Incomplete(cx),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn map_incomplete<U>(self, f: impl FnOnce(E::Ctx) -> U::Ctx) -> Preflight<U>
+    where
+        U: Extractor<Out = E::Out> + ?Sized,
+    {
+        match self {
+            Preflight::Completed(x) => Preflight::Completed(x),
+            Preflight::Incomplete(cx) => Preflight::Incomplete(f(cx)),
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub fn conform<U>(self) -> Preflight<U>
+    where
+        U: Extractor<Out = E::Out, Ctx = E::Ctx> + ?Sized,
+    {
+        match self {
+            Preflight::Completed(out) => Preflight::Completed(out),
+            Preflight::Incomplete(cx) => Preflight::Incomplete(cx),
+        }
+    }
+}
+
+pub(crate) fn extract<T>(
+    extractor: &T,
+    input: &mut Input<'_>,
+) -> impl Future<Item = T::Out, Error = Error>
+where
+    T: Extractor + ?Sized,
+{
+    use futures::future::{err, ok, Either};
+    match extractor.preflight(input) {
+        Ok(Preflight::Completed(data)) => Either::A(ok(data)),
+        Err(preflight_err) => Either::A(err(preflight_err.into())),
+        Ok(Preflight::Incomplete(cx)) => Either::B(
+            input
+                .body_mut()
+                .read_all()
+                .map_err(Error::critical)
+                .and_then(move |data| {
+                    crate::input::with_get_current(|input| T::finalize(cx, input, &data))
+                        .map_err(Into::into)
+                }),
+        ),
+    }
+}
+
+// ==== ExtractorExt ====
+
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub trait ExtractorExt: Extractor + Sized {
+    fn optional(self) -> Optional<Self> {
+        Optional(self)
+    }
+
+    fn fallible(self) -> Fallible<Self> {
+        Fallible(self)
+    }
+
+    fn either_or<E>(self, other: E) -> EitherOr<Self, E>
+    where
+        E: Extractor,
+    {
+        EitherOr {
+            left: self,
+            right: other,
+        }
+    }
+}
+
+impl<E: Extractor> ExtractorExt for E {}
+
+#[derive(Debug)]
 pub struct Optional<E>(E);
 
 impl<E> Extractor for Optional<E>
@@ -68,7 +174,7 @@ where
     }
 }
 
-#[derive(Debug, Default, From)]
+#[derive(Debug)]
 pub struct Fallible<E>(E);
 
 impl<E> Extractor for Fallible<E>
@@ -96,22 +202,28 @@ where
 }
 
 #[derive(Debug)]
-pub struct EitherOf<L, R> {
+pub struct EitherOr<L, R> {
     left: L,
     right: R,
 }
 
-impl<L, R> EitherOf<L, R>
+impl<L, R> EitherOr<L, R>
 where
     L: Extractor,
     R: Extractor,
 {
-    pub fn new(left: L, right: R) -> Self {
-        Self { left, right }
+    pub fn strict(self) -> EitherOrStrict<L, R>
+    where
+        R: Extractor<Out = L::Out>,
+    {
+        EitherOrStrict {
+            left: self.left,
+            right: self.right,
+        }
     }
 }
 
-impl<L, R> Extractor for EitherOf<L, R>
+impl<L, R> Extractor for EitherOr<L, R>
 where
     L: Extractor,
     R: Extractor,
@@ -150,6 +262,59 @@ where
         if let Some(cx) = cx.1 {
             match R::finalize(cx, input, data) {
                 Ok(x) => return Ok(Either::Right(x)),
+                Err(err) => return Err(err.into()),
+            }
+        }
+
+        unreachable!()
+    }
+}
+
+#[derive(Debug)]
+pub struct EitherOrStrict<L, R> {
+    left: L,
+    right: R,
+}
+
+impl<L, R, T> Extractor for EitherOrStrict<L, R>
+where
+    L: Extractor<Out = T>,
+    R: Extractor<Out = T>,
+{
+    type Out = T;
+    type Ctx = (Option<L::Ctx>, Option<R::Ctx>);
+    type Error = Error;
+
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+        match self.left.preflight(input) {
+            Ok(Preflight::Completed(x)) => Ok(Preflight::Completed(x)),
+            Ok(Preflight::Incomplete(cx1)) => match self.right.preflight(input) {
+                Ok(Preflight::Completed(x)) => Ok(Preflight::Completed(x)),
+                Ok(Preflight::Incomplete(cx2)) => Ok(Preflight::Incomplete((Some(cx1), Some(cx2)))),
+                Err(..) => Ok(Preflight::Incomplete((Some(cx1), None))),
+            },
+            Err(..) => match self.right.preflight(input) {
+                Ok(Preflight::Completed(x)) => Ok(Preflight::Completed(x)),
+                Ok(Preflight::Incomplete(cx)) => Ok(Preflight::Incomplete((None, Some(cx)))),
+                Err(err) => Err(err.into()),
+            },
+        }
+    }
+
+    fn finalize(
+        cx: Self::Ctx,
+        input: &mut Input<'_>,
+        data: &Bytes,
+    ) -> Result<Self::Out, Self::Error> {
+        if let Some(cx) = cx.0 {
+            if let Ok(x) = L::finalize(cx, input, data) {
+                return Ok(x);
+            }
+        }
+
+        if let Some(cx) = cx.1 {
+            match R::finalize(cx, input, data) {
+                Ok(x) => return Ok(x),
                 Err(err) => return Err(err.into()),
             }
         }
@@ -246,90 +411,4 @@ mod tuple {
     }
 
     impl_extractor_for_tuples!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-}
-
-// ==== Preflight ====
-
-pub enum Preflight<E: Extractor + ?Sized> {
-    Completed(E::Out),
-    Incomplete(E::Ctx),
-}
-
-impl<E> fmt::Debug for Preflight<E>
-where
-    E: Extractor + ?Sized,
-    E::Out: fmt::Debug,
-    E::Ctx: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Preflight::Completed(ref out) => f.debug_tuple("Completed").field(out).finish(),
-            Preflight::Incomplete(ref cx) => f.debug_tuple("Incomplete").field(cx).finish(),
-        }
-    }
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<E> Preflight<E>
-where
-    E: Extractor + ?Sized,
-{
-    #[allow(missing_docs)]
-    pub fn map_completed<U>(self, f: impl FnOnce(E::Out) -> U::Out) -> Preflight<U>
-    where
-        U: Extractor<Ctx = E::Ctx> + ?Sized,
-    {
-        match self {
-            Preflight::Completed(x) => Preflight::Completed(f(x)),
-            Preflight::Incomplete(cx) => Preflight::Incomplete(cx),
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn map_incomplete<U>(self, f: impl FnOnce(E::Ctx) -> U::Ctx) -> Preflight<U>
-    where
-        U: Extractor<Out = E::Out> + ?Sized,
-    {
-        match self {
-            Preflight::Completed(x) => Preflight::Completed(x),
-            Preflight::Incomplete(cx) => Preflight::Incomplete(f(cx)),
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn conform<U>(self) -> Preflight<U>
-    where
-        U: Extractor<Out = E::Out, Ctx = E::Ctx> + ?Sized,
-    {
-        match self {
-            Preflight::Completed(out) => Preflight::Completed(out),
-            Preflight::Incomplete(cx) => Preflight::Incomplete(cx),
-        }
-    }
-}
-
-// ==== extract ====
-
-pub(crate) fn extract<T>(
-    extractor: &T,
-    input: &mut Input<'_>,
-) -> impl Future<Item = T::Out, Error = Error>
-where
-    T: Extractor + ?Sized,
-{
-    use futures::future::{err, ok, Either};
-    match extractor.preflight(input) {
-        Ok(Preflight::Completed(data)) => Either::A(ok(data)),
-        Err(preflight_err) => Either::A(err(preflight_err.into())),
-        Ok(Preflight::Incomplete(cx)) => Either::B(
-            input
-                .body_mut()
-                .read_all()
-                .map_err(Error::critical)
-                .and_then(move |data| {
-                    crate::input::with_get_current(|input| T::finalize(cx, input, &data))
-                        .map_err(Into::into)
-                }),
-        ),
-    }
 }
