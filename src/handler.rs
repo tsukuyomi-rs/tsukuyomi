@@ -111,19 +111,22 @@ pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
 pub fn with_extractor<E, F>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
 where
     E: crate::extractor::Extractor + Send + Sync + 'static,
-    E::Out: Tuple + Send + 'static,
-    E::Ctx: Send + 'static,
-    F: Func<E::Out> + Send + Sync + 'static,
+    E::Output: Tuple + Send + 'static,
+    E::Error: Send + 'static,
+    E::Future: Send + 'static,
+    F: Func<E::Output> + Send + Sync + 'static,
     F::Out: IntoFuture<Error = Error> + 'static,
     <F::Out as IntoFuture>::Future: Send + 'static,
     <F::Out as IntoFuture>::Item: Responder,
 {
     let f = Arc::new(f);
     self::raw(move |input| {
-        let mut future = crate::extractor::extract(&extractor, input).and_then({
-            let f = f.clone();
-            move |arg| f.call(arg).into_future().from_err()
-        });
+        let mut future = crate::extractor::extract(&extractor, input)
+            .map_err(Into::into)
+            .and_then({
+                let f = f.clone();
+                move |arg| f.call(arg).into_future().from_err()
+            });
         Handle::polling(move |input| {
             futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
                 .respond_to(input)

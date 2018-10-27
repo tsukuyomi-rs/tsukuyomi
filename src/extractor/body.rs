@@ -5,12 +5,13 @@ use std::marker::PhantomData;
 use std::str;
 
 use bytes::Bytes;
+use futures::{Async, Future, Poll};
 use http::StatusCode;
 use mime::Mime;
 use serde::de::DeserializeOwned;
 
-use crate::error::HttpError;
-use crate::extractor::{Extractor, Preflight};
+use crate::error::{Error, HttpError};
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 #[doc(hidden)]
@@ -176,18 +177,39 @@ impl<T, D> Extractor for Body<T, D>
 where
     D: self::decode::Decoder<T>,
 {
-    type Out = T;
-    type Error = ExtractBodyError;
-    type Ctx = ();
+    type Output = T;
+    type Error = Error;
+    type Future = BodyFuture<T, D>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        let mime_opt = get_mime_opt(input)?;
-        self.decoder.validate_mime(mime_opt)?;
-        Ok(Preflight::Incomplete(()))
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+        {
+            let mime_opt = get_mime_opt(input)?;
+            self.decoder.validate_mime(mime_opt)?;
+        }
+        Ok(Extract::Incomplete(BodyFuture {
+            read_all: input.body_mut().read_all(),
+            _marker: PhantomData,
+        }))
     }
+}
 
-    #[inline]
-    fn finalize(_: Self::Ctx, _: &mut Input<'_>, data: &Bytes) -> Result<Self::Out, Self::Error> {
-        D::decode(data)
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct BodyFuture<T, D: self::decode::Decoder<T>> {
+    read_all: crate::input::body::ReadAll,
+    _marker: PhantomData<(D, fn() -> T)>,
+}
+
+impl<T, D> Future for BodyFuture<T, D>
+where
+    D: self::decode::Decoder<T>,
+{
+    type Item = T;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
+        D::decode(&data).map(Async::Ready).map_err(Into::into)
     }
 }

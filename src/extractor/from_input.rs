@@ -2,13 +2,13 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::error::{Error, Never};
-use crate::extractor::{Extractor, Preflight};
+use crate::error::{ErrorMessage, Never};
+use crate::extractor::{Extract, Extractor};
 use crate::input::local_map::LocalKey;
 use crate::input::Input;
 
 pub trait HasExtractor: Sized {
-    type Extractor: Extractor<Out = Self>;
+    type Extractor: Extractor<Output = Self>;
     fn extractor() -> Self::Extractor;
 }
 
@@ -23,12 +23,13 @@ impl<T> fmt::Debug for RequestExtractor<T> {
 }
 
 impl<T> Extractor for RequestExtractor<T> {
-    type Out = T;
+    type Output = T;
     type Error = Never;
-    type Ctx = ();
+    type Future = super::Placeholder<T, Never>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        Ok(Preflight::Completed((self.0)(input)))
+    #[inline]
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+        Ok(Extract::Ready((self.0)(input)))
     }
 }
 
@@ -109,17 +110,17 @@ impl<T> Extractor for ExtensionExtractor<T>
 where
     T: Send + Sync + 'static,
 {
-    type Out = Extension<T>;
-    type Error = Error;
-    type Ctx = ();
+    type Output = Extension<T>;
+    type Error = ErrorMessage;
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if input.extensions().get::<T>().is_some() {
-            Ok(Preflight::Completed(Extension {
+            Ok(Extract::Ready(Extension {
                 _marker: PhantomData,
             }))
         } else {
-            Err(crate::error::internal_server_error("missing extension").into())
+            Err(crate::error::internal_server_error("missing extension"))
         }
     }
 }
@@ -174,17 +175,17 @@ impl<T> Extractor for StateExtractor<T>
 where
     T: Send + Sync + 'static,
 {
-    type Out = State<T>;
-    type Error = Error;
-    type Ctx = ();
+    type Output = State<T>;
+    type Error = ErrorMessage;
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if input.state::<T>().is_some() {
-            Ok(Preflight::Completed(State {
+            Ok(Extract::Ready(State {
                 _marker: PhantomData,
             }))
         } else {
-            Err(crate::error::internal_server_error("missing state").into())
+            Err(crate::error::internal_server_error("missing state"))
         }
     }
 }
@@ -212,15 +213,15 @@ impl<T> Extractor for LocalExtractor<T>
 where
     T: Send + 'static,
 {
-    type Out = T;
-    type Error = Error;
-    type Ctx = ();
+    type Output = T;
+    type Error = ErrorMessage;
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if let Some(value) = input.locals_mut().remove(self.key) {
-            Ok(Preflight::Completed(value))
+            Ok(Extract::Ready(value))
         } else {
-            Err(crate::error::internal_server_error("missing local value").into())
+            Err(crate::error::internal_server_error("missing local value"))
         }
     }
 }

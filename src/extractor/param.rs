@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 
 use crate::error::Failure;
-use crate::extractor::{Extractor, Preflight};
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 #[derive(Debug)]
@@ -35,18 +35,16 @@ where
     T: FromStr + 'static,
     T::Err: Fail,
 {
-    type Out = T;
+    type Output = T;
     type Error = Failure;
-    type Ctx = ();
+    type Future = super::Placeholder<T, Failure>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         let params = input.params();
         let s = params.get(self.pos).ok_or_else(|| {
             Failure::internal_server_error(format_err!("the cursor is out of range"))
         })?;
-        s.parse()
-            .map(Preflight::Completed)
-            .map_err(Failure::bad_request)
+        s.parse().map(Extract::Ready).map_err(Failure::bad_request)
     }
 }
 
@@ -74,18 +72,16 @@ where
     T: FromStr + 'static,
     T::Err: Fail,
 {
-    type Out = T;
+    type Output = T;
     type Error = Failure;
-    type Ctx = ();
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         let params = input.params();
         let s = params.name(&self.name).ok_or_else(|| {
             Failure::internal_server_error(format_err!("the cursor is out of range"))
         })?;
-        s.parse()
-            .map(Preflight::Completed)
-            .map_err(Failure::bad_request)
+        s.parse().map(Extract::Ready).map_err(Failure::bad_request)
     }
 }
 
@@ -117,17 +113,15 @@ where
     T: FromStr + 'static,
     T::Err: Fail,
 {
-    type Out = T;
+    type Output = T;
     type Error = Failure;
-    type Ctx = ();
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         let params = input.params();
         let s = params.get_wildcard().ok_or_else(|| {
             Failure::internal_server_error(format_err!("the wildcard parameter is not set"))
         })?;
-        s.parse()
-            .map(Preflight::Completed)
-            .map_err(Failure::bad_request)
+        s.parse().map(Extract::Ready).map_err(Failure::bad_request)
     }
 }

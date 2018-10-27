@@ -7,7 +7,7 @@ use http::StatusCode;
 use serde::de::DeserializeOwned;
 
 use crate::error::HttpError;
-use crate::extractor::{Extractor, Preflight};
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 #[doc(hidden)]
@@ -44,14 +44,14 @@ impl<T> Extractor for Query<T>
 where
     T: DeserializeOwned + 'static,
 {
-    type Out = T;
-    type Ctx = ();
+    type Output = T;
     type Error = ExtractQueryError;
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if let Some(query_str) = input.uri().query() {
             serde_urlencoded::from_str(query_str)
-                .map(Preflight::Completed)
+                .map(Extract::Ready)
                 .map_err(|cause| ExtractQueryError::InvalidQuery {
                     cause: cause.into(),
                 })

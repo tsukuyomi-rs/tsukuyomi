@@ -2,12 +2,12 @@
 
 #![allow(missing_docs)]
 
-use bytes::Bytes;
 use derive_more::From;
+use futures::Future;
 use http::{Method, StatusCode};
 
 use crate::error::{Error, ErrorMessage};
-use crate::extractor::{Extractor, Preflight};
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 macro_rules! define_http_method_extractors {
@@ -19,21 +19,20 @@ macro_rules! define_http_method_extractors {
         where
             E: Extractor,
         {
-            type Out = E::Out;
+            type Output = E::Output;
             type Error = Error;
-            type Ctx = E::Ctx;
+            type Future = futures::future::MapErr<E::Future, fn(E::Error) -> Error>;
 
-            fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+            #[inline]
+            fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
                 if input.method() == Method::$METHOD {
-                    self.0.preflight(input).map(Preflight::conform).map_err(Into::into)
+                    match self.0.extract(input).map_err(Into::into)? {
+                        Extract::Ready(out) => Ok(Extract::Ready(out)),
+                        Extract::Incomplete(fut) => Ok(Extract::Incomplete(fut.map_err(Into::into as fn(E::Error) -> Error))),
+                    }
                 } else {
                     Err(ErrorMessage::new(StatusCode::METHOD_NOT_ALLOWED, "").into())
                 }
-            }
-
-            #[inline]
-            fn finalize(cx: Self::Ctx, input: &mut Input<'_>, data: &Bytes) -> Result<Self::Out, Self::Error> {
-                E::finalize(cx, input, data).map_err(Into::into)
             }
         }
     )*};
