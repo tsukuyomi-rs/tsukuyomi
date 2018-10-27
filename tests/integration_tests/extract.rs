@@ -1,7 +1,6 @@
 use tsukuyomi::app::App;
 use tsukuyomi::extract::body::{Json, Plain, Urlencoded};
 use tsukuyomi::handler::with_extractor;
-use tsukuyomi::input::local_map::LocalData;
 
 use either::Either;
 use http::Request;
@@ -97,13 +96,13 @@ fn json_body() {
         .perform(
             Request::post("/")
                 .header("content-type", "application/json")
-                .body(r#"{"id":23, "name":"bob"}"#.as_bytes()),
+                .body(&br#"{"id":23, "name":"bob"}"#[..]),
         ).unwrap();
     assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
 
     // missing content-type
     let response = server
-        .perform(Request::post("/").body(r#"{"id":23, "name":"bob"}"#.as_bytes()))
+        .perform(Request::post("/").body(&br#"{"id":23, "name":"bob"}"#[..]))
         .unwrap();
     assert_eq!(response.status().as_u16(), 400);
 
@@ -112,7 +111,7 @@ fn json_body() {
         .perform(
             Request::post("/")
                 .header("content-type", "application/graphql")
-                .body(r#"{"id":23, "name":"bob"}"#.as_bytes()),
+                .body(&br#"{"id":23, "name":"bob"}"#[..]),
         ).unwrap();
     assert_eq!(response.status().as_u16(), 400);
 
@@ -121,7 +120,7 @@ fn json_body() {
         .perform(
             Request::post("/")
                 .header("content-type", "application/json")
-                .body(r#"THIS_IS_INVALID_JSON_DATA"#.as_bytes()),
+                .body(&br#"THIS_IS_INVALID_JSON_DATA"#[..]),
         ).unwrap();
     assert_eq!(response.status().as_u16(), 400);
 }
@@ -169,7 +168,7 @@ fn urlencoded_body() {
         .perform(
             Request::post("/")
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(r#"THIS_IS_INVALID_FORM_DATA"#.as_bytes()),
+                .body(&br#"THIS_IS_INVALID_FORM_DATA"#[..]),
         ).unwrap();
     assert_eq!(response.status().as_u16(), 400);
 }
@@ -177,16 +176,21 @@ fn urlencoded_body() {
 #[test]
 fn local_data() {
     use tsukuyomi::extract::{Directly, Local};
+    use tsukuyomi::input::local_map::{local_key, LocalData};
 
-    #[derive(Clone, LocalData)]
-    struct Foo(String);
+    #[derive(Clone)]
+    struct MyData(String);
+
+    impl LocalData for MyData {
+        local_key!(const KEY: Self);
+    }
 
     use tsukuyomi::input::Input;
     use tsukuyomi::modifier::{BeforeHandle, Modifier};
     struct MyModifier;
     impl Modifier for MyModifier {
         fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
-            Foo("dummy".into()).insert_into(input.locals_mut());
+            MyData("dummy".into()).insert_into(input.locals_mut());
             BeforeHandle::ready(Ok(None))
         }
     }
@@ -194,8 +198,8 @@ fn local_data() {
     let mut server = local_server({
         App::builder().modifier(MyModifier).route((
             "/",
-            with_extractor((Directly::default(),), |foo: Local<Foo>| {
-                Ok(foo.with(Clone::clone).0)
+            with_extractor((Directly::default(),), |x: Local<MyData>| {
+                Ok(x.with(Clone::clone).0)
             }),
         ))
     });
@@ -207,14 +211,19 @@ fn local_data() {
 #[test]
 fn missing_local_data() {
     use tsukuyomi::extract::{Directly, Local};
+    use tsukuyomi::input::local_map::{local_key, LocalData};
 
-    #[derive(Clone, LocalData)]
-    struct Foo(String);
+    #[derive(Clone)]
+    struct MyData(String);
+
+    impl LocalData for MyData {
+        local_key!(const KEY: Self);
+    }
 
     let mut server = local_server(App::builder().route((
         "/",
-        with_extractor((Directly::default(),), |foo: Local<Foo>| {
-            Ok(foo.with(Clone::clone).0)
+        with_extractor((Directly::default(),), |x: Local<MyData>| {
+            Ok(x.with(Clone::clone).0)
         }),
     )));
 
@@ -248,7 +257,7 @@ fn either() {
         .perform(
             Request::post("/")
                 .header("content-type", "application/json")
-                .body(r#"{"id":23, "name":"bob"}"#.as_bytes()),
+                .body(&br#"{"id":23, "name":"bob"}"#[..]),
         ).unwrap();
     assert_eq!(response.status().as_u16(), 200);
     assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
@@ -257,7 +266,7 @@ fn either() {
         .perform(
             Request::post("/")
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body("id=23&name=bob".as_bytes()),
+                .body(&b"id=23&name=bob"[..]),
         ).unwrap();
     assert_eq!(response.status().as_u16(), 200);
     assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
@@ -266,7 +275,7 @@ fn either() {
         .perform(
             Request::post("/")
                 .header("content-type", "text/plain; charset=utf-8")
-                .body("///invalid string".as_bytes()),
+                .body(&b"///invalid string"[..]),
         ).unwrap();
     assert_eq!(response.status().as_u16(), 400);
 }
