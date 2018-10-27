@@ -1,6 +1,7 @@
 //! Extractors for parsing message body.
 
-use std::ops::Deref;
+use std::fmt;
+use std::marker::PhantomData;
 use std::str;
 
 use bytes::Bytes;
@@ -11,7 +12,7 @@ use serde::de::DeserializeOwned;
 use crate::error::HttpError;
 use crate::input::Input;
 
-use super::{FromInput, Preflight};
+use super::extractor::{Extractor, Preflight};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]
@@ -48,166 +49,146 @@ fn get_mime_opt<'a>(input: &'a mut Input<'_>) -> Result<Option<&'a Mime>, Extrac
     crate::input::header::content_type(input).map_err(|_| ExtractBodyError::InvalidMime)
 }
 
-fn get_mime<'a>(input: &'a mut Input<'_>) -> Result<&'a Mime, ExtractBodyError> {
-    get_mime_opt(input)?.ok_or_else(|| ExtractBodyError::MissingContentType)
-}
+mod decode {
+    use super::*;
 
-/// The instance of `FromInput` which parses the message body as an UTF-8 string
-/// and converts it into a value by using `serde_plain`.
-#[derive(Debug)]
-pub struct Plain<T = String>(pub T);
-
-impl<T> Plain<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
+    pub trait Decoder<T> {
+        fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError>;
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError>;
     }
-}
 
-impl AsRef<str> for Plain<String> {
-    #[cfg_attr(tarpaulin, skip)]
-    fn as_ref(&self) -> &str {
-        self.0.as_ref()
-    }
-}
+    #[derive(Debug, Default)]
+    pub struct PlainTextDecoder(());
 
-impl<T> Deref for Plain<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FromInput for Plain<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    type Error = ExtractBodyError;
-    type Ctx = ();
-
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        if let Some(mime) = get_mime_opt(input)? {
-            if mime.type_() != mime::TEXT || mime.subtype() != mime::PLAIN {
-                return Err(ExtractBodyError::UnexpectedContentType {
-                    expected: "text/plain",
-                });
-            }
-            if let Some(charset) = mime.get_param("charset") {
-                if charset != "utf-8" {
-                    return Err(ExtractBodyError::NotUtf8Charset);
+    impl<T> Decoder<T> for PlainTextDecoder
+    where
+        T: DeserializeOwned + 'static,
+    {
+        fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+            if let Some(mime) = mime {
+                if mime.type_() != mime::TEXT || mime.subtype() != mime::PLAIN {
+                    return Err(ExtractBodyError::UnexpectedContentType {
+                        expected: "text/plain",
+                    });
+                }
+                if let Some(charset) = mime.get_param("charset") {
+                    if charset != "utf-8" {
+                        return Err(ExtractBodyError::NotUtf8Charset);
+                    }
                 }
             }
+            Ok(())
         }
-        Ok(Preflight::Incomplete(()))
-    }
 
-    fn finalize(data: &Bytes, _: &mut Input<'_>, _: ()) -> Result<Self, Self::Error> {
-        let s = str::from_utf8(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
-            cause: cause.into(),
-        })?;
-        serde_plain::from_str(s)
-            .map(Plain)
-            .map_err(|cause| ExtractBodyError::InvalidContent {
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+            let s = str::from_utf8(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
+                cause: cause.into(),
+            })?;
+            serde_plain::from_str(s).map_err(|cause| ExtractBodyError::InvalidContent {
                 cause: cause.into(),
             })
+        }
+    }
+
+    #[derive(Debug, Default)]
+    pub struct JsonDecoder(());
+
+    impl<T> Decoder<T> for JsonDecoder
+    where
+        T: DeserializeOwned + 'static,
+    {
+        fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+            let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
+            if *mime != mime::APPLICATION_JSON {
+                return Err(ExtractBodyError::UnexpectedContentType {
+                    expected: "application/json",
+                });
+            }
+            Ok(())
+        }
+
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+            serde_json::from_slice(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
+                cause: cause.into(),
+            })
+        }
+    }
+
+    #[derive(Debug, Default)]
+    pub struct UrlencodedDecoder(());
+
+    impl<T> Decoder<T> for UrlencodedDecoder
+    where
+        T: DeserializeOwned + 'static,
+    {
+        fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+            let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
+            if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
+                return Err(ExtractBodyError::UnexpectedContentType {
+                    expected: "application/x-www-form-urlencoded",
+                });
+            }
+            Ok(())
+        }
+
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+            serde_urlencoded::from_bytes(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
+                cause: cause.into(),
+            })
+        }
     }
 }
 
-/// The instance of `FromInput` which deserializes the message body
-/// into a JSON value by using `serde_json`.
-#[derive(Debug)]
-pub struct Json<T>(pub T);
+pub type Plain<T> = Body<T, self::decode::PlainTextDecoder>;
+pub type Json<T> = Body<T, self::decode::JsonDecoder>;
+pub type Urlencoded<T> = Body<T, self::decode::UrlencodedDecoder>;
 
-impl<T> Json<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
-    }
+/// The instance of `FromInput` which deserializes the message body to the specified type.
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct Body<T, D: self::decode::Decoder<T>> {
+    decoder: D,
+    _marker: PhantomData<fn() -> T>,
 }
 
-impl<T> Deref for Json<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FromInput for Json<T>
+impl<T, D> Default for Body<T, D>
 where
-    T: DeserializeOwned + 'static,
+    D: self::decode::Decoder<T> + Default,
 {
+    fn default() -> Self {
+        Self {
+            decoder: D::default(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T, D> fmt::Debug for Body<T, D>
+where
+    D: self::decode::Decoder<T> + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Body")
+            .field("decoder", &self.decoder)
+            .finish()
+    }
+}
+
+impl<T, D> Extractor for Body<T, D>
+where
+    D: self::decode::Decoder<T>,
+{
+    type Out = T;
     type Error = ExtractBodyError;
     type Ctx = ();
 
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        let mime = get_mime(input)?;
-        if *mime != mime::APPLICATION_JSON {
-            return Err(ExtractBodyError::UnexpectedContentType {
-                expected: "application/json",
-            });
-        }
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+        let mime_opt = get_mime_opt(input)?;
+        self.decoder.validate_mime(mime_opt)?;
         Ok(Preflight::Incomplete(()))
     }
 
-    fn finalize(data: &Bytes, _: &mut Input<'_>, _: ()) -> Result<Self, Self::Error> {
-        serde_json::from_slice(&*data)
-            .map(Json)
-            .map_err(|cause| ExtractBodyError::InvalidContent {
-                cause: cause.into(),
-            })
-    }
-}
-
-/// The instance of `FromInput` which deserializes the message body
-/// into a value by using `serde_urlencoded`.
-#[derive(Debug)]
-pub struct Urlencoded<T>(pub T);
-
-impl<T> Urlencoded<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> Deref for Urlencoded<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FromInput for Urlencoded<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    type Error = ExtractBodyError;
-    type Ctx = ();
-
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        let mime = get_mime(input)?;
-        if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
-            return Err(ExtractBodyError::UnexpectedContentType {
-                expected: "application/x-www-form-urlencoded",
-            });
-        }
-        Ok(Preflight::Incomplete(()))
-    }
-
-    fn finalize(data: &Bytes, _: &mut Input<'_>, _: ()) -> Result<Self, Self::Error> {
-        serde_urlencoded::from_bytes(&*data)
-            .map(Urlencoded)
-            .map_err(|cause| ExtractBodyError::InvalidContent {
-                cause: cause.into(),
-            })
+    #[inline]
+    fn finalize(_: Self::Ctx, _: &mut Input<'_>, data: &Bytes) -> Result<Self::Out, Self::Error> {
+        D::decode(data)
     }
 }

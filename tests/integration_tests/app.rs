@@ -1,11 +1,8 @@
 use tsukuyomi::app::App;
-use tsukuyomi::extract::body::Plain;
-use tsukuyomi::handler;
 
-use futures::prelude::*;
 use http::{header, Method, Request, StatusCode};
 
-use super::util::{local_server, LocalServerExt};
+use super::util::{local_server, wrap_ready, LocalServerExt};
 
 #[test]
 fn empty_routes() {
@@ -18,7 +15,7 @@ fn empty_routes() {
 #[test]
 fn single_route() {
     let mut server = local_server(App::builder().mount("/", |m| {
-        m.route(("/hello", handler::wrap_ready(|_| "Tsukuyomi")));
+        m.route(("/hello", wrap_ready(|_| "Tsukuyomi")));
     }));
 
     let response = server.perform(Request::get("/hello")).unwrap();
@@ -46,7 +43,10 @@ fn post_body() {
     let mut server = local_server(App::builder().route((
         "/hello",
         Method::POST,
-        handler::wrap_async(|input| input.extract::<Plain>().map(Plain::into_inner)),
+        tsukuyomi::handler::with_extractor(
+            (tsukuyomi::extract::body::Plain::<String>::default(),),
+            Ok,
+        ),
     )));
 
     let response = server
@@ -82,7 +82,7 @@ fn cookies() {
         App::builder()
             .route((
                 "/login",
-                handler::wrap_ready({
+                wrap_ready({
                     move |input| -> tsukuyomi::error::Result<_> {
                         #[cfg_attr(rustfmt, rustfmt_skip)]
                     let cookie = Cookie::build("session", "dummy_session_id")
@@ -95,7 +95,7 @@ fn cookies() {
                 }),
             )).route((
                 "/logout",
-                handler::wrap_ready(move |input| -> tsukuyomi::error::Result<_> {
+                wrap_ready(move |input| -> tsukuyomi::error::Result<_> {
                     input.cookies()?.remove(Cookie::named("session"));
                     Ok("Logged out")
                 }),
@@ -144,8 +144,8 @@ fn cookies() {
 fn default_options() {
     let mut server = local_server(
         App::builder()
-            .route(("/path", Method::GET, handler::wrap_ready(|_| "get")))
-            .route(("/path", Method::POST, handler::wrap_ready(|_| "post"))),
+            .route(("/path", Method::GET, wrap_ready(|_| "get")))
+            .route(("/path", Method::POST, wrap_ready(|_| "post"))),
     );
 
     let response = server.perform(Request::options("/path")).unwrap();
@@ -168,8 +168,8 @@ fn default_options() {
 fn test_case_5_disable_default_options() {
     let mut server = local_server(
         App::builder()
-            .route(("/path", Method::GET, handler::wrap_ready(|_| "get")))
-            .route(("/path", Method::POST, handler::wrap_ready(|_| "post")))
+            .route(("/path", Method::GET, wrap_ready(|_| "get")))
+            .route(("/path", Method::POST, wrap_ready(|_| "post")))
             .default_options(false),
     );
 

@@ -47,13 +47,10 @@ pub use self::global::{is_set_current, with_get_current};
 
 // ====
 
-use futures::future::Either;
-use futures::{future, Future};
 use http::Request;
 
 use crate::app::{App, RouteId};
 use crate::error::Error;
-use crate::extract::{FromInput, Preflight};
 use crate::recognizer::captures::Captures;
 
 use self::cookie::CookieManager;
@@ -66,7 +63,6 @@ pub(crate) struct InputParts {
     pub(crate) captures: Option<Captures>,
     pub(crate) cookies: CookieManager,
     pub(crate) locals: LocalMap,
-    cursor: usize,
     _priv: (),
 }
 
@@ -77,7 +73,6 @@ impl InputParts {
             captures,
             cookies: CookieManager::default(),
             locals: LocalMap::default(),
-            cursor: 0,
             _priv: (),
         }
     }
@@ -181,48 +176,15 @@ impl<'task> Input<'task> {
         &mut self.parts.locals
     }
 
-    pub(crate) fn cursor(&mut self) -> &mut usize {
-        &mut self.parts.cursor
-    }
-
-    /// Creates a `Future` which extracts a value from this `Input`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # extern crate tsukuyomi;
-    /// # extern crate futures;
-    /// # use futures::prelude::*;
-    /// # use tsukuyomi::error::Error;
-    /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::extract::body::Plain;
-    /// #
-    /// # #[allow(dead_code)]
-    /// fn handler(input: &mut Input) -> impl Future<Error = Error, Item = String> {
-    ///     input.extract::<Plain>()
-    ///         .and_then(|body_string| {
-    ///             // ...
-    /// #           Ok(body_string.into_inner())
-    ///         })
-    /// }
-    /// #
-    /// # fn main() {}
-    /// ```
-    pub fn extract<T>(&mut self) -> impl Future<Item = T, Error = Error>
+    /// Equivalent to `extract::extract(extractor, self)`
+    #[inline]
+    pub fn extract_with<E>(
+        &mut self,
+        extractor: &E,
+    ) -> impl futures::Future<Item = E::Out, Error = Error>
     where
-        T: FromInput,
+        E: crate::extract::Extractor + ?Sized,
     {
-        match T::preflight(self) {
-            Ok(Preflight::Completed(data)) => Either::A(future::ok(data)),
-            Err(preflight_err) => Either::A(future::err(preflight_err.into())),
-            Ok(Preflight::Incomplete(cx)) => Either::B(
-                self.body_mut()
-                    .read_all()
-                    .map_err(Error::critical)
-                    .and_then(move |data| {
-                        with_get_current(|input| T::finalize(&data, input, cx)).map_err(Into::into)
-                    }),
-            ),
-        }
+        crate::extract::extract(extractor, self)
     }
 }

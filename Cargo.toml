@@ -42,6 +42,7 @@ tsukuyomi-codegen = { version = "0.1.0", path = "tsukuyomi-codegen" }
 
 bytes = "0.4"
 cookie = { version = "0.11", features = ["percent-encode"] }
+derive_more = "0.13"
 either = "1.5"
 failure = "0.1.2"
 filetime = "0.2"

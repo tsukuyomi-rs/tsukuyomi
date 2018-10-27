@@ -3,12 +3,12 @@ use syn::parse_quote;
 use syn::FnArg;
 
 #[derive(Debug, Copy, Clone)]
-pub enum HandlerMode {
-    Auto,
-    Future,
+pub enum HandleMode {
+    Ready,
+    Polling,
 }
 
-pub fn derive_handler(item: syn::ItemFn, mode: HandlerMode) -> syn::ItemFn {
+pub fn derive_handler(item: syn::ItemFn, mode: HandleMode) -> syn::ItemFn {
     let mut inner = item.clone();
     inner.ident = syn::Ident::new("inner", inner.ident.span());
 
@@ -38,7 +38,7 @@ pub fn derive_handler(item: syn::ItemFn, mode: HandlerMode) -> syn::ItemFn {
     }
 
     match mode {
-        HandlerMode::Auto => {
+        HandleMode::Ready => {
             let vis = &item.vis;
             let ident = &item.ident;
             parse_quote!{
@@ -49,7 +49,7 @@ pub fn derive_handler(item: syn::ItemFn, mode: HandlerMode) -> syn::ItemFn {
             }
         }
 
-        HandlerMode::Future => {
+        HandleMode::Polling => {
             let vis = &item.vis;
             let ident = &item.ident;
             parse_quote!{

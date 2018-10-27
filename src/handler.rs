@@ -1,7 +1,7 @@
 //! `Handler` and supplemental components.
 
 use either::Either;
-use futures::{Async, Future, Poll};
+use futures::{Async, Future, IntoFuture, Poll};
 use std::fmt;
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use crate::error::Error;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
-pub use crate::codegen::{future_handler, handler};
+pub use self::func::{Func, Tuple};
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -51,16 +51,89 @@ where
     }
 }
 
-/// A helper function which creats an instance of `Handler` for use as a placeholder.
+/// A helper function which creates a `Handler` for use as a placeholder.
 pub fn unimplemented() -> impl Handler {
-    self::wrap_ready(|_| {
-        Err::<(), crate::error::Error>(
-            crate::error::Failure::internal_server_error(failure::format_err!(
-                "not implemented yet"
-            )).into(),
-        )
+    #[allow(missing_debug_implementations)]
+    struct Unimplemented;
+    impl Handler for Unimplemented {
+        #[inline]
+        fn handle(&self, _: &mut Input<'_>) -> Handle {
+            Handle::ready(Err(crate::error::Failure::internal_server_error(
+                failure::format_err!("not implemented yet"),
+            ).into()))
+        }
+    }
+    Unimplemented
+}
+
+/// A helper function which creates a `Handler` from the specified closure.
+pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
+    #[allow(missing_debug_implementations)]
+    struct Raw<F>(F);
+
+    impl<F> Handler for Raw<F>
+    where
+        F: Fn(&mut Input<'_>) -> Handle,
+    {
+        #[inline]
+        fn handle(&self, input: &mut Input<'_>) -> Handle {
+            (self.0)(input)
+        }
+    }
+
+    Raw(f)
+}
+
+/// A function which creates a `Handler` from the specified function.
+///
+/// # Example
+///
+/// ```ignore
+/// fn handler(id: i32, post: Post)
+///     -> impl Future<Error = SomeError, Item = Post>
+/// {
+///     ...
+/// }
+///
+/// let extractor = (
+///     ParamExtractor::<i32>::default(),
+///     JsonBodyExtractor::::<Post>::default(),
+/// );
+///
+/// let app = App::builder()
+///     .route((
+///         "/posts/:id",
+///         "PUT",
+///         with_extractor(extractor, handler),
+///     ))
+///     .finish()?;
+/// ```
+pub fn with_extractor<E, F>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
+where
+    E: crate::extract::Extractor + Send + Sync + 'static,
+    E::Out: Tuple + Send + 'static,
+    E::Ctx: Send + 'static,
+    F: Func<E::Out> + Send + Sync + 'static,
+    F::Out: IntoFuture<Error = Error> + 'static,
+    <F::Out as IntoFuture>::Future: Send + 'static,
+    <F::Out as IntoFuture>::Item: Responder,
+{
+    let f = Arc::new(f);
+    self::raw(move |input| {
+        let mut future = crate::extract::extract(&extractor, input).and_then({
+            let f = f.clone();
+            move |arg| f.call(arg).into_future().from_err()
+        });
+        Handle::polling(move |input| {
+            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
+                .respond_to(input)
+                .map(|response| Async::Ready(response.map(Into::into)))
+                .map_err(Into::into)
+        })
     })
 }
+
+// ----------------------------------------------------------------------------
 
 /// A type representing the return value from `Handler::handle`.
 pub struct Handle(HandleKind);
@@ -126,31 +199,8 @@ impl Handle {
     }
 }
 
-/// Create an instance of `Handler` from the provided function.
-///
-/// The provided handler is *synchronous*, which means that the provided handler
-/// will return a result and immediately converted into an HTTP response without polling
-/// the asynchronous status.
-///
-/// # Examples
-///
-/// ```
-/// # use tsukuyomi::app::App;
-/// # use tsukuyomi::input::Input;
-/// # use tsukuyomi::handler::wrap_ready;
-/// # #[allow(unused_variables)]
-/// fn index(input: &mut Input) -> &'static str {
-///     "Hello, Tsukuyomi.\n"
-/// }
-///
-/// # fn main() -> tsukuyomi::app::AppResult<()> {
-/// let app = App::builder()
-///     .route(("/index.html", wrap_ready(index)))
-///     .finish()?;
-/// # drop(app);
-/// # Ok(())
-/// # }
-/// ```
+#[doc(hidden)]
+#[deprecated(since = "0.3.3")]
 pub fn wrap_ready<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
 where
     R: Responder,
@@ -176,35 +226,8 @@ where
     ReadyHandler(f)
 }
 
-/// Create an instance of `Handler` from the provided function.
-///
-/// The provided handler is *asynchronous*, which means that the handler will
-/// process some tasks by using the provided reference to `Input` and return a future for
-/// processing the remaining task.
-///
-/// # Examples
-///
-/// ```
-/// # extern crate futures;
-/// # extern crate tsukuyomi;
-/// # use futures::prelude::*;
-/// # use tsukuyomi::app::App;
-/// # use tsukuyomi::error::Error;
-/// # use tsukuyomi::input::Input;
-/// # use tsukuyomi::extract::body::Plain;
-/// # use tsukuyomi::handler::wrap_async;
-/// fn handler(input: &mut Input) -> impl Future<Error = Error, Item = String> {
-///     input.extract::<Plain>().map(Plain::into_inner)
-/// }
-///
-/// # fn main() -> tsukuyomi::app::AppResult<()> {
-/// let app = App::builder()
-///     .route(("/posts", wrap_async(handler)))
-///     .finish()?;
-/// # drop(app);
-/// # Ok(())
-/// # }
-/// ```
+#[doc(hidden)]
+#[deprecated(since = "0.3.3")]
 pub fn wrap_async<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
 where
     R: Future + Send + 'static,
@@ -230,51 +253,83 @@ where
     AsyncHandler(f)
 }
 
-// not a public API.
-#[doc(hidden)]
-pub mod private {
-    pub use futures::Future;
-    use futures::{Async, IntoFuture};
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+mod func {
+    /// A marker trait for constraining the type to tuples.
+    pub trait Tuple: TupleSealed {}
+    pub trait TupleSealed {}
 
-    use super::Handle;
-    use crate::error::Error;
-    use crate::extract::FromInput;
-    use crate::input::Input;
-    use crate::output::Responder;
+    impl Tuple for () {}
+    impl TupleSealed for () {}
 
-    pub fn handle_ready<F, T, R>(input: &mut Input<'_>, f: F) -> Handle
-    where
-        F: FnOnce(T) -> R + Send + 'static,
-        T: FromInput,
-        T: Send + 'static,
-        T::Ctx: Send + 'static,
-        R: Responder,
-    {
-        let mut future = input.extract::<T>().map(f);
-        Handle::polling(move |input| {
-            futures::try_ready!(future.poll())
-                .respond_to(input)
-                .map(|response| Async::Ready(response.map(Into::into)))
-                .map_err(Into::into)
-        })
+    #[allow(missing_docs)]
+    pub trait Func<Args: Tuple>: FuncSealed<Args> {}
+    pub trait FuncSealed<Args: Tuple> {
+        type Out;
+        fn call(&self, args: Args) -> Self::Out;
     }
 
-    pub fn handle_async<F, T, R>(input: &mut Input<'_>, f: F) -> Handle
+    impl<F, R> Func<()> for F where F: Fn() -> R {}
+    impl<F, R> FuncSealed<()> for F
     where
-        F: FnOnce(T) -> R + Send + 'static,
-        T: FromInput,
-        T: Send + 'static,
-        T::Ctx: Send + 'static,
-        R: IntoFuture<Error = Error> + 'static,
-        R::Future: Send + 'static,
-        R::Item: Responder,
+        F: Fn() -> R,
     {
-        let mut future = input.extract::<T>().and_then(f);
-        Handle::polling(move |input| {
-            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
-                .respond_to(input)
-                .map(|response| Async::Ready(response.map(Into::into)))
-                .map_err(Into::into)
-        })
+        type Out = R;
+        #[inline]
+        fn call(&self, _: ()) -> Self::Out {
+            (*self)()
+        }
     }
+
+    macro_rules! impl_func {
+        ($H:ident, $($T:ident),+) => {
+            impl<$H, $($T),+> Tuple for ($H, $($T),+) {}
+            impl<$H, $($T),+> TupleSealed for ($H, $($T),+) {}
+
+            impl<F, $H, $($T),+, R> Func<($H, $($T),+)> for F
+            where
+                F: Fn($H, $($T),+) -> R,
+            {
+            }
+            impl<F, $H, $($T),+, R> FuncSealed<($H, $($T),+)> for F
+            where
+                F: Fn($H, $($T),+) -> R,
+            {
+                type Out = R;
+
+                #[inline]
+                #[allow(non_snake_case)]
+                fn call(&self, ($H, $($T),+): ($H, $($T),+)) -> Self::Out {
+                    (*self)($H, $($T),+)
+                }
+            }
+
+            impl_func!($($T),+);
+        };
+
+        ($T:ident) => {
+            impl<$T> Tuple for ($T,) {}
+            impl<$T> TupleSealed for ($T,) {}
+
+            impl<F, $T, R> Func<($T,)> for F
+            where
+                F: Fn($T) -> R,
+            {
+            }
+            impl<F, $T, R> FuncSealed<($T,)> for F
+            where
+                F: Fn($T) -> R,
+            {
+                type Out = R;
+
+                #[inline]
+                #[allow(non_snake_case)]
+                fn call(&self, ($T,): ($T,)) -> Self::Out {
+                    (*self)($T)
+                }
+            }
+        };
+    }
+
+    impl_func!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 }
