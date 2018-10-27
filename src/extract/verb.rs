@@ -3,60 +3,38 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
+use derive_more::From;
 use http::{Method, StatusCode};
-use std::ops::Deref;
 
 use crate::error::{Error, ErrorMessage};
 use crate::input::Input;
 
-use super::{FromInput, Preflight};
+use super::extractor::{Extractor, Preflight};
 
 macro_rules! define_http_method_extractors {
     ($( $Name:ident => $METHOD:ident; )*) => {$(
-        #[derive(Debug)]
-        pub struct $Name<T>(pub T);
+        #[derive(Debug, From)]
+        pub struct $Name<E>(E);
 
-        impl<T> $Name<T>
+        impl<E> Extractor for $Name<E>
         where
-            T: FromInput,
+            E: Extractor,
         {
-            #[inline]
-            pub fn into_inner(self) -> T {
-                self.0
-            }
-        }
-
-        impl<T> Deref for $Name<T>
-        where
-            T: FromInput,
-        {
-            type Target = T;
-
-            #[inline]
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-
-        impl<T> FromInput for $Name<T>
-        where
-            T: FromInput,
-        {
+            type Out = E::Out;
             type Error = Error;
-            type Ctx = T::Ctx;
+            type Ctx = E::Ctx;
 
-            fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+            fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
                 if input.method() == Method::$METHOD {
-                    T::preflight(input)
-                        .map(|preflight| preflight.map_completed($Name))
-                        .map_err(Into::into)
+                    self.0.preflight(input).map(Preflight::conform).map_err(Into::into)
                 } else {
                     Err(ErrorMessage::new(StatusCode::METHOD_NOT_ALLOWED, "").into())
                 }
             }
 
-            fn finalize(data: &Bytes, input: &mut Input<'_>, cx: Self::Ctx) -> Result<Self, Self::Error> {
-                T::finalize(data, input, cx).map($Name).map_err(Into::into)
+            #[inline]
+            fn finalize(cx: Self::Ctx, input: &mut Input<'_>, data: &Bytes) -> Result<Self::Out, Self::Error> {
+                E::finalize(cx, input, data).map_err(Into::into)
             }
         }
     )*};

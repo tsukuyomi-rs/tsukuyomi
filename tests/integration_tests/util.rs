@@ -61,28 +61,3 @@ where
 
     ReadyHandler(f)
 }
-
-pub fn wrap_async<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
-where
-    R: futures::Future + Send + 'static,
-    R::Item: Responder,
-    tsukuyomi::error::Error: From<R::Error>,
-{
-    #[allow(missing_debug_implementations)]
-    struct AsyncHandler<T>(T);
-
-    impl<T, R> Handler for AsyncHandler<T>
-    where
-        T: Fn(&mut Input<'_>) -> R,
-        R: futures::Future + Send + 'static,
-        R::Item: Responder,
-        tsukuyomi::error::Error: From<R::Error>,
-    {
-        #[allow(deprecated)]
-        fn handle(&self, input: &mut Input<'_>) -> Handle {
-            Handle::wrap_async((self.0)(input))
-        }
-    }
-
-    AsyncHandler(f)
-}

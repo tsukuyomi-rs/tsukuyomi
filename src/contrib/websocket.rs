@@ -2,7 +2,7 @@
 //!
 //! # Examples
 //!
-//! ```
+//! ```ignore
 //! # extern crate futures;
 //! # extern crate tsukuyomi;
 //! # use futures::prelude::*;

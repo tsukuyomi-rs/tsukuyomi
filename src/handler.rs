@@ -6,12 +6,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::error::Error;
-use crate::extract::FromInput;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
 pub use self::func::{Func, Tuple};
-pub use crate::codegen::{extract, extract_ready};
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -91,52 +89,47 @@ pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
 /// # Example
 ///
 /// ```ignore
-/// fn update_post(id: i32, post: Post)
+/// fn handler(id: i32, post: Post)
 ///     -> impl Future<Error = SomeError, Item = Post>
 /// {
 ///     ...
 /// }
 ///
+/// let extractor = (
+///     ParamExtractor::<i32>::default(),
+///     JsonBodyExtractor::::<Post>::default(),
+/// );
+///
 /// let app = App::builder()
 ///     .route((
 ///         "/posts/:id",
 ///         "PUT",
-///         extract(|id: Param<i32>, post: Json<Post>| update_post(id.0, post.0)),
+///         with_extractor(extractor, handler),
 ///     ))
 ///     .finish()?;
 /// ```
-pub fn extract<F, T>(f: F) -> impl Handler + Send + Sync + 'static
+pub fn with_extractor<E, F>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
 where
-    F: Func<T> + Send + Sync + 'static,
-    T: FromInput + Tuple + Send + 'static,
-    T::Ctx: Send + 'static,
-    F::Out: IntoFuture + 'static,
+    E: crate::extract::Extractor + Send + Sync + 'static,
+    E::Out: Tuple + Send + 'static,
+    E::Ctx: Send + 'static,
+    F: Func<E::Out> + Send + Sync + 'static,
+    F::Out: IntoFuture<Error = Error> + 'static,
     <F::Out as IntoFuture>::Future: Send + 'static,
     <F::Out as IntoFuture>::Item: Responder,
-    Error: From<<F::Out as IntoFuture>::Error>,
 {
     let f = Arc::new(f);
     self::raw(move |input| {
-        let f = f.clone();
-        self::private::handle_async(input, move |arg| f.call(arg).into_future().from_err())
-    })
-}
-
-/// A function which creates a `Handler` from the specified function.
-///
-/// Unlike `extract`, the returned value from `f` will be immediately converted to an
-/// HTTP response.
-pub fn extract_ready<F, T>(f: F) -> impl Handler + Send + Sync + 'static
-where
-    F: Func<T> + Send + Sync + 'static,
-    T: FromInput + Tuple + Send + 'static,
-    T::Ctx: Send + 'static,
-    F::Out: Responder,
-{
-    let f = Arc::new(f);
-    self::raw(move |input| {
-        let f = f.clone();
-        self::private::handle_ready(input, move |arg| f.call(arg))
+        let mut future = crate::extract::extract(&extractor, input).and_then({
+            let f = f.clone();
+            move |arg| f.call(arg).into_future().from_err()
+        });
+        Handle::polling(move |input| {
+            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
+                .respond_to(input)
+                .map(|response| Async::Ready(response.map(Into::into)))
+                .map_err(Into::into)
+        })
     })
 }
 
@@ -258,55 +251,6 @@ where
     }
 
     AsyncHandler(f)
-}
-
-// not a public API.
-#[doc(hidden)]
-pub mod private {
-    pub use futures::Future;
-    use futures::{Async, IntoFuture};
-
-    use super::Handle;
-    use crate::error::Error;
-    use crate::extract::FromInput;
-    use crate::input::Input;
-    use crate::output::Responder;
-
-    pub fn handle_ready<F, T, R>(input: &mut Input<'_>, f: F) -> Handle
-    where
-        F: FnOnce(T) -> R + Send + 'static,
-        T: FromInput,
-        T: Send + 'static,
-        T::Ctx: Send + 'static,
-        R: Responder,
-    {
-        let mut future = input.extract::<T>().map(f);
-        Handle::polling(move |input| {
-            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
-                .respond_to(input)
-                .map(|response| Async::Ready(response.map(Into::into)))
-                .map_err(Into::into)
-        })
-    }
-
-    pub fn handle_async<F, T, R>(input: &mut Input<'_>, f: F) -> Handle
-    where
-        F: FnOnce(T) -> R + Send + 'static,
-        T: FromInput,
-        T: Send + 'static,
-        T::Ctx: Send + 'static,
-        R: IntoFuture<Error = Error> + 'static,
-        R::Future: Send + 'static,
-        R::Item: Responder,
-    {
-        let mut future = input.extract::<T>().and_then(f);
-        Handle::polling(move |input| {
-            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
-                .respond_to(input)
-                .map(|response| Async::Ready(response.map(Into::into)))
-                .map_err(Into::into)
-        })
-    }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]

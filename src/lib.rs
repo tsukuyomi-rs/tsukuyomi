@@ -18,6 +18,7 @@ pub extern crate tsukuyomi_server as server;
 
 extern crate bytes;
 extern crate cookie;
+extern crate derive_more;
 extern crate either;
 extern crate failure;
 extern crate filetime;

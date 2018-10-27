@@ -1,8 +1,6 @@
 use tsukuyomi::app::App;
 use tsukuyomi::extract::body::{Json, Plain, Urlencoded};
-use tsukuyomi::extract::param::{Param, Wildcard};
-use tsukuyomi::extract::Local;
-use tsukuyomi::handler;
+use tsukuyomi::handler::with_extractor;
 use tsukuyomi::input::local_map::LocalData;
 
 use either::Either;
@@ -12,7 +10,7 @@ use super::util::{local_server, LocalServerExt};
 
 #[test]
 fn unit_input() {
-    let mut server = local_server(App::builder().route(("/", handler::extract_ready(|| "dummy"))));
+    let mut server = local_server(App::builder().route(("/", with_extractor((), || Ok("dummy")))));
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
@@ -20,12 +18,13 @@ fn unit_input() {
 
 #[test]
 fn params() {
+    use tsukuyomi::extract::param::{Named, Pos, Wildcard};
+
     let mut server = local_server(App::builder().route((
         "/:id/:name/*path",
-        handler::extract_ready(
-            |id: Param<u32>, name: Param<String>, path: Wildcard<String>| {
-                format!("{},{},{}", &*id, &*name, &*path)
-            },
+        with_extractor(
+            (Pos::new(0), Named::new("name"), Wildcard::new()),
+            |id: u32, name: String, path: String| Ok(format!("{},{},{}", id, name, path)),
         ),
     )));
 
@@ -43,7 +42,7 @@ fn plain_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        handler::extract_ready(|body: Plain<String>| body.into_inner()),
+        with_extractor((Plain::<String>::default(),), Ok),
     )));
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
@@ -89,7 +88,9 @@ fn json_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        handler::extract_ready(|params: Json<Params>| format!("{},{}", params.id, params.name)),
+        with_extractor((Json::default(),), |params: Params| {
+            Ok(format!("{},{}", params.id, params.name))
+        }),
     )));
 
     let response = server
@@ -135,8 +136,8 @@ fn urlencoded_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        handler::extract_ready(|params: Urlencoded<Params>| {
-            format!("{},{}", params.id, params.name)
+        with_extractor((Urlencoded::default(),), |params: Params| {
+            Ok(format!("{},{}", params.id, params.name))
         }),
     )));
 
@@ -175,6 +176,8 @@ fn urlencoded_body() {
 
 #[test]
 fn local_data() {
+    use tsukuyomi::extract::{Directly, Local};
+
     #[derive(Clone, LocalData)]
     struct Foo(String);
 
@@ -191,7 +194,9 @@ fn local_data() {
     let mut server = local_server({
         App::builder().modifier(MyModifier).route((
             "/",
-            handler::extract_ready(|foo: Local<Foo>| foo.with(Clone::clone).0),
+            with_extractor((Directly::default(),), |foo: Local<Foo>| {
+                Ok(foo.with(Clone::clone).0)
+            }),
         ))
     });
 
@@ -201,12 +206,16 @@ fn local_data() {
 
 #[test]
 fn missing_local_data() {
+    use tsukuyomi::extract::{Directly, Local};
+
     #[derive(Clone, LocalData)]
     struct Foo(String);
 
     let mut server = local_server(App::builder().route((
         "/",
-        handler::extract_ready(|foo: Local<Foo>| foo.with(Clone::clone).0),
+        with_extractor((Directly::default(),), |foo: Local<Foo>| {
+            Ok(foo.with(Clone::clone).0)
+        }),
     )));
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -215,6 +224,8 @@ fn missing_local_data() {
 
 #[test]
 fn either() {
+    use tsukuyomi::extract::EitherOf;
+
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -224,13 +235,13 @@ fn either() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        handler::extract_ready(|params: Either<Json<Params>, Urlencoded<Params>>| {
-            let params = match params {
-                Either::Left(Json(params)) => params,
-                Either::Right(Urlencoded(params)) => params,
-            };
-            format!("{},{}", params.id, params.name)
-        }),
+        with_extractor(
+            (EitherOf::new(Json::default(), Urlencoded::default()),),
+            |params: Either<Params, Params>| {
+                let params = params.into_inner();
+                Ok(format!("{},{}", params.id, params.name))
+            },
+        ),
     )));
 
     let response = server

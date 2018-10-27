@@ -1,13 +1,15 @@
 //! Extractors for parsing query string.
 
+use std::fmt;
+use std::marker::PhantomData;
+
 use http::StatusCode;
 use serde::de::DeserializeOwned;
-use std::ops::Deref;
 
 use crate::error::HttpError;
 use crate::input::Input;
 
-use super::{FromInput, Preflight};
+use super::extractor::{Extractor, Preflight};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]
@@ -25,38 +27,32 @@ impl HttpError for ExtractQueryError {
     }
 }
 
-/// The instance of `FromInput` which parses the query string in URI.
-#[derive(Debug)]
-pub struct Query<T>(pub T);
+pub struct Query<T>(PhantomData<fn() -> T>);
 
-impl<T> Query<T> {
-    #[allow(missing_docs)]
-    #[cfg_attr(tarpaulin, skip)]
-    pub fn into_inner(self) -> T {
-        self.0
+impl<T> Default for Query<T> {
+    fn default() -> Self {
+        Query(PhantomData)
     }
 }
 
-impl<T> Deref for Query<T> {
-    type Target = T;
-
-    #[cfg_attr(tarpaulin, skip)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl<T> fmt::Debug for Query<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QueryExtractor").finish()
     }
 }
 
-impl<T> FromInput for Query<T>
+impl<T> Extractor for Query<T>
 where
     T: DeserializeOwned + 'static,
 {
-    type Error = ExtractQueryError;
+    type Out = T;
     type Ctx = ();
+    type Error = ExtractQueryError;
 
-    fn preflight(input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
         if let Some(query_str) = input.uri().query() {
             serde_urlencoded::from_str(query_str)
-                .map(|x| Preflight::Completed(Query(x)))
+                .map(Preflight::Completed)
                 .map_err(|cause| ExtractQueryError::InvalidQuery {
                     cause: cause.into(),
                 })

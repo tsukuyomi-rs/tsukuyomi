@@ -1,10 +1,8 @@
 use tsukuyomi::app::App;
-use tsukuyomi::extract::body::Plain;
 
-use futures::prelude::*;
 use http::{header, Method, Request, StatusCode};
 
-use super::util::{local_server, wrap_async, wrap_ready, LocalServerExt};
+use super::util::{local_server, wrap_ready, LocalServerExt};
 
 #[test]
 fn empty_routes() {
@@ -45,7 +43,10 @@ fn post_body() {
     let mut server = local_server(App::builder().route((
         "/hello",
         Method::POST,
-        wrap_async(|input| input.extract::<Plain>().map(Plain::into_inner)),
+        tsukuyomi::handler::with_extractor(
+            (tsukuyomi::extract::body::Plain::<String>::default(),),
+            Ok,
+        ),
     )));
 
     let response = server
