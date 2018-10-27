@@ -7,9 +7,8 @@ use http::StatusCode;
 use serde::de::DeserializeOwned;
 
 use crate::error::HttpError;
+use crate::extractor::{Extractor, Preflight};
 use crate::input::Input;
-
-use super::extractor::{Extractor, Preflight};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]

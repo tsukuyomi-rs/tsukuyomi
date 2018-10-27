@@ -1,3 +1,19 @@
+//! High level API for accessing request data and context information.
+
+#![allow(missing_docs)]
+
+mod from_input;
+
+pub mod body;
+pub mod header;
+pub mod param;
+pub mod query;
+pub mod verb;
+
+pub use self::from_input::{Directly, Extension, FromInput, Local, State};
+
+// ==== impl ====
+
 use std::fmt;
 
 use bytes::Bytes;

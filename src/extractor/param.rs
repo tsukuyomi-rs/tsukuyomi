@@ -8,9 +8,8 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 
 use crate::error::Failure;
+use crate::extractor::{Extractor, Preflight};
 use crate::input::Input;
-
-use super::extractor::{Extractor, Preflight};
 
 #[derive(Debug)]
 pub struct Pos<T> {

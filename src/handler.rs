@@ -110,7 +110,7 @@ pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
 /// ```
 pub fn with_extractor<E, F>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
 where
-    E: crate::extract::Extractor + Send + Sync + 'static,
+    E: crate::extractor::Extractor + Send + Sync + 'static,
     E::Out: Tuple + Send + 'static,
     E::Ctx: Send + 'static,
     F: Func<E::Out> + Send + Sync + 'static,
@@ -120,7 +120,7 @@ where
 {
     let f = Arc::new(f);
     self::raw(move |input| {
-        let mut future = crate::extract::extract(&extractor, input).and_then({
+        let mut future = crate::extractor::extract(&extractor, input).and_then({
             let f = f.clone();
             move |arg| f.call(arg).into_future().from_err()
         });

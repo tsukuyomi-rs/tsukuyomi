@@ -44,7 +44,7 @@ fn post_body() {
         "/hello",
         Method::POST,
         tsukuyomi::handler::with_extractor(
-            (tsukuyomi::extract::body::Plain::<String>::default(),),
+            (tsukuyomi::extractor::body::Plain::<String>::default(),),
             Ok,
         ),
     )));

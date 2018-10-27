@@ -3,10 +3,9 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use crate::error::{Error, Never};
+use crate::extractor::{Extractor, Preflight};
 use crate::input::local_map::LocalData;
 use crate::input::Input;
-
-use super::extractor::{Extractor, Preflight};
 
 /// A trait representing the general data extraction from the incoming request.
 pub trait FromInput: Sized + 'static {

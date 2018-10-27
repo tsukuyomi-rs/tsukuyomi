@@ -54,7 +54,7 @@ pub use tokio_tungstenite::WebSocketStream;
 pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 use crate::error::HttpError;
-use crate::extract::{Extractor, Preflight};
+use crate::extractor::{Extractor, Preflight};
 use crate::input::Input;
 use crate::output::Responder;
 use crate::server::service::http::UpgradedIo;

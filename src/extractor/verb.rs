@@ -7,9 +7,8 @@ use derive_more::From;
 use http::{Method, StatusCode};
 
 use crate::error::{Error, ErrorMessage};
+use crate::extractor::{Extractor, Preflight};
 use crate::input::Input;
-
-use super::extractor::{Extractor, Preflight};
 
 macro_rules! define_http_method_extractors {
     ($( $Name:ident => $METHOD:ident; )*) => {$(

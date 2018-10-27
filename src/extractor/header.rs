@@ -3,9 +3,8 @@
 use mime::Mime;
 
 use crate::error::Failure;
+use crate::extractor::{Extractor, Preflight};
 use crate::input::Input;
-
-use super::extractor::{Extractor, Preflight};
 
 /// The instance of `FromInput` which extracts the header field `Content-type`.
 #[derive(Debug)]

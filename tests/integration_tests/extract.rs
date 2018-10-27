@@ -1,5 +1,5 @@
 use tsukuyomi::app::App;
-use tsukuyomi::extract::body::{Json, Plain, Urlencoded};
+use tsukuyomi::extractor::body::{Json, Plain, Urlencoded};
 use tsukuyomi::handler::with_extractor;
 
 use either::Either;
@@ -17,7 +17,7 @@ fn unit_input() {
 
 #[test]
 fn params() {
-    use tsukuyomi::extract::param::{Named, Pos, Wildcard};
+    use tsukuyomi::extractor::param::{Named, Pos, Wildcard};
 
     let mut server = local_server(App::builder().route((
         "/:id/:name/*path",
@@ -175,7 +175,7 @@ fn urlencoded_body() {
 
 #[test]
 fn local_data() {
-    use tsukuyomi::extract::{Directly, Local};
+    use tsukuyomi::extractor::{Directly, Local};
     use tsukuyomi::input::local_map::{local_key, LocalData};
 
     #[derive(Clone)]
@@ -210,7 +210,7 @@ fn local_data() {
 
 #[test]
 fn missing_local_data() {
-    use tsukuyomi::extract::{Directly, Local};
+    use tsukuyomi::extractor::{Directly, Local};
     use tsukuyomi::input::local_map::{local_key, LocalData};
 
     #[derive(Clone)]
@@ -233,7 +233,7 @@ fn missing_local_data() {
 
 #[test]
 fn either() {
-    use tsukuyomi::extract::EitherOf;
+    use tsukuyomi::extractor::EitherOf;
 
     #[derive(Debug, serde::Deserialize)]
     struct Params {

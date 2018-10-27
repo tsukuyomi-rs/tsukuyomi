@@ -183,8 +183,8 @@ impl<'task> Input<'task> {
         extractor: &E,
     ) -> impl futures::Future<Item = E::Out, Error = Error>
     where
-        E: crate::extract::Extractor + ?Sized,
+        E: crate::extractor::Extractor + ?Sized,
     {
-        crate::extract::extract(extractor, self)
+        crate::extractor::extract(extractor, self)
     }
 }
