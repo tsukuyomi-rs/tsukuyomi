@@ -9,7 +9,7 @@ use crate::error::Error;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
-pub use crate::codegen::handler;
+pub use crate::codegen::{future_handler, handler};
 
 /// A trait representing handler functions.
 pub trait Handler {

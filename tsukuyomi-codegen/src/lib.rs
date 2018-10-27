@@ -4,29 +4,28 @@ extern crate quote;
 extern crate syn;
 extern crate synstructure;
 
-use proc_macro::TokenStream;
-
+#[macro_use]
+mod util;
 mod handler;
 mod local_data;
 
-synstructure::decl_derive!([LocalData] => crate::local_data::derive_local_data);
+use crate::handler::HandlerMode;
+use synstructure::decl_derive;
 
-/// A macro for creating handler function.
-#[proc_macro_attribute]
-pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mode: crate::handler::HandlerMode = match attr.to_string().parse() {
-        Ok(mode) => mode,
-        Err(message) => {
-            return syn::parse::Error::new(proc_macro2::Span::call_site(), message)
-                .to_compile_error()
-                .into()
-        }
-    };
+decl_derive! {
+    [LocalData] => crate::local_data::derive_local_data
+}
 
-    let item: syn::ItemFn = match syn::parse(item) {
-        Ok(item) => item,
-        Err(err) => return err.to_compile_error().into(),
-    };
+decl_attribute! {
+    /// A macro for creating handler function.
+    fn handler(item: syn::ItemFn) -> syn::ItemFn {
+        crate::handler::derive_handler(item, HandlerMode::Auto)
+    }
+}
 
-    crate::handler::handler(item, mode).into()
+decl_attribute! {
+    /// A macro for creating handler function.
+    fn future_handler(item: syn::ItemFn) -> syn::ItemFn {
+        crate::handler::derive_handler(item, HandlerMode::Future)
+    }
 }

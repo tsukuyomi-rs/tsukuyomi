@@ -3,23 +3,23 @@ extern crate tsukuyomi;
 use tsukuyomi::error::Result;
 use tsukuyomi::extract::body::Json;
 use tsukuyomi::extract::param::Param;
-use tsukuyomi::handler::{handler, Handler};
+use tsukuyomi::handler::Handler;
 
 fn assert_impl<T: Handler>(handler: T) {
     drop(handler);
 }
 
-#[handler(ready)]
+#[tsukuyomi::handler::handler]
 fn welcome() -> &'static str {
     "hello"
 }
 
-#[handler]
+#[tsukuyomi::handler::future_handler]
 fn extract_params(Param(p1): Param<i32>, Param(p2): Param<String>) -> Result<String> {
     Ok(format!("{}{}", p1, p2))
 }
 
-#[handler]
+#[tsukuyomi::handler::future_handler]
 fn read_json(body: Json<String>) -> Result<String> {
     Ok(body.0)
 }
