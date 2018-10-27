@@ -1,6 +1,8 @@
+extern crate futures;
 extern crate tsukuyomi;
 
-use tsukuyomi::error::Result;
+use futures::prelude::*;
+use tsukuyomi::error::Error;
 use tsukuyomi::extract::body::Json;
 use tsukuyomi::extract::param::Param;
 use tsukuyomi::handler::Handler;
@@ -9,19 +11,19 @@ fn assert_impl<T: Handler>(handler: T) {
     drop(handler);
 }
 
-#[tsukuyomi::handler::handler]
+#[tsukuyomi::handler::extract_ready]
 fn welcome() -> &'static str {
     "hello"
 }
 
-#[tsukuyomi::handler::future_handler]
-fn extract_params(Param(p1): Param<i32>, Param(p2): Param<String>) -> Result<String> {
-    Ok(format!("{}{}", p1, p2))
+#[tsukuyomi::handler::extract_ready]
+fn extract_params(Param(p1): Param<i32>, Param(p2): Param<String>) -> String {
+    format!("{}{}", p1, p2)
 }
 
-#[tsukuyomi::handler::future_handler]
-fn read_json(body: Json<String>) -> Result<String> {
-    Ok(body.0)
+#[tsukuyomi::handler::extract]
+fn read_json(body: Json<String>) -> impl Future<Error = Error, Item = String> {
+    futures::future::ok(body.0)
 }
 
 #[test]

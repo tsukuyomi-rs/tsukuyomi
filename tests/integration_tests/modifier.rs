@@ -2,7 +2,6 @@ use tsukuyomi::app::builder::Route;
 use tsukuyomi::app::App;
 use tsukuyomi::error::internal_server_error;
 use tsukuyomi::error::Error;
-use tsukuyomi::handler::wrap_ready;
 use tsukuyomi::input::Input;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::{Output, ResponseBody};
@@ -10,7 +9,7 @@ use tsukuyomi::output::{Output, ResponseBody};
 use http::{Request, Response};
 use std::sync::{Arc, Mutex};
 
-use super::util::{local_server, LocalServerExt};
+use super::util::{local_server, wrap_ready, LocalServerExt};
 
 struct MarkModifier<T1, T2>
 where

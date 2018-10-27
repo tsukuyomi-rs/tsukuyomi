@@ -2,21 +2,17 @@ use tsukuyomi::app::App;
 use tsukuyomi::extract::body::{Json, Plain, Urlencoded};
 use tsukuyomi::extract::param::{Param, Wildcard};
 use tsukuyomi::extract::Local;
-use tsukuyomi::handler::wrap_async;
+use tsukuyomi::handler;
 use tsukuyomi::input::local_map::LocalData;
 
 use either::Either;
-use futures::prelude::*;
 use http::Request;
 
 use super::util::{local_server, LocalServerExt};
 
 #[test]
 fn unit_input() {
-    let mut server = local_server(App::builder().route((
-        "/",
-        wrap_async(|input| input.extract::<()>().map(|_| "dummy")),
-    )));
+    let mut server = local_server(App::builder().route(("/", handler::extract_ready(|| "dummy"))));
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
@@ -26,11 +22,11 @@ fn unit_input() {
 fn params() {
     let mut server = local_server(App::builder().route((
         "/:id/:name/*path",
-        wrap_async(|input| {
-            input
-                .extract::<(Param<u32>, Param<String>, Wildcard<String>)>()
-                .map(|(id, name, path)| format!("{},{},{}", &*id, &*name, &*path))
-        }),
+        handler::extract_ready(
+            |id: Param<u32>, name: Param<String>, path: Wildcard<String>| {
+                format!("{},{},{}", &*id, &*name, &*path)
+            },
+        ),
     )));
 
     let response = server
@@ -47,11 +43,7 @@ fn plain_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        wrap_async(|input| {
-            input
-                .extract::<Plain<String>>()
-                .map(|body| body.into_inner())
-        }),
+        handler::extract_ready(|body: Plain<String>| body.into_inner()),
     )));
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
@@ -89,19 +81,15 @@ fn plain_body() {
 
 #[test]
 fn json_body() {
+    #[derive(Debug, serde::Deserialize)]
+    struct Params {
+        id: u32,
+        name: String,
+    }
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        wrap_async(|input| {
-            #[derive(Debug, serde::Deserialize)]
-            struct Params {
-                id: u32,
-                name: String,
-            }
-            input
-                .extract::<Json<Params>>()
-                .map(|params| format!("{},{}", params.id, params.name))
-        }),
+        handler::extract_ready(|params: Json<Params>| format!("{},{}", params.id, params.name)),
     )));
 
     let response = server
@@ -139,18 +127,16 @@ fn json_body() {
 
 #[test]
 fn urlencoded_body() {
+    #[derive(Debug, serde::Deserialize)]
+    struct Params {
+        id: u32,
+        name: String,
+    }
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        wrap_async(|input| {
-            #[derive(Debug, serde::Deserialize)]
-            struct Params {
-                id: u32,
-                name: String,
-            }
-            input
-                .extract::<Urlencoded<Params>>()
-                .map(|params| format!("{},{}", params.id, params.name))
+        handler::extract_ready(|params: Urlencoded<Params>| {
+            format!("{},{}", params.id, params.name)
         }),
     )));
 
@@ -189,18 +175,25 @@ fn urlencoded_body() {
 
 #[test]
 fn local_data() {
-    #[derive(LocalData)]
+    #[derive(Clone, LocalData)]
     struct Foo(String);
 
-    let mut server = local_server(App::builder().route((
-        "/",
-        wrap_async(|input| {
+    use tsukuyomi::input::Input;
+    use tsukuyomi::modifier::{BeforeHandle, Modifier};
+    struct MyModifier;
+    impl Modifier for MyModifier {
+        fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
             Foo("dummy".into()).insert_into(input.locals_mut());
-            input
-                .extract::<Local<Foo>>()
-                .map(|locals| locals.with(|data| data.0.clone()))
-        }),
-    )));
+            BeforeHandle::ready(Ok(None))
+        }
+    }
+
+    let mut server = local_server({
+        App::builder().modifier(MyModifier).route((
+            "/",
+            handler::extract_ready(|foo: Local<Foo>| foo.with(Clone::clone).0),
+        ))
+    });
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
@@ -208,16 +201,12 @@ fn local_data() {
 
 #[test]
 fn missing_local_data() {
-    #[derive(LocalData)]
+    #[derive(Clone, LocalData)]
     struct Foo(String);
 
     let mut server = local_server(App::builder().route((
         "/",
-        wrap_async(|input| {
-            input
-                .extract::<Local<Foo>>()
-                .map(|locals| locals.with(|data| data.0.clone()))
-        }),
+        handler::extract_ready(|foo: Local<Foo>| foo.with(Clone::clone).0),
     )));
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -226,21 +215,21 @@ fn missing_local_data() {
 
 #[test]
 fn either() {
+    #[derive(Debug, serde::Deserialize)]
+    struct Params {
+        id: u32,
+        name: String,
+    }
+
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        wrap_async(|input| {
-            #[derive(Debug, serde::Deserialize)]
-            struct Params {
-                id: u32,
-                name: String,
-            }
-            input
-                .extract::<Either<Json<Params>, Urlencoded<Params>>>()
-                .map(|params| match params {
-                    Either::Left(Json(params)) => params,
-                    Either::Right(Urlencoded(params)) => params,
-                }).map(|params| format!("{},{}", params.id, params.name))
+        handler::extract_ready(|params: Either<Json<Params>, Urlencoded<Params>>| {
+            let params = match params {
+                Either::Left(Json(params)) => params,
+                Either::Right(Urlencoded(params)) => params,
+            };
+            format!("{},{}", params.id, params.name)
         }),
     )));
 

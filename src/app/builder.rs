@@ -12,13 +12,13 @@ use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 
 use crate::error::{DefaultErrorHandler, ErrorHandler};
-use crate::handler::{self, Handler};
+use crate::handler::{self, Handle, Handler};
 use crate::modifier::Modifier;
+use crate::output::ResponseBody;
 use crate::recognizer::{
     uri::{self, Uri},
     Recognizer,
 };
-use crate::server::service::http::Body;
 
 use super::scoped_map;
 use super::{
@@ -764,11 +764,11 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
     };
 
-    Box::new(handler::wrap_ready(move |_| {
-        let mut response = Response::new(Body::default());
+    Box::new(handler::raw(move |_| {
+        let mut response = Response::new(ResponseBody::empty());
         response
             .headers_mut()
             .insert(header::ALLOW, allowed_methods.clone());
-        response
+        Handle::ready(Ok(response))
     }))
 }

@@ -24,10 +24,9 @@ use walkdir::{FilterEntry, WalkDir};
 pub use walkdir::DirEntry;
 
 use crate::app::builder::{Scope, ScopeConfig};
-use crate::error::Failure;
-use crate::handler::wrap_async;
+use crate::error::{Error, Failure};
 use crate::input::Input;
-use crate::output::{Responder, ResponseBody};
+use crate::output::{Output, Responder, ResponseBody};
 use crate::server::rt::blocking;
 
 // ==== headers ====
@@ -284,6 +283,15 @@ impl Responder for NamedFile {
 pub struct OpenFuture {
     path: PathBuf,
     config: Option<OpenConfig>,
+}
+
+impl OpenFuture {
+    fn poll_respond(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
+        futures::try_ready!(self.poll())
+            .respond_to(input)
+            .map(|response| Async::Ready(response.map(Into::into)))
+            .map_err(Into::into)
+    }
 }
 
 impl Future for OpenFuture {
@@ -544,12 +552,15 @@ where
                 let config = config.clone();
                 scope.route((
                     prefix,
-                    wrap_async(move |_| {
-                        if let Some(ref config) = config {
+                    crate::handler::raw(move |_| {
+                        let mut open_future = if let Some(ref config) = config {
                             NamedFile::open_with_config(path.clone(), config.clone())
                         } else {
                             NamedFile::open(path.clone())
-                        }
+                        };
+                        crate::handler::Handle::polling(move |input| {
+                            open_future.poll_respond(input)
+                        })
                     }),
                 ));
             }

@@ -6,10 +6,10 @@ extern crate synstructure;
 
 #[macro_use]
 mod util;
-mod handler;
+mod extract;
 mod local_data;
 
-use crate::handler::HandlerMode;
+use crate::extract::HandleMode;
 use synstructure::decl_derive;
 
 decl_derive! {
@@ -18,14 +18,14 @@ decl_derive! {
 
 decl_attribute! {
     /// A macro for creating handler function.
-    fn handler(item: syn::ItemFn) -> syn::ItemFn {
-        crate::handler::derive_handler(item, HandlerMode::Auto)
+    fn extract_ready(item: syn::ItemFn) -> syn::ItemFn {
+        crate::extract::derive_handler(item, HandleMode::Ready)
     }
 }
 
 decl_attribute! {
     /// A macro for creating handler function.
-    fn future_handler(item: syn::ItemFn) -> syn::ItemFn {
-        crate::handler::derive_handler(item, HandlerMode::Future)
+    fn extract(item: syn::ItemFn) -> syn::ItemFn {
+        crate::extract::derive_handler(item, HandleMode::Polling)
     }
 }
