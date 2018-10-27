@@ -310,7 +310,10 @@ where
 
 // ==== extract ====
 
-pub fn extract<T>(extractor: &T, input: &mut Input<'_>) -> impl Future<Item = T::Out, Error = Error>
+pub(crate) fn extract<T>(
+    extractor: &T,
+    input: &mut Input<'_>,
+) -> impl Future<Item = T::Out, Error = Error>
 where
     T: Extractor + ?Sized,
 {
