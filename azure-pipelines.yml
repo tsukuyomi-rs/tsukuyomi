@@ -32,3 +32,17 @@ jobs:
     - script: |
         rake test TSUKUYOMI_DENY_WARNINGS=1
       displayName: 'Run Test Script'
+
+  - job: Linux
+    pool:
+      vmImage: 'ubuntu-16.04'
+    steps:
+    - script: |
+        docker run \
+          --security-opt seccomp=unconfined \
+          -v "$PWD:/volume" \
+          xd009642/tarpaulin:latest-nightly \
+          /bin/bash -c \
+            "cargo tarpaulin --version && cargo tarpaulin --out Xml --all-features"
+        bash <(curl -s https://codecov.io/bash)
+      displayName: 'Run Tarpaulin'

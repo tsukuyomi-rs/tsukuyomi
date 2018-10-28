@@ -11,5 +11,5 @@ jobs:
             rustc --version &&
             cargo --version &&
             cargo tarpaulin --version &&
-            cargo tarpaulin --out Xml --all-features &&
-            bash <(curl -s https://codecov.io/bash)
+            cargo tarpaulin --out Xml --all-features
+            #bash <(curl -s https://codecov.io/bash)
