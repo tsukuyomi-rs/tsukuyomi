@@ -24,7 +24,7 @@
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
 //! let app = App::builder()
-//!     .route(("/", handler::with_extractor((), || Ok("Hello"))))
+//!     .route(("/", handler::extract((), |()| Ok("Hello"))))
 //!     .modifier(RequestCounter::default())
 //!     .finish()?;
 //! # drop(app);

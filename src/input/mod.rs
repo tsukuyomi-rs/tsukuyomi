@@ -178,7 +178,7 @@ impl<'task> Input<'task> {
 
     #[allow(missing_docs)]
     #[inline]
-    pub fn extract_with<E>(
+    pub fn extract<E>(
         &mut self,
         extractor: &E,
     ) -> impl futures::Future<Item = E::Output, Error = E::Error>

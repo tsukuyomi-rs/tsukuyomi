@@ -7,7 +7,7 @@
 //! # extern crate tsukuyomi;
 //! # use futures::prelude::*;
 //! # use tsukuyomi::app::App;
-//! # use tsukuyomi::handler::with_extractor;
+//! # use tsukuyomi::handler;
 //! use tsukuyomi::contrib::websocket::{
 //!     Message,
 //!     Transport,
@@ -19,7 +19,7 @@
 //! let ws_extractor = WsExtractor::default();
 //!
 //! let app = App::builder()
-//!     .route(("/ws", with_extractor((ws_extractor,), |ws: Ws| {
+//!     .route(("/ws", handler::extract(ws_extractor, |ws: Ws| {
 //!         Ok(ws.finish(|transport: Transport| {
 //!             let (sink, stream) = transport.split();
 //!             stream

@@ -9,8 +9,6 @@ use crate::error::Error;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
-pub use self::func::{Func, Tuple};
-
 /// A trait representing handler functions.
 pub trait Handler {
     /// Applies an incoming request to this handler.
@@ -88,36 +86,50 @@ pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
 ///
 /// # Example
 ///
-/// ```ignore
-/// fn handler(id: i32, post: Post)
-///     -> impl Future<Error = SomeError, Item = Post>
-/// {
-///     ...
+/// ```
+/// # extern crate tsukuyomi;
+/// # extern crate serde;
+/// # use tsukuyomi::app::App;
+/// # use tsukuyomi::extractor;
+/// # use tsukuyomi::handler;
+/// #[derive(Debug, serde::Deserialize)]
+/// struct Post {
+///     title: String,
+///     text: String,
 /// }
 ///
+/// # fn main() -> tsukuyomi::app::AppResult<()> {
 /// let extractor = (
-///     ParamExtractor::<i32>::default(),
-///     JsonBodyExtractor::::<Post>::default(),
+///     extractor::param::Pos::new(0),
+///     extractor::body::Json::<Post>::default(),
 /// );
 ///
 /// let app = App::builder()
 ///     .route((
 ///         "/posts/:id",
 ///         "PUT",
-///         with_extractor(extractor, handler),
+///         handler::extract(
+///             extractor,
+///             |(id, post): (i32, Post)| {
+///                 // ...
+/// #               drop((id, post));
+/// #               Ok("dummy")
+///             }),
 ///     ))
 ///     .finish()?;
+/// # Ok(drop(app))
+/// # }
 /// ```
-pub fn with_extractor<E, F>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
+pub fn extract<E, F, R>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
 where
     E: crate::extractor::Extractor + Send + Sync + 'static,
-    E::Output: Tuple + Send + 'static,
+    E::Output: Send + 'static,
     E::Error: Send + 'static,
     E::Future: Send + 'static,
-    F: Func<E::Output> + Send + Sync + 'static,
-    F::Out: IntoFuture<Error = Error> + 'static,
-    <F::Out as IntoFuture>::Future: Send + 'static,
-    <F::Out as IntoFuture>::Item: Responder,
+    F: Fn(E::Output) -> R + Send + Sync + 'static,
+    R: IntoFuture<Error = Error> + 'static,
+    R::Future: Send + 'static,
+    R::Item: Responder,
 {
     let f = Arc::new(f);
     self::raw(move |input| {
@@ -125,7 +137,7 @@ where
             .map_err(Into::into)
             .and_then({
                 let f = f.clone();
-                move |arg| f.call(arg).into_future().from_err()
+                move |arg| (*f)(arg).into_future().from_err()
             });
         Handle::polling(move |input| {
             futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
@@ -254,85 +266,4 @@ where
     }
 
     AsyncHandler(f)
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-mod func {
-    /// A marker trait for constraining the type to tuples.
-    pub trait Tuple: TupleSealed {}
-    pub trait TupleSealed {}
-
-    impl Tuple for () {}
-    impl TupleSealed for () {}
-
-    #[allow(missing_docs)]
-    pub trait Func<Args: Tuple>: FuncSealed<Args> {}
-    pub trait FuncSealed<Args: Tuple> {
-        type Out;
-        fn call(&self, args: Args) -> Self::Out;
-    }
-
-    impl<F, R> Func<()> for F where F: Fn() -> R {}
-    impl<F, R> FuncSealed<()> for F
-    where
-        F: Fn() -> R,
-    {
-        type Out = R;
-        #[inline]
-        fn call(&self, _: ()) -> Self::Out {
-            (*self)()
-        }
-    }
-
-    macro_rules! impl_func {
-        ($H:ident, $($T:ident),+) => {
-            impl<$H, $($T),+> Tuple for ($H, $($T),+) {}
-            impl<$H, $($T),+> TupleSealed for ($H, $($T),+) {}
-
-            impl<F, $H, $($T),+, R> Func<($H, $($T),+)> for F
-            where
-                F: Fn($H, $($T),+) -> R,
-            {
-            }
-            impl<F, $H, $($T),+, R> FuncSealed<($H, $($T),+)> for F
-            where
-                F: Fn($H, $($T),+) -> R,
-            {
-                type Out = R;
-
-                #[inline]
-                #[allow(non_snake_case)]
-                fn call(&self, ($H, $($T),+): ($H, $($T),+)) -> Self::Out {
-                    (*self)($H, $($T),+)
-                }
-            }
-
-            impl_func!($($T),+);
-        };
-
-        ($T:ident) => {
-            impl<$T> Tuple for ($T,) {}
-            impl<$T> TupleSealed for ($T,) {}
-
-            impl<F, $T, R> Func<($T,)> for F
-            where
-                F: Fn($T) -> R,
-            {
-            }
-            impl<F, $T, R> FuncSealed<($T,)> for F
-            where
-                F: Fn($T) -> R,
-            {
-                type Out = R;
-
-                #[inline]
-                #[allow(non_snake_case)]
-                fn call(&self, ($T,): ($T,)) -> Self::Out {
-                    (*self)($T)
-                }
-            }
-        };
-    }
-
-    impl_func!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 }

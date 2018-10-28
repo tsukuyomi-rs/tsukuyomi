@@ -1,7 +1,7 @@
 use tsukuyomi::app::App;
 use tsukuyomi::extractor::body::{Json, Plain, Urlencoded};
 use tsukuyomi::extractor::ExtractorExt;
-use tsukuyomi::handler::with_extractor;
+use tsukuyomi::handler;
 
 use either::Either;
 use http::Request;
@@ -10,7 +10,8 @@ use super::util::{local_server, LocalServerExt};
 
 #[test]
 fn unit_input() {
-    let mut server = local_server(App::builder().route(("/", with_extractor((), || Ok("dummy")))));
+    let mut server =
+        local_server(App::builder().route(("/", handler::extract((), |()| Ok("dummy")))));
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
@@ -22,9 +23,9 @@ fn params() {
 
     let mut server = local_server(App::builder().route((
         "/:id/:name/*path",
-        with_extractor(
+        handler::extract(
             (Pos::new(0), Named::new("name"), Wildcard::new()),
-            |id: u32, name: String, path: String| Ok(format!("{},{},{}", id, name, path)),
+            |(id, name, path): (u32, String, String)| Ok(format!("{},{},{}", id, name, path)),
         ),
     )));
 
@@ -42,7 +43,7 @@ fn plain_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor((Plain::<String>::default(),), Ok),
+        handler::extract(Plain::<String>::default(), Ok),
     )));
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
@@ -88,7 +89,7 @@ fn json_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor((Json::default(),), |params: Params| {
+        handler::extract(Json::default(), |params: Params| {
             Ok(format!("{},{}", params.id, params.name))
         }),
     )));
@@ -136,7 +137,7 @@ fn urlencoded_body() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor((Urlencoded::default(),), |params: Params| {
+        handler::extract(Urlencoded::default(), |params: Params| {
             Ok(format!("{},{}", params.id, params.name))
         }),
     )));
@@ -201,7 +202,7 @@ fn local_data() {
     let mut server = local_server({
         App::builder().modifier(MyModifier).route((
             "/",
-            with_extractor((LocalExtractor::new(&MyData::KEY),), |x: MyData| Ok(x.0)),
+            handler::extract(LocalExtractor::new(&MyData::KEY), |x: MyData| Ok(x.0)),
         ))
     });
 
@@ -223,7 +224,7 @@ fn missing_local_data() {
 
     let mut server = local_server(App::builder().route((
         "/",
-        with_extractor((LocalExtractor::new(&MyData::KEY),), |x: MyData| Ok(x.0)),
+        handler::extract(LocalExtractor::new(&MyData::KEY), |x: MyData| Ok(x.0)),
     )));
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -243,7 +244,7 @@ fn optional() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor((extractor,), |params: Option<Params>| {
+        handler::extract(extractor, |params: Option<Params>| {
             if let Some(params) = params {
                 Ok(format!("{},{}", params.id, params.name))
             } else {
@@ -284,7 +285,7 @@ fn fallible() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor((extractor,), |params: Result<Params, _>| {
+        handler::extract(extractor, |params: Result<Params, _>| {
             if let Ok(params) = params {
                 Ok(format!("{},{}", params.id, params.name))
             } else {
@@ -325,7 +326,7 @@ fn either_or() {
     let mut server = local_server(App::builder().route((
         "/",
         "POST",
-        with_extractor((extractor,), |params: Either<Params, Params>| {
+        handler::extract(extractor, |params: Either<Params, Params>| {
             let params = params.into_inner();
             Ok(format!("{},{}", params.id, params.name))
         }),
