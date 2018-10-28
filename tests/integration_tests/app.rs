@@ -43,10 +43,7 @@ fn post_body() {
     let mut server = local_server(App::builder().route((
         "/hello",
         Method::POST,
-        tsukuyomi::handler::with_extractor(
-            (tsukuyomi::extract::body::Plain::<String>::default(),),
-            Ok,
-        ),
+        tsukuyomi::handler::extract(tsukuyomi::extractor::body::Plain::<String>::default(), Ok),
     )));
 
     let response = server

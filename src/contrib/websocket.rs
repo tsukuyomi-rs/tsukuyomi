@@ -7,7 +7,7 @@
 //! # extern crate tsukuyomi;
 //! # use futures::prelude::*;
 //! # use tsukuyomi::app::App;
-//! # use tsukuyomi::handler::with_extractor;
+//! # use tsukuyomi::handler;
 //! use tsukuyomi::contrib::websocket::{
 //!     Message,
 //!     Transport,
@@ -19,7 +19,7 @@
 //! let ws_extractor = WsExtractor::default();
 //!
 //! let app = App::builder()
-//!     .route(("/ws", with_extractor((ws_extractor,), |ws: Ws| {
+//!     .route(("/ws", handler::extract(ws_extractor, |ws: Ws| {
 //!         Ok(ws.finish(|transport: Transport| {
 //!             let (sink, stream) = transport.split();
 //!             stream
@@ -54,7 +54,7 @@ pub use tokio_tungstenite::WebSocketStream;
 pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 use crate::error::HttpError;
-use crate::extract::{Extractor, Preflight};
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 use crate::output::Responder;
 use crate::server::service::http::UpgradedIo;
@@ -137,13 +137,13 @@ fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
 pub struct WsExtractor(());
 
 impl Extractor for WsExtractor {
-    type Out = Ws;
+    type Output = Ws;
     type Error = HandshakeError;
-    type Ctx = ();
+    type Future = crate::extractor::Placeholder<Self::Output, Self::Error>;
 
     #[inline]
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
-        self::handshake2(input).map(Preflight::Completed)
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+        self::handshake2(input).map(Extract::Ready)
     }
 }
 

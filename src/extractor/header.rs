@@ -3,9 +3,8 @@
 use mime::Mime;
 
 use crate::error::Failure;
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
-
-use super::extractor::{Extractor, Preflight};
 
 /// The instance of `FromInput` which extracts the header field `Content-type`.
 #[derive(Debug)]
@@ -14,13 +13,13 @@ pub struct ContentType {
 }
 
 impl Extractor for ContentType {
-    type Out = Mime;
+    type Output = Mime;
     type Error = Failure;
-    type Ctx = ();
+    type Future = super::Placeholder<Mime, Failure>;
 
-    fn preflight(&self, input: &mut Input<'_>) -> Result<Preflight<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         match crate::input::header::content_type(input)? {
-            Some(mime) => Ok(Preflight::Completed(mime.clone())),
+            Some(mime) => Ok(Extract::Ready(mime.clone())),
             None => Err(Failure::bad_request(failure::format_err!(
                 "missing Content-type"
             ))),

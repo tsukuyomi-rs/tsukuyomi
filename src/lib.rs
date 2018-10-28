@@ -53,7 +53,7 @@ extern crate mime_guess;
 pub mod app;
 pub mod contrib;
 pub mod error;
-pub mod extract;
+pub mod extractor;
 pub mod handler;
 pub mod input;
 pub mod modifier;

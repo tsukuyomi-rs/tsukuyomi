@@ -176,15 +176,15 @@ impl<'task> Input<'task> {
         &mut self.parts.locals
     }
 
-    /// Equivalent to `extract::extract(extractor, self)`
+    #[allow(missing_docs)]
     #[inline]
-    pub fn extract_with<E>(
+    pub fn extract<E>(
         &mut self,
         extractor: &E,
-    ) -> impl futures::Future<Item = E::Out, Error = Error>
+    ) -> impl futures::Future<Item = E::Output, Error = E::Error>
     where
-        E: crate::extract::Extractor + ?Sized,
+        E: crate::extractor::Extractor + ?Sized,
     {
-        crate::extract::extract(extractor, self)
+        crate::extractor::extract(extractor, self)
     }
 }
