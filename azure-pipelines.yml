@@ -19,8 +19,7 @@ jobs:
         cargo --version
         rake --version
       displayName: 'Install Rust Toolchain'
-    - script: |
-        rake test TSUKUYOMI_DENY_WARNINGS=1
+    - script: rake ci:fast
       displayName: 'Run Test Script'
 
   - job: macOS
@@ -35,8 +34,7 @@ jobs:
         cargo --version
         rake --version
       displayName: 'Install Rust Toolchain'
-    - script: |
-        rake test TSUKUYOMI_DENY_WARNINGS=1
+    - script: rake ci:fast
       displayName: 'Run Test Script'
 
   - job: Linux

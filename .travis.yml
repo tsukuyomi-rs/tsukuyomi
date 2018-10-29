@@ -10,29 +10,27 @@ branches:
     - master
     - /^\d+\.\d+$/
 
-script:
-  - cargo update
-  - cargo build
+script: >-
+  cargo update &&
+  rake ci:fast
+
 
 matrix:
   allow_failures:
     - rust: nightly
+  fast_finish: true
   include:
+    - rust: beta
+    - rust: nightly
+    - rust: 1.30.0
+
     - rust: stable
       before_script:
         - rustup component add rustfmt-preview clippy-preview
       script: >-
         cargo update &&
-        cargo fmt -- --check &&
-        rake test TSUKUYOMI_DENY_WARNINGS=1
-
-    - rust: 1.30.0
-    - rust: beta
-    - rust: nightly
-
-    - rust: stable
-      env: DEPLOY_API_DOC
-      script: >-
+        rake ci:strict
+      before_deploy: >-
         rm -rf target/doc &&
         cargo update &&
         cargo doc --all-features --no-deps -p failure -p tungstenite -p tokio-tungstenite -p walkdir &&
