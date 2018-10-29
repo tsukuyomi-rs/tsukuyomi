@@ -2,14 +2,53 @@ version: 2
 jobs:
   build:
     docker:
+      # FIXME: build own image
       - image: xd009642/tarpaulin:latest-nightly
+
     steps:
       - checkout
+
       - run:
-          name: Run tarpaulin
-          command: >-
-            rustc --version &&
-            cargo --version &&
-            cargo tarpaulin --version &&
-            cargo tarpaulin --out Xml --all-features &&
-            bash <(curl -s https://codecov.io/bash)
+          name: 'Setup toolchains'
+          command: |
+            set -ex
+            apt-get update
+            apt-get install -y rake
+            rustup self update
+            rustup --version
+            rustup install stable beta 1.30.0
+            rustup component add rustfmt-preview clippy-preview --toolchain stable
+
+      - run:
+          name: 'Tests on stable channel'
+          environment:
+            RUSTUP_TOOLCHAIN: stable
+          command: rake ci:strict
+
+      - run:
+          name: 'Build on beta channel'
+          environment:
+            RUSTUP_TOOLCHAIN: beta
+          command: rake ci:simple
+
+      - run:
+          name: 'Build on minimum supported toolchain'
+          environment:
+            RUSTUP_TOOLCHAIN: 1.30.0
+          command: rake ci:simple
+
+      - run:
+          name: 'Run tarpaulin'
+          command: |
+            set -x
+            cargo tarpaulin --out Xml --all-features || true
+            bash <(curl -s https://codecov.io/bash) || true
+
+      - run:
+          name: 'Build on nightly channel'
+          environment:
+            RUSTUP_TOOLCHAIN: nightly
+          command: |
+            set -x
+            rustup update nightly || true
+            rake ci:simple || true

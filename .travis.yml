@@ -1,51 +1,27 @@
 dist: trusty
 sudo: false
 language: rust
-
+rust:
+  - stable
 cache:
   - cargo: true
-
 branches:
   only:
     - master
-    - /^\d+\.\d+$/
-
-script:
-  - cargo update
-  - cargo build
-
-matrix:
-  allow_failures:
-    - rust: nightly
-  include:
-    - rust: stable
-      before_script:
-        - rustup component add rustfmt-preview clippy-preview
-      script: >-
-        cargo update &&
-        cargo fmt -- --check &&
-        rake test TSUKUYOMI_DENY_WARNINGS=1
-
-    - rust: 1.30.0
-    - rust: beta
-    - rust: nightly
-
-    - rust: stable
-      env: DEPLOY_API_DOC
-      script: >-
-        rm -rf target/doc &&
-        cargo update &&
-        cargo doc --all-features --no-deps -p failure -p tungstenite -p tokio-tungstenite -p walkdir &&
-        cargo doc --all-features --no-deps -p tsukuyomi-server &&
-        cargo doc --all-features --no-deps &&
-        rm -f target/doc/.lock &&
-        (echo '<meta http-equiv="refresh" content="0;URL=tsukuyomi/index.html">' > target/doc/index.html)
-      deploy:
-        provider: pages
-        skip_cleanup: true
-        github_token: $GH_TOKEN
-        repo: tsukuyomi-rs/tsukuyomi
-        target_branch: gh-pages
-        local_dir: target/doc
-        on:
-          branch: master
+script: >-
+  rm -rf target/doc &&
+  cargo update &&
+  cargo doc --all-features --no-deps -p failure -p tungstenite -p tokio-tungstenite -p walkdir &&
+  cargo doc --all-features --no-deps -p tsukuyomi-server &&
+  cargo doc --all-features --no-deps &&
+  rm -f target/doc/.lock &&
+  (echo '<meta http-equiv="refresh" content="0;URL=tsukuyomi/index.html">' > target/doc/index.html)
+deploy:
+  provider: pages
+  skip_cleanup: true
+  github_token: $GH_TOKEN
+  repo: tsukuyomi-rs/tsukuyomi
+  target_branch: gh-pages
+  local_dir: target/doc
+  on:
+    branch: master

@@ -1,0 +1,39 @@
+steps:
+- ${{ if ne(parameters.name, 'Windows') }}:
+  - script: |
+      curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
+      echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
+    displayName: 'Install rustup (on Unix platform)'
+- ${{ if eq(parameters.name, 'Windows') }}:
+  - script: |
+      curl -sSf -o rustup-init.exe https://win.rustup.rs
+      rustup-init.exe -y --default-toolchain stable
+      set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+      echo '##vso[task.setvariable variable=PATH;]%PATH%;%USERPROFILE%\.cargo\bin'
+    displayName: 'Install rustup (on Windows NT)'
+
+- script: |
+    rustup --version
+    rustup install stable beta nightly 1.30.0
+    rustup component add rustfmt-preview clippy-preview --toolchain stable
+  displayName: Install toolchains and components
+
+- script: rake ci:strict
+  env:
+    RUSTUP_TOOLCHAIN: stable
+  displayName: Run test (on stable)
+
+- script: rake ci:simple
+  env:
+    RUSTUP_TOOLCHAIN: beta
+  displayName: Run test (on beta)
+
+- script: rake ci:simple
+  env:
+    RUSTUP_TOOLCHAIN: 1.30.0
+  displayName: Run test (on minimal supported toolchain)
+
+- script: rake ci:build || true
+  env:
+    RUSTUP_TOOLCHAIN: nightly
+  displayName: Run test (on nightly)
