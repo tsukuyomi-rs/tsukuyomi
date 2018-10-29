@@ -1,3 +1,8 @@
+resources:
+  containers:
+    - container: tarpaulin
+      image: xd009642/tarpaulin:latest-nightly
+
 jobs:
   - job: Windows
     pool:
@@ -32,3 +37,14 @@ jobs:
     - script: |
         rake test TSUKUYOMI_DENY_WARNINGS=1
       displayName: 'Run Test Script'
+
+  - job: Linux
+    pool:
+      vmImage: 'ubuntu-16.04'
+    container: tarpaulin
+    steps:
+      - bash: |
+          cargo tarpaulin --all-features --out Xml
+          bash <(curl -s https://codecov.io/bash)
+        env:
+          CODECOV_TOKEN: $(myCodecovToken)
