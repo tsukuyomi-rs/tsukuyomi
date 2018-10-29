@@ -2,6 +2,7 @@ resources:
   containers:
     - container: tarpaulin
       image: xd009642/tarpaulin:latest-nightly
+      options: --security-opt seccomp=unconfined
 
 jobs:
   - job: Windows
