@@ -31,8 +31,6 @@ features = [
   "tls",
   "websocket",
 ]
-# FIXME: remove it as soon as the rustc version used in docs.rs is updated
-rustdoc-args = ["--cfg", "tsukuyomi_inject_extern_prelude"]
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -59,7 +57,7 @@ tsukuyomi-server = "0.1"
 walkdir = "2"
 
 # for WebSocket
-base64 = { version = "0.9", optional = true }
+base64 = { version = "0.10", optional = true }
 sha-1 = { version = "0.8", optional = true }
 tokio-tungstenite = { version = "0.6", optional = true }
 tungstenite = { version = "0.6", optional = true }
