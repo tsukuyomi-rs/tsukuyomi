@@ -1,7 +1,0 @@
-version: 2
-jobs:
-  build:
-    docker:
-      - image: xd009642/tarpaulin:latest-nightly
-    steps:
-      - checkout
