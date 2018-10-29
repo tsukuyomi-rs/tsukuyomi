@@ -36,9 +36,9 @@ The following features does not currently implemented but will be supported in t
 
 ## Build Status
 
-| Travis CI | Azure Pipelines | CircleCI | Codecov |
-|:---------:|:---------------:|:--------:|:-------:|
-| [![Build Status][travis-badge]][travis] | [![Build Status][azure-pipelines-badge]][azure-pipelines] | [![CircleCI][circleci-badge]][circleci] | [![Coverage Status][codecov-badge]][codecov] |
+| Travis CI | Azure Pipelines | Codecov |
+|:---------:|:---------------:|:-------:|
+| [![Build Status][travis-badge]][travis] | [![Build Status][azure-pipelines-badge]][azure-pipelines] | [![Coverage Status][codecov-badge]][codecov] |
 
 ## License
 Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE) at your option.
@@ -54,7 +54,6 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.2
 [travis]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi
 [azure-pipelines]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_build/latest?definitionId=1
-[circleci]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
@@ -66,5 +65,4 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.2/status.svg
 [travis-badge]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi.svg?branch=master
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
-[circleci-badge]: https://circleci.com/gh/tsukuyomi-rs/tsukuyomi/tree/master.svg?style=svg
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
