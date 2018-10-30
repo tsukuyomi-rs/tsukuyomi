@@ -338,11 +338,20 @@ impl AppBuilder {
         if self.result.is_err() {
             return;
         }
-        match prefix.parse() {
-            Ok(prefix) => match id {
-                ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
-                ScopeId::Global => self.prefix = Some(prefix),
-            },
+        match prefix.parse::<Uri>() {
+            Ok(prefix) => {
+                if prefix.capture_names().is_some() {
+                    self.mark_error(failure::format_err!(
+                        "The parameter(s) are detected in prefix: {}",
+                        prefix
+                    ));
+                } else {
+                    match id {
+                        ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
+                        ScopeId::Global => self.prefix = Some(prefix),
+                    }
+                }
+            }
             Err(err) => self.mark_error(err),
         }
     }
