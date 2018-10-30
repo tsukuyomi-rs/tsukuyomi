@@ -137,13 +137,13 @@ fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
 pub struct WsExtractor(());
 
 impl Extractor for WsExtractor {
-    type Output = Ws;
+    type Output = (Ws,);
     type Error = HandshakeError;
     type Future = crate::extractor::Placeholder<Self::Output, Self::Error>;
 
     #[inline]
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        self::handshake2(input).map(Extract::Ready)
+        self::handshake2(input).map(|out| Extract::Ready((out,)))
     }
 }
 

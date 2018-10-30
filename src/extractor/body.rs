@@ -177,39 +177,44 @@ impl<T, D> Extractor for Body<T, D>
 where
     D: self::decode::Decoder<T>,
 {
-    type Output = T;
+    type Output = (T,);
     type Error = Error;
-    type Future = BodyFuture<T, D>;
+    type Future = self::imp::BodyFuture<T, D>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         {
             let mime_opt = get_mime_opt(input)?;
             self.decoder.validate_mime(mime_opt)?;
         }
-        Ok(Extract::Incomplete(BodyFuture {
+        Ok(Extract::Incomplete(self::imp::BodyFuture {
             read_all: input.body_mut().read_all(),
             _marker: PhantomData,
         }))
     }
 }
 
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct BodyFuture<T, D: self::decode::Decoder<T>> {
-    read_all: crate::input::body::ReadAll,
-    _marker: PhantomData<(D, fn() -> T)>,
-}
+mod imp {
+    use super::*;
 
-impl<T, D> Future for BodyFuture<T, D>
-where
-    D: self::decode::Decoder<T>,
-{
-    type Item = T;
-    type Error = Error;
+    #[allow(missing_debug_implementations)]
+    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+    pub struct BodyFuture<T, D: super::decode::Decoder<T>> {
+        pub(super) read_all: crate::input::body::ReadAll,
+        pub(super) _marker: PhantomData<(D, fn() -> T)>,
+    }
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
-        D::decode(&data).map(Async::Ready).map_err(Into::into)
+    impl<T, D> Future for BodyFuture<T, D>
+    where
+        D: self::decode::Decoder<T>,
+    {
+        type Item = (T,);
+        type Error = Error;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
+            D::decode(&data)
+                .map(|out| Async::Ready((out,)))
+                .map_err(Into::into)
+        }
     }
 }

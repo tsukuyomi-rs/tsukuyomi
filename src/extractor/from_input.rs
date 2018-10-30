@@ -8,7 +8,7 @@ use crate::input::local_map::LocalKey;
 use crate::input::Input;
 
 pub trait HasExtractor: Sized {
-    type Extractor: Extractor<Output = Self>;
+    type Extractor: Extractor<Output = (Self,)>;
     fn extractor() -> Self::Extractor;
 }
 
@@ -23,13 +23,13 @@ impl<T> fmt::Debug for RequestExtractor<T> {
 }
 
 impl<T> Extractor for RequestExtractor<T> {
-    type Output = T;
+    type Output = (T,);
     type Error = Never;
-    type Future = super::Placeholder<T, Never>;
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
     #[inline]
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        Ok(Extract::Ready((self.0)(input)))
+        Ok(Extract::Ready(((self.0)(input),)))
     }
 }
 
@@ -110,15 +110,15 @@ impl<T> Extractor for ExtensionExtractor<T>
 where
     T: Send + Sync + 'static,
 {
-    type Output = Extension<T>;
+    type Output = (Extension<T>,);
     type Error = ErrorMessage;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if input.extensions().get::<T>().is_some() {
-            Ok(Extract::Ready(Extension {
+            Ok(Extract::Ready((Extension {
                 _marker: PhantomData,
-            }))
+            },)))
         } else {
             Err(crate::error::internal_server_error("missing extension"))
         }
@@ -175,15 +175,15 @@ impl<T> Extractor for StateExtractor<T>
 where
     T: Send + Sync + 'static,
 {
-    type Output = State<T>;
+    type Output = (State<T>,);
     type Error = ErrorMessage;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if input.state::<T>().is_some() {
-            Ok(Extract::Ready(State {
+            Ok(Extract::Ready((State {
                 _marker: PhantomData,
-            }))
+            },)))
         } else {
             Err(crate::error::internal_server_error("missing state"))
         }
@@ -213,13 +213,13 @@ impl<T> Extractor for LocalExtractor<T>
 where
     T: Send + 'static,
 {
-    type Output = T;
+    type Output = (T,);
     type Error = ErrorMessage;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if let Some(value) = input.locals_mut().remove(self.key) {
-            Ok(Extract::Ready(value))
+            Ok(Extract::Ready((value,)))
         } else {
             Err(crate::error::internal_server_error("missing local value"))
         }

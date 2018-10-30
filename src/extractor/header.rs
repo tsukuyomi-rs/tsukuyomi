@@ -13,13 +13,13 @@ pub struct ContentType {
 }
 
 impl Extractor for ContentType {
-    type Output = Mime;
+    type Output = (Mime,);
     type Error = Failure;
-    type Future = super::Placeholder<Mime, Failure>;
+    type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         match crate::input::header::content_type(input)? {
-            Some(mime) => Ok(Extract::Ready(mime.clone())),
+            Some(mime) => Ok(Extract::Ready((mime.clone(),))),
             None => Err(Failure::bad_request(failure::format_err!(
                 "missing Content-type"
             ))),

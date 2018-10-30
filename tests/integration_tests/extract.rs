@@ -11,7 +11,7 @@ use super::util::{local_server, LocalServerExt};
 #[test]
 fn unit_input() {
     let mut server =
-        local_server(App::builder().route(("/", handler::extract((), |()| Ok("dummy")))));
+        local_server(App::builder().route(("/", handler::extract((), || Ok("dummy")))));
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
@@ -24,8 +24,8 @@ fn params() {
     let mut server = local_server(App::builder().route((
         "/:id/:name/*path",
         handler::extract(
-            (Pos::new(0), Named::new("name"), Wildcard::new()),
-            |(id, name, path): (u32, String, String)| Ok(format!("{},{},{}", id, name, path)),
+            Pos::new(0).and(Named::new("name")).and(Wildcard::new()),
+            |id: u32, name: String, path: String| Ok(format!("{},{},{}", id, name, path)),
         ),
     )));
 
@@ -321,7 +321,7 @@ fn either_or() {
         name: String,
     }
 
-    let extractor = Json::default().either_or(Urlencoded::default());
+    let extractor = Json::default().or(Urlencoded::default());
 
     let mut server = local_server(App::builder().route((
         "/",
