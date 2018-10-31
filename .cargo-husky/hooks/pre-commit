@@ -7,6 +7,10 @@ set -e
     exit 0
 }
 
-if which cargo-fmt >/dev/null 2>&1; then
+if cargo fmt --version >/dev/null 2>&1; then
     (set -x; cargo fmt -- --check)
+fi
+
+if cargo version-sync --version >/dev/null 2>&1; then
+    (set -x; cargo version-sync --check)
 fi

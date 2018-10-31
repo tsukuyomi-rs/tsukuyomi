@@ -1,0 +1,15 @@
+[package]
+name = "doctest"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[lib]
+name = "doctest"
+path = "lib.rs"
+
+[dependencies]
+doubter = { version = "0.1.0", default-features = false }
+
+[dev-dependencies]
+tsukuyomi = { path = ".." }

@@ -32,6 +32,9 @@ features = [
   "websocket",
 ]
 
+[package.metadata.version-sync]
+use-preset = true
+
 [badges]
 maintenance = { status = "actively-developed" }
 
@@ -68,6 +71,7 @@ mime_guess = { version = "2.0.0-alpha.6", optional = true }
 
 [dev-dependencies]
 matches = "0.1"
+cargo-version-sync = { version = "0.0.3", default-features = false }
 
 [dev-dependencies.cargo-husky]
 version = "1"
@@ -87,4 +91,9 @@ websocket = [
   "sha-1",
   "tokio-tungstenite",
   "tungstenite",
+]
+
+[workspace]
+members = [
+  "doctest",
 ]
