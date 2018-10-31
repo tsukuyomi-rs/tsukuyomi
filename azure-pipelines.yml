@@ -57,8 +57,9 @@ jobs:
       condition: eq(variables['containerResource'], 'rust')
 
     - script: |
-        rustup update stable beta nightly
-      displayName: 'Update toolchains to the latest version'
+        rustup toolchain install stable beta nightly 1.30.0
+        rustup component add rustfmt-preview clippy-preview --toolchain stable
+      displayName: 'Install required toolchains and components'
       condition: eq(variables['containerResource'], 'rust')
 
     - script: rake ci:strict
@@ -68,16 +69,12 @@ jobs:
         CARGO_TERM_VERBOSE: true
       condition: eq(variables['containerResource'], 'rust')
 
-    - script: |
-        cargo doc --all-features --no-deps -p failure -p tungstenite -p tokio-tungstenite -p walkdir &&
-        cargo doc --all-features --no-deps -p tsukuyomi-server &&
-        cargo doc --all-features --no-deps &&
-        rm -f target/doc/.lock &&
-        (echo '<meta http-equiv="refresh" content="0;URL=tsukuyomi/index.html">' > target/doc/index.html)
+    - script: rake ci:deploy_doc
       displayName: 'Deploy API doc'
       env:
         RUSTUP_TOOLCHAIN: stable
         CARGO_TERM_VERBOSE: true
+        GH_TOKEN: $(myGitHubToken)
       condition: eq(variables['containerResource'], 'rust')
 
     - script: rake ci:fast
