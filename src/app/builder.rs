@@ -667,7 +667,11 @@ impl<'a> Route<'a> {
         self
     }
 
-    /// Register a `Modifier` to this route.
+    #[doc(hidden)]
+    #[deprecated(
+        since = "0.3.3",
+        note = "route-level modifier will be removed in the future version."
+    )]
     pub fn modifier(&mut self, modifier: impl Modifier + Send + Sync + 'static) -> &mut Self {
         if self.builder.result.is_ok() {
             self.route.modifiers.push(Box::new(modifier));

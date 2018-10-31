@@ -8,7 +8,7 @@
 //! ```
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //! use tsukuyomi::app::App;
-//! use tsukuyomi::handler;
+//! use tsukuyomi::route;
 //! use tsukuyomi::input::Input;
 //! use tsukuyomi::modifier::{Modifier, BeforeHandle};
 //!
@@ -24,7 +24,7 @@
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
 //! let app = App::builder()
-//!     .route(("/", handler::extract((), || Ok("Hello"))))
+//!     .route(route::index().reply(|| "Hello"))
 //!     .modifier(RequestCounter::default())
 //!     .finish()?;
 //! # drop(app);

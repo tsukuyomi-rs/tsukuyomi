@@ -40,11 +40,13 @@ fn single_route() {
 
 #[test]
 fn post_body() {
-    let mut server = local_server(App::builder().route((
-        "/hello",
-        Method::POST,
-        tsukuyomi::handler::extract(tsukuyomi::extractor::body::Plain::<String>::default(), Ok),
-    )));
+    let mut server = local_server(
+        App::builder().route(
+            tsukuyomi::route::post("/hello")
+                .with(tsukuyomi::extractor::body::plain())
+                .reply(|body: String| body),
+        ),
+    );
 
     let response = server
         .perform(Request::post("/hello").body("Hello, Tsukuyomi."))

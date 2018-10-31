@@ -1,12 +1,11 @@
 //! `Handler` and supplemental components.
 
 use either::Either;
-use futures::{Async, Future, IntoFuture, Poll};
+use futures::{Async, Future, Poll};
 use std::fmt;
 use std::sync::Arc;
 
 use crate::error::Error;
-use crate::extractor::Func;
 use crate::input::Input;
 use crate::output::{Output, Responder};
 
@@ -81,69 +80,6 @@ pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
     }
 
     Raw(f)
-}
-
-/// A function which creates a `Handler` from the specified function.
-///
-/// # Example
-///
-/// ```
-/// # extern crate tsukuyomi;
-/// # extern crate serde;
-/// # use tsukuyomi::app::App;
-/// # use tsukuyomi::extractor;
-/// # use tsukuyomi::extractor::ExtractorExt;
-/// # use tsukuyomi::handler;
-/// #[derive(Debug, serde::Deserialize)]
-/// struct Post {
-///     title: String,
-///     text: String,
-/// }
-///
-/// # fn main() -> tsukuyomi::app::AppResult<()> {
-/// let app = App::builder()
-///     .route((
-///         "/posts/:id",
-///         "PUT",
-///         handler::extract(
-///             extractor::param::Pos::new(0)
-///                 .and(extractor::body::Json::<Post>::default()),
-///             |id: i32, post: Post| {
-///                 // ...
-/// #               drop((id, post));
-/// #               Ok("dummy")
-///             }),
-///     ))
-///     .finish()?;
-/// # Ok(drop(app))
-/// # }
-/// ```
-pub fn extract<E, F>(extractor: E, f: F) -> impl Handler + Send + Sync + 'static
-where
-    E: crate::extractor::Extractor + Send + Sync + 'static,
-    E::Output: Send + 'static,
-    E::Error: Send + 'static,
-    E::Future: Send + 'static,
-    F: Func<E::Output> + Send + Sync + 'static,
-    F::Out: IntoFuture<Error = Error> + 'static,
-    <F::Out as IntoFuture>::Future: Send + 'static,
-    <F::Out as IntoFuture>::Item: Responder,
-{
-    let f = Arc::new(f);
-    self::raw(move |input| {
-        let mut future = crate::extractor::extract(&extractor, input)
-            .map_err(Into::into)
-            .and_then({
-                let f = f.clone();
-                move |arg| f.call(arg).into_future().from_err()
-            });
-        Handle::polling(move |input| {
-            futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
-                .respond_to(input)
-                .map(|response| Async::Ready(response.map(Into::into)))
-                .map_err(Into::into)
-        })
-    })
 }
 
 // ----------------------------------------------------------------------------

@@ -14,7 +14,7 @@ namespace :ci do
         sh "cargo --version"
         sh "cargo fmt -- --check" if has_rustfmt?
         sh "cargo clippy --all-features --all-targets" if has_clippy?
-        sh "cargo build --all-features"
+        sh "cargo build --all-features --all-targets"
     end
 
     task :strict do

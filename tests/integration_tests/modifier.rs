@@ -251,6 +251,7 @@ fn nested_modifiers() {
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "B3", "A2", "A1"]);
 }
 
+#[allow(deprecated)]
 #[test]
 fn route_modifiers() {
     let marker = Arc::new(Mutex::new(vec![]));

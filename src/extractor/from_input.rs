@@ -1,11 +1,10 @@
-use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
 
 use crate::error::{ErrorMessage, Never};
 use crate::extractor::{Extract, Extractor};
 use crate::input::local_map::LocalKey;
-use crate::input::Input;
+use crate::input::{Extension, Input, State};
 
 pub trait HasExtractor: Sized {
     type Extractor: Extractor<Output = (Self,)>;
@@ -31,6 +30,18 @@ impl<T> Extractor for RequestExtractor<T> {
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         Ok(Extract::Ready(((self.0)(input),)))
     }
+}
+
+pub fn method() -> <http::Method as HasExtractor>::Extractor {
+    http::Method::extractor()
+}
+
+pub fn uri() -> <http::Uri as HasExtractor>::Extractor {
+    http::Uri::extractor()
+}
+
+pub fn version() -> <http::Version as HasExtractor>::Extractor {
+    http::Version::extractor()
 }
 
 impl HasExtractor for http::Method {
@@ -62,16 +73,11 @@ impl HasExtractor for http::Version {
 
 // ==== Extension ====
 
-/// A proxy object for accessing the value in the protocol extensions.
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-pub struct Extension<T> {
-    _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
-}
-
-impl<T> fmt::Debug for Extension<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Extension").finish()
-    }
+pub fn extension<T>() -> <Extension<T> as HasExtractor>::Extractor
+where
+    T: Send + Sync + 'static,
+{
+    Extension::extractor()
 }
 
 impl<T> HasExtractor for Extension<T>
@@ -82,19 +88,6 @@ where
 
     fn extractor() -> Self::Extractor {
         ExtensionExtractor(PhantomData)
-    }
-}
-
-impl<T> Extension<T>
-where
-    T: Send + Sync + 'static,
-{
-    #[allow(missing_docs)]
-    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        crate::input::with_get_current(|input| {
-            let state = input.extensions().get::<T>().expect("should be exist");
-            f(state)
-        })
     }
 }
 
@@ -116,9 +109,7 @@ where
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if input.extensions().get::<T>().is_some() {
-            Ok(Extract::Ready((Extension {
-                _marker: PhantomData,
-            },)))
+            Ok(Extract::Ready((Extension::new(),)))
         } else {
             Err(crate::error::internal_server_error("missing extension"))
         }
@@ -127,16 +118,11 @@ where
 
 // ==== State ====
 
-/// A proxy object for accessing the global state.
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-pub struct State<T> {
-    _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
-}
-
-impl<T> fmt::Debug for State<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("State").finish()
-    }
+pub fn state<T>() -> <State<T> as HasExtractor>::Extractor
+where
+    T: Send + Sync + 'static,
+{
+    State::extractor()
 }
 
 impl<T> HasExtractor for State<T>
@@ -147,19 +133,6 @@ where
 
     fn extractor() -> Self::Extractor {
         StateExtractor(PhantomData)
-    }
-}
-
-impl<T> State<T>
-where
-    T: Send + Sync + 'static,
-{
-    #[allow(missing_docs)]
-    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        crate::input::with_get_current(|input| {
-            let state = input.state::<T>().expect("should be exist");
-            f(state)
-        })
     }
 }
 
@@ -181,9 +154,7 @@ where
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if input.state::<T>().is_some() {
-            Ok(Extract::Ready((State {
-                _marker: PhantomData,
-            },)))
+            Ok(Extract::Ready((State::new(),)))
         } else {
             Err(crate::error::internal_server_error("missing state"))
         }
@@ -191,6 +162,13 @@ where
 }
 
 // ==== Local ====
+
+pub fn local<T>(key: &'static LocalKey<T>) -> LocalExtractor<T>
+where
+    T: Send + 'static,
+{
+    LocalExtractor::new(key)
+}
 
 #[derive(Debug)]
 pub struct LocalExtractor<T>

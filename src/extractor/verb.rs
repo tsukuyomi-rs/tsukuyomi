@@ -11,7 +11,15 @@ use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 macro_rules! define_http_method_extractors {
-    ($( $Name:ident => $METHOD:ident; )*) => {$(
+    ($( $name:ident, $Name:ident => $METHOD:ident; )*) => {$(
+
+        pub fn $name<E>(extractor: E) -> $Name<E>
+        where
+            E: Extractor,
+        {
+            $Name(extractor)
+        }
+
         #[derive(Debug, From)]
         pub struct $Name<E>(E);
 
@@ -39,13 +47,13 @@ macro_rules! define_http_method_extractors {
 }
 
 define_http_method_extractors! {
-    Get => GET;
-    Post => POST;
-    Put => PUT;
-    Delete => DELETE;
-    Head => HEAD;
-    Options => OPTIONS;
-    Connect => CONNECT;
-    Patch => PATCH;
-    Trace => TRACE;
+    get, Get => GET;
+    post, Post => POST;
+    put, Put => PUT;
+    delete, Delete => DELETE;
+    head, Head => HEAD;
+    options, Options => OPTIONS;
+    connect, Connect => CONNECT;
+    patch, Patch => PATCH;
+    trace, Trace => TRACE;
 }
