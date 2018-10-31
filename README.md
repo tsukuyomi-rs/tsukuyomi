@@ -1,6 +1,6 @@
 <img src="https://raw.githubusercontent.com/tsukuyomi-rs/tsukuyomi/master/tsukuyomi-header.png" alt="header" width="500" />
 
-> An Asynchronous Web framework for Rust.
+> An asynchronous Web framework for Rust.
 
 ---
 
@@ -9,8 +9,10 @@
 [![dependency status][deps-rs-badge]][deps-rs]
 [![Build Status][azure-pipelines-badge]][azure-pipelines]
 [![Coverage Status][codecov-badge]][codecov]
+[![Gitter][gitter-badge]][gitter]
 
-## Docmentation
+## Documentation
+
 * [Released][docs-rs]
 * [Master][master-doc]
 
@@ -74,8 +76,6 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
 [rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
-[docs-rs-badge]: https://docs.rs/tsukuyomi/badge.svg
-[master-doc-badge]: https://img.shields.io/badge/doc-master-blue.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
 [deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.3/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
