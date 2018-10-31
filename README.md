@@ -32,7 +32,7 @@ The following features does not currently implemented but will be supported in t
 
 ```toml
 [dependencies]
-tsukuyomi = "0.3.2"
+tsukuyomi = "0.3.3"
 ```
 
 ```rust,no_run
