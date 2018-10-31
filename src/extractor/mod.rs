@@ -17,7 +17,9 @@ pub mod verb;
 
 pub use self::and::And;
 pub use self::fallible::Fallible;
-pub use self::from_input::{Extension, HasExtractor, LocalExtractor, State};
+pub use self::from_input::{
+    extension, local, method, state, uri, version, HasExtractor, LocalExtractor,
+};
 pub(crate) use self::generic::{Combine, Func, Tuple};
 pub use self::optional::Optional;
 pub use self::or::Or;
@@ -27,7 +29,6 @@ pub use self::or::Or;
 use std::fmt;
 use std::marker::PhantomData;
 
-use either::Either;
 use futures::future;
 use futures::{Async, Future, Poll};
 
@@ -83,22 +84,6 @@ where
             Extract::Ready(ref out) => f.debug_tuple("Ready").field(out).finish(),
             Extract::Incomplete(ref cx) => f.debug_tuple("Incomplete").field(cx).finish(),
         }
-    }
-}
-
-pub(crate) fn extract<E>(
-    extractor: &E,
-    input: &mut Input<'_>,
-) -> impl Future<Item = E::Output, Error = E::Error>
-where
-    E: Extractor + ?Sized,
-{
-    use futures::future::{err, ok, Either};
-
-    match extractor.extract(input) {
-        Ok(Extract::Ready(out)) => Either::A(ok(out)),
-        Ok(Extract::Incomplete(future)) => Either::B(future),
-        Err(e) => Either::A(err(e)),
     }
 }
 

@@ -3,38 +3,21 @@
 //! # Examples
 //!
 //! ```
-//! # extern crate futures;
-//! # extern crate tsukuyomi;
-//! # use futures::prelude::*;
 //! # use tsukuyomi::app::App;
-//! # use tsukuyomi::handler;
-//! use tsukuyomi::contrib::websocket::{
-//!     Message,
-//!     Transport,
-//!     Ws,
-//!     WsExtractor,
-//! };
+//! # use tsukuyomi::route;
+//! # use tsukuyomi::extractor::HasExtractor;
+//! use tsukuyomi::contrib::websocket::Ws;
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
-//! let ws_extractor = WsExtractor::default();
-//!
 //! let app = App::builder()
-//!     .route(("/ws", handler::extract(ws_extractor, |ws: Ws| {
-//!         Ok(ws.finish(|transport: Transport| {
-//!             let (sink, stream) = transport.split();
-//!             stream
-//!                 .filter_map(|m| {
-//!                     println!("Message from client: {:?}", m);
-//!                     match m {
-//!                         Message::Ping(p) => Some(Message::Pong(p)),
-//!                         Message::Pong(_) => None,
-//!                         _ => Some(m),
-//!                     }
-//!                 })
-//!                 .forward(sink)
-//!                 .then(|_| Ok(()))
-//!         }))
-//!     })))
+//!     .route(
+//!         route::get("/ws")
+//!             .with(Ws::extractor())
+//!             .handle(|ws: Ws| {
+//!                 // ...
+//! #               Ok(ws.finish(|_| Ok(())))
+//!             })
+//!     )
 //!     .finish()?;
 //! # drop(app);
 //! # Ok(())
@@ -54,7 +37,7 @@ pub use tokio_tungstenite::WebSocketStream;
 pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 use crate::error::HttpError;
-use crate::extractor::{Extract, Extractor};
+use crate::extractor::{Extract, Extractor, HasExtractor};
 use crate::input::Input;
 use crate::output::Responder;
 use crate::server::service::http::UpgradedIo;
@@ -153,6 +136,15 @@ pub struct Ws {
     accept_hash: String,
     config: Option<WebSocketConfig>,
     extra_headers: Option<HeaderMap>,
+}
+
+impl HasExtractor for Ws {
+    type Extractor = WsExtractor;
+
+    #[inline]
+    fn extractor() -> Self::Extractor {
+        WsExtractor::default()
+    }
 }
 
 impl Ws {

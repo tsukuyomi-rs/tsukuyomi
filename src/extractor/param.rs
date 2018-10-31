@@ -11,6 +11,30 @@ use crate::error::Failure;
 use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
+pub fn pos<T>(pos: usize) -> Pos<T>
+where
+    T: FromStr + 'static,
+    T::Err: Fail,
+{
+    Pos::new(pos)
+}
+
+pub fn named<T>(name: impl Into<String>) -> Named<T>
+where
+    T: FromStr + 'static,
+    T::Err: Fail,
+{
+    Named::new(name)
+}
+
+pub fn wildcard<T>() -> Wildcard<T>
+where
+    T: FromStr + 'static,
+    T::Err: Fail,
+{
+    Wildcard::new()
+}
+
 #[derive(Debug)]
 pub struct Pos<T> {
     pos: usize,

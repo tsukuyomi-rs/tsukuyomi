@@ -74,7 +74,6 @@ where
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_ready() {
             Ok(Async::Ready(())) => {
-                self.erase();
                 let left = self.left.take_item().expect("the item should be available");
                 let right = self
                     .right

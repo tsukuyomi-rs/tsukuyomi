@@ -143,6 +143,27 @@ pub type Plain<T> = Body<T, self::decode::PlainTextDecoder>;
 pub type Json<T> = Body<T, self::decode::JsonDecoder>;
 pub type Urlencoded<T> = Body<T, self::decode::UrlencodedDecoder>;
 
+pub fn plain<T>() -> Plain<T>
+where
+    T: DeserializeOwned + 'static,
+{
+    Plain::default()
+}
+
+pub fn json<T>() -> Json<T>
+where
+    T: DeserializeOwned + 'static,
+{
+    Json::default()
+}
+
+pub fn urlencoded<T>() -> Urlencoded<T>
+where
+    T: DeserializeOwned + 'static,
+{
+    Urlencoded::default()
+}
+
 /// The instance of `FromInput` which deserializes the message body to the specified type.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct Body<T, D: self::decode::Decoder<T>> {

@@ -26,6 +26,13 @@ impl HttpError for ExtractQueryError {
     }
 }
 
+pub fn query<T>() -> Query<T>
+where
+    T: DeserializeOwned + 'static,
+{
+    Query::default()
+}
+
 pub struct Query<T>(PhantomData<fn() -> T>);
 
 impl<T> Default for Query<T> {
