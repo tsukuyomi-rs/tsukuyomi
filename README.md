@@ -5,12 +5,14 @@
 ---
 
 [![Crates.io][crates-io-badge]][crates-io]
-[![Crates.io (Downloads)][downloads-badge]][crates-io]
-[![Docs.rs][docs-rs-badge]][docs-rs]
-[![Master Doc][master-doc-badge]][master-doc]
 [![Minimal Rust Version: 1.30.0][rust-version-badge]][rust-version]
 [![dependency status][deps-rs-badge]][deps-rs]
-[![Gitter][gitter-badge]][gitter]
+[![Build Status][azure-pipelines-badge]][azure-pipelines]
+[![Coverage Status][codecov-badge]][codecov]
+
+## Docmentation
+* [Released][docs-rs]
+* [Master][master-doc]
 
 ## Features
 
@@ -54,17 +56,6 @@ fn main() {
 }
 ```
 
-## Documentation
-
-* [Examples][examples]
-* [API documentation (released)][docs-rs]
-* [API documentation (master)][master-doc]
-
-## Build Status
-
-| Travis CI | Azure Pipelines | Codecov |
-|:---------:|:---------------:|:-------:|
-| [![Build Status][travis-badge]][travis] | [![Build Status][azure-pipelines-badge]][azure-pipelines] | [![Coverage Status][codecov-badge]][codecov] |
 
 ## License
 Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE) at your option.
@@ -77,18 +68,15 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
-[deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.2
-[travis]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi
+[deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.3
 [azure-pipelines]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_build/latest?definitionId=1
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
-[downloads-badge]: https://img.shields.io/crates/d/tsukuyomi.svg
 [rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
 [docs-rs-badge]: https://docs.rs/tsukuyomi/badge.svg
 [master-doc-badge]: https://img.shields.io/badge/doc-master-blue.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
-[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.2/status.svg
-[travis-badge]: https://travis-ci.org/tsukuyomi-rs/tsukuyomi.svg?branch=master
+[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.3/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
