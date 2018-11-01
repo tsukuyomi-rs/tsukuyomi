@@ -1,18 +1,14 @@
 resources:
+  # TODO: enable beta image
   containers:
     - container: stable
-      image: rust:slim
-
-    # TODO: enable beta image
+      image: rust
     - container: beta
-      image: rust:slim
-
+      image: rust
     - container: minimum_supported
-      image: rust:1.30.0-slim
-
+      image: rust:1.30.0
     - container: nightly
-      image: rustlang/rust:nightly-slim
-
+      image: rustlang/rust:nightly
     - container: tarpaulin
       image: xd009642/tarpaulin:latest-nightly
       options: --security-opt seccomp=unconfined
@@ -31,7 +27,7 @@ jobs:
         rustc --version
         cargo --version
       displayName: 'Install Rust Toolchain'
-    - bash: bash .ci/run_build.sh
+    - script: bash .ci/run_build.sh
       displayName: 'Run Test Script'
 
   - job: macOS
@@ -45,7 +41,7 @@ jobs:
         rustc --version
         cargo --version
       displayName: 'Install Rust Toolchain'
-    - bash: bash .ci/run_build.sh
+    - script: bash .ci/run_build.sh
       displayName: 'Run Test Script'
 
   - job: Linux
@@ -63,9 +59,7 @@ jobs:
           containerResource: minimum_supported
         tarpaulin:
           containerResource: tarpaulin
-
     container: $[ variables['containerResource'] ]
-
     steps:
     - script: rustup --version
       displayName: 'Show rustup version'
@@ -75,7 +69,7 @@ jobs:
       displayName: 'Install components'
       condition: eq(variables['containerResource'], 'stable')
 
-    - bash: |
+    - script: |
         rustup toolchain install beta
         rustup default beta
       displayName: 'Install the beta toolchain'
@@ -97,19 +91,19 @@ jobs:
         GH_TOKEN: $(myGitHubToken)
       condition: eq(variables['containerResource'], 'stable')
 
-    - bash: bash .ci/run_build.sh
+    - script: bash .ci/run_build.sh
       displayName: 'Build on beta channel'
       env:
         CARGO_TERM_VERBOSE: true
       condition: eq(variables['containerResource'], 'beta')
 
-    - bash: bash .ci/run_build.sh || true
+    - script: bash .ci/run_build.sh || true
       displayName: 'Build on nightly channel'
       env:
         CARGO_TERM_VERBOSE: true
       condition: eq(variables['containerResource'], 'nightly')
 
-    - bash: bash .ci/run_build.sh
+    - script: bash .ci/run_build.sh
       displayName: 'Build on minimum supported toolchain'
       env:
         CARGO_TERM_VERBOSE: true
