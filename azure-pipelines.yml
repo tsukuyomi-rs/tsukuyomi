@@ -1,7 +1,18 @@
 resources:
   containers:
-    - container: rust
-      image: rust:latest
+    - container: stable
+      image: rust:slim
+
+    # TODO: enable beta image
+    - container: beta
+      image: rust:slim
+
+    - container: minimum_supported
+      image: rust:1.30.0-slim
+
+    - container: nightly
+      image: rustlang/rust:nightly-slim
+
     - container: tarpaulin
       image: xd009642/tarpaulin:latest-nightly
       options: --security-opt seccomp=unconfined
@@ -42,28 +53,39 @@ jobs:
       vmImage: 'ubuntu-16.04'
     strategy:
       matrix:
-        rust:
-          containerResource: rust
+        stable:
+          containerResource: stable
+        beta:
+          containerResource: beta
+        nightly:
+          containerResource: nightly
+        minimum_supported:
+          containerResource: minimum_supported
         tarpaulin:
           containerResource: tarpaulin
+
     container: $[ variables['containerResource'] ]
+
     steps:
     - script: rustup --version
-      displayName: 'Show installed tools version'
-      condition: eq(variables['containerResource'], 'rust')
+      displayName: 'Show rustup version'
 
     - script: |
-        rustup toolchain install stable beta nightly 1.30.0
-        rustup component add rustfmt-preview clippy-preview --toolchain stable
-      displayName: 'Install required toolchains and components'
-      condition: eq(variables['containerResource'], 'rust')
+        rustup component add rustfmt-preview clippy-preview
+      displayName: 'Install components'
+      condition: eq(variables['containerResource'], 'stable')
+
+    - bash: |
+        rustup toolchain install beta
+        rustup default beta
+      displayName: 'Install the beta toolchain'
+      condition: eq(variables['containerResource'], 'beta')
 
     - script: bash .ci/run_test.sh
       displayName: 'Run test on stable channel'
       env:
-        RUSTUP_TOOLCHAIN: stable
         CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
+      condition: eq(variables['containerResource'], 'stable')
 
     - script: |
         rm -rf target/doc
@@ -71,31 +93,27 @@ jobs:
         bash .ci/deploy_doc.sh
       displayName: 'Deploy API doc'
       env:
-        RUSTUP_TOOLCHAIN: stable
         CARGO_TERM_VERBOSE: true
         GH_TOKEN: $(myGitHubToken)
-      condition: eq(variables['containerResource'], 'rust')
+      condition: eq(variables['containerResource'], 'stable')
 
     - bash: bash .ci/run_build.sh
       displayName: 'Build on beta channel'
       env:
-        RUSTUP_TOOLCHAIN: beta
         CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
+      condition: eq(variables['containerResource'], 'beta')
 
     - bash: bash .ci/run_build.sh || true
       displayName: 'Build on nightly channel'
       env:
-        RUSTUP_TOOLCHAIN: nightly
         CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
+      condition: eq(variables['containerResource'], 'nightly')
 
     - bash: bash .ci/run_build.sh
-      displayName: 'Build on minimum supported channel'
+      displayName: 'Build on minimum supported toolchain'
       env:
-        RUSTUP_TOOLCHAIN: 1.30.0
         CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
+      condition: eq(variables['containerResource'], 'minimum_supported')
 
     - script: |
         cargo tarpaulin --all-features --out Xml
