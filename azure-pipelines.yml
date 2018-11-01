@@ -75,6 +75,7 @@ jobs:
         RUSTUP_TOOLCHAIN: stable
         CARGO_TERM_VERBOSE: true
         GH_TOKEN: $(myGitHubToken)
+        SOURCE_BRANCH_NAME: $(variables['Build.SourceBranchName'])
       condition: eq(variables['containerResource'], 'rust')
 
     - script: rake ci:fast

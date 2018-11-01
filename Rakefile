@@ -42,14 +42,14 @@ namespace :ci do
     end
 
     task deploy_doc: ['ci:rustdoc'] do
-        if not ENV.has_key? 'GH_TOKEN' then
-            puts "[GH_TOKEN is not set]"
+        branch = ENV['SOURCE_BRANCH_NAME']
+        if branch != 'master' then
+            puts "[The current branch is not master]"
             next
         end
 
-        branch = `git rev-parse --abbrev-ref HEAD`.strip
-        if branch != 'master' then
-            puts "[The current branch is not master]"
+        if not ENV.has_key? 'GH_TOKEN' then
+            puts "[GH_TOKEN is not set]"
             next
         end
 
