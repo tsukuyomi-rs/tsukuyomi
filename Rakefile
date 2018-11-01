@@ -38,7 +38,7 @@ namespace :ci do
         sh "cargo doc --all-features --no-deps -p tsukuyomi-server"
         sh "cargo doc --all-features --no-deps"
         FileUtils.rm_f "target/doc/.lock"
-        File.write "target/doc/index.html", '<meta http-equiv=\"refresh\" content=\"0;URL=tsukuyomi/index.html\">'
+        File.write "target/doc/index.html", "<meta http-equiv=\"refresh\" content=\"0;URL=tsukuyomi/index.html\">\n"
     end
 
     task deploy_doc: ['ci:rustdoc'] do
