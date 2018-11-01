@@ -4,10 +4,11 @@ version = "0.4.0-dev" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
+build = "build.rs"
+
 [lib]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "0.4.20"
 syn = { version = "0.15", features = ["full", "extra-traits"] }
 quote = "0.6"

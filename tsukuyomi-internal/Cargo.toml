@@ -3,6 +3,8 @@ name = "tsukuyomi-internal"
 version = "0.4.0-dev" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 
+build = "build.rs"
+
 [dependencies]
 bytes = "0.4"
 cookie = { version = "0.11", features = ["percent-encode"] }

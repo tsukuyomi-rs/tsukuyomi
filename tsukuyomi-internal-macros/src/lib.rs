@@ -1,5 +1,17 @@
+//! The procedural macros for Tsukuyomi.
+
+#![warn(
+    nonstandard_style,
+    rust_2018_idioms,
+    rust_2018_compatibility,
+    unused
+)]
+#![doc(test(no_crate_inject))]
+#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
+#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
+#![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
+
 extern crate proc_macro;
-extern crate proc_macro2;
 extern crate quote;
 extern crate syn;
 
@@ -17,8 +29,8 @@ mod parsing {
     }
 
     impl Parse for RouteInput {
-        fn parse(input: ParseStream) -> Result<Self> {
-            Ok(RouteInput {
+        fn parse(input: ParseStream<'_>) -> Result<Self> {
+            Ok(Self {
                 method: input.parse()?,
                 uri: input.parse()?,
                 _priv: (),
@@ -85,6 +97,7 @@ mod parsing {
     }
 
     #[cfg(test)]
+    #[cfg_attr(feature = "cargo-clippy", allow(enum_glob_use))]
     mod tests {
         use super::components;
         use super::Component::*;
@@ -184,8 +197,8 @@ pub fn route_impl(input: TokenStream) -> TokenStream {
     let mut generated_uri = String::new();
 
     for component in parsing::components(&uri_str) {
-        use parsing::Component::*;
-        use parsing::ParamKind::*;
+        use crate::parsing::Component::*;
+        use crate::parsing::ParamKind::*;
         match component {
             Slash => generated_uri.push_str("/"),
             Static(s) => generated_uri.push_str(s),
@@ -209,7 +222,7 @@ pub fn route_impl(input: TokenStream) -> TokenStream {
         .into_iter()
         .enumerate()
         .map(|(i, (_name, kind))| -> syn::Expr {
-            use parsing::ParamKind::*;
+            use crate::parsing::ParamKind::*;
             match kind {
                 Normal => syn::parse_quote!(#extractor::param::pos(#i)),
                 Wildcard => syn::parse_quote!(#extractor::param::wildcard()),
