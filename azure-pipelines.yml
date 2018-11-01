@@ -110,7 +110,7 @@ jobs:
       condition: eq(variables['containerResource'], 'minimum_supported')
 
     - script: |
-        cargo tarpaulin --all-features --out Xml
+        cargo tarpaulin --all-features --out Xml --packages tsukuyomi tsukuyomi-internal tsukuyomi-internal-macros
         bash <(curl -s https://codecov.io/bash)
       displayName: 'Run tarpaulin'
       env:
