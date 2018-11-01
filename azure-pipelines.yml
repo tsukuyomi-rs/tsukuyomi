@@ -23,12 +23,16 @@ jobs:
         rustup-init.exe -y --default-toolchain stable
         set PATH=%PATH%;%USERPROFILE%\.cargo\bin
         echo '##vso[task.setvariable variable=PATH;]%PATH%;%USERPROFILE%\.cargo\bin'
+      displayName: 'install rustup'
+
+    - script: |
         rustup --version
         rustc --version
         cargo --version
-      displayName: 'Install Rust Toolchain'
+      displayName: 'show toolchain version'
+
     - script: bash .ci/run_build.sh
-      displayName: 'Run Test Script'
+      displayName: 'run test script'
 
   - job: macOS
     pool:
@@ -37,12 +41,14 @@ jobs:
     - script: |
         curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
         echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
+      displayName: 'install rustup'
+    - script: |
         rustup --version
         rustc --version
         cargo --version
-      displayName: 'Install Rust Toolchain'
+      displayName: 'show toolchain version'
     - script: bash .ci/run_build.sh
-      displayName: 'Run Test Script'
+      displayName: 'run test script'
 
   - job: Linux
     pool:
