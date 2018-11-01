@@ -10,7 +10,8 @@ impl<L, R> Extractor for And<L, R>
 where
     L: Extractor,
     R: Extractor,
-    L::Output: Combine<R::Output>,
+    L::Output: Combine<R::Output> + Send + 'static,
+    R::Output: Send + 'static,
 {
     type Output = <L::Output as Combine<R::Output>>::Out;
     type Error = Error;

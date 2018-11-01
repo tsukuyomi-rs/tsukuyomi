@@ -39,6 +39,8 @@ use-preset = true
 maintenance = { status = "actively-developed" }
 
 [dependencies]
+tsukuyomi-macros = { version = "0.1.0", path = "tsukuyomi-macros" }
+
 bytes = "0.4"
 cookie = { version = "0.11", features = ["percent-encode"] }
 derive_more = "0.13"
@@ -96,4 +98,5 @@ websocket = [
 [workspace]
 members = [
   "doctest",
+  "tsukuyomi-macros",
 ]

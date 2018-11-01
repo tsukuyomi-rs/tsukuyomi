@@ -13,6 +13,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
+extern crate tsukuyomi_macros as macros;
 pub extern crate tsukuyomi_server as server;
 
 extern crate bytes;
@@ -49,6 +50,9 @@ extern crate tungstenite;
 extern crate askama;
 #[cfg(feature = "askama")]
 extern crate mime_guess;
+
+#[doc(hidden)]
+pub use crate::macros::route_impl;
 
 pub mod app;
 pub mod contrib;

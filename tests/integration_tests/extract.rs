@@ -39,6 +39,28 @@ fn params() {
 }
 
 #[test]
+#[ignore]
+fn route_macros() {
+    let app = App::builder()
+        .route(tsukuyomi::get!("/index").reply(|| "index"))
+        .route(
+            tsukuyomi::get!("/params/<id:u32>/<name:String>").reply(|id, name| {
+                drop((id, name));
+                "dummy"
+            }),
+        ).route(
+            tsukuyomi::put!("/posts/<id:u32>/edit")
+                .with(extractor::body::plain::<String>())
+                .reply(|id: u32, body: String| {
+                    drop((id, body));
+                    "dummy"
+                }),
+        ).finish()
+        .unwrap();
+    drop(app);
+}
+
+#[test]
 fn plain_body() {
     let mut server = local_server(
         App::builder().route(

@@ -21,7 +21,7 @@ impl<T> fmt::Debug for RequestExtractor<T> {
     }
 }
 
-impl<T> Extractor for RequestExtractor<T> {
+impl<T: 'static> Extractor for RequestExtractor<T> {
     type Output = (T,);
     type Error = Never;
     type Future = super::Placeholder<Self::Output, Self::Error>;
