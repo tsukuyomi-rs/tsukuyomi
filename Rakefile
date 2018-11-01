@@ -5,11 +5,11 @@ namespace :ci do
     def has_rustfmt?
         Open3.capture3("cargo fmt --version")[2].success?
     end
-    
+
     def has_clippy?
         Open3.capture3("cargo clippy --version")[2].success?
     end
-    
+
     task :fast do
         sh "rustc --version"
         sh "cargo --version"
@@ -28,14 +28,14 @@ namespace :ci do
         sh "cargo test"
         sh "cargo test --all-features"
         sh "cargo test --no-default-features"
-        sh "cargo test -p tsukuyomi-macros"
+        sh "cargo test -p tsukuyomi-internal"
+        sh "cargo test -p tsukuyomi-internal --all-features"
+        sh "cargo test -p tsukuyomi-internal-macros"
         sh "cargo test -p doctest"
     end
 
     task :rustdoc do
-        FileUtils.rm_rf "target/doc"
         sh "cargo doc --all-features --no-deps -p failure -p tungstenite -p tokio-tungstenite -p walkdir"
-        sh "cargo doc --all-features --no-deps -p tsukuyomi-server"
         sh "cargo doc --all-features --no-deps"
         FileUtils.rm_f "target/doc/.lock"
         File.write "target/doc/index.html", "<meta http-equiv=\"refresh\" content=\"0;URL=tsukuyomi/index.html\">\n"

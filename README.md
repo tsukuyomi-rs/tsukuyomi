@@ -36,7 +36,7 @@ The following features does not currently implemented but will be supported in t
 
 ```toml
 [dependencies]
-tsukuyomi = "0.3.3"
+tsukuyomi = "0.4.0-dev"
 ```
 
 ```rust,no_run
@@ -70,13 +70,13 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
-[deps-rs]: https://deps.rs/crate/tsukuyomi/0.3.3
+[deps-rs]: https://deps.rs/crate/tsukuyomi/0.4.0-dev
 [azure-pipelines]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_build/latest?definitionId=1
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
 [rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
-[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.3.3/status.svg
+[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0-dev/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
