@@ -1,0 +1,41 @@
+[package]
+name = "tsukuyomi-internal"
+version = "0.4.0-dev" # <cargo-version-sync>
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+
+[dependencies]
+bytes = "0.4"
+cookie = { version = "0.11", features = ["percent-encode"] }
+derive_more = "0.13"
+either = "1.5"
+failure = "0.1.2"
+futures = "0.1"
+http = "0.1"
+indexmap = "1"
+log = "0.4"
+mime = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_plain = "0.3"
+serde_urlencoded = "0.5"
+tower-service = "0.1"
+tsukuyomi-server = "0.1.2"
+
+[dependencies.tsukuyomi-internal-macros]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "../tsukuyomi-internal-macros"
+
+[dev-dependencies]
+matches = "0.1"
+
+[dev-dependencies.tsukuyomi]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = ".."
+
+[features]
+secure = [
+  "cookie/secure",
+]
+tls = [
+  "tsukuyomi-server/tls",
+]

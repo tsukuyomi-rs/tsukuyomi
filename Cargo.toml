@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 An asynchronous Web framework for Rust
 """
-version = "0.3.3"
+version = "0.4.0-dev"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
@@ -25,6 +25,9 @@ include = [
   "LICENSE-APACHE",
 ]
 
+[badges]
+maintenance = { status = "actively-developed" }
+
 [package.metadata.docs.rs]
 features = [
   "secure",
@@ -32,24 +35,51 @@ features = [
   "websocket",
 ]
 
-[package.metadata.version-sync]
-use-preset = true
+# ==== START cargo-version-sync ====
 
-[badges]
-maintenance = { status = "actively-developed" }
+[package.metadata.version-sync]
+use-preset = false
+
+[[package.metadata.version-sync.replacements]]
+file = "Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "tsukuyomi-internal/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+
+[[package.metadata.version-sync.replacements]]
+file = "tsukuyomi-internal-macros/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "src/lib.rs"
+replacers = [
+  { type = "builtin", target = "html-root-url" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "README.md"
+replacers = [
+  { type = "regex", search = "{{name}} = \"[0-9a-z\\.-]+\"", replace = "{{name}} = \"{{version}}\"" },
+  { type = "regex", search = "https://deps.rs/crate/{{name}}/[a-z0-9\\.-]+", replace = "https://deps.rs/crate/{{name}}/{{version}}" },
+]
+
+# ==== END cargo-version-sync ====
 
 [dependencies]
-tsukuyomi-macros = { version = "0.1.0", path = "tsukuyomi-macros" }
-
 bytes = "0.4"
-cookie = { version = "0.11", features = ["percent-encode"] }
-derive_more = "0.13"
-either = "1.5"
 failure = "0.1.2"
 filetime = "0.2"
 futures = "0.1"
 http = "0.1"
-indexmap = "1"
 mime = "0.3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -57,8 +87,6 @@ serde_json = "1"
 serde_plain = "0.3"
 serde_urlencoded = "0.5"
 time = "0.1"
-tower-service = "0.1"
-tsukuyomi-server = "0.1"
 walkdir = "2"
 
 # for WebSocket
@@ -72,8 +100,13 @@ askama = { version = "0.7", optional = true }
 mime_guess = { version = "2.0.0-alpha.6", optional = true }
 
 [dev-dependencies]
-matches = "0.1"
-cargo-version-sync = { version = "0.0.3", default-features = false }
+cookie = "0.11"
+either = "1"
+cargo-version-sync = { version = "0.0.4", default-features = false }
+
+[dependencies.tsukuyomi-internal]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "tsukuyomi-internal"
 
 [dev-dependencies.cargo-husky]
 version = "1"
@@ -83,10 +116,10 @@ features = ["user-hooks"]
 [features]
 default = []
 secure = [
-  "cookie/secure",
+  "tsukuyomi-internal/secure",
 ]
 tls = [
-  "tsukuyomi-server/tls",
+  "tsukuyomi-internal/tls",
 ]
 websocket = [
   "base64",
@@ -98,5 +131,6 @@ websocket = [
 [workspace]
 members = [
   "doctest",
-  "tsukuyomi-macros",
+  "tsukuyomi-internal",
+  "tsukuyomi-internal-macros",
 ]

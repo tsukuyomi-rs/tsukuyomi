@@ -6,6 +6,7 @@
 //! # Examples
 //!
 //! ```
+//! # extern crate tsukuyomi;
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //! use tsukuyomi::app::App;
 //! use tsukuyomi::route;

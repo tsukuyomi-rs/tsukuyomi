@@ -1,8 +1,7 @@
 //! Tsukuyomi is an asynchronous Web framework for Rust.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.3.3")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.4.0-dev")]
 #![warn(
-    missing_docs,
     missing_debug_implementations,
     nonstandard_style,
     rust_2018_idioms,
@@ -13,29 +12,19 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
-extern crate tsukuyomi_macros as macros;
-pub extern crate tsukuyomi_server as server;
+extern crate tsukuyomi_internal as internal;
 
 extern crate bytes;
-extern crate cookie;
-extern crate derive_more;
-extern crate either;
 extern crate failure;
 extern crate filetime;
 extern crate futures;
 extern crate http;
-#[cfg_attr(test, macro_use)]
-extern crate indexmap;
 extern crate log;
 extern crate mime;
 extern crate serde;
 extern crate serde_json;
 extern crate time;
-extern crate tower_service;
 extern crate walkdir;
-
-#[cfg(test)]
-extern crate matches;
 
 #[cfg(feature = "websocket")]
 extern crate base64;
@@ -51,17 +40,11 @@ extern crate askama;
 #[cfg(feature = "askama")]
 extern crate mime_guess;
 
-#[doc(hidden)]
-pub use crate::macros::route_impl;
-
-pub mod app;
+pub use crate::internal::{app, error, extractor, handler, input, modifier, output, server};
 pub mod contrib;
-pub mod error;
-pub mod extractor;
-pub mod handler;
-pub mod input;
-pub mod modifier;
-pub mod output;
-pub(crate) mod recognizer;
 
-pub mod route;
+#[allow(missing_docs)]
+pub mod route {
+    pub use crate::internal::route::*;
+    pub use crate::internal::{connect, delete, get, head, options, patch, post, put, trace};
+}

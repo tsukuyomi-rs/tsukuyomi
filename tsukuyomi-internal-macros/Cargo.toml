@@ -1,6 +1,6 @@
 [package]
-name = "tsukuyomi-macros"
-version = "0.1.0"
+name = "tsukuyomi-internal-macros"
+version = "0.4.0-dev" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 

@@ -69,7 +69,9 @@ jobs:
         CARGO_TERM_VERBOSE: true
       condition: eq(variables['containerResource'], 'rust')
 
-    - script: rake ci:deploy_doc
+    - script: |
+        rm -rf target/doc
+        rake ci:deploy_doc
       displayName: 'Deploy API doc'
       env:
         RUSTUP_TOOLCHAIN: stable

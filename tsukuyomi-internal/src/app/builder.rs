@@ -174,6 +174,7 @@ impl AppBuilder {
     /// # Examples
     ///
     /// ```
+    /// # extern crate tsukuyomi;
     /// # use tsukuyomi::app::App;
     /// use tsukuyomi::app::builder::Scope;
     /// # use tsukuyomi::input::Input;
@@ -233,6 +234,7 @@ impl AppBuilder {
     /// # Examples
     ///
     /// ```
+    /// # extern crate tsukuyomi;
     /// # use tsukuyomi::app::App;
     /// # use tsukuyomi::input::Input;
     /// # use tsukuyomi::handler::Handle;

@@ -13,9 +13,8 @@ pub use crate::local_key;
 /// # Examples
 ///
 /// ```
-/// #[macro_use]
-/// extern crate tsukuyomi;
-/// # use tsukuyomi::input::local_map::LocalMap;
+/// # extern crate tsukuyomi;
+/// # use tsukuyomi::input::local_map::{local_key, LocalMap};
 ///
 /// # fn main() {
 /// local_key!(static KEY: String);
