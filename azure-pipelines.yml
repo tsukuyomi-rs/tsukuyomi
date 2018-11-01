@@ -1,7 +1,7 @@
 resources:
   containers:
     - container: rust
-      image: ubntintrepid/tsukuyomi:latest
+      image: rust:latest
     - container: tarpaulin
       image: xd009642/tarpaulin:latest-nightly
       options: --security-opt seccomp=unconfined
@@ -19,9 +19,8 @@ jobs:
         rustup --version
         rustc --version
         cargo --version
-        rake --version
       displayName: 'Install Rust Toolchain'
-    - script: rake ci:fast
+    - bash: bash .ci/run_build.sh
       displayName: 'Run Test Script'
 
   - job: macOS
@@ -34,9 +33,8 @@ jobs:
         rustup --version
         rustc --version
         cargo --version
-        rake --version
       displayName: 'Install Rust Toolchain'
-    - script: rake ci:fast
+    - bash: bash .ci/run_build.sh
       displayName: 'Run Test Script'
 
   - job: Linux
@@ -50,9 +48,7 @@ jobs:
           containerResource: tarpaulin
     container: $[ variables['containerResource'] ]
     steps:
-    - script: |
-        rustup --version
-        rake --version
+    - script: rustup --version
       displayName: 'Show installed tools version'
       condition: eq(variables['containerResource'], 'rust')
 
@@ -62,7 +58,7 @@ jobs:
       displayName: 'Install required toolchains and components'
       condition: eq(variables['containerResource'], 'rust')
 
-    - script: rake ci:strict
+    - script: bash .ci/run_test.sh
       displayName: 'Run test on stable channel'
       env:
         RUSTUP_TOOLCHAIN: stable
@@ -71,30 +67,30 @@ jobs:
 
     - script: |
         rm -rf target/doc
-        rake ci:deploy_doc
+        bash .ci/build_doc.sh
+        bash .ci/deploy_doc.sh
       displayName: 'Deploy API doc'
       env:
         RUSTUP_TOOLCHAIN: stable
         CARGO_TERM_VERBOSE: true
         GH_TOKEN: $(myGitHubToken)
-        SOURCE_BRANCH_NAME: $(Build.SourceBranchName)
       condition: eq(variables['containerResource'], 'rust')
 
-    - script: rake ci:fast
+    - bash: bash .ci/run_build.sh
       displayName: 'Build on beta channel'
       env:
         RUSTUP_TOOLCHAIN: beta
         CARGO_TERM_VERBOSE: true
       condition: eq(variables['containerResource'], 'rust')
 
-    - script: rake ci:fast || true
+    - bash: bash .ci/run_build.sh || true
       displayName: 'Build on nightly channel'
       env:
         RUSTUP_TOOLCHAIN: nightly
         CARGO_TERM_VERBOSE: true
       condition: eq(variables['containerResource'], 'rust')
 
-    - script: rake ci:fast
+    - bash: bash .ci/run_build.sh
       displayName: 'Build on minimum supported channel'
       env:
         RUSTUP_TOOLCHAIN: 1.30.0

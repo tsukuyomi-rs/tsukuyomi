@@ -18,8 +18,5 @@ BRANCH="$(git symbolic-ref --short HEAD)"
     exit 1
 }
 
-if rake --version >/dev/null 2>&1; then
-    (set -x; rake ci:strict)
-else
-    echo "[warn] 'rake' is not installed."
-fi
+set -x
+exec "$(git rev-parse --show-toplevel)/.ci/run_test.sh"
