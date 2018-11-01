@@ -11,9 +11,20 @@ use crate::handler::Handle;
 use crate::output::Responder;
 
 macro_rules! define_route {
-    ($($name:ident => $METHOD:ident,)*) => {$(
-        pub fn $name(uri: impl Into<String>) -> Route {
+    ($($method:ident => $METHOD:ident,)*) => {$(
+        pub fn $method(uri: impl Into<String>) -> Route {
             Route::new(Method::$METHOD, uri, ())
+        }
+
+        #[macro_export(local_inner_macros)]
+        macro_rules! $method {
+            ($uri:expr) => {{
+                struct __Dummy;
+                impl __Dummy {
+                    route_impl!($method $uri);
+                }
+                __Dummy::route()
+            }};
         }
     )*}
 }
@@ -38,8 +49,7 @@ pub fn index() -> Route {
 #[derive(Debug)]
 pub struct Route<E = ()>
 where
-    E: Extractor + Send + Sync + 'static,
-    E::Future: Send + 'static,
+    E: Extractor,
 {
     extractor: E,
     uri: String,
@@ -49,8 +59,7 @@ where
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<E> Route<E>
 where
-    E: Extractor + Send + Sync + 'static,
-    E::Future: Send + 'static,
+    E: Extractor,
 {
     pub fn new(method: Method, uri: impl Into<String>, extractor: E) -> Self {
         Self {
@@ -73,8 +82,7 @@ where
 
     pub fn with<U>(self, other: U) -> Route<And<E, U>>
     where
-        U: Extractor + Send + Sync + 'static,
-        U::Future: Send + 'static,
+        U: Extractor,
         E::Output: Combine<U::Output> + Send + 'static,
         U::Output: Send + 'static,
     {
@@ -175,5 +183,48 @@ where
                 }
             }));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn generated() -> Route<impl Extractor<Output = (u32, String)>> {
+        Route::new(Method::GET, "/:id/:name", ())
+            .with(crate::extractor::param::pos(0))
+            .with(crate::extractor::param::pos(1))
+    }
+
+    #[test]
+    #[ignore]
+    fn compiletest1() {
+        let route = generated().reply(|id: u32, name: String| {
+            drop((id, name));
+            "dummy"
+        });
+
+        let app = crate::app::App::builder()
+            .route(route)
+            .finish()
+            .expect("failed to construct App");
+        drop(app);
+    }
+
+    #[test]
+    #[ignore]
+    fn compiletest2() {
+        let route = generated().with(crate::extractor::body::plain()).reply(
+            |id: u32, name: String, body: String| {
+                drop((id, name, body));
+                "dummy"
+            },
+        );
+
+        let app = crate::app::App::builder()
+            .route(route)
+            .finish()
+            .expect("failed to construct App");
+        drop(app);
     }
 }

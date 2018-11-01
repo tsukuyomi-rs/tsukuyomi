@@ -196,7 +196,8 @@ where
 
 impl<T, D> Extractor for Body<T, D>
 where
-    D: self::decode::Decoder<T>,
+    T: 'static,
+    D: self::decode::Decoder<T> + Send + Sync + 'static,
 {
     type Output = (T,);
     type Error = Error;

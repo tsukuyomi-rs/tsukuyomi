@@ -49,10 +49,10 @@ impl<T, E> Future for Placeholder<T, E> {
     }
 }
 
-pub trait Extractor {
+pub trait Extractor: Send + Sync + 'static {
     type Output: Tuple;
     type Error: Into<Error>;
-    type Future: Future<Item = Self::Output, Error = Self::Error>;
+    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error>;
 }
@@ -89,42 +89,50 @@ where
 
 // ==== ExtractorExt ====
 
+#[inline]
+pub(crate) fn assert_impl_extractor<E>(extractor: E) -> E
+where
+    E: Extractor,
+{
+    extractor
+}
+
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait ExtractorExt: Extractor + Sized {
     fn optional<T>(self) -> Optional<Self>
     where
         Self: Extractor<Output = (T,)>,
     {
-        Optional(self)
+        assert_impl_extractor(Optional(self))
     }
 
     fn fallible<T>(self) -> Fallible<Self>
     where
         Self: Extractor<Output = (T,)>,
     {
-        Fallible(self)
+        assert_impl_extractor(Fallible(self))
     }
 
     fn and<E>(self, other: E) -> And<Self, E>
     where
         E: Extractor,
-        Self::Output: Combine<E::Output>,
+        Self::Output: Combine<E::Output> + Send + 'static,
+        E::Output: Send + 'static,
     {
-        And {
+        assert_impl_extractor(And {
             left: self,
             right: other,
-        }
+        })
     }
 
-    fn or<E, T, U>(self, other: E) -> Or<Self, E>
+    fn or<E>(self, other: E) -> Or<Self, E>
     where
-        Self: Extractor<Output = (T,)>,
-        E: Extractor<Output = (U,)>,
+        E: Extractor<Output = Self::Output>,
     {
-        Or {
+        assert_impl_extractor(Or {
             left: self,
             right: other,
-        }
+        })
     }
 }
 

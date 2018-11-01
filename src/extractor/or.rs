@@ -6,14 +6,14 @@ pub struct Or<L, R> {
     pub(super) right: R,
 }
 
-impl<L, R, T> Extractor for Or<L, R>
+impl<L, R> Extractor for Or<L, R>
 where
-    L: Extractor<Output = (T,)>,
-    R: Extractor<Output = (T,)>,
+    L: Extractor,
+    R: Extractor<Output = L::Output>,
 {
-    type Output = (T,);
+    type Output = L::Output;
     type Error = Error;
-    type Future = OrFuture<L::Future, R::Future, T>;
+    type Future = OrFuture<L::Future, R::Future>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         match self.left.extract(input) {
@@ -37,10 +37,10 @@ where
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter, type_complexity))]
-pub enum OrFuture<L, R, T>
+pub enum OrFuture<L, R>
 where
-    L: Future<Item = (T,)>,
-    R: Future<Item = (T,)>,
+    L: Future,
+    R: Future<Item = L::Item>,
     L::Error: Into<Error>,
     R::Error: Into<Error>,
 {
@@ -54,14 +54,14 @@ where
     ),
 }
 
-impl<L, R, T> Future for OrFuture<L, R, T>
+impl<L, R> Future for OrFuture<L, R>
 where
-    L: Future<Item = (T,)>,
-    R: Future<Item = (T,)>,
+    L: Future,
+    R: Future<Item = L::Item>,
     L::Error: Into<Error>,
     R::Error: Into<Error>,
 {
-    type Item = (T,);
+    type Item = L::Item;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
