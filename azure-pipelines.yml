@@ -1,14 +1,5 @@
 resources:
-  # TODO: enable beta image
   containers:
-    - container: stable
-      image: rust
-    - container: beta
-      image: rust
-    - container: minimum_supported
-      image: rust:1.30.0
-    - container: nightly
-      image: rustlang/rust:nightly
     - container: tarpaulin
       image: xd009642/tarpaulin:latest-nightly
       options: --security-opt seccomp=unconfined
@@ -53,72 +44,61 @@ jobs:
   - job: Linux
     pool:
       vmImage: 'ubuntu-16.04'
+    variables:
+      CARGO_TERM_VERBOSE: true
     strategy:
       matrix:
         stable:
-          containerResource: stable
+          rust_toolchain: stable
         beta:
-          containerResource: beta
+          rust_toolchain: beta
         nightly:
-          containerResource: nightly
+          rust_toolchain: nightly
         minimum_supported:
-          containerResource: minimum_supported
-        tarpaulin:
-          containerResource: tarpaulin
-    container: $[ variables['containerResource'] ]
+          rust_toolchain: 1.30.0
     steps:
-    - script: rustup --version
-      displayName: 'Show rustup version'
+    - script: |
+        curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain $RUST_TOOLCHAIN -y
+        echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
+      displayName: 'install rustup'
+
+    - script: |
+        rustup --version
+        rustc --version
+        cargo --version
+      displayName: 'show toolchain version'
 
     - script: |
         rustup component add rustfmt-preview clippy-preview
-      displayName: 'Install components'
-      condition: eq(variables['containerResource'], 'stable')
-
-    - script: |
-        rustup toolchain install beta
-        rustup default beta
-      displayName: 'Install the beta toolchain'
-      condition: eq(variables['containerResource'], 'beta')
+      displayName: 'install supplemental components'
+      condition: eq(variables['rust_toolchain'], 'stable')
 
     - script: bash .ci/run_test.sh
-      displayName: 'Run test on stable channel'
-      env:
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'stable')
+      displayName: 'run test'
+      condition: ne(variables['rust_toolchain'], 'nightly')
+
+    - script: bash .ci/run_test.sh || true
+      displayName: 'run test (allow failure)'
+      condition: eq(variables['rust_toolchain'], 'nightly')
 
     - script: |
         rm -rf target/doc
         bash .ci/build_doc.sh
         bash .ci/deploy_doc.sh
-      displayName: 'Deploy API doc'
+      displayName: 'deploy API doc'
+      condition: eq(variables['rust_toolchain'], 'stable')
       env:
-        CARGO_TERM_VERBOSE: true
         GH_TOKEN: $(myGitHubToken)
-      condition: eq(variables['containerResource'], 'stable')
 
-    - script: bash .ci/run_build.sh
-      displayName: 'Build on beta channel'
-      env:
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'beta')
-
-    - script: bash .ci/run_build.sh || true
-      displayName: 'Build on nightly channel'
-      env:
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'nightly')
-
-    - script: bash .ci/run_build.sh
-      displayName: 'Build on minimum supported toolchain'
-      env:
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'minimum_supported')
-
+  - job: linux_tarpaulin
+    displayName: Linux (cargo tarpaulin)
+    pool:
+      vmImage: 'ubuntu-16.04'
+    container: tarpaulin
+    steps:
     - script: |
         cargo tarpaulin --all-features --out Xml --packages tsukuyomi tsukuyomi-internal tsukuyomi-internal-macros
         bash <(curl -s https://codecov.io/bash)
       displayName: 'Run tarpaulin'
       env:
         CODECOV_TOKEN: $(myCodecovToken)
-      condition: eq(variables['containerResource'], 'tarpaulin')
