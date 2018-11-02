@@ -5,8 +5,9 @@ use either::Either;
 use futures::{Async, Future, Poll, Stream};
 use http::header::{HeaderMap, HeaderValue};
 use http::{header, Response, StatusCode};
+use serde::Serialize;
 
-use crate::error::{Error, HttpError, Never};
+use crate::error::{Error, Failure, HttpError, Never};
 use crate::input::{self, Input};
 use crate::server::service::http::{Body, Payload};
 
@@ -225,6 +226,94 @@ fn text_response<T>(body: T) -> Response<T> {
     );
     response
 }
+
+/// A function which creates a JSON responder.
+pub fn json<T>(data: T) -> Json<T>
+where
+    T: Serialize,
+{
+    Json {
+        data,
+        pretty: false,
+    }
+}
+
+/// A function which creates a JSON responder with pretty output.
+pub fn json_pretty<T>(data: T) -> Json<T>
+where
+    T: Serialize,
+{
+    json(data).pretty()
+}
+
+/// A wraper struct representing a statically typed JSON value.
+#[derive(Debug)]
+pub struct Json<T> {
+    data: T,
+    pretty: bool,
+}
+
+impl<T> Json<T>
+where
+    T: Serialize,
+{
+    /// Enables pretty output.
+    pub fn pretty(self) -> Self {
+        Self {
+            pretty: true,
+            ..self
+        }
+    }
+}
+
+impl<T> From<T> for Json<T>
+where
+    T: Serialize,
+{
+    fn from(data: T) -> Self {
+        Self {
+            data,
+            pretty: false,
+        }
+    }
+}
+
+impl<T> Responder for Json<T>
+where
+    T: Serialize,
+{
+    type Body = Vec<u8>;
+    type Error = Failure;
+
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        let body = if self.pretty {
+            serde_json::to_vec_pretty(&self.data).map_err(Failure::internal_server_error)?
+        } else {
+            serde_json::to_vec(&self.data).map_err(Failure::internal_server_error)?
+        };
+        Ok(json_response(body))
+    }
+}
+
+impl Responder for serde_json::Value {
+    type Body = String;
+    type Error = Never;
+
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        Ok(json_response(self.to_string()))
+    }
+}
+
+fn json_response<T>(body: T) -> Response<T> {
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
+// ==== AsyncResponder
 
 #[doc(hidden)]
 #[deprecated(

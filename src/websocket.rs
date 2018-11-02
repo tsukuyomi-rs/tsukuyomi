@@ -1,3 +1,5 @@
+#![cfg(feature = "websocket")]
+
 //! Components for supporting WebSocket feature.
 //!
 //! # Examples
@@ -6,7 +8,7 @@
 //! # use tsukuyomi::app::App;
 //! # use tsukuyomi::route;
 //! # use tsukuyomi::extractor::HasExtractor;
-//! use tsukuyomi::contrib::websocket::Ws;
+//! use tsukuyomi::websocket::Ws;
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
 //! let app = App::builder()
@@ -24,17 +26,21 @@
 //! # }
 //! ```
 
-use base64;
+extern crate base64;
+extern crate sha1;
+extern crate tokio_tungstenite;
+extern crate tungstenite;
+
+use self::sha1::{Digest, Sha1};
+use self::tungstenite::protocol::Role;
 use futures::IntoFuture;
 use http::header::HeaderMap;
 use http::{header, Response, StatusCode};
-use sha1::{Digest, Sha1};
-use tungstenite::protocol::Role;
 
 #[doc(no_inline)]
-pub use tokio_tungstenite::WebSocketStream;
+pub use self::tokio_tungstenite::WebSocketStream;
 #[doc(no_inline)]
-pub use tungstenite::protocol::{Message, WebSocketConfig};
+pub use self::tungstenite::protocol::{Message, WebSocketConfig};
 
 use crate::error::HttpError;
 use crate::extractor::{Extract, Extractor, HasExtractor};
@@ -225,10 +231,10 @@ where
 
 #[deprecated(since = "0.3.3")]
 mod deprecated {
+    use super::tokio_tungstenite::WebSocketStream;
+    use super::tungstenite::protocol::{Role, WebSocketConfig};
     use futures::IntoFuture;
     use http::{header, Response, StatusCode};
-    use tokio_tungstenite::WebSocketStream;
-    use tungstenite::protocol::{Role, WebSocketConfig};
 
     use crate::error::Error;
     use crate::input::Input;
