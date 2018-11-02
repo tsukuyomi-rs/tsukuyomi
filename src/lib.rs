@@ -12,25 +12,17 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
-extern crate tsukuyomi_internal as internal;
+extern crate tsukuyomi_internal_core as core;
+extern crate tsukuyomi_internal_runtime as runtime;
 
-extern crate bytes;
-extern crate failure;
-extern crate filetime;
-extern crate futures;
-extern crate http;
-extern crate log;
-extern crate time;
-extern crate walkdir;
-
-pub use crate::internal::{app, error, extractor, handler, input, modifier, output, server};
+pub use crate::core::{app, error, extractor, handler, input, modifier, output};
 
 #[allow(missing_docs)]
 pub mod route {
-    pub use crate::internal::route::*;
-    pub use crate::internal::{connect, delete, get, head, options, patch, post, put, trace};
+    pub use crate::core::route::*;
+    pub use crate::core::{connect, delete, get, head, options, patch, post, put, trace};
 }
 
-pub mod askama;
-pub mod fs;
-pub mod websocket;
+pub mod server {
+    pub use crate::runtime::*;
+}
