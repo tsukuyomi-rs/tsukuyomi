@@ -1,40 +1,47 @@
-#![cfg(feature = "askama")]
+#![cfg(feature = "with-askama")]
 
 //! Components for supporting Askama template.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use tsukuyomi::input::Input;
-//! use tsukuyomi::output::Responder;
-//! use tsukuyomi::askama::{Template, TemplateExt};
+//! extern crate askama;
 //!
-//! #[derive(Debug, Template)]
+//! #[derive(
+//!     Debug,
+//!     askama::Template,
+//!     tsukuyomi::askama::Responder,
+//! )]
 //! #[template(path = "index.html")]
 //! struct IndexPage {
-//!     name: String,
+//!     name: &'static str,
 //! }
 //!
-//! fn index(_: &mut Input) -> impl Responder {
-//!     (IndexPage {
-//!         name: "Alice".into(),
-//!     }).into_responder()
-//! }
+//! let app = App::builder()
+//!     .route(
+//!         route::index()
+//!             .reply(|| {
+//!                 IndexPage {
+//!                     name: "Alice",
+//!                 }
+//!             )
+//!     )
+//!     .finish()?;
 //! ```
 
 extern crate askama;
 extern crate mime_guess;
 
+use self::askama::Template;
 use self::mime_guess::get_mime_type_str;
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::Response;
 
 use crate::error::{Error, Failure};
-use crate::input::Input;
-use crate::output::Responder;
 
+pub use crate::internal::TemplateResponder as Responder;
 #[doc(no_inline)]
-pub use self::askama::Template;
+pub use crate::output::Responder;
 
 /// A helper function to generate an HTTP response from Askama template.
 pub fn respond(t: &dyn Template, ext: &str) -> Result<Response<String>, Error> {
@@ -49,37 +56,12 @@ pub fn respond(t: &dyn Template, ext: &str) -> Result<Response<String>, Error> {
     Ok(response)
 }
 
-/// A wrapper struct for adding implementation of `Responder` to `T: Template`.
-#[derive(Debug)]
-pub struct Renderable<T: Template>(T);
-
-impl<T> From<T> for Renderable<T>
-where
-    T: Template,
-{
-    fn from(ctx: T) -> Self {
-        Renderable(ctx)
-    }
+// not a public API.
+#[doc(hidden)]
+pub mod private {
+    pub use super::askama::Template;
+    pub use crate::error::Error;
+    pub use crate::input::Input;
+    pub use crate::output::Responder;
+    pub use http::Response;
 }
-
-impl<T> Responder for Renderable<T>
-where
-    T: Template,
-{
-    type Body = String;
-    type Error = Error;
-
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::respond(&self.0, self.0.extension().unwrap_or("html"))
-    }
-}
-
-#[allow(missing_docs)]
-pub trait TemplateExt: Template + Sized {
-    /// Convert itself into a `Renderable`.
-    fn into_responder(self) -> Renderable<Self> {
-        Renderable(self)
-    }
-}
-
-impl<T> TemplateExt for T where T: Template {}

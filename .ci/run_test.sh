@@ -24,3 +24,4 @@ cargo test -p tsukuyomi-internal
 cargo test -p tsukuyomi-internal --all-features
 cargo test -p tsukuyomi-internal-macros
 cargo test -p doctest
+cargo test -p test-askama

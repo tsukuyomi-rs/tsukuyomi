@@ -127,10 +127,16 @@ websocket = [
   "tokio-tungstenite",
   "tungstenite",
 ]
+with-askama = [
+  "askama",
+  "mime_guess",
+]
 
 [workspace]
 members = [
-  "doctest",
   "tsukuyomi-internal",
   "tsukuyomi-internal-macros",
+
+  "testcrates/doctest",
+  "testcrates/askama",
 ]
