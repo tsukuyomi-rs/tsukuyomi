@@ -20,9 +20,6 @@ extern crate filetime;
 extern crate futures;
 extern crate http;
 extern crate log;
-extern crate mime;
-extern crate serde;
-extern crate serde_json;
 extern crate time;
 extern crate walkdir;
 
@@ -36,5 +33,4 @@ pub mod route {
 
 pub mod askama;
 pub mod fs;
-pub mod json;
 pub mod websocket;

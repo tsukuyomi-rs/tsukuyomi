@@ -80,10 +80,7 @@ failure = "0.1.2"
 filetime = "0.2"
 futures = "0.1"
 http = "0.1"
-mime = "0.3"
 log = "0.4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 serde_plain = "0.3"
 serde_urlencoded = "0.5"
 time = "0.1"
@@ -102,6 +99,7 @@ mime_guess = { version = "2.0.0-alpha.6", optional = true }
 [dev-dependencies]
 cookie = "0.11"
 either = "1"
+serde = { version = "1", features = ["derive"] }
 cargo-version-sync = { version = "0.0.4", default-features = false }
 
 [dependencies.tsukuyomi-internal]
