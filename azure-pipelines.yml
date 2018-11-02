@@ -1,7 +1,5 @@
 resources:
   containers:
-    - container: rust
-      image: ubntintrepid/tsukuyomi:latest
     - container: tarpaulin
       image: xd009642/tarpaulin:latest-nightly
       options: --security-opt seccomp=unconfined
@@ -16,13 +14,16 @@ jobs:
         rustup-init.exe -y --default-toolchain stable
         set PATH=%PATH%;%USERPROFILE%\.cargo\bin
         echo '##vso[task.setvariable variable=PATH;]%PATH%;%USERPROFILE%\.cargo\bin'
+      displayName: 'install rustup'
+
+    - script: |
         rustup --version
         rustc --version
         cargo --version
-        rake --version
-      displayName: 'Install Rust Toolchain'
-    - script: rake ci:fast
-      displayName: 'Run Test Script'
+      displayName: 'show toolchain version'
+
+    - script: bash .ci/run_build.sh
+      displayName: 'run test script'
 
   - job: macOS
     pool:
@@ -31,80 +32,73 @@ jobs:
     - script: |
         curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
         echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
+      displayName: 'install rustup'
+    - script: |
         rustup --version
         rustc --version
         cargo --version
-        rake --version
-      displayName: 'Install Rust Toolchain'
-    - script: rake ci:fast
-      displayName: 'Run Test Script'
+      displayName: 'show toolchain version'
+    - script: bash .ci/run_build.sh
+      displayName: 'run test script'
 
   - job: Linux
     pool:
       vmImage: 'ubuntu-16.04'
+    variables:
+      CARGO_TERM_VERBOSE: true
     strategy:
       matrix:
-        rust:
-          containerResource: rust
-        tarpaulin:
-          containerResource: tarpaulin
-    container: $[ variables['containerResource'] ]
+        stable:
+          rust_toolchain: stable
+        beta:
+          rust_toolchain: beta
+        nightly:
+          rust_toolchain: nightly
+        minimum_supported:
+          rust_toolchain: 1.30.0
     steps:
     - script: |
-        rustup --version
-        rake --version
-      displayName: 'Show installed tools version'
-      condition: eq(variables['containerResource'], 'rust')
+        curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain $RUST_TOOLCHAIN -y
+        echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
+      displayName: 'install rustup'
 
     - script: |
-        rustup toolchain install stable beta nightly 1.30.0
-        rustup component add rustfmt-preview clippy-preview --toolchain stable
-      displayName: 'Install required toolchains and components'
-      condition: eq(variables['containerResource'], 'rust')
+        rustup --version
+        rustc --version
+        cargo --version
+      displayName: 'show toolchain version'
 
-    - script: rake ci:strict
-      displayName: 'Run test on stable channel'
-      env:
-        RUSTUP_TOOLCHAIN: stable
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
+    - script: |
+        rustup component add rustfmt-preview clippy-preview
+      displayName: 'install supplemental components'
+      condition: eq(variables['rust_toolchain'], 'stable')
+
+    - script: bash .ci/run_test.sh
+      displayName: 'run test'
+      condition: ne(variables['rust_toolchain'], 'nightly')
+
+    - script: bash .ci/run_test.sh || true
+      displayName: 'run test (allow failure)'
+      condition: eq(variables['rust_toolchain'], 'nightly')
 
     - script: |
         rm -rf target/doc
-        rake ci:deploy_doc
-      displayName: 'Deploy API doc'
+        bash .ci/build_doc.sh
+        bash .ci/deploy_doc.sh
+      displayName: 'deploy API doc'
+      condition: eq(variables['rust_toolchain'], 'stable')
       env:
-        RUSTUP_TOOLCHAIN: stable
-        CARGO_TERM_VERBOSE: true
         GH_TOKEN: $(myGitHubToken)
-        SOURCE_BRANCH_NAME: $(Build.SourceBranchName)
-      condition: eq(variables['containerResource'], 'rust')
 
-    - script: rake ci:fast
-      displayName: 'Build on beta channel'
-      env:
-        RUSTUP_TOOLCHAIN: beta
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
-
-    - script: rake ci:fast || true
-      displayName: 'Build on nightly channel'
-      env:
-        RUSTUP_TOOLCHAIN: nightly
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
-
-    - script: rake ci:fast
-      displayName: 'Build on minimum supported channel'
-      env:
-        RUSTUP_TOOLCHAIN: 1.30.0
-        CARGO_TERM_VERBOSE: true
-      condition: eq(variables['containerResource'], 'rust')
-
+  - job: linux_tarpaulin
+    displayName: Linux (cargo tarpaulin)
+    pool:
+      vmImage: 'ubuntu-16.04'
+    container: tarpaulin
+    steps:
     - script: |
-        cargo tarpaulin --all-features --out Xml
+        cargo tarpaulin --all-features --out Xml --packages tsukuyomi tsukuyomi-internal tsukuyomi-internal-macros
         bash <(curl -s https://codecov.io/bash)
       displayName: 'Run tarpaulin'
       env:
         CODECOV_TOKEN: $(myCodecovToken)
-      condition: eq(variables['containerResource'], 'tarpaulin')
