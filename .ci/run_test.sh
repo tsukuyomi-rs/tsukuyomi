@@ -13,6 +13,8 @@ fi
 
 if cargo clippy --version >/dev/null 2>&1; then
     cargo clippy --all-features --all-targets
+    cargo clippy --all-features --all-targets -p tsukuyomi-internal
+    cargo clippy --all-features --all-targets -p tsukuyomi-internal-macros
 fi
 
 cargo test
