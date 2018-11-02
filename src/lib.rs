@@ -26,25 +26,15 @@ extern crate serde_json;
 extern crate time;
 extern crate walkdir;
 
-#[cfg(feature = "websocket")]
-extern crate base64;
-#[cfg(feature = "websocket")]
-extern crate sha1;
-#[cfg(feature = "websocket")]
-extern crate tokio_tungstenite;
-#[cfg(feature = "websocket")]
-extern crate tungstenite;
-
-#[cfg(feature = "askama")]
-extern crate askama;
-#[cfg(feature = "askama")]
-extern crate mime_guess;
-
 pub use crate::internal::{app, error, extractor, handler, input, modifier, output, server};
-pub mod contrib;
 
 #[allow(missing_docs)]
 pub mod route {
     pub use crate::internal::route::*;
     pub use crate::internal::{connect, delete, get, head, options, patch, post, put, trace};
 }
+
+pub mod askama;
+pub mod fs;
+pub mod json;
+pub mod websocket;

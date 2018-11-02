@@ -143,7 +143,7 @@ impl NamedFile {
     /// # extern crate tsukuyomi;
     /// # use futures::prelude::*;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::contrib::fs::NamedFile;
+    /// # use tsukuyomi::fs::NamedFile;
     /// #
     /// # #[allow(dead_code)]
     /// fn handler(_: &mut Input) -> impl Future<Error = std::io::Error, Item = NamedFile> {
@@ -166,7 +166,7 @@ impl NamedFile {
     /// # extern crate tsukuyomi;
     /// # use futures::prelude::*;
     /// # use tsukuyomi::input::Input;
-    /// # use tsukuyomi::contrib::fs::{NamedFile, OpenConfig};
+    /// # use tsukuyomi::fs::{NamedFile, OpenConfig};
     /// use std::time::Duration;
     ///
     /// # #[allow(dead_code)]
@@ -429,7 +429,7 @@ fn block_size(_: &Metadata) -> u64 {
 ///
 /// ```no_run
 /// # use tsukuyomi::app::App;
-/// use tsukuyomi::contrib::fs::Staticfiles;
+/// use tsukuyomi::fs::Staticfiles;
 ///
 /// # fn main() -> tsukuyomi::app::AppResult<()> {
 /// let assets = Staticfiles::new("./public")

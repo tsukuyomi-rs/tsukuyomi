@@ -1,3 +1,5 @@
+#![cfg(feature = "askama")]
+
 //! Components for supporting Askama template.
 //!
 //! # Example
@@ -5,9 +7,10 @@
 //! ```ignore
 //! use tsukuyomi::input::Input;
 //! use tsukuyomi::output::Responder;
-//! use tsukuyomi::contrib::askama::{Template, TemplateExt};
+//! use tsukuyomi::askama::{Template, TemplateExt};
 //!
 //! #[derive(Debug, Template)]
+//! #[template(path = "index.html")]
 //! struct IndexPage {
 //!     name: String,
 //! }
@@ -19,16 +22,19 @@
 //! }
 //! ```
 
+extern crate askama;
+extern crate mime_guess;
+
+use self::mime_guess::get_mime_type_str;
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::Response;
-use mime_guess::get_mime_type_str;
 
 use crate::error::{Error, Failure};
 use crate::input::Input;
 use crate::output::Responder;
 
 #[doc(no_inline)]
-pub use askama::Template;
+pub use self::askama::Template;
 
 /// A helper function to generate an HTTP response from Askama template.
 pub fn respond(t: &dyn Template, ext: &str) -> Result<Response<String>, Error> {
