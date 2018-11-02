@@ -5,7 +5,7 @@ set -e
 cargo doc --all-features --no-deps \
     -p failure -p tungstenite -p tokio-tungstenite -p walkdir
 cargo doc --all-features --no-deps \
-    -p tsukuyomi-internal tsukuyomi-internal-macros
+    -p tsukuyomi-internal -p tsukuyomi-internal-macros
 cargo doc --all-features --no-deps
 rm -f target/doc/.lock
 

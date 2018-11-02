@@ -22,7 +22,7 @@ jobs:
         cargo --version
       displayName: 'show toolchain version'
 
-    - script: bash .ci/run_build.sh
+    - script: bash .ci/run_test.sh
       displayName: 'run test script'
 
   - job: macOS
@@ -38,7 +38,7 @@ jobs:
         rustc --version
         cargo --version
       displayName: 'show toolchain version'
-    - script: bash .ci/run_build.sh
+    - script: bash .ci/run_test.sh
       displayName: 'run test script'
 
   - job: Linux
