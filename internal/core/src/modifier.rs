@@ -33,11 +33,11 @@
 //! # }
 //! ```
 
-use futures::{self, Future, Poll};
+use futures::{self, Poll};
 use std::fmt;
 
 use crate::error::Error;
-use crate::input::{self, Input};
+use crate::input::Input;
 use crate::output::Output;
 
 /// A trait representing a `Modifier`.
@@ -111,18 +111,6 @@ impl BeforeHandle {
         BeforeHandle(BeforeHandleState::Polling(Box::new(f)))
     }
 
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.3.3",
-        note = "use `BeforeHandle::polling` instead."
-    )]
-    #[inline]
-    pub fn wrap_future(
-        mut future: impl Future<Item = Option<Output>, Error = Error> + Send + 'static,
-    ) -> Self {
-        Self::polling(move |input| input::with_set_current(input, || future.poll()))
-    }
-
     pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Option<Output>, Error> {
         use self::BeforeHandleState::*;
         match self.0 {
@@ -177,18 +165,6 @@ impl AfterHandle {
     /// Creates an `AfterHandle` from a closure repsenting an asynchronous computation.
     pub fn polling(f: impl FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static) -> Self {
         AfterHandle(AfterHandleState::Polling(Box::new(f)))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.3.3",
-        note = "use `AfterHandle::polling` instead."
-    )]
-    #[inline]
-    pub fn wrap_future(
-        mut future: impl Future<Item = Output, Error = Error> + Send + 'static,
-    ) -> Self {
-        Self::polling(move |input| input::with_set_current(input, || future.poll()))
     }
 
     pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {

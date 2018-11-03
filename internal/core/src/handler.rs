@@ -1,13 +1,13 @@
 //! `Handler` and supplemental components.
 
 use either::Either;
-use futures::{Async, Future, Poll};
+use futures::{Async, Poll};
 use std::fmt;
 use std::sync::Arc;
 
 use crate::error::Error;
 use crate::input::Input;
-use crate::output::{Output, Responder};
+use crate::output::Output;
 
 /// A trait representing handler functions.
 pub trait Handler {
@@ -117,26 +117,6 @@ impl Handle {
         Handle(HandleKind::Polling(Box::new(f)))
     }
 
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.3.3",
-        note = "This method will remove in the future version"
-    )]
-    #[inline]
-    pub fn wrap_async<F>(mut x: F) -> Self
-    where
-        F: Future + Send + 'static,
-        F::Item: Responder,
-        Error: From<F::Error>,
-    {
-        Self::polling(move |input| {
-            futures::try_ready!(crate::input::with_set_current(input, || x.poll()))
-                .respond_to(input)
-                .map(|response| Async::Ready(response.map(Into::into)))
-                .map_err(Into::into)
-        })
-    }
-
     pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
         match self.0 {
             HandleKind::Ready(ref mut res) => res
@@ -146,58 +126,4 @@ impl Handle {
             HandleKind::Polling(ref mut f) => (f)(input),
         }
     }
-}
-
-#[doc(hidden)]
-#[deprecated(since = "0.3.3")]
-pub fn wrap_ready<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
-where
-    R: Responder,
-{
-    #[allow(missing_debug_implementations)]
-    struct ReadyHandler<T>(T);
-
-    impl<T, R> Handler for ReadyHandler<T>
-    where
-        T: Fn(&mut Input<'_>) -> R,
-        R: Responder,
-    {
-        fn handle(&self, input: &mut Input<'_>) -> Handle {
-            Handle::ready(
-                (self.0)(input)
-                    .respond_to(input)
-                    .map(|res| res.map(Into::into))
-                    .map_err(Into::into),
-            )
-        }
-    }
-
-    ReadyHandler(f)
-}
-
-#[doc(hidden)]
-#[deprecated(since = "0.3.3")]
-pub fn wrap_async<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
-where
-    R: Future + Send + 'static,
-    R::Item: Responder,
-    Error: From<R::Error>,
-{
-    #[allow(missing_debug_implementations)]
-    struct AsyncHandler<T>(T);
-
-    impl<T, R> Handler for AsyncHandler<T>
-    where
-        T: Fn(&mut Input<'_>) -> R,
-        R: Future + Send + 'static,
-        R::Item: Responder,
-        Error: From<R::Error>,
-    {
-        #[allow(deprecated)]
-        fn handle(&self, input: &mut Input<'_>) -> Handle {
-            Handle::wrap_async((self.0)(input))
-        }
-    }
-
-    AsyncHandler(f)
 }

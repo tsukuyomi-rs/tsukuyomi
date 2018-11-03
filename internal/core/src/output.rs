@@ -2,13 +2,13 @@
 
 use bytes::{Buf, Bytes, IntoBuf};
 use either::Either;
-use futures::{Async, Future, Poll, Stream};
+use futures::{Poll, Stream};
 use http::header::{HeaderMap, HeaderValue};
 use http::{header, Response, StatusCode};
 use serde::Serialize;
 
 use crate::error::{Error, Failure, HttpError, Never};
-use crate::input::{self, Input};
+use crate::input::Input;
 use crate::runtime::service::http::{Body, Payload};
 
 /// A type representing the message body in an HTTP response.
@@ -311,50 +311,4 @@ fn json_response<T>(body: T) -> Response<T> {
         HeaderValue::from_static("application/json"),
     );
     response
-}
-
-// ==== AsyncResponder
-
-#[doc(hidden)]
-#[deprecated(
-    since = "0.3.3",
-    note = "This trait will remove in the future version."
-)]
-pub trait AsyncResponder: Send + 'static + sealed::Sealed {
-    type Output: Responder;
-    fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error>;
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-#[allow(deprecated)]
-impl<F> AsyncResponder for F
-where
-    F: Future + Send + 'static,
-    F::Item: Responder,
-    Error: From<F::Error>,
-{
-    type Output = F::Item;
-
-    fn poll_respond_to(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
-        let x = futures::try_ready!(input::with_set_current(input, || Future::poll(self)));
-        x.respond_to(input)
-            .map(|res| Async::Ready(res.map(Into::into)))
-            .map_err(Into::into)
-    }
-}
-
-mod sealed {
-    use futures::Future;
-
-    use super::Responder;
-    use crate::error::Error;
-
-    pub trait Sealed {}
-
-    impl<F> Sealed for F
-    where
-        F: Future + Send + 'static,
-        F::Item: Responder,
-        Error: From<F::Error>,
-    {}
 }

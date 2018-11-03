@@ -1,4 +1,3 @@
-use tsukuyomi::app::builder::Route;
 use tsukuyomi::app::App;
 use tsukuyomi::error::internal_server_error;
 use tsukuyomi::error::Error;
@@ -249,51 +248,4 @@ fn nested_modifiers() {
     marker.lock().unwrap().clear();
     let _ = server.perform(Request::get("/path/to/a")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "B3", "A2", "A1"]);
-}
-
-#[allow(deprecated)]
-#[test]
-fn route_modifiers() {
-    let marker = Arc::new(Mutex::new(vec![]));
-
-    let mut server = local_server(App::builder().mount("/path", |s| {
-        s.modifier(MarkModifier {
-            marker: marker.clone(),
-            before: |m| {
-                m.push("B1");
-                Ok(None)
-            },
-            after: |m| {
-                m.push("A1");
-                Ok(Response::new(ResponseBody::empty()))
-            },
-        });
-        s.mount("/to", |s| {
-            s.route(|r: &mut Route| {
-                r.uri("/");
-                r.modifier(MarkModifier {
-                    marker: marker.clone(),
-                    before: |m| {
-                        m.push("B2");
-                        Ok(None)
-                    },
-                    after: |m| {
-                        m.push("A2");
-                        Ok(Response::new(ResponseBody::empty()))
-                    },
-                });
-
-                r.handler({
-                    let marker = marker.clone();
-                    wrap_ready(move |_| {
-                        marker.lock().unwrap().push("H");
-                        ""
-                    })
-                });
-            });
-        });
-    }));
-
-    let _ = server.perform(Request::get("/path/to")).unwrap();
-    assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
 }

@@ -17,10 +17,6 @@ use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 use tsukuyomi::server::service::http::UpgradedIo;
 
-#[allow(deprecated)]
-#[doc(hidden)]
-pub use self::deprecated::{handshake, start};
-
 /// A transport for exchanging data frames with the peer.
 pub type Transport = WebSocketStream<UpgradedIo>;
 
@@ -197,56 +193,5 @@ where
         }
 
         Ok(response)
-    }
-}
-
-#[deprecated(since = "0.3.3")]
-mod deprecated {
-    use futures::IntoFuture;
-    use http::{header, Response, StatusCode};
-    use tokio_tungstenite::WebSocketStream;
-    use tungstenite::protocol::{Role, WebSocketConfig};
-
-    use tsukuyomi::error::Error;
-    use tsukuyomi::input::Input;
-    use tsukuyomi::output::Responder;
-    use tsukuyomi::server::service::http::{Body, UpgradedIo};
-
-    use super::{handshake2, HandshakeError, Transport, Ws};
-
-    #[doc(hidden)]
-    pub fn handshake(input: &mut Input<'_>) -> Result<Response<()>, HandshakeError> {
-        let Ws { accept_hash, .. } = handshake2(input)?;
-        Ok(Response::builder()
-            .status(StatusCode::SWITCHING_PROTOCOLS)
-            .header(header::UPGRADE, "websocket")
-            .header(header::CONNECTION, "upgrade")
-            .header(header::SEC_WEBSOCKET_ACCEPT, &*accept_hash)
-            .body(())
-            .expect("Failed to construct a handshake response (This is a bug)"))
-    }
-
-    #[doc(hidden)]
-    pub fn start<R>(
-        input: &mut Input<'_>,
-        config: Option<WebSocketConfig>,
-        f: impl FnOnce(Transport) -> R + Send + 'static,
-    ) -> impl Responder
-    where
-        R: IntoFuture<Item = (), Error = ()>,
-        R::Future: Send + 'static,
-    {
-        let response = handshake(input)?.map(|_| Body::default());
-
-        input
-            .body_mut()
-            .upgrade(move |io: UpgradedIo| {
-                let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
-                f(transport).into_future()
-            }).map_err(|_| {
-                tsukuyomi::error::internal_server_error("failed to spawn WebSocket task")
-            })?;
-
-        Ok::<_, Error>(response)
     }
 }

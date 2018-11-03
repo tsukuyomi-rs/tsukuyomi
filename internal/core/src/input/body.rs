@@ -2,18 +2,11 @@
 
 use bytes::{Bytes, BytesMut};
 use futures::{Async, Future, IntoFuture, Poll};
-use mime;
-use std::marker::PhantomData;
-use std::{fmt, mem};
+use std::mem;
 
-use crate::error::{Error, Failure};
 use crate::runtime::rt;
 use crate::runtime::service::http::{Payload as _Payload, RequestBody as RawBody, UpgradedIo};
 use crate::runtime::CritError;
-
-use super::global::with_get_current;
-use super::header::content_type;
-use super::Input;
 
 // ==== RequestBody ====
 
@@ -125,19 +118,6 @@ impl ReadAll {
             }
         }
     }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.3.3")]
-    #[allow(deprecated)]
-    pub fn convert_to<T>(self) -> ConvertTo<T>
-    where
-        T: FromData + 'static,
-    {
-        ConvertTo {
-            read_all: self,
-            _marker: PhantomData,
-        }
-    }
 }
 
 impl Future for ReadAll {
@@ -146,86 +126,5 @@ impl Future for ReadAll {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         self.poll_ready()
-    }
-}
-
-// ==== ConvertTo ====
-
-#[doc(hidden)]
-#[deprecated(since = "0.3.3")]
-#[must_use = "futures do nothing unless polled"]
-pub struct ConvertTo<T> {
-    read_all: ReadAll,
-    _marker: PhantomData<fn() -> T>,
-}
-
-#[allow(deprecated)]
-#[cfg_attr(tarpaulin, skip)]
-impl<T> fmt::Debug for ConvertTo<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ConvertTo")
-            .field("read_all", &self.read_all)
-            .finish()
-    }
-}
-
-#[allow(deprecated)]
-impl<T> ConvertTo<T>
-where
-    T: FromData,
-{
-    /// Attempts to convert the incoming message data into an value of `T`.
-    pub fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, Error> {
-        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
-        T::from_data(data, input)
-            .map(Async::Ready)
-            .map_err(Into::into)
-    }
-}
-
-#[allow(deprecated)]
-impl<T> Future for ConvertTo<T>
-where
-    T: FromData,
-{
-    type Item = T;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
-        with_get_current(|input| T::from_data(data, input))
-            .map(Async::Ready)
-            .map_err(Into::into)
-    }
-}
-
-#[doc(hidden)]
-#[deprecated(since = "0.3.3")]
-pub trait FromData: Sized {
-    type Error: Into<Error>;
-    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error>;
-}
-
-#[allow(deprecated)]
-impl FromData for String {
-    type Error = Failure;
-
-    fn from_data(data: Bytes, input: &mut Input<'_>) -> Result<Self, Self::Error> {
-        if let Some(m) = content_type(input)? {
-            if m.type_() != mime::TEXT || m.subtype() != mime::PLAIN {
-                return Err(Failure::bad_request(failure::format_err!(
-                    "the content type must be text/plain"
-                )));
-            }
-            if m.get_param("charset")
-                .map_or(true, |charset| charset != "utf-8")
-            {
-                return Err(Failure::bad_request(failure::format_err!(
-                    "the charset must be utf-8"
-                )));
-            }
-        }
-
-        Self::from_utf8(data.to_vec()).map_err(Failure::bad_request)
     }
 }
