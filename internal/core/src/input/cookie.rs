@@ -20,10 +20,10 @@ impl CookieManager {
         } else {
             let mut jar = CookieJar::new();
             for raw in h.get_all(header::COOKIE) {
-                let raw_s = raw.to_str().map_err(crate::error::Failure::bad_request)?;
+                let raw_s = raw.to_str().map_err(crate::error::bad_request)?;
                 for s in raw_s.split(';').map(|s| s.trim()) {
                     let cookie = Cookie::parse_encoded(s)
-                        .map_err(crate::error::Failure::bad_request)?
+                        .map_err(crate::error::bad_request)?
                         .into_owned();
                     jar.add_original(cookie);
                 }

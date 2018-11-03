@@ -1,8 +1,7 @@
-use http::{Method, Response, StatusCode};
+use http::{Method, Response};
 use matches::assert_matches;
 
 use super::*;
-use crate::error::HttpError;
 use crate::handler::Handle;
 use crate::input::Input;
 use crate::output::ResponseBody;
@@ -16,7 +15,7 @@ fn empty() {
     let app = App::builder().finish().unwrap();
     assert_matches!(
         app.recognize("/", &Method::GET),
-        Err(ref e) if e.status() == StatusCode::NOT_FOUND
+        Err(RecognizeError::NotFound)
     );
 }
 
@@ -28,11 +27,11 @@ fn route_single_method() {
 
     assert_matches!(
         app.recognize("/path/to", &Method::GET),
-        Err(ref e) if e.status() == StatusCode::NOT_FOUND
+        Err(RecognizeError::NotFound)
     );
     assert_matches!(
         app.recognize("/", &Method::POST),
-        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
+        Err(RecognizeError::MethodNotAllowed)
     );
 }
 
@@ -49,7 +48,7 @@ fn route_multiple_method() {
 
     assert_matches!(
         app.recognize("/", &Method::PUT),
-        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
+        Err(RecognizeError::MethodNotAllowed)
     );
 }
 
@@ -70,7 +69,7 @@ fn route_fallback_head_disabled() {
 
     assert_matches!(
         app.recognize("/", &Method::HEAD),
-        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
+        Err(RecognizeError::MethodNotAllowed)
     );
 }
 
@@ -98,7 +97,7 @@ fn route_fallback_options_disabled() {
 
     assert_matches!(
         app.recognize("/", &Method::OPTIONS),
-        Err(ref e) if e.status() == StatusCode::METHOD_NOT_ALLOWED
+        Err(RecognizeError::MethodNotAllowed)
     );
 }
 
@@ -115,7 +114,7 @@ fn global_prefix() {
     assert_matches!(app.recognize("/api/b", &Method::GET), Ok((1, ..)));
     assert_matches!(
         app.recognize("/a", &Method::GET),
-        Err(ref e) if e.status() == StatusCode::NOT_FOUND
+        Err(RecognizeError::NotFound)
     );
 }
 
@@ -168,7 +167,7 @@ fn scope_nested() {
 
     assert_matches!(
         app.recognize("/baz/", &Method::GET),
-        Err(ref e) if e.status() == StatusCode::NOT_FOUND
+        Err(RecognizeError::NotFound)
     );
 }
 

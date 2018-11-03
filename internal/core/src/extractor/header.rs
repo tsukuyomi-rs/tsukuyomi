@@ -2,7 +2,7 @@
 
 use mime::Mime;
 
-use crate::error::Failure;
+use crate::error::Error;
 use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
@@ -14,15 +14,13 @@ pub struct ContentType {
 
 impl Extractor for ContentType {
     type Output = (Mime,);
-    type Error = Failure;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         match crate::input::header::content_type(input)? {
             Some(mime) => Ok(Extract::Ready((mime.clone(),))),
-            None => Err(Failure::bad_request(failure::format_err!(
-                "missing Content-type"
-            ))),
+            None => Err(crate::error::bad_request("missing Content-type")),
         }
     }
 }

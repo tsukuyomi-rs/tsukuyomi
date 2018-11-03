@@ -7,7 +7,7 @@ use http::header::{HeaderMap, HeaderValue};
 use http::{header, Response, StatusCode};
 use serde::Serialize;
 
-use crate::error::{Error, Failure, HttpError, Never};
+use crate::error::{Error, Never};
 use crate::input::Input;
 use crate::runtime::service::http::{Body, Payload};
 
@@ -147,23 +147,10 @@ where
     type Error = Error;
 
     fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self.ok_or_else(|| OptionError { _priv: () })?
+        self.ok_or_else(|| crate::error::not_found("None"))?
             .respond_to(input)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, failure::Fail)]
-#[fail(display = "Not Found")]
-pub struct OptionError {
-    _priv: (),
-}
-
-impl HttpError for OptionError {
-    fn status(&self) -> StatusCode {
-        StatusCode::NOT_FOUND
     }
 }
 
@@ -283,13 +270,13 @@ where
     T: Serialize,
 {
     type Body = Vec<u8>;
-    type Error = Failure;
+    type Error = Error;
 
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let body = if self.pretty {
-            serde_json::to_vec_pretty(&self.data).map_err(Failure::internal_server_error)?
+            serde_json::to_vec_pretty(&self.data).map_err(crate::error::internal_server_error)?
         } else {
-            serde_json::to_vec(&self.data).map_err(Failure::internal_server_error)?
+            serde_json::to_vec(&self.data).map_err(crate::error::internal_server_error)?
         };
         Ok(json_response(body))
     }

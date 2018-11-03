@@ -33,7 +33,7 @@ pub enum RecognizeError {
 }
 
 impl HttpError for RecognizeError {
-    fn status(&self) -> StatusCode {
+    fn status_code(&self) -> StatusCode {
         match self {
             RecognizeError::NotFound => StatusCode::NOT_FOUND,
             RecognizeError::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
@@ -337,8 +337,7 @@ impl Future for AppServiceFuture {
                 self.app
                     .data
                     .error_handler
-                    .handle_error(err)
-                    .into_response(&request)
+                    .handle_error(err, &request)
                     .map(Async::Ready)
             }
         }

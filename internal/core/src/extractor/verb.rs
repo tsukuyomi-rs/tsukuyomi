@@ -2,11 +2,10 @@
 
 #![allow(missing_docs)]
 
-use derive_more::From;
 use futures::Future;
-use http::{Method, StatusCode};
+use http::Method;
 
-use crate::error::{Error, ErrorMessage};
+use crate::error::Error;
 use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
@@ -20,7 +19,7 @@ macro_rules! define_http_method_extractors {
             $Name(extractor)
         }
 
-        #[derive(Debug, From)]
+        #[derive(Debug)]
         pub struct $Name<E>(E);
 
         impl<E> Extractor for $Name<E>
@@ -39,7 +38,7 @@ macro_rules! define_http_method_extractors {
                         Extract::Incomplete(fut) => Ok(Extract::Incomplete(fut.map_err(Into::into as fn(E::Error) -> Error))),
                     }
                 } else {
-                    Err(ErrorMessage::new(StatusCode::METHOD_NOT_ALLOWED, "").into())
+                    Err(crate::error::method_not_allowed("rejected by extractor"))
                 }
             }
         }

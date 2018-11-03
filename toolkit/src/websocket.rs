@@ -11,7 +11,7 @@ pub use tokio_tungstenite::WebSocketStream;
 #[doc(no_inline)]
 pub use tungstenite::protocol::{Message, WebSocketConfig};
 
-use tsukuyomi::error::HttpError;
+use tsukuyomi::error::Error;
 use tsukuyomi::extractor::{Extract, Extractor, HasExtractor};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
@@ -34,12 +34,6 @@ pub enum HandshakeError {
 
     #[fail(display = "The value of `Sec-WebSocket-Version` must be equal to '13'")]
     InvalidSecWebSocketVersion,
-}
-
-impl HttpError for HandshakeError {
-    fn status(&self) -> StatusCode {
-        StatusCode::BAD_REQUEST
-    }
 }
 
 fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
@@ -92,12 +86,14 @@ pub struct WsExtractor(());
 
 impl Extractor for WsExtractor {
     type Output = (Ws,);
-    type Error = HandshakeError;
+    type Error = Error;
     type Future = tsukuyomi::extractor::Placeholder<Self::Output, Self::Error>;
 
     #[inline]
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        self::handshake2(input).map(|out| Extract::Ready((out,)))
+        self::handshake2(input)
+            .map(|out| Extract::Ready((out,)))
+            .map_err(tsukuyomi::error::bad_request)
     }
 }
 
@@ -158,7 +154,7 @@ where
     R::Future: Send + 'static,
 {
     type Body = ();
-    type Error = tsukuyomi::error::ErrorMessage;
+    type Error = Error;
 
     fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let Self {

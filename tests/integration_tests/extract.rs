@@ -273,7 +273,7 @@ fn optional() {
                     if let Some(params) = params {
                         Ok(format!("{},{}", params.id, params.name))
                     } else {
-                        Err(tsukuyomi::error::internal_server_error("####none####").into())
+                        Err(tsukuyomi::error::internal_server_error("####none####"))
                     }
                 }),
         ),
@@ -314,7 +314,7 @@ fn fallible() {
                     if let Ok(params) = params {
                         Ok(format!("{},{}", params.id, params.name))
                     } else {
-                        Err(tsukuyomi::error::internal_server_error("####err####").into())
+                        Err(tsukuyomi::error::internal_server_error("####err####"))
                     }
                 }),
         ),

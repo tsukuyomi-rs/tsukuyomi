@@ -11,7 +11,7 @@ use http::header::HeaderValue;
 use http::{header, HttpTryFrom, Method, Response};
 use indexmap::map::IndexMap;
 
-use crate::error::{DefaultErrorHandler, ErrorHandler};
+use crate::error::handler::{DefaultErrorHandler, ErrorHandler};
 use crate::handler::{self, Handle, Handler};
 use crate::modifier::Modifier;
 use crate::output::ResponseBody;

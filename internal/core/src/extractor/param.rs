@@ -2,19 +2,18 @@
 
 #![allow(missing_docs)]
 
-use failure::format_err;
-use failure::Fail;
+use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
-use crate::error::Failure;
+use crate::error::Error;
 use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 pub fn pos<T>(pos: usize) -> Pos<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     Pos::new(pos)
 }
@@ -22,7 +21,7 @@ where
 pub fn named<T>(name: impl Into<String>) -> Named<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     Named::new(name)
 }
@@ -30,7 +29,7 @@ where
 pub fn wildcard<T>() -> Wildcard<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     Wildcard::new()
 }
@@ -44,7 +43,7 @@ pub struct Pos<T> {
 impl<T> Pos<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     pub fn new(pos: usize) -> Self {
         Self {
@@ -57,20 +56,20 @@ where
 impl<T> Extractor for Pos<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     type Output = (T,);
-    type Error = Failure;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         let params = input.params();
-        let s = params.get(self.pos).ok_or_else(|| {
-            Failure::internal_server_error(format_err!("the cursor is out of range"))
-        })?;
+        let s = params
+            .get(self.pos)
+            .ok_or_else(|| crate::error::internal_server_error("the cursor is out of range"))?;
         s.parse()
             .map(|out| Extract::Ready((out,)))
-            .map_err(Failure::bad_request)
+            .map_err(crate::error::bad_request)
     }
 }
 
@@ -83,7 +82,7 @@ pub struct Named<T> {
 impl<T> Named<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -96,20 +95,20 @@ where
 impl<T> Extractor for Named<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     type Output = (T,);
-    type Error = Failure;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         let params = input.params();
-        let s = params.name(&self.name).ok_or_else(|| {
-            Failure::internal_server_error(format_err!("the cursor is out of range"))
-        })?;
+        let s = params
+            .name(&self.name)
+            .ok_or_else(|| crate::error::internal_server_error("the cursor is out of range"))?;
         s.parse()
             .map(|out| Extract::Ready((out,)))
-            .map_err(Failure::bad_request)
+            .map_err(crate::error::bad_request)
     }
 }
 
@@ -119,7 +118,7 @@ pub struct Wildcard<T>(PhantomData<fn() -> T>);
 impl<T> Default for Wildcard<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     fn default() -> Self {
         Self::new()
@@ -129,7 +128,7 @@ where
 impl<T> Wildcard<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     pub fn new() -> Self {
         Wildcard(PhantomData)
@@ -139,19 +138,19 @@ where
 impl<T> Extractor for Wildcard<T>
 where
     T: FromStr + 'static,
-    T::Err: Fail,
+    T::Err: fmt::Debug + fmt::Display + Send + 'static,
 {
     type Output = (T,);
-    type Error = Failure;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         let params = input.params();
         let s = params.get_wildcard().ok_or_else(|| {
-            Failure::internal_server_error(format_err!("the wildcard parameter is not set"))
+            crate::error::internal_server_error("the wildcard parameter is not set")
         })?;
         s.parse()
             .map(|out| Extract::Ready((out,)))
-            .map_err(Failure::bad_request)
+            .map_err(crate::error::bad_request)
     }
 }

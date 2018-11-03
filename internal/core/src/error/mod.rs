@@ -26,50 +26,35 @@
 //! [`Modifier`]: ../modifier/trait.Modifier.html
 //! [`ErrorHandler`]: ./trait.ErrorHandler.html
 
-mod failure;
-mod handler;
-mod message;
-mod never;
+pub(crate) mod handler;
 
-pub use self::failure::Failure;
-pub(crate) use self::handler::DefaultErrorHandler;
 pub use self::handler::ErrorHandler;
-pub use self::message::{bad_request, internal_server_error, ErrorMessage};
-pub use self::never::Never;
 
-// ====
-
-use http::header::HeaderMap;
-use http::{header, Request, Response, StatusCode};
+use http::{Request, Response, StatusCode};
 use std::any::TypeId;
+use std::fmt;
 use std::io;
 
 use crate::input::RequestBody;
 use crate::output::ResponseBody;
+use crate::runtime::CritError;
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// A trait representing error values to be converted into an HTTP response.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait HttpError: ::failure::Fail {
+pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static {
     /// Returns an HTTP status code associated with this value.
-    ///
-    /// By default, the value is `500 Internal Server Error`.
-    fn status(&self) -> StatusCode {
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-
-    /// Appends some entries to the provided header map.
-    #[allow(unused_variables)]
-    fn headers(&self, headers: &mut HeaderMap) {}
+    fn status_code(&self) -> StatusCode;
 
     /// Generates a message body from this error value.
-    ///
-    /// By default, it just uses `fmt::Display`.
     #[allow(unused_variables)]
-    fn body(&mut self, request: &Request<RequestBody>) -> ResponseBody {
-        self.to_string().into()
+    fn to_response(&mut self, request: &Request<RequestBody>) -> Response<ResponseBody> {
+        Response::builder()
+            .status(self.status_code())
+            .body(self.to_string().into())
+            .expect("should be a valid response")
     }
 
     #[doc(hidden)]
@@ -78,52 +63,28 @@ pub trait HttpError: ::failure::Fail {
     }
 }
 
-impl dyn HttpError {
-    #[allow(missing_docs)]
-    #[inline]
-    pub fn is<T: HttpError>(&self) -> bool {
-        self.__private_type_id__() == TypeId::of::<T>()
+impl HttpError for StatusCode {
+    fn status_code(&self) -> StatusCode {
+        *self
     }
 
-    /// Attempts to downcast this error value to the specified concrete type by shared reference.
-    pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            unsafe { Some(&*(self as *const dyn HttpError as *const T)) }
-        } else {
-            None
-        }
-    }
-
-    /// Attempts to downcast this error value to the specified concrete type by mutable reference.
-    pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            unsafe { Some(&mut *(self as *mut dyn HttpError as *mut T)) }
-        } else {
-            None
-        }
-    }
-}
-
-/// An extension trait for adding support for downcasting of `HttpError`s.
-pub trait BoxHttpErrorExt {
-    /// Attempts to downcast the error value to the specified concreate type.
-    fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Box<dyn HttpError>>;
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl BoxHttpErrorExt for Box<dyn HttpError> {
-    fn downcast<T: HttpError>(self) -> ::std::result::Result<Box<T>, Self> {
-        if self.is::<T>() {
-            unsafe { Ok(Box::from_raw(Box::into_raw(self) as *mut T)) }
-        } else {
-            Err(self)
-        }
+    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+        let mut response = Response::new(ResponseBody::default());
+        *response.status_mut() = *self;
+        response
     }
 }
 
 /// The implementation of `HttpError` for the standard I/O error.
 impl HttpError for io::Error {
-    fn status(&self) -> StatusCode {
+    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+        Response::builder()
+            .status(self.status_code())
+            .body(format!("I/O error: {}", self).into())
+            .expect("should be a valid response")
+    }
+
+    fn status_code(&self) -> StatusCode {
         match self.kind() {
             io::ErrorKind::NotFound => StatusCode::NOT_FOUND,
             io::ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
@@ -132,9 +93,216 @@ impl HttpError for io::Error {
     }
 }
 
+/// The implementation of `HttpError` for the standard I/O error.
+impl HttpError for failure::Error {
+    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+        Response::builder()
+            .status(self.status_code())
+            .body(format!("generic error: {}", self).into())
+            .expect("should be a valid response")
+    }
+
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+/// A helper type emulating the standard `never_type` (`!`).
+#[cfg_attr(feature = "cargo-clippy", allow(stutter, empty_enum))]
+#[derive(Debug)]
+pub enum Never {}
+
+impl fmt::Display for Never {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
+}
+
+impl std::error::Error for Never {
+    fn description(&self) -> &str {
+        match *self {}
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        match *self {}
+    }
+}
+
+impl HttpError for Never {
+    fn status_code(&self) -> StatusCode {
+        match *self {}
+    }
+
+    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+        match *self {}
+    }
+}
+
+/// An error type which wraps a `Display`able value.
+#[derive(Debug)]
+pub struct Custom<D> {
+    parts: Option<http::response::Parts>,
+    body: D,
+}
+
+#[allow(missing_docs)]
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+impl<D> Custom<D>
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    pub fn new(response: Response<D>) -> Self {
+        debug_assert!(response.status().is_client_error() || response.status().is_server_error());
+        let (parts, body) = response.into_parts();
+        Self {
+            parts: Some(parts),
+            body,
+        }
+    }
+
+    pub fn parts(&mut self) -> &mut http::response::Parts {
+        self.parts
+            .as_mut()
+            .expect("The error has already converted into response")
+    }
+
+    pub fn map<F, U>(self, f: F) -> Custom<U>
+    where
+        F: FnOnce(D) -> U,
+    {
+        Custom {
+            parts: self.parts,
+            body: f(self.body),
+        }
+    }
+
+    pub fn into_body(self) -> D {
+        self.body
+    }
+}
+
+impl<D> std::ops::Deref for Custom<D>
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    type Target = D;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.body
+    }
+}
+
+impl<D> std::ops::DerefMut for Custom<D>
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.body
+    }
+}
+
+impl<D> From<Response<D>> for Custom<D>
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    fn from(response: Response<D>) -> Self {
+        Self::new(response)
+    }
+}
+
+impl<D> fmt::Display for Custom<D>
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.body, f)
+    }
+}
+
+impl<D> HttpError for Custom<D>
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    fn status_code(&self) -> StatusCode {
+        match self.parts {
+            Some(ref parts) => parts.status,
+            None => panic!(""),
+        }
+    }
+
+    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+        let parts = self
+            .parts
+            .take()
+            .expect("The error has already converted into response");
+        let body = self.body.to_string();
+        Response::from_parts(parts, body.into())
+    }
+}
+
+#[allow(missing_docs)]
+pub fn custom<D>(status: StatusCode, msg: D) -> Error
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    Custom::new({
+        let mut response = Response::new(msg);
+        *response.status_mut() = status;
+        response
+    }).into()
+}
+
+#[allow(missing_docs)]
+pub fn response<D>(response: Response<D>) -> Error
+where
+    D: fmt::Debug + fmt::Display + Send + 'static,
+{
+    Custom::new(response).into()
+}
+
+macro_rules! define_errors {
+    ($(
+        $(#[$m:meta])*
+        $name:ident => $STATUS:ident,
+    )*) => {$(
+        $(#[$m])*
+        #[inline]
+        pub fn $name<D>(msg: D) -> Error
+        where
+            D: fmt::Debug + fmt::Display + Send + 'static,
+        {
+            self::custom(StatusCode::$STATUS, msg)
+        }
+    )*};
+}
+
+define_errors! {
+    /// Equivalent to `custom(StatusCode::BAD_REQUEST, msg)`.
+    bad_request => BAD_REQUEST,
+
+    /// Equivalent to `custom(StatusCode::UNAUTHORIZED, msg)`.
+    unauthorized => UNAUTHORIZED,
+
+    /// Equivalent to `custom(StatusCode::FORBIDDEN, msg)`.
+    forbidden => FORBIDDEN,
+
+    /// Equivalent to `custom(StatusCode::NOT_FOUND, msg)`.
+    not_found => NOT_FOUND,
+
+    /// Equivalent to `custom(StatusCode::METHOD_NOT_ALLOWED, msg)`.
+    method_not_allowed => METHOD_NOT_ALLOWED,
+
+    /// Equivalent to `custom(StatusCode::INTERNAL_SERVER_ERROR, msg)`.
+    internal_server_error => INTERNAL_SERVER_ERROR,
+}
+
+// ==== Error ====
+
 /// A type which holds all kinds of errors occurring in handlers.
 #[derive(Debug)]
-pub struct Error(::std::result::Result<Box<dyn HttpError>, crate::runtime::CritError>);
+pub struct Error(::std::result::Result<Box<dyn HttpError>, CritError>);
 
 impl<E> From<E> for Error
 where
@@ -186,7 +354,7 @@ impl Error {
     /// Consumes `self` and converts its value into a boxed `HttpError`.
     ///
     /// If the value is a criticial error, it returns `self` wrapped in `Err`.
-    pub fn into_http_error(self) -> ::std::result::Result<Box<dyn HttpError>, Self> {
+    pub fn into_http_error(self) -> std::result::Result<Box<dyn HttpError>, Self> {
         match self.0 {
             Ok(e) => Ok(e),
             Err(e) => Err(Error(Err(e))),
@@ -194,9 +362,15 @@ impl Error {
     }
 
     /// Attempts to downcast this error value into the specified concrete type.
-    pub fn downcast<T: HttpError>(self) -> ::std::result::Result<T, Self> {
+    pub fn downcast<T: HttpError>(self) -> std::result::Result<T, Self> {
         match self.0 {
-            Ok(e) => e.downcast().map(|e| *e).map_err(|e| Error(Ok(e))),
+            Ok(e) => {
+                if e.__private_type_id__() == TypeId::of::<T>() {
+                    unsafe { Ok(*Box::from_raw(Box::into_raw(e) as *mut T)) }
+                } else {
+                    Err(Error(Ok(e)))
+                }
+            }
             Err(e) => Err(Error(Err(e))),
         }
     }
@@ -204,44 +378,20 @@ impl Error {
     /// Attempts to downcast this error value to the specified concrete type by reference.
     pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
         match self.0 {
-            Ok(ref e) => e.downcast_ref(),
-            Err(..) => None,
+            Ok(ref e) if e.__private_type_id__() == TypeId::of::<T>() => unsafe {
+                Some(&*(&**e as *const dyn HttpError as *const T))
+            },
+            _ => None,
         }
     }
 
     /// Attempts to downcast this error value to the specified concrete type by reference.
     pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
         match self.0 {
-            Ok(ref mut e) => e.downcast_mut(),
-            Err(..) => None,
-        }
-    }
-
-    /// [unstable]
-    /// Attempts to convert the internal value of `HttpError` into a specified type.
-    ///
-    /// This method does nothing if the type id of internal value is equal to `T`.
-    pub fn map<T: HttpError>(self, f: impl FnOnce(Box<dyn HttpError>) -> T) -> Self {
-        Error(match self.0 {
-            Ok(e) => match e.downcast::<T>() {
-                Ok(e) => Ok(e),
-                Err(e) => Ok(Box::new(f(e))),
+            Ok(ref mut e) if e.__private_type_id__() == TypeId::of::<T>() => unsafe {
+                Some(&mut *(&mut **e as *mut dyn HttpError as *mut T))
             },
-            Err(e) => Err(e),
-        })
-    }
-
-    pub(crate) fn into_response(
-        self,
-        request: &Request<RequestBody>,
-    ) -> ::std::result::Result<Response<ResponseBody>, crate::runtime::CritError> {
-        let mut err = self.0?;
-        let mut response = Response::builder()
-            .status(err.status())
-            .header(header::CONNECTION, "close")
-            .header(header::CACHE_CONTROL, "no-cache")
-            .body(())?;
-        err.headers(response.headers_mut());
-        Ok(response.map(|()| err.body(request)))
+            _ => None,
+        }
     }
 }

@@ -3,10 +3,9 @@
 use std::fmt;
 use std::marker::PhantomData;
 
-use http::StatusCode;
 use serde::de::DeserializeOwned;
 
-use crate::error::HttpError;
+use crate::error::Error;
 use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
@@ -18,12 +17,6 @@ pub enum ExtractQueryError {
 
     #[fail(display = "invalid query string: {}", cause)]
     InvalidQuery { cause: failure::Error },
-}
-
-impl HttpError for ExtractQueryError {
-    fn status(&self) -> StatusCode {
-        StatusCode::BAD_REQUEST
-    }
 }
 
 pub fn query<T>() -> Query<T>
@@ -52,18 +45,20 @@ where
     T: DeserializeOwned + 'static,
 {
     type Output = (T,);
-    type Error = ExtractQueryError;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         if let Some(query_str) = input.uri().query() {
             serde_urlencoded::from_str(query_str)
                 .map(|out| Extract::Ready((out,)))
-                .map_err(|cause| ExtractQueryError::InvalidQuery {
-                    cause: cause.into(),
+                .map_err(|cause| {
+                    crate::error::bad_request(ExtractQueryError::InvalidQuery {
+                        cause: cause.into(),
+                    })
                 })
         } else {
-            return Err(ExtractQueryError::MissingQuery);
+            return Err(crate::error::bad_request(ExtractQueryError::MissingQuery));
         }
     }
 }

@@ -24,7 +24,7 @@ use walkdir::{FilterEntry, WalkDir};
 pub use walkdir::DirEntry;
 
 use tsukuyomi::app::builder::{Scope, ScopeConfig};
-use tsukuyomi::error::{Error, Failure};
+use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Output, Responder, ResponseBody};
 use tsukuyomi::server::rt::blocking;
@@ -151,15 +151,15 @@ impl NamedFile {
     }
 
     #[cfg_attr(feature = "cargo-clippy", allow(cast_sign_loss))]
-    fn is_modified(&self, headers: &HeaderMap) -> Result<bool, Failure> {
+    fn is_modified(&self, headers: &HeaderMap) -> Result<bool, Error> {
         if let Some(h) = headers.get(header::IF_NONE_MATCH) {
             trace!("NamedFile::is_modified(): validate If-None-Match");
 
             let etag: ETag = h
                 .to_str()
-                .map_err(Failure::bad_request)?
+                .map_err(tsukuyomi::error::bad_request)?
                 .parse()
-                .map_err(Failure::bad_request)?;
+                .map_err(tsukuyomi::error::bad_request)?;
             let modified = !etag.eq(&self.etag);
 
             trace!(
@@ -175,8 +175,8 @@ impl NamedFile {
             trace!("NamedFile::is_modified(): validate If-Modified-Since");
 
             let if_modified_since = {
-                let timespec = parse_http_date(h.to_str().map_err(Failure::bad_request)?)
-                    .map_err(Failure::bad_request)?;
+                let timespec = parse_http_date(h.to_str().map_err(tsukuyomi::error::bad_request)?)
+                    .map_err(tsukuyomi::error::bad_request)?;
                 FileTime::from_unix_time(timespec.sec, timespec.nsec as u32)
             };
             let modified = self.last_modified > if_modified_since;
@@ -211,7 +211,7 @@ impl NamedFile {
 
 impl Responder for NamedFile {
     type Body = ResponseBody;
-    type Error = Failure;
+    type Error = Error;
 
     fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         trace!("NamedFile::respond_to");
@@ -228,7 +228,7 @@ impl Responder for NamedFile {
         let cache_control = self.cache_control();
         let last_modified = self
             .last_modified()
-            .map_err(Failure::internal_server_error)?;
+            .map_err(tsukuyomi::error::internal_server_error)?;
         let stream = ReadStream::new(self.file, self.meta, self.config.chunk_size);
 
         Ok(Response::builder()
