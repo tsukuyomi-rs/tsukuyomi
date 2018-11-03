@@ -26,9 +26,8 @@
 //! [`Modifier`]: ../modifier/trait.Modifier.html
 //! [`ErrorHandler`]: ./trait.ErrorHandler.html
 
-mod handler;
+pub(crate) mod handler;
 
-pub(crate) use self::handler::DefaultErrorHandler;
 pub use self::handler::ErrorHandler;
 
 use http::{Request, Response, StatusCode};
@@ -394,16 +393,5 @@ impl Error {
             },
             _ => None,
         }
-    }
-
-    pub(crate) fn into_response(
-        self,
-        request: &Request<RequestBody>,
-    ) -> std::result::Result<Response<ResponseBody>, CritError> {
-        let mut err = self.0?;
-        let status = err.status_code();
-        let mut response = err.to_response(request);
-        *response.status_mut() = status;
-        Ok(response)
     }
 }

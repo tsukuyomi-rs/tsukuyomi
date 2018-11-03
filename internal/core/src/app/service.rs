@@ -337,8 +337,7 @@ impl Future for AppServiceFuture {
                 self.app
                     .data
                     .error_handler
-                    .handle_error(err)
-                    .into_response(&request)
+                    .handle_error(err, &request)
                     .map(Async::Ready)
             }
         }

@@ -1,23 +1,35 @@
 //! The definition of error handlers.
 
+use http::{Request, Response};
+
 use super::Error;
+
+use crate::input::RequestBody;
+use crate::output::ResponseBody;
+use crate::runtime::CritError;
 
 /// A trait representing a global error handlers.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait ErrorHandler {
-    /// Modifies a specified error value
-    ///
-    /// This method will be called before converting the value of `Error`
-    /// into an HTTP response.
-    fn handle_error(&self, err: Error) -> Error;
+    /// Converts an error value into an HTTP response.
+    fn handle_error(
+        &self,
+        err: Error,
+        request: &Request<RequestBody>,
+    ) -> Result<Response<ResponseBody>, CritError>;
 }
 
-impl<F> ErrorHandler for F
+impl<F, Bd> ErrorHandler for F
 where
-    F: Fn(Error) -> Error,
+    F: Fn(Error, &Request<RequestBody>) -> Result<Response<Bd>, CritError>,
+    Bd: Into<ResponseBody>,
 {
-    fn handle_error(&self, err: Error) -> Error {
-        (*self)(err)
+    fn handle_error(
+        &self,
+        err: Error,
+        request: &Request<RequestBody>,
+    ) -> Result<Response<ResponseBody>, CritError> {
+        (*self)(err, request).map(|response| response.map(Into::into))
     }
 }
 
@@ -28,7 +40,15 @@ pub(crate) struct DefaultErrorHandler {
 }
 
 impl ErrorHandler for DefaultErrorHandler {
-    fn handle_error(&self, err: Error) -> Error {
-        err
+    fn handle_error(
+        &self,
+        err: Error,
+        request: &Request<RequestBody>,
+    ) -> Result<Response<ResponseBody>, CritError> {
+        let mut err = err.0?;
+        let status = err.status_code();
+        let mut response = err.to_response(request);
+        *response.status_mut() = status;
+        Ok(response)
     }
 }
