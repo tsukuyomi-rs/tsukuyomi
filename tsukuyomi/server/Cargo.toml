@@ -1,0 +1,28 @@
+[package]
+name = "tsukuyomi-server"
+version = "0.4.0-dev" # <cargo-version-sync>
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi-server.git"
+description = """
+A general purpose HTTP server based on Hyper and tower-service.
+"""
+build = "build.rs"
+
+[dependencies]
+bytes = "0.4"
+futures = "0.1"
+http = "0.1"
+hyper = "0.12"
+log = "0.4"
+tokio = "0.1"
+tokio-threadpool = "0.1"
+tower-service = "0.1"
+rustls = { version = "0.14", optional = true }
+tokio-rustls = { version = "0.8", optional = true }
+
+[dev-dependencies]
+cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
+
+[features]
+tls = ["rustls", "tokio-rustls"]

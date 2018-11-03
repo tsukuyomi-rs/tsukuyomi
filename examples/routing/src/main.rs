@@ -1,0 +1,28 @@
+extern crate tsukuyomi;
+
+use tsukuyomi::app::App;
+use tsukuyomi::route;
+
+fn main() {
+    let app = App::builder()
+        .route(route::index().reply(|| "Hello, world\n"))
+        .mount("/api/v1/", |scope| {
+            scope.mount("/posts", |scope| {
+                scope.route(route::index().reply(|| "list_posts"));
+                scope.route(
+                    route::get!("/<id:i32>").reply(|id: i32| format!("get_post(id = {})", id)),
+                );
+                scope.route(route::post("/").reply(|| "add_post"));
+            });
+            scope.mount("/user", |scope| {
+                scope.route(route::get("/auth").reply(|| "Authentication"));
+            });
+        }).route(route::get!("/<path..:String>").reply(|path| format!("path = {}\n", path)))
+        .finish()
+        .unwrap();
+
+    tsukuyomi::server::server(app)
+        .transport(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
+        .run_forever()
+        .unwrap();
+}
