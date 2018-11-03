@@ -1,0 +1,28 @@
+[package]
+name = "tsukuyomi-session"
+version = "0.1.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+description = """
+Session support for Tsukuyomi Web framework
+"""
+build = "build.rs"
+
+[dependencies]
+tsukuyomi = { version = "0.4.0-dev", path = "../tsukuyomi" }
+cookie = "0.11"
+time = "0.1"
+
+# for Redis session backend
+redis = { version = "0.9", optional = true }
+uuid = { version = "0.7", optional = true, features = ["v4"] }
+futures = "0.1"
+serde_json = "1"
+serde = "1"
+
+[dev-dependencies]
+cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
+
+[features]
+default = ["secure"]
+secure = ["cookie/secure", "tsukuyomi/secure"]
+redis-backend = ["redis", "uuid"]

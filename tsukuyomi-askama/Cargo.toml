@@ -1,0 +1,31 @@
+[package]
+name = "tsukuyomi-askama"
+version = "0.1.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+build = "build.rs"
+
+[[package.metadata.version-sync.replacements]]
+file = "Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "macros/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[dependencies]
+tsukuyomi = { version = "0.4.0-dev", path = "../tsukuyomi" }
+askama = "0.7"
+mime_guess = "2.0.0-alpha.6"
+http = "0.1"
+
+[dependencies.tsukuyomi-askama-macros]
+version = "0.1.0" # <cargo-version-sync>
+path = "./macros"
+
+[dev-dependencies]
+cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }

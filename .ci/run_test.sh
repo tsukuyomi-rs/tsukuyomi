@@ -11,24 +11,18 @@ if cargo fmt --version >/dev/null 2>&1; then
     cargo fmt -- --check
 fi
 
-if cargo clippy --version >/dev/null 2>&1; then
-    cargo clippy --all-features --all-targets
-    cargo clippy --all-features --all-targets -p tsukuyomi-internal-core
-    cargo clippy --all-features --all-targets -p tsukuyomi-internal-macros
-    cargo clippy --all-features --all-targets -p tsukuyomi-internal-runtime
-
-    cargo clippy --all-features --all-targets -p tsukuyomi-toolkit
-fi
-
-cargo test -p tsukuyomi-internal-core
-cargo test -p tsukuyomi-internal-core --all-features
-cargo test -p tsukuyomi-internal-macros
-cargo test -p tsukuyomi-internal-runtime
-cargo test -p tsukuyomi-internal-runtime --all-features
-
-cargo test
-cargo test --all-features
-cargo test --no-default-features
-
-cargo test -p tsukuyomi-toolkit
+cargo test --all
 cargo test -p doctest
+
+cargo test -p tsukuyomi --all-features
+cargo test -p tsukuyomi --no-default-features
+cargo test -p tsukuyomi-core --all-features
+cargo test -p tsukuyomi-server --all-features
+
+if cargo clippy --version >/dev/null 2>&1; then
+    cargo clippy --all
+
+    cargo clippy -p tsukuyomi --all-features --all-targets
+    cargo clippy -p tsukuyomi-core --all-features --all-targets
+    cargo clippy -p tsukuyomi-server --all-features --all-targets
+fi

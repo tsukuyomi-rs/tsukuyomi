@@ -7,10 +7,12 @@ set -e
     exit 0
 }
 
+BRANCH="$(git symbolic-ref --short HEAD)"
+[[ "${BRANCH:-}" = wip-* ]] && {
+    echo "[info] The current branch is working in progress."
+    exit 0
+}
+
 if cargo fmt --version >/dev/null 2>&1; then
     (set -x; cargo fmt -- --check)
-fi
-
-if cargo version-sync --version >/dev/null 2>&1; then
-    (set -x; cargo version-sync --check)
 fi

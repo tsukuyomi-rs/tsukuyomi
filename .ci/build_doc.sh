@@ -2,11 +2,18 @@
 
 set -ex
 
-cargo doc --all-features --no-deps
+cargo doc --no-deps -p askama
+cargo doc --no-deps -p walkdir
+cargo doc --no-deps -p tungstenite -p tokio-tungstenite
 
-cd toolkit
-cargo doc --all-features --no-deps -p tsukuyomi-toolkit
-cd ..
+cargo doc --no-deps -p tsukuyomi-server --all-features
+cargo doc --no-deps -p tsukuyomi-macros
+cargo doc --no-deps -p tsukuyomi-core  --all-features
+cargo doc --no-deps -p tsukuyomi --all-features
+
+cargo doc --no-deps -p tsukuyomi-askama
+cargo doc --no-deps -p tsukuyomi-fs
+cargo doc --no-deps -p tsukuyomi-websocket
 
 rm -f target/doc/.lock
 

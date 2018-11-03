@@ -1,120 +1,56 @@
 [package]
-name = "tsukuyomi"
-description = """
-Asynchronous Web framework for Rust
-"""
-version = "0.4.0-dev"
-authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
-readme = "README.md"
-keywords = ["web", "framework", "futures", "hyper", "tokio"]
-categories = ["web-programming::http-server"]
+name = "tsukuyomi-workspace"
+version = "0.0.0"
+publish = false
 
-build = "build.rs"
-
-include = [
-  "src/**/*.rs",
-  "tests/**/*.rs",
-  "benches/**/*.rs",
-  "examples/**/*.rs",
-  "build.rs",
-  "Cargo.toml",
-  "README.md",
-  "LICENSE-MIT",
-  "LICENSE-APACHE",
-]
-
-[badges]
-maintenance = { status = "actively-developed" }
-
-[package.metadata.docs.rs]
-features = [
-  "secure",
-  "tls",
-  "websocket",
-]
-
-[dependencies]
-
-[dependencies.tsukuyomi-internal-core]
-version = "0.4.0-dev" # <cargo-version-sync>
-path = "internal/core"
-
-[dependencies.tsukuyomi-internal-runtime]
-version = "0.4.0-dev" # <cargo-version-sync>
-path = "internal/runtime"
+[lib]
+path = ".empty.rs"
 
 [dev-dependencies]
-cookie = "0.11"
-either = "1"
-futures = "0.1"
-http = "0.1"
-time = "0.1"
-serde = { version = "1", features = ["derive"] }
-cargo-version-sync = { version = "0.0.5", default-features = false }
+askama = "0.7.2"
+failure = "0.1.3"
+tungstenite = "0.6"
+tokio-tungstenite = "0.6"
+walkdir = "2"
 
 [dev-dependencies.cargo-husky]
 version = "1"
 default-features = false
 features = ["user-hooks"]
 
-[features]
-default = []
-secure = ["tsukuyomi-internal-core/secure"]
-tls = ["tsukuyomi-internal-runtime/tls"]
-
 [workspace]
 members = [
-  "./",
-  "internal/core",
-  "internal/macros",
-  "internal/runtime",
+  "tsukuyomi",
+  "tsukuyomi/core",
+  "tsukuyomi/macros",
+  "tsukuyomi/server",
+
+  "tsukuyomi-askama",
+  "tsukuyomi-askama/macros",
+  "tsukuyomi-fs",
+  # "tsukuyomi-juniper",
+  # "tsukuyomi-session",
+  "tsukuyomi-websocket",
+
   "testcrates/doctest",
-  "toolkit",
-  "toolkit/macros",
+
+  "examples/basic",
+  "examples/json",
+  "examples/staticfile",
+  "examples/routing",
+
+  # "examples/diesel",
+  # "examples/juniper",
+  # "examples/tls",
+  # "examples/unix-socket",
+  # "examples/websocket",
+  # The following examples works only on nightly channel.
+  # "examples/async-await",
+  # "examples/git-server",
 ]
 
-# ==== START cargo-version-sync ====
-
-[package.metadata.version-sync]
-use-preset = false
-
-[[package.metadata.version-sync.replacements]]
-file = "Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "internal/core/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "internal/macros/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "internal/runtime/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "src/lib.rs"
-replacers = [
-  { type = "builtin", target = "html-root-url" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "README.md"
-replacers = [
-  { type = "regex", search = "{{name}} = \"[0-9a-z\\.-]+\"", replace = "{{name}} = \"{{version}}\"" },
-  { type = "regex", search = "https://deps.rs/crate/{{name}}/[a-z0-9\\.-]+", replace = "https://deps.rs/crate/{{name}}/{{version}}" },
-]
-
-# ==== END cargo-version-sync ====
+[patch.crates-io]
+tsukuyomi = { version = "0.4.0-dev", path = "tsukuyomi" }
+tsukuyomi-askama = { version = "0.1.0", path = "tsukuyomi-askama" }
+tsukuyomi-fs = { version = "0.1.0", path = "tsukuyomi-fs" }
+tsukuyomi-websocket = { version = "0.1.0", path = "tsukuyomi-websocket" }

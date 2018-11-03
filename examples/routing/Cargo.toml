@@ -1,0 +1,13 @@
+[package]
+name = "example-routing"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "routing"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.4.0-dev"

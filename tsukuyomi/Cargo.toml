@@ -1,0 +1,89 @@
+[package]
+name = "tsukuyomi"
+description = """
+Asynchronous Web framework for Rust
+"""
+version = "0.4.0-dev"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
+readme = "README.md"
+keywords = ["web", "framework", "futures", "hyper", "tokio"]
+categories = ["web-programming::http-server"]
+
+build = "build.rs"
+
+include = [
+  "src/**/*.rs",
+  "tests/**/*.rs",
+  "benches/**/*.rs",
+  "examples/**/*.rs",
+  "build.rs",
+  "Cargo.toml",
+  "README.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[package.metadata.docs.rs]
+features = [
+  "secure",
+  "tls",
+  "websocket",
+]
+
+[dependencies]
+
+[dependencies.tsukuyomi-core]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "./core"
+
+[dependencies.tsukuyomi-server]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "./server"
+
+[dev-dependencies]
+cookie = "0.11"
+either = "1"
+futures = "0.1"
+http = "0.1"
+time = "0.1"
+serde = { version = "1", features = ["derive"] }
+cargo-version-sync = { version = "0.0.5", default-features = false }
+
+[features]
+default = []
+secure = ["tsukuyomi-core/secure"]
+tls = ["tsukuyomi-server/tls"]
+
+
+# ==== START cargo-version-sync ====
+
+[[package.metadata.version-sync.replacements]]
+file = "Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "core/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "macros/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "server/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+# ==== END cargo-version-sync ====

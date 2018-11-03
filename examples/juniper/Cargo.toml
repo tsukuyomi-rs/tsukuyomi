@@ -1,0 +1,17 @@
+[package]
+name = "example-juniper"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "juniper"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.3.0-dev"
+tsukuyomi-juniper = { git = "https://github.com/tsukuyomi-rs/tsukuyomi-juniper.git", branch = "master" }
+juniper = "0.9.0"
+futures = "0.1.21"
+failure = { version = "0.1", features = ["derive"] }

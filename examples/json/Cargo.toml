@@ -1,0 +1,17 @@
+[package]
+name = "example-json"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "json"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.4.0-dev"
+
+futures = "0.1.21"
+http = "0.1"
+serde = { version = "1.0", features = ["derive"] }
