@@ -6,11 +6,10 @@ use std::str;
 
 use bytes::Bytes;
 use futures::{Async, Future, Poll};
-use http::StatusCode;
 use mime::Mime;
 use serde::de::DeserializeOwned;
 
-use crate::error::{Error, HttpError};
+use crate::error::Error;
 use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
@@ -37,12 +36,6 @@ pub enum ExtractBodyError {
         cause
     )]
     InvalidContent { cause: failure::Error },
-}
-
-impl HttpError for ExtractBodyError {
-    fn status(&self) -> StatusCode {
-        StatusCode::BAD_REQUEST
-    }
 }
 
 fn get_mime_opt<'a>(input: &'a mut Input<'_>) -> Result<Option<&'a Mime>, ExtractBodyError> {
@@ -205,8 +198,10 @@ where
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
         {
-            let mime_opt = get_mime_opt(input)?;
-            self.decoder.validate_mime(mime_opt)?;
+            let mime_opt = get_mime_opt(input).map_err(crate::error::bad_request)?;
+            self.decoder
+                .validate_mime(mime_opt)
+                .map_err(crate::error::bad_request)?;
         }
         Ok(Extract::Incomplete(self::imp::BodyFuture {
             read_all: input.body_mut().read_all(),
@@ -236,7 +231,7 @@ mod imp {
             let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
             D::decode(&data)
                 .map(|out| Async::Ready((out,)))
-                .map_err(Into::into)
+                .map_err(crate::error::bad_request)
         }
     }
 }

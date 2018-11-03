@@ -6,7 +6,7 @@ use self::askama::Template;
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::Response;
 use mime_guess::get_mime_type_str;
-use tsukuyomi::error::{Error, Failure};
+use tsukuyomi::error::Error;
 
 pub use crate::macros::TemplateResponder as Responder;
 
@@ -16,7 +16,7 @@ pub fn respond(t: &dyn Template, ext: &str) -> Result<Response<String>, Error> {
     let mut response = t
         .render()
         .map(Response::new)
-        .map_err(Failure::internal_server_error)?;
+        .map_err(tsukuyomi::error::internal_server_error)?;
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));

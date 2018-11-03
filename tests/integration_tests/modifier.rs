@@ -79,7 +79,7 @@ fn global_modifier_error_on_before() {
                 marker: marker.clone(),
                 before: |m| {
                     m.push("B");
-                    Err(internal_server_error("").into())
+                    Err(internal_server_error(""))
                 },
                 after: |m| {
                     m.push("A");

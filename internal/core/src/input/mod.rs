@@ -12,13 +12,13 @@ pub mod header {
     use http::header;
     use mime::Mime;
 
-    use crate::error::Failure;
+    use crate::error::Error;
 
     use super::local_map::Entry;
     use super::Input;
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
-    pub fn content_type<'a>(input: &'a mut Input<'_>) -> Result<Option<&'a Mime>, Failure> {
+    pub fn content_type<'a>(input: &'a mut Input<'_>) -> Result<Option<&'a Mime>, Error> {
         local_key!(static CONTENT_TYPE: Option<Mime>);
 
         match input.parts.locals.entry(&CONTENT_TYPE) {
@@ -27,10 +27,10 @@ pub mod header {
                 let mime = match input.request.headers().get(header::CONTENT_TYPE) {
                     Some(h) => h
                         .to_str()
-                        .map_err(Failure::bad_request)?
+                        .map_err(crate::error::bad_request)?
                         .parse()
                         .map(Some)
-                        .map_err(Failure::bad_request)?,
+                        .map_err(crate::error::bad_request)?,
                     None => None,
                 };
                 Ok(entry.insert(mime).as_ref())

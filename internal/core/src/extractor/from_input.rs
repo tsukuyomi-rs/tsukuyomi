@@ -1,7 +1,7 @@
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::error::{ErrorMessage, Never};
+use crate::error::{Error, Never};
 use crate::extractor::{Extract, Extractor};
 use crate::input::local_map::LocalKey;
 use crate::input::{Extension, Input, State};
@@ -104,7 +104,7 @@ where
     T: Send + Sync + 'static,
 {
     type Output = (Extension<T>,);
-    type Error = ErrorMessage;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
@@ -149,7 +149,7 @@ where
     T: Send + Sync + 'static,
 {
     type Output = (State<T>,);
-    type Error = ErrorMessage;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
@@ -192,7 +192,7 @@ where
     T: Send + 'static,
 {
     type Output = (T,);
-    type Error = ErrorMessage;
+    type Error = Error;
     type Future = super::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {

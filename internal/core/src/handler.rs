@@ -56,9 +56,9 @@ pub fn unimplemented() -> impl Handler {
     impl Handler for Unimplemented {
         #[inline]
         fn handle(&self, _: &mut Input<'_>) -> Handle {
-            Handle::ready(Err(crate::error::Failure::internal_server_error(
-                failure::format_err!("not implemented yet"),
-            ).into()))
+            Handle::ready(Err(crate::error::internal_server_error(
+                "not implemented yet",
+            )))
         }
     }
     Unimplemented
