@@ -27,5 +27,6 @@ http = "0.1"
 version = "0.1.0" # <cargo-version-sync>
 path = "./macros"
 
-[dev-dependencies]
-cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
+[dev-dependencies.cargo-version-sync]
+git = "https://github.com/ubnt-intrepid/cargo-version-sync.git"
+default-features = false
