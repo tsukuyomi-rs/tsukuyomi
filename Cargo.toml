@@ -28,7 +28,7 @@ members = [
   "tsukuyomi-askama/macros",
   "tsukuyomi-fs",
   # "tsukuyomi-juniper",
-  # "tsukuyomi-session",
+  "tsukuyomi-session",
   "tsukuyomi-websocket",
 
   "testcrates/doctest",
@@ -37,6 +37,7 @@ members = [
   "examples/json",
   "examples/staticfile",
   "examples/routing",
+  "examples/session",
 
   # "examples/diesel",
   # "examples/juniper",
@@ -52,4 +53,5 @@ members = [
 tsukuyomi = { version = "0.4.0-dev", path = "tsukuyomi" }
 tsukuyomi-askama = { version = "0.1.0", path = "tsukuyomi-askama" }
 tsukuyomi-fs = { version = "0.1.0", path = "tsukuyomi-fs" }
+tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
 tsukuyomi-websocket = { version = "0.1.0", path = "tsukuyomi-websocket" }

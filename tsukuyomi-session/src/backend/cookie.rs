@@ -15,7 +15,7 @@ use tsukuyomi::error::{Error, Result};
 use tsukuyomi::input::{Cookies, Input};
 
 use super::imp::{Backend, BackendImpl};
-use crate::session::SessionState;
+use crate::session::SessionInner;
 use crate::util::BuilderExt;
 
 #[cfg(feature = "secure")]
@@ -110,38 +110,36 @@ impl CookieSessionBackend {
     }
 
     fn deserialize(&self, s: &str) -> Result<HashMap<String, String>> {
-        serde_json::from_str(s)
-            .map_err(tsukuyomi::error::Failure::bad_request)
-            .map_err(Into::into)
+        serde_json::from_str(s).map_err(tsukuyomi::error::bad_request)
     }
 
-    fn serialize(&self, map: HashMap<String, String>) -> String {
+    fn serialize(&self, map: &HashMap<String, String>) -> String {
         serde_json::to_string(&map).expect("should be success")
     }
 
-    fn read(&self, input: &mut Input<'_>) -> Result<SessionState> {
+    fn read(&self, input: &mut Input<'_>) -> Result<SessionInner> {
         let mut cookies = input.cookies()?;
         match self.security.get(&*self.cookie_name, &mut cookies) {
             Some(cookie) => {
                 let map = self.deserialize(cookie.value())?;
-                Ok(SessionState::Some(map))
+                Ok(SessionInner::Some(map))
             }
-            None => Ok(SessionState::Empty),
+            None => Ok(SessionInner::Empty),
         }
     }
 
-    fn write(&self, input: &mut Input<'_>, state: SessionState) -> Result<()> {
+    fn write(&self, input: &mut Input<'_>, state: SessionInner) -> Result<()> {
         let mut cookies = input.cookies()?;
         match state {
-            SessionState::Empty => {}
-            SessionState::Some(map) => {
-                let value = self.serialize(map);
+            SessionInner::Empty => {}
+            SessionInner::Some(map) => {
+                let value = self.serialize(&map);
                 let cookie = Cookie::build(self.cookie_name.clone(), value)
                     .if_some(self.max_age, |this, max_age| this.max_age(max_age))
                     .finish();
                 self.security.add(cookie, &mut cookies);
             }
-            SessionState::Clear => {
+            SessionInner::Clear => {
                 cookies.force_remove(Cookie::named(self.cookie_name.clone()));
             }
         }
@@ -151,14 +149,14 @@ impl CookieSessionBackend {
 
 impl Backend for CookieSessionBackend {}
 impl BackendImpl for CookieSessionBackend {
-    type ReadFuture = future::FutureResult<SessionState, Error>;
+    type ReadFuture = future::FutureResult<SessionInner, Error>;
     type WriteFuture = future::FutureResult<(), Error>;
 
     fn read(&self, input: &mut Input<'_>) -> Self::ReadFuture {
         self.read(input).into_future()
     }
 
-    fn write(&self, input: &mut Input<'_>, state: SessionState) -> Self::WriteFuture {
+    fn write(&self, input: &mut Input<'_>, state: SessionInner) -> Self::WriteFuture {
         self.write(input, state).into_future()
     }
 }

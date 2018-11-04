@@ -1,0 +1,18 @@
+[package]
+name = "example-session"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "session"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.4.0-dev"
+tsukuyomi-session = "0.1.0"
+
+http = "0.1"
+either = "1"
+serde = { version = "1", features = ["derive"] }

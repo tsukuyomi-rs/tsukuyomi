@@ -19,8 +19,9 @@ futures = "0.1"
 serde_json = "1"
 serde = "1"
 
-[dev-dependencies]
-cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
+[dev-dependencies.cargo-version-sync]
+git = "https://github.com/ubnt-intrepid/cargo-version-sync.git"
+default-features = false
 
 [features]
 default = ["secure"]

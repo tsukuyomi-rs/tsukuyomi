@@ -12,6 +12,7 @@ cargo doc --no-deps -p tsukuyomi --all-features
 
 cargo doc --no-deps -p tsukuyomi-askama
 cargo doc --no-deps -p tsukuyomi-fs
+cargo doc --no-deps -p tsukuyomi-session --all-features
 cargo doc --no-deps -p tsukuyomi-websocket
 
 rm -f target/doc/.lock
