@@ -6,11 +6,11 @@ curl -s https://codecov.io/bash -o .codecov
 chmod +x .codecov
 
 codecov() {
-    local branch="${BUILD_SOURCEBRANCHNAME:-unknown}"
+    local branch="${BUILD_SOURCEBRANCHNAME:-}"
     local commit="${BUILD_SOURCEVERSION:-}"
-    local pr="${SYSTEM_PULLREQUEST_PULLREQUESTNUMBER:-}"
+    local pr="${SYSTEM_PULLREQUEST_PULLREQUESTID:-}"
     local build="${BUILD_BUILDID:-}"
-    ./.codecov -B "$branch" -C "$commit" -P "$pr" -b "$b" "$@"
+    ./.codecov -B "$branch" -C "$commit" -P "$pr" -b "$build" -K "$@"
 }
 
 tarpaulin() {
