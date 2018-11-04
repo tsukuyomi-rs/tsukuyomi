@@ -12,12 +12,12 @@ use redis::RedisFuture;
 use time::Duration;
 use uuid::Uuid;
 
-use tsukuyomi::error::{Error, Failure, Result};
+use tsukuyomi::error::{Error, Result};
+use tsukuyomi::input::local_map::local_key;
 use tsukuyomi::input::Input;
-use tsukuyomi::local_key;
 
 use super::imp::{Backend, BackendImpl};
-use crate::session::SessionState;
+use crate::session::SessionInner;
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
@@ -46,7 +46,10 @@ impl RedisSessionBackend {
         let cookies = input.cookies()?;
         match cookies.get(&self.cookie_name) {
             Some(cookie) => {
-                let session_id = cookie.value().parse().map_err(Failure::bad_request)?;
+                let session_id = cookie
+                    .value()
+                    .parse()
+                    .map_err(tsukuyomi::error::bad_request)?;
                 Ok(Some(session_id))
             }
             None => Ok(None),
@@ -93,16 +96,16 @@ impl BackendImpl for RedisSessionBackend {
         }
     }
 
-    fn write(&self, input: &mut Input<'_>, state: SessionState) -> Self::WriteFuture {
+    fn write(&self, input: &mut Input<'_>, state: SessionInner) -> Self::WriteFuture {
         let RedisSessionContext { conn, session_id } = input
             .locals_mut()
             .remove(&RedisSessionContext::KEY)
             .expect("should be Some");
 
         match state {
-            SessionState::Empty => WriteFuture::no_op(),
+            SessionInner::Empty => WriteFuture::no_op(),
 
-            SessionState::Some(value) => {
+            SessionInner::Some(value) => {
                 let session_id = session_id.unwrap_or_else(Uuid::new_v4);
                 match input.cookies() {
                     Ok(mut cookies) => cookies.add(Cookie::new(
@@ -131,7 +134,7 @@ impl BackendImpl for RedisSessionBackend {
                 }
             }
 
-            SessionState::Clear => {
+            SessionInner::Clear => {
                 if let Some(session_id) = session_id {
                     match input.cookies() {
                         Ok(mut cookies) => cookies.remove(Cookie::named(self.cookie_name.clone())),
@@ -201,18 +204,25 @@ impl ReadFuture {
 }
 
 impl super::imp::ReadFuture for ReadFuture {
-    fn poll_read(&mut self, input: &mut Input<'_>) -> Poll<SessionState, Error> {
+    fn poll_read(&mut self, input: &mut Input<'_>) -> Poll<SessionInner, Error> {
         use self::ReadFutureState::*;
         loop {
             let (conn, value) = match self.state {
                 Failed(ref mut err) => return Err(err.take().unwrap()),
                 Connecting { ref mut future, .. } => {
-                    let conn = try_ready!(future.poll().map_err(Failure::internal_server_error));
+                    let conn = try_ready!(
+                        future
+                            .poll()
+                            .map_err(tsukuyomi::error::internal_server_error)
+                    );
                     (Some(conn), None)
                 }
                 Fetch { ref mut future, .. } => {
-                    let (conn, value) =
-                        try_ready!(future.poll().map_err(Failure::internal_server_error));
+                    let (conn, value) = try_ready!(
+                        future
+                            .poll()
+                            .map_err(tsukuyomi::error::internal_server_error)
+                    );
                     (Some(conn), value)
                 }
                 Done => panic!("unexpected state"),
@@ -242,9 +252,9 @@ impl super::imp::ReadFuture for ReadFuture {
                             session_id: Some(session_id),
                         },
                     );
-                    let map =
-                        serde_json::from_str(&value).map_err(Failure::internal_server_error)?;
-                    let state = SessionState::Some(map);
+                    let map = serde_json::from_str(&value)
+                        .map_err(tsukuyomi::error::internal_server_error)?;
+                    let state = SessionInner::Some(map);
                     return Ok(Async::Ready(state));
                 }
 
@@ -265,7 +275,7 @@ impl super::imp::ReadFuture for ReadFuture {
                             session_id: None,
                         },
                     );
-                    return Ok(Async::Ready(SessionState::Empty));
+                    return Ok(Async::Ready(SessionInner::Empty));
                 }
 
                 _ => unreachable!("unexpected condition"),
@@ -314,7 +324,7 @@ impl super::imp::WriteFuture for WriteFuture {
             Op(ref mut future) => future
                 .poll()
                 .map(|x| x.map(|_| ()))
-                .map_err(|e| Failure::internal_server_error(e).into()),
+                .map_err(tsukuyomi::error::internal_server_error),
         }
     }
 }

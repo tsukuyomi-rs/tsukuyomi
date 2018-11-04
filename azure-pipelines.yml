@@ -97,8 +97,12 @@ jobs:
     container: tarpaulin
     steps:
     - script: |
-        cargo tarpaulin --all-features --out Xml --packages tsukuyomi tsukuyomi-internal tsukuyomi-internal-macros
-        bash <(curl -s https://codecov.io/bash)
+        set -ex
+        curl -s https://codecov.io/bash -o report_coverage.sh
+        cargo tarpaulin -v --skip-clean --out Xml --all && bash report_coverage.sh
+        cargo tarpaulin -v --skip-clean --out Xml -p tsukuyomi-core --all-features && bash report_coverage.sh
+        cargo tarpaulin -v --skip-clean --out Xml -p tsukuyomi-server --all-features && bash report_coverage.sh
+        cargo tarpaulin -v --skip-clean --out Xml -p tsukuyomi-session --all-features && bash report_coverage.sh
       displayName: 'Run tarpaulin'
       env:
         CODECOV_TOKEN: $(myCodecovToken)

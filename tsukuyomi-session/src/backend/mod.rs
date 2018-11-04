@@ -14,18 +14,18 @@ pub(crate) mod imp {
     use tsukuyomi::error::Error;
     use tsukuyomi::input::Input;
 
-    use crate::session::SessionState;
+    use crate::session::SessionInner;
 
     pub trait ReadFuture {
-        fn poll_read(&mut self, input: &mut Input<'_>) -> Poll<SessionState, Error>;
+        fn poll_read(&mut self, input: &mut Input<'_>) -> Poll<SessionInner, Error>;
     }
 
     impl<F> ReadFuture for F
     where
-        F: Future<Item = SessionState, Error = Error>,
+        F: Future<Item = SessionInner, Error = Error>,
     {
         #[inline]
-        fn poll_read(&mut self, _: &mut Input<'_>) -> Poll<SessionState, Error> {
+        fn poll_read(&mut self, _: &mut Input<'_>) -> Poll<SessionInner, Error> {
             self.poll()
         }
     }
@@ -54,6 +54,6 @@ pub(crate) mod imp {
         type WriteFuture: WriteFuture + Send + 'static;
 
         fn read(&self, input: &mut Input<'_>) -> Self::ReadFuture;
-        fn write(&self, input: &mut Input<'_>, values: SessionState) -> Self::WriteFuture;
+        fn write(&self, input: &mut Input<'_>, values: SessionInner) -> Self::WriteFuture;
     }
 }
