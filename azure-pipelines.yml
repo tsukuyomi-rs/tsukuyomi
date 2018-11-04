@@ -96,13 +96,7 @@ jobs:
       vmImage: 'ubuntu-16.04'
     container: tarpaulin
     steps:
-    - script: |
-        set -ex
-        curl -s https://codecov.io/bash -o report_coverage.sh
-        cargo tarpaulin -v --skip-clean --out Xml --all && bash report_coverage.sh
-        cargo tarpaulin -v --skip-clean --out Xml -p tsukuyomi-core --all-features && bash report_coverage.sh
-        cargo tarpaulin -v --skip-clean --out Xml -p tsukuyomi-server --all-features && bash report_coverage.sh
-        cargo tarpaulin -v --skip-clean --out Xml -p tsukuyomi-session --all-features && bash report_coverage.sh
+    - script: bash .ci/run_coverage_test.sh
       displayName: 'Run tarpaulin'
       env:
         CODECOV_TOKEN: $(myCodecovToken)
