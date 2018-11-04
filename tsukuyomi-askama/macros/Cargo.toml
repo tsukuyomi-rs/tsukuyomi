@@ -3,15 +3,11 @@ name = "tsukuyomi-askama-macros"
 version = "0.1.0" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
-build = "build.rs"
 
 [lib]
+path = "lib.rs"
 proc-macro = true
 
 [dependencies]
-syn = { version = "0.15", features = ["full", "extra-traits"] }
+syn = "0.15"
 quote = "0.6"
-proc-macro2 = "0.4.20"
-
-[dev-dependencies]
-cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
