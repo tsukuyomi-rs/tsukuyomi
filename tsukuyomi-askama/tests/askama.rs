@@ -19,10 +19,9 @@ fn test_template() {
     struct Index {
         name: &'static str,
     }
-
-    let app = App::builder()
-        .route(route::index().reply(|| assert_impl(Index { name: "Alice" })))
-        .finish()
-        .unwrap();
-    drop(app);
+    drop(
+        App::build(|scope| {
+            scope.route(route::index().reply(|| assert_impl(Index { name: "Alice" })));
+        }).unwrap(),
+    );
 }

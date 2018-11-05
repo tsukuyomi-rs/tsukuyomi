@@ -49,21 +49,6 @@ where
     }
 }
 
-/// A helper function which creates a `Handler` for use as a placeholder.
-pub fn unimplemented() -> impl Handler {
-    #[allow(missing_debug_implementations)]
-    struct Unimplemented;
-    impl Handler for Unimplemented {
-        #[inline]
-        fn handle(&self, _: &mut Input<'_>) -> Handle {
-            Handle::ready(Err(crate::error::internal_server_error(
-                "not implemented yet",
-            )))
-        }
-    }
-    Unimplemented
-}
-
 /// A helper function which creates a `Handler` from the specified closure.
 pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
     #[allow(missing_debug_implementations)]

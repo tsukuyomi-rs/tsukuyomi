@@ -51,12 +51,12 @@ pub fn derive(input: &parsing::RouteInput) -> TokenStream {
     let uri = &input.uri;
     let Extractor = quote!(tsukuyomi::extractor::Extractor);
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
-    let Route = quote!(tsukuyomi::route::Route);
+    let Builder = quote!(tsukuyomi::route::Builder);
     let route = quote!(tsukuyomi::route);
 
     if params.is_empty() {
         quote! {
-            fn #name() -> #Route<impl #Extractor<Output = ()>> {
+            fn #name() -> #Builder<impl #Extractor<Output = ()>> {
                 #route::#method(#uri)
             }
         }
@@ -73,7 +73,7 @@ pub fn derive(input: &parsing::RouteInput) -> TokenStream {
 
         quote!(
             fn #name<#(#type_params),*>()
-                -> #Route<impl #Extractor<Output = (#(#return_types,)*)>>
+                -> #Builder<impl #Extractor<Output = (#(#return_types,)*)>>
             where
                 #( #bounds )*
             {

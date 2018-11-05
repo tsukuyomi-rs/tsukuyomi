@@ -1,7 +1,6 @@
 extern crate serde;
 extern crate tsukuyomi;
 
-use tsukuyomi::app::App;
 use tsukuyomi::route;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -11,21 +10,22 @@ struct User {
 }
 
 fn main() {
-    let app = App::builder()
-        .route(route::get("/").reply(|| {
+    let app = tsukuyomi::app(|scope| {
+        scope.route(route::get("/").reply(|| {
             tsukuyomi::output::json(User {
                 name: "Sakura Kinomoto".into(),
                 age: 13,
             })
-        })).route(
+        }));
+        scope.route(
             route::post("/")
                 .with(tsukuyomi::extractor::body::json::<User>())
                 .reply(tsukuyomi::output::json),
-        ).finish()
-        .unwrap();
+        );
+    }).expect("failed to construct HTTP server");
 
-    tsukuyomi::launch(app)
+    tsukuyomi::server(app)
         .bind("127.0.0.1:4000")
         .run_forever()
-        .unwrap();
+        .expect("failed to start HTTP server");
 }

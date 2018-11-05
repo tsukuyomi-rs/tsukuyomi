@@ -18,6 +18,21 @@ use service::http::{HttpRequest, HttpResponse, RequestBody};
 /// A type alias representing a critical error.
 pub type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+/// Create a new `Server` from the specified `NewService`.
+///
+/// This function is a shortcut of `Server::new(new_service)`.
+#[inline]
+pub fn server<S>(new_service: S) -> Server<S, ()>
+where
+    S: NewService,
+    S::Request: HttpRequest,
+    S::Response: HttpResponse,
+    S::Error: Into<CritError>,
+    S::InitError: Into<CritError>,
+{
+    Server::new(new_service)
+}
+
 #[allow(missing_debug_implementations)]
 pub struct Server<S, Tr = ()> {
     new_service: S,

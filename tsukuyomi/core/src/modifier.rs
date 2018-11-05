@@ -24,11 +24,12 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
-//! let app = App::builder()
-//!     .route(route::index().reply(|| "Hello"))
-//!     .modifier(RequestCounter::default())
-//!     .finish()?;
-//! # drop(app);
+//! # drop(
+//! App::build(|scope| {
+//!     scope.route(route::index().reply(|| "Hello"));
+//!     scope.modifier(RequestCounter::default());
+//! })?
+//! );
 //! # Ok(())
 //! # }
 //! ```

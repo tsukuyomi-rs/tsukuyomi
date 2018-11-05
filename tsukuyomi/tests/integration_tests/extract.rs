@@ -9,8 +9,9 @@ use super::util::{local_server, LocalServerExt};
 
 #[test]
 fn unit_input() {
-    let mut server = local_server(App::builder().route(route::index().reply(|| "dummy")));
-
+    let mut server = local_server(|scope| {
+        scope.route(route::index().reply(|| "dummy"));
+    });
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
 }
@@ -19,15 +20,15 @@ fn unit_input() {
 fn params() {
     use tsukuyomi::extractor::param;
 
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::get("/:id/:name/*path")
                 .with(param::pos(0))
                 .with(param::named("name"))
                 .with(param::wildcard())
                 .reply(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)),
-        ),
-    );
+        );
+    });
 
     let response = server
         .perform(Request::get("/23/bob/path/to/file"))
@@ -41,37 +42,40 @@ fn params() {
 #[test]
 #[ignore]
 fn route_macros() {
-    let app = App::builder()
-        .route(route::get!("/index").reply(|| "index"))
-        .route(
-            route::get!("/params/:id/:name").reply(|id: i32, name: String| {
-                drop((id, name));
-                "dummy"
-            }),
-        ).route(
-            route::put!("/posts/:id/edit")
-                .with(extractor::body::plain::<String>())
-                .reply(|id: u32, body: String| {
-                    drop((id, body));
+    drop(
+        App::build(|scope| {
+            scope.route(route::get!("/index").reply(|| "index"));
+            scope.route(
+                route::get!("/params/:id/:name").reply(|id: i32, name: String| {
+                    drop((id, name));
                     "dummy"
                 }),
-        ).route(route::get!("/static/*path").reply(|path: String| {
-            drop(path);
-            "dummy"
-        })).finish()
-        .unwrap();
-    drop(app);
+            );
+            scope.route(
+                route::put!("/posts/:id/edit")
+                    .with(extractor::body::plain::<String>())
+                    .reply(|id: u32, body: String| {
+                        drop((id, body));
+                        "dummy"
+                    }),
+            );
+            scope.route(route::get!("/static/*path").reply(|path: String| {
+                drop(path);
+                "dummy"
+            }));
+        }).unwrap(),
+    );
 }
 
 #[test]
 fn plain_body() {
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::post("/")
                 .with(extractor::body::plain())
                 .reply(|body: String| body),
-        ),
-    );
+        );
+    });
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
 
@@ -113,13 +117,13 @@ fn json_body() {
         id: u32,
         name: String,
     }
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::post("/")
                 .with(extractor::body::json())
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
-        ),
-    );
+        );
+    });
 
     let response = server
         .perform(
@@ -161,13 +165,13 @@ fn urlencoded_body() {
         id: u32,
         name: String,
     }
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::post("/")
                 .with(extractor::body::urlencoded())
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
-        ),
-    );
+        );
+    });
 
     const BODY: &[u8] = b"id=23&name=bob";
 
@@ -225,12 +229,13 @@ fn local_data() {
         }
     }
 
-    let mut server = local_server({
-        App::builder().modifier(MyModifier).route(
+    let mut server = local_server(|scope| {
+        scope.modifier(MyModifier);
+        scope.route(
             route::index()
                 .with(extractor::local(&MyData::KEY))
                 .reply(|x: MyData| x.0),
-        )
+        );
     });
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -248,13 +253,13 @@ fn missing_local_data() {
         local_key!(const KEY: Self);
     }
 
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::index()
                 .with(extractor::local(&MyData::KEY))
                 .reply(|x: MyData| x.0),
-        ),
-    );
+        );
+    });
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 500);
@@ -268,8 +273,8 @@ fn optional() {
         name: String,
     }
 
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::post("/")
                 .with(extractor::body::json().optional())
                 .handle(|params: Option<Params>| {
@@ -279,8 +284,8 @@ fn optional() {
                         Err(tsukuyomi::error::internal_server_error("####none####"))
                     }
                 }),
-        ),
-    );
+        );
+    });
 
     let response = server
         .perform(
@@ -309,8 +314,8 @@ fn fallible() {
         name: String,
     }
 
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::post("/")
                 .with(extractor::body::json().fallible())
                 .handle(|params: Result<Params, _>| {
@@ -320,8 +325,8 @@ fn fallible() {
                         Err(tsukuyomi::error::internal_server_error("####err####"))
                     }
                 }),
-        ),
-    );
+        );
+    });
 
     let response = server
         .perform(
@@ -354,13 +359,13 @@ fn either_or() {
         .or(extractor::verb::post(extractor::body::json()))
         .or(extractor::verb::post(extractor::body::urlencoded()));
 
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             route::post("/")
                 .with(params_extractor)
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
-        ),
-    );
+        );
+    });
 
     let response = server
         .perform(

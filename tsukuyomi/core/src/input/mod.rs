@@ -52,7 +52,8 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
 
-use crate::app::{App, RouteId};
+use crate::app::route::RouteId;
+use crate::app::App;
 use crate::error::Error;
 use crate::recognizer::captures::Captures;
 

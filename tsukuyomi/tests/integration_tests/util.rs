@@ -1,8 +1,4 @@
-use tsukuyomi::app::builder::AppBuilder;
-use tsukuyomi::app::App;
-use tsukuyomi::handler::{Handle, Handler};
-use tsukuyomi::input::Input;
-use tsukuyomi::output::Responder;
+use tsukuyomi::app::{App, Scope};
 
 use tsukuyomi::local::{Data, Input as TestInput, LocalServer};
 use tsukuyomi::server::CritError;
@@ -11,8 +7,11 @@ use tsukuyomi::service::{NewService, Service};
 
 use http::Response;
 
-pub fn local_server(app: AppBuilder) -> LocalServer<App> {
-    let app = app.finish().expect("failed to construct App");
+pub fn local_server<F>(f: F) -> LocalServer<App>
+where
+    F: FnOnce(&mut Scope<'_>),
+{
+    let app = App::build(f).expect("failed to construct App");
     LocalServer::new(app).expect("failed to initialize LocalServer")
 }
 
@@ -35,29 +34,4 @@ where
         let mut client = self.client().map_err(Into::into)?;
         client.perform(input).map_err(Into::into)
     }
-}
-
-pub fn wrap_ready<R>(f: impl Fn(&mut Input<'_>) -> R) -> impl Handler
-where
-    R: Responder,
-{
-    #[allow(missing_debug_implementations)]
-    struct ReadyHandler<T>(T);
-
-    impl<T, R> Handler for ReadyHandler<T>
-    where
-        T: Fn(&mut Input<'_>) -> R,
-        R: Responder,
-    {
-        fn handle(&self, input: &mut Input<'_>) -> Handle {
-            Handle::ready(
-                (self.0)(input)
-                    .respond_to(input)
-                    .map(|res| res.map(Into::into))
-                    .map_err(Into::into),
-            )
-        }
-    }
-
-    ReadyHandler(f)
 }

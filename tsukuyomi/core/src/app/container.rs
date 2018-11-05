@@ -180,11 +180,11 @@ impl Hasher for IdentHash {
 }
 
 #[derive(Debug)]
-pub(crate) struct ScopedMap {
+pub(crate) struct ScopedContainer {
     map: HashMap<TypeId, Box<dyn ScopedValue>, BuildHasherDefault<IdentHash>>,
 }
 
-impl ScopedMap {
+impl ScopedContainer {
     pub(crate) fn get<T>(&self, id: ScopeId) -> Option<&T>
     where
         T: Send + Sync + 'static,
@@ -199,7 +199,7 @@ impl ScopedMap {
 }
 
 #[derive(Default)]
-pub(super) struct Builder {
+pub(crate) struct Builder {
     map: HashMap<TypeId, Box<dyn ScopedValue>, BuildHasherDefault<IdentHash>>,
 }
 
@@ -210,7 +210,7 @@ impl fmt::Debug for Builder {
 }
 
 impl Builder {
-    pub(super) fn set<T>(&mut self, value: T, id: ScopeId)
+    pub(crate) fn set<T>(&mut self, value: T, id: ScopeId)
     where
         T: Send + Sync + 'static,
     {
@@ -224,11 +224,11 @@ impl Builder {
         }
     }
 
-    pub(super) fn finish(mut self, parents: &[ScopeId]) -> ScopedMap {
+    pub(crate) fn finish(mut self, parents: &[ScopeId]) -> ScopedContainer {
         for value in self.map.values_mut() {
             value.finalize(parents);
         }
 
-        ScopedMap { map: self.map }
+        ScopedContainer { map: self.map }
     }
 }

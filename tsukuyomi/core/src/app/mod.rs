@@ -1,27 +1,49 @@
 //! Components for constructing HTTP applications.
 
-pub mod builder;
+mod container;
+pub(crate) mod route;
+pub(crate) mod scope;
 mod service;
-
-#[macro_use]
-mod scoped_map;
 
 #[cfg(test)]
 mod tests;
 
-use http::Method;
-use indexmap::IndexMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::error::ErrorHandler;
-use crate::handler::Handler;
-use crate::modifier::Modifier;
-use crate::recognizer::{uri::Uri, Recognizer};
+use bytes::BytesMut;
+use http::header::HeaderValue;
+use http::{header, Method, Response};
+use indexmap::IndexMap;
 
-use self::builder::AppBuilder;
-use self::scoped_map::ScopedMap;
+use crate::error::handler::{DefaultErrorHandler, ErrorHandler};
+use crate::handler;
+use crate::handler::{Handle, Handler};
+use crate::modifier::Modifier;
+use crate::output::ResponseBody;
+use crate::recognizer::uri;
+use crate::recognizer::uri::Uri;
+use crate::recognizer::Recognizer;
+
+use self::container::Builder as ScopedContainerBuilder;
+use self::container::ScopedContainer;
+use self::route::{RouteData, RouteId};
+use self::scope::{ScopeBuilder, ScopeData, ScopeId};
+
+pub use self::route::Route;
+pub use self::scope::Scope;
 pub use self::service::RecognizeError;
+
+/// Configure an instance of `App` using the specified function.
+///
+/// This function is a shortcut of `App::build`.
+#[inline]
+pub fn app<F>(f: F) -> AppResult<App>
+where
+    F: FnOnce(&mut Scope<'_>),
+{
+    App::build(f)
+}
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -36,7 +58,7 @@ pub struct AppError {
 }
 
 impl AppError {
-    fn from_failure(err: impl Into<failure::Error>) -> Self {
+    pub(crate) fn from_failure(err: impl Into<failure::Error>) -> Self {
         Self { inner: err.into() }
     }
 }
@@ -59,67 +81,7 @@ impl Default for Config {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ScopeId {
-    Global,
-    Local(usize),
-}
-
-impl ScopeId {
-    fn local_id(self) -> Option<usize> {
-        match self {
-            ScopeId::Global => None,
-            ScopeId::Local(id) => Some(id),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ModifierId {
-    Scope(ScopeId, usize),
-    Route(usize, usize),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct RouteId(ScopeId, usize);
-
-struct ScopeData {
-    id: ScopeId,
-    parent: ScopeId,
-    prefix: Option<Uri>,
-    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for ScopeData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ScopeData")
-            .field("id", &self.id)
-            .field("parent", &self.parent)
-            .field("prefix", &self.prefix)
-            .finish()
-    }
-}
-
-struct RouteData {
-    id: RouteId,
-    uri: Uri,
-    method: Method,
-    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    handler: Box<dyn Handler + Send + Sync + 'static>,
-    modifier_ids: Vec<ModifierId>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for RouteData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RouteData")
-            .field("id", &self.id)
-            .field("uri", &self.uri)
-            .field("method", &self.method)
-            .field("modifier_ids", &self.modifier_ids)
-            .finish()
-    }
-}
+pub(crate) struct ModifierId(ScopeId, usize);
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppData {
@@ -130,7 +92,7 @@ struct AppData {
     route_ids: Vec<IndexMap<Method, usize>>,
     config: Config,
 
-    globals: ScopedMap,
+    states: ScopedContainer,
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
@@ -144,7 +106,7 @@ impl fmt::Debug for AppData {
             .field("recognizer", &self.recognizer)
             .field("route_ids", &self.route_ids)
             .field("config", &self.config)
-            .field("globals", &self.globals)
+            .field("states", &self.states)
             .finish()
     }
 }
@@ -156,9 +118,14 @@ pub struct App {
 }
 
 impl App {
-    /// Creates a builder object for constructing an instance of this type.
-    pub fn builder() -> AppBuilder {
-        AppBuilder::new()
+    /// Configure an instance of `App` using the specified function.
+    pub fn build<F>(f: F) -> AppResult<Self>
+    where
+        F: FnOnce(&mut Scope<'_>),
+    {
+        let mut builder = AppBuilder::new();
+        f(&mut Scope::new(&mut builder, ScopeId::Global));
+        builder.finish()
     }
 
     pub(crate) fn uri(&self, id: RouteId) -> &Uri {
@@ -169,6 +136,328 @@ impl App {
     where
         T: Send + Sync + 'static,
     {
-        self.data.globals.get(id.0)
+        self.data.states.get(id.0)
     }
+}
+
+/// A builder object for constructing an instance of `App`.
+struct AppBuilder {
+    routes: Vec<(ScopeId, Route)>,
+    scopes: Vec<ScopeBuilder>,
+    config: Config,
+    error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    states: ScopedContainerBuilder,
+    result: AppResult<()>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for AppBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AppBuilder")
+            .field("routes", &self.routes)
+            .field("scopes", &self.scopes)
+            .field("config", &self.config)
+            .field("result", &self.result)
+            .finish()
+    }
+}
+
+impl AppBuilder {
+    pub(super) fn new() -> Self {
+        Self {
+            routes: vec![],
+            scopes: vec![],
+            config: Config::default(),
+            error_handler: None,
+            modifiers: vec![],
+            states: ScopedContainerBuilder::default(),
+            result: Ok(()),
+        }
+    }
+
+    fn modify(&mut self, f: impl FnOnce(&mut Self) -> AppResult<()>) {
+        if self.result.is_ok() {
+            self.result = f(self);
+        }
+    }
+
+    pub(super) fn new_route(&mut self, scope_id: ScopeId, route: Route) {
+        if self.result.is_ok() {
+            self.routes.push((scope_id, route));
+        }
+    }
+
+    pub(super) fn new_scope<F>(&mut self, parent: ScopeId, prefix: &str, f: F)
+    where
+        F: FnOnce(&mut Scope<'_>),
+    {
+        if self.result.is_err() {
+            return;
+        }
+
+        let prefix = match prefix.parse() {
+            Ok(prefix) => prefix,
+            Err(err) => {
+                self.mark_error(err);
+                return;
+            }
+        };
+
+        let id = ScopeId::Local(self.scopes.len());
+        let mut chain = parent
+            .local_id()
+            .map_or_else(Default::default, |id| self.scopes[id].chain.clone());
+        chain.push(id);
+        self.scopes.push(ScopeBuilder {
+            id,
+            parent,
+            prefix,
+            modifiers: vec![],
+            chain,
+        });
+
+        f(&mut Scope::new(self, id));
+    }
+
+    pub(super) fn add_modifier(
+        &mut self,
+        id: ScopeId,
+        modifier: impl Modifier + Send + Sync + 'static,
+    ) {
+        if self.result.is_ok() {
+            match id {
+                ScopeId::Global => self.modifiers.push(Box::new(modifier)),
+                ScopeId::Local(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
+            }
+        }
+    }
+
+    pub(super) fn set_state<T>(&mut self, value: T, id: ScopeId)
+    where
+        T: Send + Sync + 'static,
+    {
+        if self.result.is_ok() {
+            self.states.set(value, id);
+        }
+    }
+
+    pub(super) fn mark_error(&mut self, err: impl Into<failure::Error>) {
+        self.result = Err(AppError::from_failure(err));
+    }
+
+    /// Creates a configured `App` using the current settings.
+    pub(crate) fn finish(&mut self) -> AppResult<App> {
+        let Self {
+            routes,
+            config,
+            result,
+            error_handler,
+            modifiers,
+            states,
+            scopes,
+        } = std::mem::replace(self, Self::new());
+        self.mark_error(failure::format_err!("The build has already used"));
+
+        if let Err(err) = result {
+            log::debug!("error before building App: {}", err);
+            return Err(err);
+        }
+
+        // finalize endpoints based on the created scope information.
+        let mut routes: Vec<RouteData> = routes
+            .into_iter()
+            .enumerate()
+            .map(|(route_id, (scope_id, route))| -> AppResult<RouteData> {
+                let route = route.inner?;
+                // build absolute URI.
+                let mut uris = vec![&route.uri];
+                let mut current = scope_id.local_id();
+                while let Some(scope) = current.and_then(|i| scopes.get(i)) {
+                    uris.extend(Some(&scope.prefix));
+                    current = scope.parent.local_id();
+                }
+                let uri = uri::join_all(uris.into_iter().rev()).map_err(AppError::from_failure)?;
+
+                let handler = route.handler;
+
+                // calculate the modifier identifiers.
+                let mut modifier_ids: Vec<_> = (0..modifiers.len())
+                    .map(|i| ModifierId(ScopeId::Global, i))
+                    .collect();
+                if let Some(scope) = scope_id.local_id().and_then(|id| scopes.get(id)) {
+                    for (id, scope) in scope.chain.iter().filter_map(|&id| {
+                        id.local_id()
+                            .and_then(|id| scopes.get(id).map(|scope| (id, scope)))
+                    }) {
+                        modifier_ids.extend(
+                            (0..scope.modifiers.len())
+                                .map(|pos| ModifierId(ScopeId::Local(id), pos)),
+                        );
+                    }
+                }
+
+                let id = RouteId(scope_id, route_id);
+
+                Ok(RouteData {
+                    id,
+                    uri,
+                    method: route.method,
+                    handler,
+                    modifier_ids,
+                })
+            }).collect::<Result<_, _>>()?;
+
+        // create a router
+        let (recognizer, route_ids) = {
+            let mut collected_routes = IndexMap::<Uri, IndexMap<Method, usize>>::new();
+            for (i, route) in routes.iter().enumerate() {
+                let methods = collected_routes
+                    .entry(route.uri.clone())
+                    .or_insert_with(IndexMap::<Method, usize>::new);
+
+                if methods.contains_key(&route.method) {
+                    return Err(AppError::from_failure(failure::format_err!(
+                        "Adding routes with duplicate URI and method is currenly not supported. \
+                         (uri={}, method={})",
+                        route.uri,
+                        route.method
+                    )));
+                }
+
+                methods.insert(route.method.clone(), i);
+            }
+
+            log::debug!("collected routes:");
+            for (uri, methods) in &collected_routes {
+                log::debug!(" - {} {:?}", uri, methods.keys().collect::<Vec<_>>());
+            }
+
+            let mut recognizer = Recognizer::default();
+            let mut route_ids = vec![];
+            for (uri, mut methods) in collected_routes {
+                if config.fallback_options {
+                    let m = methods
+                        .keys()
+                        .cloned()
+                        .chain(Some(Method::OPTIONS))
+                        .collect();
+                    methods.entry(Method::OPTIONS).or_insert_with(|| {
+                        let id = routes.len();
+                        routes.push(RouteData {
+                            id: RouteId(ScopeId::Global, id),
+                            uri: uri.clone(),
+                            method: Method::OPTIONS,
+                            handler: default_options_handler(m),
+                            modifier_ids: (0..modifiers.len())
+                                .map(|i| ModifierId(ScopeId::Global, i))
+                                .collect(),
+                        });
+                        id
+                    });
+                }
+
+                recognizer.add_route(uri).map_err(AppError::from_failure)?;
+                route_ids.push(methods);
+            }
+
+            (recognizer, route_ids)
+        };
+
+        // finalize error handler.
+        let error_handler =
+            error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::default()));
+
+        // finalize global/scope-local storages.
+        let parents: Vec<_> = scopes.iter().map(|scope| scope.parent).collect();
+        let states = states.finish(&parents[..]);
+
+        let scopes = scopes
+            .into_iter()
+            .map(|scope| ScopeData {
+                id: scope.id,
+                parent: scope.parent,
+                prefix: scope.prefix,
+                modifiers: scope.modifiers,
+            }).collect();
+
+        Ok(App {
+            data: Arc::new(AppData {
+                routes,
+                scopes,
+                recognizer,
+                route_ids,
+                config,
+                error_handler,
+                modifiers,
+                states,
+            }),
+        })
+    }
+}
+
+/// A proxy object for global-level configuration.
+#[derive(Debug)]
+pub struct Global<'a> {
+    builder: &'a mut AppBuilder,
+}
+
+impl<'a> Global<'a> {
+    /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
+    ///
+    /// The default value is `true`.
+    pub fn fallback_head(&mut self, enabled: bool) -> &mut Self {
+        self.builder.modify(move |self_| {
+            self_.config.fallback_head = enabled;
+            Ok(())
+        });
+        self
+    }
+
+    /// Specifies whether to use the default `OPTIONS` handlers if it is not registered.
+    ///
+    /// If `enabled`, it creates the default OPTIONS handlers by collecting the registered
+    /// methods from the router and then adds them to the *global* scope.
+    pub fn fallback_options(&mut self, enabled: bool) -> &mut Self {
+        self.builder.modify(move |self_| {
+            self_.config.fallback_options = enabled;
+            Ok(())
+        });
+        self
+    }
+
+    /// Sets the instance to an error handler into this builder.
+    pub fn error_handler<E>(&mut self, error_handler: E) -> &mut Self
+    where
+        E: ErrorHandler + Send + Sync + 'static,
+    {
+        if self.builder.result.is_ok() {
+            self.builder.error_handler = Some(Box::new(error_handler));
+        }
+        self
+    }
+}
+
+fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static> {
+    let allowed_methods = {
+        let bytes = methods
+            .into_iter()
+            .enumerate()
+            .fold(BytesMut::new(), |mut acc, (i, m)| {
+                if i > 0 {
+                    acc.extend_from_slice(b", ");
+                }
+                acc.extend_from_slice(m.as_str().as_bytes());
+                acc
+            });
+        unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+    };
+
+    Box::new(handler::raw(move |_| {
+        let mut response = Response::new(ResponseBody::empty());
+        response
+            .headers_mut()
+            .insert(header::ALLOW, allowed_methods.clone());
+        Handle::ready(Ok(response))
+    }))
 }

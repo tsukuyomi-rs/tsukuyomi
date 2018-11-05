@@ -1,12 +1,13 @@
-use tsukuyomi::app::App;
+use tsukuyomi::extractor;
+use tsukuyomi::route;
 
-use http::{header, Method, Request, StatusCode};
+use http::{header, Request, StatusCode};
 
-use super::util::{local_server, wrap_ready, LocalServerExt};
+use super::util::{local_server, LocalServerExt};
 
 #[test]
 fn empty_routes() {
-    let mut server = local_server(App::builder());
+    let mut server = local_server(|_| ());
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -14,9 +15,9 @@ fn empty_routes() {
 
 #[test]
 fn single_route() {
-    let mut server = local_server(App::builder().mount("/", |m| {
-        m.route(("/hello", wrap_ready(|_| "Tsukuyomi")));
-    }));
+    let mut server = local_server(|scope| {
+        scope.route(route::get("/hello").reply(|| "Tsukuyomi"));
+    });
 
     let response = server.perform(Request::get("/hello")).unwrap();
 
@@ -40,13 +41,13 @@ fn single_route() {
 
 #[test]
 fn post_body() {
-    let mut server = local_server(
-        App::builder().route(
+    let mut server = local_server(|scope| {
+        scope.route(
             tsukuyomi::route::post("/hello")
                 .with(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body),
-        ),
-    );
+        );
+    });
 
     let response = server
         .perform(Request::post("/hello").body("Hello, Tsukuyomi."))
@@ -77,29 +78,28 @@ fn cookies() {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let mut server = local_server(
-        App::builder()
-            .route((
-                "/login",
-                wrap_ready({
-                    move |input| -> tsukuyomi::error::Result<_> {
-                        #[cfg_attr(rustfmt, rustfmt_skip)]
+    let mut server = local_server(|scope| {
+        scope.route(
+            route::get("/login")
+                .with(extractor::validate(move |input| {
                     let cookie = Cookie::build("session", "dummy_session_id")
                         .domain("www.example.com")
                         .expires(expires_in)
                         .finish();
-                        input.cookies()?.add(cookie);
-                        Ok("Logged in")
-                    }
-                }),
-            )).route((
-                "/logout",
-                wrap_ready(move |input| -> tsukuyomi::error::Result<_> {
-                    input.cookies()?.remove(Cookie::named("session"));
-                    Ok("Logged out")
-                }),
-            )),
-    );
+                    input.cookies().map(|mut cookies| {
+                        cookies.add(cookie);
+                    })
+                })).reply(|| "Logged in"),
+        );
+        scope.route(
+            route::get("/logout")
+                .with(extractor::validate(|input| {
+                    input.cookies().map(|mut cookies| {
+                        cookies.remove(Cookie::named("session"));
+                    })
+                })).reply(|| "Logged out"),
+        );
+    });
 
     let response = server.perform(Request::get("/login")).unwrap();
     assert!(response.headers().contains_key(header::SET_COOKIE));
@@ -141,11 +141,11 @@ fn cookies() {
 
 #[test]
 fn default_options() {
-    let mut server = local_server(
-        App::builder()
-            .route(("/path", Method::GET, wrap_ready(|_| "get")))
-            .route(("/path", Method::POST, wrap_ready(|_| "post"))),
-    );
+    let mut server = local_server(|scope| {
+        scope
+            .route(route::get("/path").reply(|| "get"))
+            .route(route::post("/path").reply(|| "post"));
+    });
 
     let response = server.perform(Request::options("/path")).unwrap();
 
@@ -165,12 +165,11 @@ fn default_options() {
 
 #[test]
 fn test_case_5_disable_default_options() {
-    let mut server = local_server(
-        App::builder()
-            .route(("/path", Method::GET, wrap_ready(|_| "get")))
-            .route(("/path", Method::POST, wrap_ready(|_| "post")))
-            .default_options(false),
-    );
+    let mut server = local_server(|scope| {
+        scope.global().fallback_options(false);
+        scope.route(route::get("/path").reply(|| "get"));
+        scope.route(route::post("/path").reply(|| "post"));
+    });
 
     let response = server.perform(Request::options("/path")).unwrap();
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);

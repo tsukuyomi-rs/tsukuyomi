@@ -40,9 +40,11 @@ extern crate matches;
 pub mod app;
 pub mod error;
 pub mod extractor;
-pub mod handler;
+mod handler;
 pub mod input;
 pub mod modifier;
 pub mod output;
 mod recognizer;
 pub mod route;
+
+pub use crate::app::app;
