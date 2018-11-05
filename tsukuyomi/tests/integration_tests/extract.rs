@@ -44,18 +44,21 @@ fn route_macros() {
     let app = App::builder()
         .route(route::get!("/index").reply(|| "index"))
         .route(
-            route::get!("/params/<id:u32>/<name:String>").reply(|id, name| {
+            route::get!("/params/:id/:name").reply(|id: i32, name: String| {
                 drop((id, name));
                 "dummy"
             }),
         ).route(
-            route::put!("/posts/<id:u32>/edit")
+            route::put!("/posts/:id/edit")
                 .with(extractor::body::plain::<String>())
                 .reply(|id: u32, body: String| {
                     drop((id, body));
                     "dummy"
                 }),
-        ).finish()
+        ).route(route::get!("/static/*path").reply(|path: String| {
+            drop(path);
+            "dummy"
+        })).finish()
         .unwrap();
     drop(app);
 }

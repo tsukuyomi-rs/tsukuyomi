@@ -21,7 +21,7 @@
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
 //! let app = App::builder()
 //!     .route(
-//!         route::get!("/<name:String>")
+//!         route::get!("/:name")
 //!             .reply(|name| Index { name })
 //!     )
 //!     .finish()?;
