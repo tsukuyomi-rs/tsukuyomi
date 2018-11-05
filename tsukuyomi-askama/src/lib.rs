@@ -19,13 +19,14 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
-//! let app = App::builder()
-//!     .route(
+//! # drop(
+//! App::build(|scope| {
+//!     scope.route(
 //!         route::get!("/:name")
 //!             .reply(|name| Index { name })
-//!     )
-//!     .finish()?;
-//! # drop(app);
+//!     );
+//! })?
+//! # );
 //! # Ok(())
 //! # }
 //! ```

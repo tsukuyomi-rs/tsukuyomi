@@ -15,16 +15,11 @@
 extern crate tsukuyomi_core;
 extern crate tsukuyomi_server;
 
-pub use tsukuyomi_core::{app, error, extractor, handler, input, modifier, output};
+pub use tsukuyomi_core::{app, error, extractor, input, modifier, output};
 pub use tsukuyomi_server::{local, rt, server, service};
 
 #[allow(missing_docs)]
 pub mod route {
     pub use tsukuyomi_core::route::*;
     pub use tsukuyomi_core::{connect, delete, get, head, options, patch, post, put, trace};
-}
-
-#[allow(missing_docs)]
-pub fn launch(app: app::App) -> server::Server<app::App> {
-    server::Server::new(app)
 }

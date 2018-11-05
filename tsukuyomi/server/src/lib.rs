@@ -31,3 +31,5 @@ pub mod local;
 pub mod rt;
 pub mod server;
 pub mod service;
+
+pub use crate::server::server;

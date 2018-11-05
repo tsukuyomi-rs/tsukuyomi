@@ -4,7 +4,6 @@ extern crate serde;
 extern crate tsukuyomi;
 extern crate tsukuyomi_session;
 
-use tsukuyomi::app::App;
 use tsukuyomi::output::Responder;
 use tsukuyomi::route;
 use tsukuyomi_session::backend::CookieSessionBackend;
@@ -16,28 +15,29 @@ use http::Response;
 fn main() {
     let backend = CookieSessionBackend::plain();
 
-    let app = App::builder()
-        .modifier(tsukuyomi_session::storage(backend))
-        .route({
-            route::get("/")
-                .with(tsukuyomi_session::extractor())
-                .handle(|session: Session| {
-                    session.get::<String>("username").map(|username| {
-                        if let Some(username) = username {
-                            Either::Right(html(format!(
-                                "Hello, {}! <br />\n\
-                                 <form method=\"post\" action=\"/logout\">\n\
-                                 <input type=\"submit\" value=\"Log out\" />\n\
-                                 </form>\
-                                 ",
-                                username
-                            )))
-                        } else {
-                            Either::Left(redirect("/login"))
-                        }
-                    })
+    let app = tsukuyomi::app(|scope| {
+        scope.modifier(tsukuyomi_session::storage(backend));
+
+        scope.route(route::get("/").with(tsukuyomi_session::extractor()).handle(
+            |session: Session| {
+                session.get::<String>("username").map(|username| {
+                    if let Some(username) = username {
+                        Either::Right(html(format!(
+                            "Hello, {}! <br />\n\
+                             <form method=\"post\" action=\"/logout\">\n\
+                             <input type=\"submit\" value=\"Log out\" />\n\
+                             </form>\
+                             ",
+                            username
+                        )))
+                    } else {
+                        Either::Left(redirect("/login"))
+                    }
                 })
-        }).route(
+            },
+        ));
+
+        scope.route(
             route::get("/login")
                 .with(tsukuyomi_session::extractor())
                 .reply(|session: Session| {
@@ -53,7 +53,9 @@ fn main() {
                         ))
                     }
                 }),
-        ).route(
+        );
+
+        scope.route(
             route::post("/login")
                 .with(tsukuyomi::extractor::body::urlencoded())
                 .with(tsukuyomi_session::extractor())
@@ -67,17 +69,19 @@ fn main() {
                         Ok(redirect("/"))
                     }
                 }),
-        ).route(
+        );
+
+        scope.route(
             route::post("/logout")
                 .with(tsukuyomi_session::extractor())
                 .reply(|mut session: Session| {
                     session.remove("username");
                     redirect("/")
                 }),
-        ).finish()
-        .unwrap();
+        );
+    }).unwrap();
 
-    tsukuyomi::launch(app)
+    tsukuyomi::server(app)
         .bind("127.0.0.1:4000")
         .run_forever()
         .unwrap();

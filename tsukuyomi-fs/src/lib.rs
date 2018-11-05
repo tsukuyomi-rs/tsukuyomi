@@ -45,10 +45,10 @@ use walkdir::{FilterEntry, WalkDir};
 #[doc(no_inline)]
 pub use walkdir::DirEntry;
 
-use tsukuyomi::app::builder::{Scope, ScopeConfig};
+use tsukuyomi::app::Scope;
 use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
-use tsukuyomi::output::{Output, Responder, ResponseBody};
+use tsukuyomi::output::{Responder, ResponseBody};
 use tsukuyomi::rt::blocking;
 
 // ==== headers ====
@@ -269,15 +269,6 @@ impl Responder for NamedFile {
 pub struct OpenFuture {
     path: PathBuf,
     config: Option<OpenConfig>,
-}
-
-impl OpenFuture {
-    fn poll_respond(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
-        futures::try_ready!(self.poll())
-            .respond_to(input)
-            .map(|response| Async::Ready(response.map(Into::into)))
-            .map_err(Into::into)
-    }
 }
 
 impl Future for OpenFuture {
@@ -502,7 +493,7 @@ where
         }
     }
 
-    fn configure_inner(self, scope: &mut Scope<'_>) -> Fallible<()> {
+    fn register_inner(self, scope: &mut Scope<'_>) -> Fallible<()> {
         let Self { walkdir, config } = self;
         for entry in walkdir {
             let entry = entry?;
@@ -511,31 +502,22 @@ where
                 let path = entry.path().canonicalize()?;
 
                 let config = config.clone();
-                scope.route((
-                    prefix,
-                    tsukuyomi::handler::raw(move |_| {
-                        let mut open_future = if let Some(ref config) = config {
-                            NamedFile::open_with_config(path.clone(), config.clone())
-                        } else {
-                            NamedFile::open(path.clone())
-                        };
-                        tsukuyomi::handler::Handle::polling(move |input| {
-                            open_future.poll_respond(input)
-                        })
-                    }),
-                ));
+                scope.route(tsukuyomi::route::get(&prefix).handle(move || {
+                    if let Some(ref config) = config {
+                        NamedFile::open_with_config(path.clone(), config.clone())
+                            .map_err(Into::into)
+                    } else {
+                        NamedFile::open(path.clone()).map_err(Into::into)
+                    }
+                }));
             }
         }
         Ok(())
     }
-}
 
-impl<W> ScopeConfig for Staticfiles<W>
-where
-    W: IntoIterator<Item = walkdir::Result<DirEntry>>,
-{
-    fn configure(self, scope: &mut Scope<'_>) {
-        if let Err(err) = self.configure_inner(scope) {
+    #[allow(missing_docs)]
+    pub fn register(self, scope: &mut Scope<'_>) {
+        if let Err(err) = self.register_inner(scope) {
             scope.mark_error(err);
         }
     }

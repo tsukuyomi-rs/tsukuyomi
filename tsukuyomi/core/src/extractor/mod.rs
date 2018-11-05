@@ -137,3 +137,29 @@ pub trait ExtractorExt: Extractor + Sized {
 }
 
 impl<E: Extractor> ExtractorExt for E {}
+
+pub fn validate<F, E>(f: F) -> impl Extractor<Output = ()>
+where
+    F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
+    E: Into<Error> + 'static,
+{
+    #[allow(missing_debug_implementations)]
+    struct Validate<F>(F);
+
+    impl<F, E> Extractor for Validate<F>
+    where
+        F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
+        E: Into<Error> + 'static,
+    {
+        type Output = ();
+        type Error = E;
+        type Future = self::Placeholder<Self::Output, Self::Error>;
+
+        #[inline]
+        fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+            (self.0)(input).map(Extract::Ready)
+        }
+    }
+
+    assert_impl_extractor(Validate(f))
+}

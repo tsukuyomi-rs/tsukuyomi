@@ -137,11 +137,10 @@ impl AppServiceFuture {
     ) -> Option<&'a (dyn Modifier + Send + Sync + 'static)> {
         let &id = self.get_route(&self.app)?.modifier_ids.get(pos)?;
         match id {
-            ModifierId::Scope(ScopeId::Global, pos) => app.data.modifiers.get(pos).map(|m| &**m),
-            ModifierId::Scope(ScopeId::Local(id), pos) => {
+            ModifierId(ScopeId::Global, pos) => app.data.modifiers.get(pos).map(|m| &**m),
+            ModifierId(ScopeId::Local(id), pos) => {
                 app.data.scopes.get(id)?.modifiers.get(pos).map(|m| &**m)
             }
-            ModifierId::Route(id, pos) => app.data.routes.get(id)?.modifiers.get(pos).map(|m| &**m),
         }
     }
 
