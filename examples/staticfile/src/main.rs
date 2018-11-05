@@ -27,7 +27,7 @@ fn main() {
     let app = app.finish().unwrap();
 
     tsukuyomi::server::server(app)
-        .transport(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
+        .transport("127.0.0.1:4000")
         .run_forever()
         .unwrap();
 }

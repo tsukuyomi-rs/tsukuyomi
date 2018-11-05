@@ -12,7 +12,6 @@ use tsukuyomi_session::Session;
 
 use either::Either;
 use http::Response;
-use std::net::SocketAddr;
 
 fn main() {
     let backend = CookieSessionBackend::plain();
@@ -79,7 +78,7 @@ fn main() {
         .unwrap();
 
     tsukuyomi::server::server(app)
-        .transport("127.0.0.1:4000".parse::<SocketAddr>().unwrap())
+        .transport("127.0.0.1:4000")
         .run_forever()
         .unwrap();
 }
