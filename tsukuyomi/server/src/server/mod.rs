@@ -34,7 +34,7 @@ impl<S> Server<S> {
 }
 
 impl<S, T> Server<S, T> {
-    pub fn transport<Tr>(self, transport: Tr) -> Server<S, Tr>
+    pub fn bind<Tr>(self, transport: Tr) -> Server<S, Tr>
     where
         Tr: Transport,
     {
