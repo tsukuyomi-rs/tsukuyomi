@@ -15,8 +15,10 @@ fn main() {
             scope.mount("/user", |scope| {
                 scope.route(route::get("/auth").reply(|| "Authentication"));
             });
-        }).route(route::get!("/*path").reply(|path: String| format!("path = {}\n", path)))
-        .finish()
+        }).route(
+            route::get!("/*path")
+                .reply(|path: std::path::PathBuf| format!("path = {}\n", path.display())),
+        ).finish()
         .unwrap();
 
     tsukuyomi::server::server(app)

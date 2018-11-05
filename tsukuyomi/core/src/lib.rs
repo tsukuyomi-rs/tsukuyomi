@@ -25,6 +25,8 @@ extern crate indexmap;
 extern crate mime;
 extern crate serde;
 extern crate tower_service;
+extern crate url;
+extern crate uuid;
 
 extern crate tsukuyomi_macros as macros;
 extern crate tsukuyomi_server as server;

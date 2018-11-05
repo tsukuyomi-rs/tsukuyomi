@@ -50,6 +50,7 @@ pub fn derive(input: &parsing::RouteInput) -> TokenStream {
     let method = &input.method;
     let uri = &input.uri;
     let Extractor = quote!(tsukuyomi::extractor::Extractor);
+    let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
     let Route = quote!(tsukuyomi::route::Route);
     let route = quote!(tsukuyomi::route);
 
@@ -62,14 +63,7 @@ pub fn derive(input: &parsing::RouteInput) -> TokenStream {
     } else {
         let type_params = params.iter().map(|(ty, _)| ty);
         let return_types = params.iter().map(|(ty, _)| ty);
-
-        let bounds = params.iter().map(|(ty, _)| {
-            quote!(
-                #ty: std::str::FromStr + Send + 'static,
-                <#ty as std::str::FromStr>::Err: std::fmt::Debug + std::fmt::Display + Send + 'static,
-            )
-        });
-
+        let bounds = params.iter().map(|(ty, _)| quote!(#ty: #FromParam,));
         let extractors = params.iter().map(|(_, kind)| -> syn::Expr {
             match kind {
                 ParamKind::Pos(i) => syn::parse_quote!(tsukuyomi::extractor::param::pos(#i)),
