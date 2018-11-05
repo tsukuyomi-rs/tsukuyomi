@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::*;
 
 mod parsing {
@@ -20,200 +20,72 @@ mod parsing {
             })
         }
     }
-
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    pub enum Component<'a> {
-        Slash,
-        Static(&'a str),
-        Param(&'a str, &'a str, ParamKind),
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    pub enum ParamKind {
-        Normal,
-        Wildcard,
-    }
-
-    #[derive(Debug)]
-    pub struct Components<'a> {
-        uri: &'a str,
-    }
-
-    impl<'a> Iterator for Components<'a> {
-        type Item = Component<'a>;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            match self.uri.as_bytes().get(0) {
-                Some(b'/') => {
-                    self.uri = &self.uri[1..];
-                    Some(Component::Slash)
-                }
-                Some(b'<') => {
-                    let colon = self.uri.find(':').expect("invalid syntax: '>' not found");
-                    let end = self.uri.find('>').expect("invalid syntax: '>' not found");
-                    assert!(colon < end);
-
-                    let mut name = &self.uri[1..colon];
-                    let kind = if name.ends_with("..") {
-                        name = &name[..name.len() - 2];
-                        ParamKind::Wildcard
-                    } else {
-                        ParamKind::Normal
-                    };
-                    let ty = &self.uri[colon + 1..end];
-                    self.uri = &self.uri[end + 1..];
-                    Some(Component::Param(name, ty, kind))
-                }
-                Some(_) => {
-                    let pos = self.uri.find('/').unwrap_or_else(|| self.uri.len());
-                    let (static_, remains) = self.uri.split_at(pos);
-                    self.uri = remains;
-                    Some(Component::Static(static_))
-                }
-                None => None,
-            }
-        }
-    }
-
-    pub fn components(uri: &str) -> Components<'_> {
-        Components { uri }
-    }
-
-    #[cfg(test)]
-    #[cfg_attr(feature = "cargo-clippy", allow(enum_glob_use))]
-    mod tests {
-        use super::components;
-        use super::Component::*;
-        use super::ParamKind::*;
-
-        #[test]
-        fn root() {
-            assert_eq!(components("/").collect::<Vec<_>>(), vec![Slash,]);
-        }
-
-        #[test]
-        fn static_() {
-            assert_eq!(
-                components("/path/to").collect::<Vec<_>>(),
-                vec![Slash, Static("path"), Slash, Static("to"),]
-            );
-        }
-
-        #[test]
-        fn with_trailing_slash() {
-            assert_eq!(
-                components("/path/to/").collect::<Vec<_>>(),
-                vec![Slash, Static("path"), Slash, Static("to"), Slash,]
-            );
-        }
-
-        #[test]
-        fn with_param() {
-            assert_eq!(
-                components("/path/to/<id:u32>").collect::<Vec<_>>(),
-                vec![
-                    Slash,
-                    Static("path"),
-                    Slash,
-                    Static("to"),
-                    Slash,
-                    Param("id", "u32", Normal),
-                ]
-            );
-        }
-
-        #[test]
-        fn with_param_and_trailing_slash() {
-            assert_eq!(
-                components("/path/to/<id:u32>/").collect::<Vec<_>>(),
-                vec![
-                    Slash,
-                    Static("path"),
-                    Slash,
-                    Static("to"),
-                    Slash,
-                    Param("id", "u32", Normal),
-                    Slash,
-                ]
-            );
-        }
-
-        #[test]
-        fn multi_params() {
-            assert_eq!(
-                components("/path/to/<id:u32>/<name:std::string::String>").collect::<Vec<_>>(),
-                vec![
-                    Slash,
-                    Static("path"),
-                    Slash,
-                    Static("to"),
-                    Slash,
-                    Param("id", "u32", Normal),
-                    Slash,
-                    Param("name", "std::string::String", Normal),
-                ]
-            );
-        }
-
-        #[test]
-        fn wildcard() {
-            assert_eq!(
-                components("/<path..:PathBuf>").collect::<Vec<_>>(),
-                vec![Slash, Param("path", "PathBuf", Wildcard),]
-            );
-        }
-    }
 }
 
 #[allow(nonstandard_style)]
 pub fn derive(input: &parsing::RouteInput) -> TokenStream {
-    let uri_str = input.uri.value();
+    enum ParamKind {
+        Pos(usize),
+        Wildcard,
+    }
 
     let mut params = vec![];
-    let mut types = vec![];
-    let mut generated_uri = String::new();
-
-    for component in parsing::components(&uri_str) {
-        use self::parsing::Component::*;
-        use self::parsing::ParamKind::*;
-        match component {
-            Slash => generated_uri.push_str("/"),
-            Static(s) => generated_uri.push_str(s),
-            Param(name, ty, kind) => {
-                params.push((name, kind));
-                types.push(ty);
-                generated_uri.push_str(&match kind {
-                    Normal => format!(":{}", name),
-                    Wildcard => format!("*{}", name),
-                })
+    for segment in input.uri.value().split('/') {
+        match segment.as_bytes().get(0) {
+            Some(b':') => {
+                let i = params.len();
+                let ident = syn::Ident::new(&format!("T{}", i), Span::call_site());
+                params.push((ident, ParamKind::Pos(i)));
             }
+            Some(b'*') => {
+                let i = params.len();
+                let ident = syn::Ident::new(&format!("T{}", i), Span::call_site());
+                params.push((ident, ParamKind::Wildcard));
+            }
+            _ => {}
         }
     }
 
-    let Extractor: syn::Path = syn::parse_quote!(tsukuyomi::extractor::Extractor);
-    let extractor: syn::Path = syn::parse_quote!(tsukuyomi::extractor);
-    let Route: syn::Path = syn::parse_quote!(tsukuyomi::route::Route);
-    let route: syn::Path = syn::parse_quote!(tsukuyomi::route);
+    let name = quote!(route);
+    let method = &input.method;
+    let uri = &input.uri;
+    let Extractor = quote!(tsukuyomi::extractor::Extractor);
+    let Route = quote!(tsukuyomi::route::Route);
+    let route = quote!(tsukuyomi::route);
 
-    let extractors = params
-        .into_iter()
-        .enumerate()
-        .map(|(i, (_name, kind))| -> syn::Expr {
-            use self::parsing::ParamKind::*;
+    if params.is_empty() {
+        quote! {
+            fn #name() -> #Route<impl #Extractor<Output = ()>> {
+                #route::#method(#uri)
+            }
+        }
+    } else {
+        let type_params = params.iter().map(|(ty, _)| ty);
+        let return_types = params.iter().map(|(ty, _)| ty);
+
+        let bounds = params.iter().map(|(ty, _)| {
+            quote!(
+                #ty: std::str::FromStr + Send + 'static,
+                <#ty as std::str::FromStr>::Err: std::fmt::Debug + std::fmt::Display + Send + 'static,
+            )
+        });
+
+        let extractors = params.iter().map(|(_, kind)| -> syn::Expr {
             match kind {
-                Normal => syn::parse_quote!(#extractor::param::pos(#i)),
-                Wildcard => syn::parse_quote!(#extractor::param::wildcard()),
+                ParamKind::Pos(i) => syn::parse_quote!(tsukuyomi::extractor::param::pos(#i)),
+                ParamKind::Wildcard => syn::parse_quote!(tsukuyomi::extractor::param::wildcard()),
             }
         });
 
-    let types = types
-        .into_iter()
-        .map(|ty| syn::parse_str::<syn::Type>(ty).expect("invalid type in URI"));
-
-    quote! {
-        fn route() -> #Route<impl #Extractor<Output = (#( #types, )*)>> {
-            #route::get(#generated_uri)
-                #( .with( #extractors ) )*
-        }
+        quote!(
+            fn #name<#(#type_params),*>()
+                -> #Route<impl #Extractor<Output = (#(#return_types,)*)>>
+            where
+                #( #bounds )*
+            {
+                #route::#method(#uri)
+                    #( .with(#extractors) )*
+            }
+        )
     }
 }

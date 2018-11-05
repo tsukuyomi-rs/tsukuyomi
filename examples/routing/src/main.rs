@@ -9,15 +9,13 @@ fn main() {
         .mount("/api/v1/", |scope| {
             scope.mount("/posts", |scope| {
                 scope.route(route::index().reply(|| "list_posts"));
-                scope.route(
-                    route::get!("/<id:i32>").reply(|id: i32| format!("get_post(id = {})", id)),
-                );
+                scope.route(route::get!("/:id").reply(|id: i32| format!("get_post(id = {})", id)));
                 scope.route(route::post("/").reply(|| "add_post"));
             });
             scope.mount("/user", |scope| {
                 scope.route(route::get("/auth").reply(|| "Authentication"));
             });
-        }).route(route::get!("/<path..:String>").reply(|path| format!("path = {}\n", path)))
+        }).route(route::get!("/*path").reply(|path: String| format!("path = {}\n", path)))
         .finish()
         .unwrap();
 
