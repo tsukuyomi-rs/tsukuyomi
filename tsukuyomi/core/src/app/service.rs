@@ -12,8 +12,8 @@ use crate::input::{Input, InputParts, RequestBody};
 use crate::modifier::{AfterHandle, BeforeHandle, Modifier};
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::captures::Captures;
+use crate::server::server::CritError;
 use crate::server::service::http::Payload;
-use crate::server::CritError;
 
 use super::{App, ModifierId, RouteData, RouteId, ScopeId};
 

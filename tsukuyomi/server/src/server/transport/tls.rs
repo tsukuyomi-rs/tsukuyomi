@@ -8,7 +8,7 @@ use tokio_rustls::{TlsAcceptor, TlsStream};
 
 use super::imp::TransportImpl;
 use super::Transport;
-use CritError;
+use crate::server::CritError;
 
 #[allow(missing_debug_implementations)]
 pub struct TlsConfig<T> {

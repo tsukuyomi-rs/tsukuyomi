@@ -4,10 +4,10 @@ use tsukuyomi::handler::{Handle, Handler};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 
-use tsukuyomi::server::local::{Data, Input as TestInput, LocalServer};
-use tsukuyomi::server::service::http::{HttpRequest, HttpResponse};
-use tsukuyomi::server::service::{NewService, Service};
+use tsukuyomi::local::{Data, Input as TestInput, LocalServer};
 use tsukuyomi::server::CritError;
+use tsukuyomi::service::http::{HttpRequest, HttpResponse};
+use tsukuyomi::service::{NewService, Service};
 
 use http::Response;
 

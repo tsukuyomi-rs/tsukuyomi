@@ -14,7 +14,9 @@ use tower_service::{NewService, Service};
 use rt;
 use service::http::imp::{HttpRequestImpl, HttpResponseImpl};
 use service::http::{HttpRequest, HttpResponse, RequestBody};
-use CritError;
+
+/// A type alias representing a critical error.
+pub type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 #[allow(missing_debug_implementations)]
 pub struct Server<S, Tr = ()> {

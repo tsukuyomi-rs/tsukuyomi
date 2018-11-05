@@ -14,7 +14,7 @@ pub(crate) mod imp {
     use hyper::body::Payload;
     use tokio;
 
-    use CritError;
+    use crate::server::CritError;
 
     // ==== HttpRequest ====
 
