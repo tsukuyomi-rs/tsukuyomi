@@ -9,7 +9,7 @@ fn main() {
         .finish()
         .expect("failed to construct App");
 
-    tsukuyomi::server::server(app)
+    tsukuyomi::launch(app)
         .bind("127.0.0.1:4000")
         .run_forever()
         .expect("failed to start the server");

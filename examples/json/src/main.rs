@@ -19,12 +19,12 @@ fn main() {
             })
         })).route(
             route::post("/")
-                .with(tsukuyomi::extractor::body::json())
-                .reply(|user: User| tsukuyomi::output::json(user)),
+                .with(tsukuyomi::extractor::body::json::<User>())
+                .reply(tsukuyomi::output::json),
         ).finish()
         .unwrap();
 
-    tsukuyomi::server::server(app)
+    tsukuyomi::launch(app)
         .bind("127.0.0.1:4000")
         .run_forever()
         .unwrap();

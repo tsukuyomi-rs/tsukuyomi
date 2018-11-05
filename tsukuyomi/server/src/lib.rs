@@ -31,11 +31,3 @@ pub mod local;
 pub mod rt;
 pub mod server;
 pub mod service;
-
-/// A type alias representing a critical error.
-pub type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-#[allow(missing_docs)]
-pub fn server<S>(new_service: S) -> server::Server<S> {
-    server::Server::new(new_service)
-}

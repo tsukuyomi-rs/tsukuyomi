@@ -49,7 +49,7 @@ use tsukuyomi::app::builder::{Scope, ScopeConfig};
 use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Output, Responder, ResponseBody};
-use tsukuyomi::server::rt::blocking;
+use tsukuyomi::rt::blocking;
 
 // ==== headers ====
 

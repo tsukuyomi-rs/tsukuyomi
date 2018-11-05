@@ -15,7 +15,7 @@ mod imp {
     use tokio;
     use tokio::io::{AsyncRead, AsyncWrite};
 
-    use CritError;
+    use crate::server::CritError;
 
     pub trait Transport: TransportImpl {}
 

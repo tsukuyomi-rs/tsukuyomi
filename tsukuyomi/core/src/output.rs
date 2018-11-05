@@ -9,8 +9,8 @@ use serde::Serialize;
 
 use crate::error::{Error, Never};
 use crate::input::Input;
+use crate::server::server::CritError;
 use crate::server::service::http::{Body, Payload};
-use crate::server::CritError;
 
 /// A type representing the message body in an HTTP response.
 #[derive(Debug, Default)]
