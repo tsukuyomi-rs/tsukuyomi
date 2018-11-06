@@ -1,25 +1,58 @@
+extern crate rustls;
 extern crate tsukuyomi;
 
-use tsukuyomi::handler::wrap_ready;
-use tsukuyomi::server::transport::TlsConfig;
-use tsukuyomi::server::Server;
-use tsukuyomi::App;
+use std::path::Path;
+use std::sync::Arc;
 
-fn main() -> tsukuyomi::AppResult<()> {
-    let app = App::builder()
-        .route(("/", wrap_ready(|_| "Hello, Tsukuyomi.\n")))
-        .finish()?;
+const CERTS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/cert.pem");
+const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pem");
 
-    let server = Server::builder()
-        .transport(|t| {
-            t.use_tls(TlsConfig {
-                certs_path: "private/cert.pem".into(),
-                key_path: "private/key.pem".into(),
-                alpn_protocols: ["h2", "http/1.1"].into_iter().map(|&s| s.into()).collect(),
-            });
-        })
-        .finish(app)?;
+fn main() {
+    let app = tsukuyomi::app(|scope| {
+        scope.route(tsukuyomi::route::index().reply(|| "Hello, Tsukuyomi.\n"));
+    }).unwrap();
 
-    server.serve();
-    Ok(())
+    tsukuyomi::server(app)
+        .bind(tls_transport("127.0.0.1:4000"))
+        .run_forever()
+        .unwrap();
+}
+
+fn tls_transport<'a>(addr: &'a str) -> impl tsukuyomi::server::Transport + 'a {
+    let client_auth = rustls::NoClientAuth::new();
+
+    let mut config = rustls::ServerConfig::new(client_auth);
+    config.key_log = Arc::new(rustls::KeyLogFile::new());
+
+    let certs = load_certs(CERTS_PATH);
+    let priv_key = load_private_key(PRIV_KEY_PATH);
+    config.set_single_cert(certs, priv_key).unwrap();
+
+    config.set_protocols(&["h2".into(), "http/1.1".into()]);
+
+    tsukuyomi::server::transport::tls(addr, Arc::new(config))
+}
+
+fn load_certs(path: impl AsRef<Path>) -> Vec<rustls::Certificate> {
+    let certfile = std::fs::File::open(path).unwrap();
+    let mut reader = std::io::BufReader::new(certfile);
+    rustls::internal::pemfile::certs(&mut reader).unwrap()
+}
+
+fn load_private_key(path: impl AsRef<Path>) -> rustls::PrivateKey {
+    let rsa_keys = {
+        let keyfile = std::fs::File::open(&path).unwrap();
+        let mut reader = std::io::BufReader::new(keyfile);
+        rustls::internal::pemfile::rsa_private_keys(&mut reader).unwrap()
+    };
+
+    let pkcs8_keys = {
+        let keyfile = std::fs::File::open(&path).unwrap();
+        let mut reader = std::io::BufReader::new(keyfile);
+        rustls::internal::pemfile::pkcs8_private_keys(&mut reader).unwrap()
+    };
+
+    (pkcs8_keys.into_iter().next())
+        .or_else(|| rsa_keys.into_iter().next())
+        .expect("invalid private key")
 }

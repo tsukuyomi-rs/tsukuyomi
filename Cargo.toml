@@ -35,15 +35,15 @@ members = [
 
   "examples/basic",
   "examples/json",
-  "examples/staticfile",
   "examples/routing",
   "examples/session",
+  "examples/staticfile",
+  "examples/tls",
+  "examples/unix-socket",
+  "examples/websocket",
 
   # "examples/diesel",
   # "examples/juniper",
-  # "examples/tls",
-  # "examples/unix-socket",
-  # "examples/websocket",
   # The following examples works only on nightly channel.
   # "examples/async-await",
   # "examples/git-server",

@@ -102,6 +102,10 @@ fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
     })
 }
 
+pub fn extractor() -> WsExtractor {
+    WsExtractor::default()
+}
+
 /// An `Extractor` which validates the handshake request.
 #[derive(Debug, Default)]
 pub struct WsExtractor(());

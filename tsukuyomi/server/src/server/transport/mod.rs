@@ -2,8 +2,9 @@ mod tls;
 mod uds;
 
 pub use self::imp::Transport;
+
 #[cfg(feature = "tls")]
-pub use self::tls::TlsConfig;
+pub use self::tls::{tls, TlsConfig};
 
 // ==== impl ====
 mod imp {

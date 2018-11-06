@@ -10,6 +10,15 @@ use super::imp::TransportImpl;
 use super::Transport;
 use crate::server::CritError;
 
+pub fn tls<T, A>(raw_transport: T, acceptor: A) -> TlsConfig<T>
+where
+    T: Transport,
+    T::Error: 'static,
+    A: Into<TlsAcceptor>,
+{
+    TlsConfig::new(raw_transport, acceptor)
+}
+
 #[allow(missing_debug_implementations)]
 pub struct TlsConfig<T> {
     raw_transport: T,
@@ -21,7 +30,10 @@ where
     T: Transport,
     T::Error: 'static,
 {
-    pub fn new(raw_transport: T, acceptor: impl Into<TlsAcceptor>) -> TlsConfig<T> {
+    pub fn new<A>(raw_transport: T, acceptor: A) -> TlsConfig<T>
+    where
+        A: Into<TlsAcceptor>,
+    {
         TlsConfig {
             raw_transport,
             acceptor: acceptor.into(),
