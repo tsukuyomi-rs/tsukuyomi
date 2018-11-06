@@ -1,5 +1,11 @@
 extern crate tsukuyomi;
 
+#[cfg(not(unix))]
+fn main() {
+    println!("This example works only on Unix platform.");
+}
+
+#[cfg(unix)]
 fn main() {
     let sock_path: std::path::PathBuf = std::env::args()
         .nth(1)
