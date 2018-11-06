@@ -35,6 +35,7 @@ members = [
 
   "examples/basic",
   "examples/diesel",
+  # "examples/juniper",
   "examples/json",
   "examples/routing",
   "examples/session",
@@ -42,11 +43,6 @@ members = [
   "examples/tls",
   "examples/unix-socket",
   "examples/websocket",
-
-  # "examples/juniper",
-  # The following examples works only on nightly channel.
-  # "examples/async-await",
-  # "examples/git-server",
 ]
 
 [patch.crates-io]
