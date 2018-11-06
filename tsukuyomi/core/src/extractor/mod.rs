@@ -6,6 +6,7 @@ mod and;
 mod fallible;
 mod from_input;
 mod generic;
+mod map;
 mod optional;
 mod or;
 
@@ -21,6 +22,7 @@ pub use self::from_input::{
     extension, local, method, state, uri, version, HasExtractor, LocalExtractor,
 };
 pub(crate) use self::generic::{Combine, Func, Tuple};
+pub use self::map::Map;
 pub use self::optional::Optional;
 pub use self::or::Or;
 
@@ -28,9 +30,10 @@ pub use self::or::Or;
 
 use std::fmt;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use futures::future;
-use futures::{Async, Future, Poll};
+use futures::{Async, Future, IntoFuture, Poll};
 
 use crate::error::{Error, Never};
 use crate::input::Input;
@@ -55,6 +58,40 @@ pub trait Extractor: Send + Sync + 'static {
     type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
     fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error>;
+}
+
+impl<E> Extractor for Box<E>
+where
+    E: Extractor,
+{
+    type Output = E::Output;
+    type Error = E::Error;
+    type Future = E::Future;
+
+    #[inline]
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+        match (**self).extract(input)? {
+            Extract::Ready(out) => Ok(Extract::Ready(out)),
+            Extract::Incomplete(future) => Ok(Extract::Incomplete(future)),
+        }
+    }
+}
+
+impl<E> Extractor for Arc<E>
+where
+    E: Extractor,
+{
+    type Output = E::Output;
+    type Error = E::Error;
+    type Future = E::Future;
+
+    #[inline]
+    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+        match (**self).extract(input)? {
+            Extract::Ready(out) => Ok(Extract::Ready(out)),
+            Extract::Incomplete(future) => Ok(Extract::Incomplete(future)),
+        }
+    }
 }
 
 impl Extractor for () {
@@ -134,6 +171,17 @@ pub trait ExtractorExt: Extractor + Sized {
             right: other,
         })
     }
+
+    fn map<F, T, R>(self, f: F) -> Map<Self, F>
+    where
+        Self: Extractor<Output = (T,)>,
+        F: Fn(T) -> R + Send + Sync + 'static,
+    {
+        assert_impl_extractor(Map {
+            extractor: self,
+            f: Arc::new(f),
+        })
+    }
 }
 
 impl<E: Extractor> ExtractorExt for E {}
@@ -162,4 +210,41 @@ where
     }
 
     assert_impl_extractor(Validate(f))
+}
+
+pub fn extractor<F, R>(f: F) -> impl Extractor<Output = (R::Item,)>
+where
+    F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
+    R: IntoFuture,
+    R::Future: Send + 'static,
+    R::Item: 'static,
+    R::Error: Into<Error> + 'static,
+{
+    #[allow(missing_debug_implementations)]
+    struct ExtractorFn<F>(F);
+
+    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+    impl<F, R> Extractor for ExtractorFn<F>
+    where
+        F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
+        R: IntoFuture,
+        R::Future: Send + 'static,
+        R::Item: 'static,
+        R::Error: Into<Error> + 'static,
+    {
+        type Output = (R::Item,);
+        type Error = R::Error;
+        type Future = futures::future::Map<R::Future, fn(R::Item) -> (R::Item,)>;
+
+        #[inline]
+        fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+            Ok(Extract::Incomplete(
+                (self.0)(input)
+                    .into_future()
+                    .map((|output| (output,)) as fn(R::Item) -> (R::Item,)),
+            ))
+        }
+    }
+
+    assert_impl_extractor(ExtractorFn(f))
 }

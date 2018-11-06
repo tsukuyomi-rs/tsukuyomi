@@ -34,6 +34,7 @@ members = [
   "testcrates/doctest",
 
   "examples/basic",
+  "examples/diesel",
   "examples/json",
   "examples/routing",
   "examples/session",
@@ -42,7 +43,6 @@ members = [
   "examples/unix-socket",
   "examples/websocket",
 
-  # "examples/diesel",
   # "examples/juniper",
   # The following examples works only on nightly channel.
   # "examples/async-await",

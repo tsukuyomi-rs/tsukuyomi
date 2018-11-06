@@ -204,7 +204,10 @@ where
     }
 
     #[allow(missing_docs)]
-    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+    pub fn with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
         crate::input::with_get_current(|input| {
             let state = input.extensions().get::<T>().expect("should be exist");
             f(state)
@@ -235,7 +238,10 @@ where
     }
 
     #[allow(missing_docs)]
-    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+    pub fn with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
         crate::input::with_get_current(|input| {
             let state = input.state::<T>().expect("should be exist");
             f(state)
