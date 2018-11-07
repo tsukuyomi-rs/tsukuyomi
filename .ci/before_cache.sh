@@ -57,3 +57,5 @@ cargo clean -p example-staticfile
 cargo clean -p example-tls
 cargo clean -p example-unix-socket
 cargo clean -p example-websocket
+
+rm -rf target/.rustc_info.json

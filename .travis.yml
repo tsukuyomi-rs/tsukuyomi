@@ -7,6 +7,7 @@ notifications:
   email: false
 
 before_cache: >-
+  bash .ci/cache_check.sh &&
   bash .ci/before_cache.sh
 
 script: >-
@@ -18,21 +19,13 @@ matrix:
     - env: TARPAULIN
   fast_finish: true
   include:
+    - rust: beta
+    - rust: nightly
     - rust: 1.30.0 # minimum supported version
     - rust: stable
       os: windows
     - rust: stable
       os: osx
-
-    - rust: beta
-      cache:
-        directories:
-          - /home/travis/.cargo/registry
-
-    - rust: nightly
-      cache:
-        directories:
-          - /home/travis/.cargo/registry
 
     - rust: stable
       before_script:
@@ -55,9 +48,6 @@ matrix:
       sudo: required
       services:
         - docker
-      cache:
-        directories:
-          - /home/travis/.cargo/registry
       before_install:
         - docker pull xd009642/tarpaulin:latest-nightly
         - docker run --name tarpaulin -d --security-opt seccomp=unconfined -u "$(id -u):$(id -g)" -v "$(pwd):/volume" -v "$HOME/.cargo/registry:/usr/local/cargo/.registry" xd009642/tarpaulin:latest-nightly tail -f /dev/null
@@ -65,3 +55,5 @@ matrix:
       script:
         - bash .ci/run_coverage_test.sh
         - docker kill tarpaulin && docker rm -f tarpaulin
+      before_cache:
+        - bash .ci/before_cache.sh
