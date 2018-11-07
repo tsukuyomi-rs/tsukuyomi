@@ -1,1 +1,1 @@
-doc-valid-idents = ["WebSocket"]
+doc-valid-idents = ["GraphQL", "GraphiQL", "WebSocket"]

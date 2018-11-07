@@ -1,12 +1,13 @@
 [package]
 name = "tsukuyomi-juniper"
 description = """
-A extension of Tsukuyomi web framework for supporting GraphQL serving based on Juniper.
+Components for integrating GraphQL endpoints into Tsukuyomi.
 """
 version = "0.2.0-dev"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT/Apache-2.0"
-repository = "https://github.com/tsukuyomi-rs/tsukuyomi-juniper.git"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
+
 build = "build.rs"
 
 include = [
@@ -19,21 +20,20 @@ include = [
 
 [dependencies]
 tsukuyomi = { version = "0.4.0-dev", path = "../tsukuyomi" }
-juniper = "0.9.2"
+juniper = "0.10"
 
 bytes = "0.4"
-failure = "0.1"
-futures = "0.1.21"
-http = "0.1.6"
+futures = "0.1"
+http = "0.1"
 mime = "0.3"
-percent-encoding = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_qs = "0.4"
+percent-encoding = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_urlencoded = "0.5"
 
 [dev-dependencies]
 cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
 
 [dev-dependencies.juniper]
-version = "0.9.2"
+version = "0.10"
 features = ["expose-test-schema", "serde_json"]
