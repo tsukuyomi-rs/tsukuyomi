@@ -8,6 +8,7 @@ path = ".empty.rs"
 
 [dev-dependencies]
 failure = "0.1.3"
+juniper = "0.10"
 tungstenite = "0.6"
 tokio-tungstenite = "0.6"
 walkdir = "2"
@@ -27,7 +28,7 @@ members = [
   "tsukuyomi-askama",
   "tsukuyomi-askama/macros",
   "tsukuyomi-fs",
-  # "tsukuyomi-juniper",
+  "tsukuyomi-juniper",
   "tsukuyomi-session",
   "tsukuyomi-websocket",
 
@@ -35,7 +36,7 @@ members = [
 
   "examples/basic",
   "examples/diesel",
-  # "examples/juniper",
+  "examples/juniper",
   "examples/json",
   "examples/routing",
   "examples/session",
@@ -49,5 +50,6 @@ members = [
 tsukuyomi = { version = "0.4.0-dev", path = "tsukuyomi" }
 tsukuyomi-askama = { version = "0.1.0", path = "tsukuyomi-askama" }
 tsukuyomi-fs = { version = "0.1.0", path = "tsukuyomi-fs" }
+tsukuyomi-juniper = { version = "0.2.0-dev", path = "tsukuyomi-juniper" }
 tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
 tsukuyomi-websocket = { version = "0.1.0", path = "tsukuyomi-websocket" }

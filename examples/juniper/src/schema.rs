@@ -1,15 +1,15 @@
-use juniper::{self, FieldResult};
+use juniper::FieldResult;
 
-use context::Context;
+use crate::context::Context;
 
-#[derive(Debug, Clone, Copy, GraphQLEnum)]
+#[derive(Debug, Clone, Copy, juniper::GraphQLEnum)]
 pub enum Episode {
     NewHope,
     Empire,
     Jedi,
 }
 
-#[derive(Debug, Clone, GraphQLObject)]
+#[derive(Debug, Clone, juniper::GraphQLObject)]
 #[graphql(description = "A humanoid creature in the Star Wars universe")]
 pub struct Human {
     pub id: String,
@@ -18,7 +18,7 @@ pub struct Human {
     pub home_planet: String,
 }
 
-#[derive(Debug, GraphQLInputObject)]
+#[derive(Debug, juniper::GraphQLInputObject)]
 #[graphql(description = "A humanoid creature in the Star Wars universe")]
 pub struct NewHuman {
     pub name: String,
@@ -31,13 +31,13 @@ pub struct Query {
     _priv: (),
 }
 
-graphql_object!(Query: Context |&self| {
+juniper::graphql_object!(Query: Context |&self| {
     field apiVersion() -> &str {
         "1.0"
     }
 
     field human(&executor, id: String) -> FieldResult<Human> {
-        executor.context().get_human(id)
+        executor.context().get_human(&id)
     }
 
     field all_humans(&executor) -> FieldResult<Vec<Human>> {
@@ -50,7 +50,7 @@ pub struct Mutation {
     _priv: (),
 }
 
-graphql_object!(Mutation: Context |&self| {
+juniper::graphql_object!(Mutation: Context |&self| {
     field create_human(&executor, new_human: NewHuman) -> FieldResult<Human> {
         executor.context().add_human(new_human)
     }

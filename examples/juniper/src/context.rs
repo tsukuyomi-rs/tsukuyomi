@@ -1,12 +1,12 @@
 use juniper::{self, FieldResult};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use schema::{Human, NewHuman};
 
 /// Arbitrary context data.
-#[derive(Debug, Default)]
-pub struct Context(RwLock<Inner>);
+#[derive(Clone, Debug, Default)]
+pub struct Context(Arc<RwLock<Inner>>);
 
 #[derive(Debug, Default)]
 struct Inner {
@@ -17,10 +17,14 @@ struct Inner {
 impl juniper::Context for Context {}
 
 impl Context {
-    pub fn get_human(&self, id: String) -> FieldResult<Human> {
+    pub fn get_human(&self, id: &str) -> FieldResult<Human> {
         let id: u32 = id.parse()?;
         let inner = self.0.read().map_err(|_| "failed to acquire a lock")?;
-        inner.humans.get(&id).cloned().ok_or_else(|| "no such human".into())
+        inner
+            .humans
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| "no such human".into())
     }
 
     pub fn all_humans(&self) -> FieldResult<Vec<Human>> {
@@ -29,7 +33,8 @@ impl Context {
     }
 
     pub fn add_human(&self, new_human: NewHuman) -> FieldResult<Human> {
-        let mut inner = self.0.write().map_err(|_| "failed to acquire a lock")?;
+        let mut inner =
+            self.0.write().map_err(|_| "failed to acquire a lock")?;
 
         let new_id = inner.counter;
 
