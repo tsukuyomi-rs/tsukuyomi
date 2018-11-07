@@ -25,16 +25,9 @@ fn main() {
         scope.route(route::index().reply(tsukuyomi_juniper::graphiql("/graphql")));
 
         scope.route(
-            route::get("/graphql")
+            route::route("/graphql")
+                .methods(vec!["GET", "POST"])
                 .with(extract_graphql_executor.clone())
-                .handle({
-                    let context = context.clone();
-                    move |exec: Executor<_>| exec.execute(context.clone())
-                }),
-        );
-        scope.route(
-            route::post("/graphql")
-                .with(extract_graphql_executor)
                 .handle({
                     let context = context.clone();
                     move |exec: Executor<_>| exec.execute(context.clone())

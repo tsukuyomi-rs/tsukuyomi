@@ -5,7 +5,7 @@ pub use crate::app::route::Builder;
 macro_rules! define_route {
     ($($method:ident => $METHOD:ident,)*) => {$(
         pub fn $method(uri: impl AsRef<str>) -> Builder<()> {
-            Builder::new(()).method(http::Method::$METHOD).uri(uri)
+            self::route(uri).method(http::Method::$METHOD)
         }
 
         #[macro_export(local_inner_macros)]
@@ -33,9 +33,14 @@ define_route! {
     trace => TRACE,
 }
 
-// Equivalent to `get("/")`
+#[inline]
+pub fn route(uri: impl AsRef<str>) -> Builder<()> {
+    Builder::new(()).uri(uri)
+}
+
+// Equivalent to `route("/")`
 pub fn index() -> Builder<()> {
-    self::get("/")
+    self::route("/")
 }
 
 #[cfg(test)]

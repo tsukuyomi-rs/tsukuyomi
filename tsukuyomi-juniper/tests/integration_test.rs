@@ -22,14 +22,15 @@ fn integration_test() {
     let executor = std::sync::Arc::new(executor);
 
     let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route::get("/").with(executor.clone()).handle({
-            let database = database.clone();
-            move |exec: Executor<_>| exec.execute(database.clone())
-        }));
-        scope.route(tsukuyomi::route::post("/").with(executor).handle({
-            let database = database.clone();
-            move |exec: Executor<_>| exec.execute(database.clone())
-        }));
+        scope.route(
+            tsukuyomi::route::index()
+                .methods(vec!["GET", "POST"])
+                .with(executor.clone())
+                .handle({
+                    let database = database.clone();
+                    move |exec: Executor<_>| exec.execute(database.clone())
+                }),
+        );
     }).unwrap();
 
     let integration = TestTsukuyomiIntegration {
