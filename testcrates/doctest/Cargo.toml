@@ -1,11 +1,11 @@
 [package]
-name = "doctest"
+name = "test-markdown"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [lib]
-name = "doctest"
+name = "test_markdown"
 path = "lib.rs"
 
 [dependencies]
