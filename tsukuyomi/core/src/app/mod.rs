@@ -299,10 +299,15 @@ impl AppBuilder {
 
                 let id = RouteId(scope_id, route_id);
 
+                let mut methods = route.methods;
+                if methods.is_empty() {
+                    methods.insert(Method::GET);
+                }
+
                 Ok(RouteData {
                     id,
                     uri,
-                    method: route.method,
+                    methods,
                     handler,
                     modifier_ids,
                 })
@@ -316,16 +321,18 @@ impl AppBuilder {
                     .entry(route.uri.clone())
                     .or_insert_with(IndexMap::<Method, usize>::new);
 
-                if methods.contains_key(&route.method) {
-                    return Err(AppError::from_failure(failure::format_err!(
-                        "Adding routes with duplicate URI and method is currenly not supported. \
-                         (uri={}, method={})",
-                        route.uri,
-                        route.method
-                    )));
-                }
+                for method in &route.methods {
+                    if methods.contains_key(method) {
+                        return Err(AppError::from_failure(failure::format_err!(
+                            "Adding routes with duplicate URI and method is currenly not supported. \
+                            (uri={}, method={})",
+                            route.uri,
+                            method
+                        )));
+                    }
 
-                methods.insert(route.method.clone(), i);
+                    methods.insert(method.clone(), i);
+                }
             }
 
             log::debug!("collected routes:");
@@ -347,7 +354,7 @@ impl AppBuilder {
                         routes.push(RouteData {
                             id: RouteId(ScopeId::Global, id),
                             uri: uri.clone(),
-                            method: Method::OPTIONS,
+                            methods: vec![Method::OPTIONS].into_iter().collect(),
                             handler: default_options_handler(m),
                             modifier_ids: (0..modifiers.len())
                                 .map(|i| ModifierId(ScopeId::Global, i))

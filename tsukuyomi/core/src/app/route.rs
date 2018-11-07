@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use futures::{Async, Future, IntoFuture};
 use http::{HttpTryFrom, Method};
+use indexmap::IndexSet;
 
 use crate::error::Error;
 use crate::extractor::{And, Combine, Extract, Extractor, ExtractorExt, Func};
@@ -18,7 +19,7 @@ pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
 pub(super) struct RouteData {
     pub(super) id: RouteId,
     pub(super) uri: Uri,
-    pub(super) method: Method,
+    pub(super) methods: IndexSet<Method>,
     pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
     pub(super) modifier_ids: Vec<ModifierId>,
 }
@@ -29,7 +30,7 @@ impl fmt::Debug for RouteData {
         f.debug_struct("RouteData")
             .field("id", &self.id)
             .field("uri", &self.uri)
-            .field("method", &self.method)
+            .field("methods", &self.methods)
             .field("modifier_ids", &self.modifier_ids)
             .finish()
     }
@@ -42,7 +43,7 @@ pub struct Route {
 }
 
 pub(super) struct RouteInner {
-    pub(super) method: Method,
+    pub(super) methods: IndexSet<Method>,
     pub(super) uri: Uri,
     pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
 }
@@ -50,7 +51,7 @@ pub(super) struct RouteInner {
 impl fmt::Debug for RouteInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RouteInner")
-            .field("method", &self.method)
+            .field("methods", &self.methods)
             .field("uri", &self.uri)
             .finish()
     }
@@ -70,7 +71,7 @@ where
     E: Extractor,
 {
     extractor: E,
-    method: http::Result<Method>,
+    methods: http::Result<IndexSet<Method>>,
     uri: failure::Fallible<Uri>,
 }
 
@@ -83,7 +84,7 @@ where
         Builder {
             extractor,
             uri: Ok(Uri::root()),
-            method: Ok(Method::GET),
+            methods: Ok(IndexSet::new()),
         }
     }
 
@@ -104,9 +105,31 @@ where
         Method: HttpTryFrom<M>,
     {
         Builder {
-            method: self
-                .method
-                .and_then(|_| Method::try_from(method).map_err(Into::into)),
+            methods: self.methods.and_then(|mut methods| {
+                Method::try_from(method)
+                    .map(|method| {
+                        methods.insert(method);
+                        methods
+                    }).map_err(Into::into)
+            }),
+            ..self
+        }
+    }
+
+    /// Sets the HTTP methods of this route.
+    pub fn methods<I, M>(self, methods: I) -> Self
+    where
+        I: IntoIterator<Item = M>,
+        Method: HttpTryFrom<M>,
+    {
+        Builder {
+            methods: self.methods.and_then(|mut orig_methods| {
+                for method in methods {
+                    let method = Method::try_from(method).map_err(Into::into)?;
+                    orig_methods.insert(method);
+                }
+                Ok(orig_methods)
+            }),
             ..self
         }
     }
@@ -120,7 +143,7 @@ where
     {
         Builder {
             extractor: self.extractor.and(other),
-            method: self.method,
+            methods: self.methods,
             uri: self.uri,
         }
     }
@@ -133,11 +156,11 @@ where
         let Self {
             extractor,
             uri,
-            method,
+            methods,
         } = self;
 
-        let method = match method {
-            Ok(method) => method,
+        let methods = match methods {
+            Ok(methods) => methods,
             Err(err) => {
                 return Route {
                     inner: Err(AppError::from_failure(err)),
@@ -156,7 +179,7 @@ where
 
         Route {
             inner: Ok(RouteInner {
-                method,
+                methods,
                 uri,
                 handler: Box::new(crate::handler::raw(f(extractor))),
             }),
