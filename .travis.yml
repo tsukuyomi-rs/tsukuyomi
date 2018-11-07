@@ -1,16 +1,15 @@
-dist: trusty
 language: rust
 cache: cargo
-
 branches:
   only:
     - master
+notifications:
+  email: false
 
 before_cache: >-
   bash .ci/before_cache.sh
 
 script: >-
-  cargo update &&
   bash .ci/run_test.sh
 
 matrix:
@@ -19,12 +18,16 @@ matrix:
     - env: TARPAULIN
   fast_finish: true
   include:
-    - rust: beta
     - rust: 1.30.0 # minimum supported version
     - rust: stable
       os: windows
     - rust: stable
       os: osx
+
+    - rust: beta
+      cache:
+        directories:
+          - /home/travis/.cargo/registry
 
     - rust: nightly
       cache:
@@ -34,10 +37,6 @@ matrix:
     - rust: stable
       before_script:
         - rustup component add rustfmt-preview clippy-preview
-      script: >-
-        cargo fmt -- --check &&
-        cargo update &&
-        bash .ci/run_test.sh
       before_deploy: >-
         rm -rf target/doc &&
         bash .ci/build_doc.sh
@@ -56,9 +55,13 @@ matrix:
       sudo: required
       services:
         - docker
+      cache:
+        directories:
+          - /home/travis/.cargo/registry
       before_install:
         - docker pull xd009642/tarpaulin:latest-nightly
-        - docker run --name tarpaulin -d --security-opt seccomp=unconfined -u "$(id -u):$(id -g)" -v "$(pwd):/volume" xd009642/tarpaulin:latest-nightly /bin/bash
+        - docker run --name tarpaulin -d --security-opt seccomp=unconfined -u "$(id -u):$(id -g)" -v "$(pwd):/volume" -v "$HOME/.cargo/registry:/usr/local/cargo/.registry" xd009642/tarpaulin:latest-nightly tail -f /dev/null
         - docker ps -a
       script:
         - bash .ci/run_coverage_test.sh
+        - docker kill tarpaulin && docker rm -f tarpaulin
