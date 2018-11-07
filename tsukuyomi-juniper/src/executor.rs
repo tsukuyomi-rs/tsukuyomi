@@ -72,12 +72,15 @@ where
     S: Schema,
 {
     /// Executes a GraphQL request from client with the specified context.
-    pub fn execute(
+    pub fn execute<CtxT>(
         self,
-        context: S::Context,
-    ) -> impl Future<Item = GraphQLResponse, Error = Error> + Send + 'static {
+        context: CtxT,
+    ) -> impl Future<Item = GraphQLResponse, Error = Error> + Send + 'static
+    where
+        CtxT: AsRef<S::Context> + Send + 'static,
+    {
         tsukuyomi::rt::blocking_section(move || {
-            Ok::<_, tsukuyomi::error::Never>(self.request.execute(&*self.schema, &context))
+            Ok::<_, tsukuyomi::error::Never>(self.request.execute(&*self.schema, context.as_ref()))
         })
     }
 }

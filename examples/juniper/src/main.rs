@@ -8,22 +8,21 @@ extern crate tsukuyomi_juniper;
 mod context;
 mod schema;
 
+use std::sync::Arc;
 use tsukuyomi::route;
 use tsukuyomi_juniper::executor::Executor;
 
 fn main() {
-    let context = context::Context::default();
+    let context = Arc::new(crate::context::Context::default());
 
     let extract_graphql_executor = {
         let schema = crate::schema::create_schema();
         let extractor = tsukuyomi_juniper::executor(schema);
-        std::sync::Arc::new(extractor)
+        Arc::new(extractor)
     };
 
     let app = tsukuyomi::app(|scope| {
-        scope.route(
-            route::index().reply(tsukuyomi_juniper::graphiql("/graphql")),
-        );
+        scope.route(route::index().reply(tsukuyomi_juniper::graphiql("/graphql")));
 
         scope.route(
             route::get("/graphql")

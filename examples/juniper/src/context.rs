@@ -1,12 +1,12 @@
 use juniper::{self, FieldResult};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use schema::{Human, NewHuman};
 
 /// Arbitrary context data.
-#[derive(Clone, Debug, Default)]
-pub struct Context(Arc<RwLock<Inner>>);
+#[derive(Debug, Default)]
+pub struct Context(RwLock<Inner>);
 
 #[derive(Debug, Default)]
 struct Inner {
@@ -33,8 +33,7 @@ impl Context {
     }
 
     pub fn add_human(&self, new_human: NewHuman) -> FieldResult<Human> {
-        let mut inner =
-            self.0.write().map_err(|_| "failed to acquire a lock")?;
+        let mut inner = self.0.write().map_err(|_| "failed to acquire a lock")?;
 
         let new_id = inner.counter;
 

@@ -56,12 +56,12 @@ impl Extractor for GraphQLRequestExtractor {
 
 fn parse_query_str(s: &str) -> tsukuyomi::error::Result<GraphQLRequest> {
     #[derive(Debug, serde::Deserialize)]
-    struct ParsedQuery<'a> {
-        query: &'a str,
-        operation_name: Option<&'a str>,
-        variables: Option<&'a str>,
+    struct ParsedQuery {
+        query: String,
+        operation_name: Option<String>,
+        variables: Option<String>,
     }
-    let parsed: ParsedQuery<'_> =
+    let parsed: ParsedQuery =
         serde_urlencoded::from_str(s).map_err(tsukuyomi::error::bad_request)?;
 
     let query = percent_decode(parsed.query.as_ref())
@@ -111,9 +111,10 @@ impl Future for GraphQLRequestExtractorFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
         match self.kind {
-            RequestKind::Json => serde_json::from_slice(&*data)
-                .map_err(tsukuyomi::error::bad_request)
-                .map(|request| Async::Ready((request,))),
+            RequestKind::Json => {
+                let request = serde_json::from_slice(&*data).unwrap_or_else(GraphQLRequest::error);
+                Ok(Async::Ready((request,)))
+            }
             RequestKind::GraphQL => String::from_utf8(data.to_vec())
                 .map(|query| Async::Ready((GraphQLRequest::single(query, None, None),)))
                 .map_err(tsukuyomi::error::bad_request),
@@ -127,11 +128,20 @@ pub struct GraphQLRequest(GraphQLRequestKind);
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 enum GraphQLRequestKind {
+    #[serde(skip)]
+    ParseError(juniper::FieldError),
     Single(juniper::http::GraphQLRequest),
     Batch(Vec<juniper::http::GraphQLRequest>),
 }
 
 impl GraphQLRequest {
+    fn error<E>(err: E) -> Self
+    where
+        E: Into<juniper::FieldError>,
+    {
+        GraphQLRequest(GraphQLRequestKind::ParseError(err.into()))
+    }
+
     fn single(
         query: String,
         operation_name: Option<String>,
@@ -142,20 +152,24 @@ impl GraphQLRequest {
         ))
     }
 
-    pub fn execute<S>(&self, schema: &S, context: &S::Context) -> GraphQLResponse
+    pub fn execute<S>(self, schema: &S, context: &S::Context) -> GraphQLResponse
     where
         S: crate::executor::Schema,
     {
         use self::GraphQLRequestKind::*;
         match self.0 {
-            Single(ref request) => {
+            ParseError(err) => GraphQLResponse {
+                is_ok: false,
+                body: serde_json::to_vec(&juniper::http::GraphQLResponse::error(err)),
+            },
+            Single(request) => {
                 let response = request.execute(schema.as_root_node(), context);
                 GraphQLResponse {
                     is_ok: response.is_ok(),
                     body: serde_json::to_vec(&response),
                 }
             }
-            Batch(ref requests) => {
+            Batch(requests) => {
                 let responses: Vec<_> = requests
                     .iter()
                     .map(|request| request.execute(schema.as_root_node(), context))
