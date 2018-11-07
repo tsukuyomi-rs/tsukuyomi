@@ -1,0 +1,57 @@
+dist: trusty
+language: rust
+cache:
+  - cargo: true
+branches:
+  only:
+    - master
+
+script: >-
+  cargo update &&
+  bash .ci/run_test.sh
+
+matrix:
+  allow_failures:
+    - rust: nightly
+    - env: TARPAULIN
+  fast_finish: true
+  include:
+    - rust: beta
+    - rust: nightly
+    - rust: 1.30.0 # minimum supported version
+    - rust: stable
+      os: windows
+    - rust: stable
+      os: osx
+
+    - rust: stable
+      before_script:
+        - rustup component add rustfmt-preview clippy-preview
+      script: >-
+        cargo fmt -- --check &&
+        cargo update &&
+        bash .ci/run_test.sh
+      before_deploy: >-
+        rm -rf target/doc &&
+        bash .ci/build_doc.sh
+      deploy:
+        provider: pages
+        skip_cleanup: true
+        github_token: $GH_TOKEN
+        repo: tsukuyomi-rs/tsukuyomi
+        target_branch: gh-pages
+        local_dir: target/doc
+        on:
+          branch: master
+
+    - rust: nightly
+      env: TARPAULIN
+      sudo: required
+      services:
+        - docker
+      before_install:
+        - docker pull xd009642/tarpaulin:latest-nightly
+        - docker run --name tarpaulin -d --security-opt seccomp=unconfined -u "$(id -u):$(id -g)" -v "$(pwd):/volume" xd009642/tarpaulin:latest-nightly /bin/bash
+        - docker ps -a
+      script:
+        - bash .ci/run_coverage_test.sh

@@ -14,7 +14,7 @@ codecov() {
 }
 
 tarpaulin() {
-    cargo tarpaulin -v --skip-clean --out Xml "$@"
+    docker exec tarpaulin cargo tarpaulin -v --skip-clean --out Xml "$@"
 }
 
 tarpaulin --all && codecov -n "all"
