@@ -14,21 +14,10 @@ use crate::server::CritError;
 use service::http::imp::{HttpRequestImpl, HttpResponseImpl};
 use service::http::{HttpRequest, HttpResponse};
 
-use super::data::{Data, Receive};
-use super::input::Input;
+use super::input::TestInput;
+use super::output::{Receive, TestOutput};
 
-/// A local server which emulates an HTTP service without using
-/// the low-level transport.
-///
-/// The value of this struct conttains an instance of `NewHttpService`
-/// and a Tokio runtime.
-#[derive(Debug)]
-pub struct LocalServer<S> {
-    new_service: S,
-    runtime: Runtime,
-}
-
-impl<S> LocalServer<S>
+pub fn test_server<S>(new_service: S) -> TestServer<S>
 where
     S: NewService + Send + 'static,
     S::Request: HttpRequest,
@@ -36,12 +25,38 @@ where
     S::Error: Into<CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
-    S::InitError: Send + 'static,
+    <S::Service as Service>::Future: Send + 'static,
+    S::InitError: Into<CritError> + Send + 'static,
+{
+    TestServer::new(new_service).expect("failed to initialize the runtime")
+}
+
+/// A local server which emulates an HTTP service without using
+/// the low-level transport.
+///
+/// The value of this struct conttains an instance of `NewHttpService`
+/// and a Tokio runtime.
+#[derive(Debug)]
+pub struct TestServer<S> {
+    new_service: S,
+    runtime: Runtime,
+}
+
+impl<S> TestServer<S>
+where
+    S: NewService + Send + 'static,
+    S::Request: HttpRequest,
+    S::Response: HttpResponse,
+    S::Error: Into<CritError>,
+    S::Future: Send + 'static,
+    S::Service: Send + 'static,
+    <S::Service as Service>::Future: Send + 'static,
+    S::InitError: Into<CritError> + Send + 'static,
 {
     /// Creates a new instance of `LocalServer` from a `NewHttpService`.
     ///
     /// This function will return an error if the construction of the runtime is failed.
-    pub fn new(new_service: S) -> io::Result<LocalServer<S>> {
+    pub fn new(new_service: S) -> io::Result<Self> {
         let mut pool = ThreadPoolBuilder::new();
         pool.pool_size(1);
 
@@ -50,7 +65,7 @@ where
             .blocking_threads(1)
             .build()?;
 
-        Ok(LocalServer {
+        Ok(Self {
             new_service,
             runtime,
         })
@@ -63,6 +78,16 @@ where
             service,
             runtime: &mut self.runtime,
         })
+    }
+
+    pub fn perform<T>(&mut self, input: T) -> Result<Response<TestOutput>, CritError>
+    where
+        T: TestInput,
+        <S::Service as Service>::Future: Send + 'static,
+        S::InitError: Into<CritError>,
+    {
+        let mut client = self.client().map_err(Into::into)?;
+        client.perform(input).map_err(Into::into)
     }
 }
 
@@ -82,9 +107,9 @@ where
     S::Future: Send + 'static,
 {
     /// Applies an HTTP request to this client and get its response.
-    pub fn perform<T>(&mut self, input: T) -> Result<Response<Data>, CritError>
+    pub fn perform<T>(&mut self, input: T) -> Result<Response<TestOutput>, CritError>
     where
-        T: Input,
+        T: TestInput,
     {
         let input = input.build_request()?;
         let request = S::Request::from_request(input);
@@ -113,7 +138,7 @@ where
     F::Error: Into<CritError>,
     Bd: Payload,
 {
-    type Item = Response<Data>;
+    type Item = Response<TestOutput>;
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

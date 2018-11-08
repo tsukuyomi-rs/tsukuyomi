@@ -11,7 +11,7 @@ use juniper::{EmptyMutation, RootNode};
 use percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET};
 use std::cell::RefCell;
 
-use tsukuyomi::local::{Data, LocalServer};
+use tsukuyomi::test::{test_server, TestOutput, TestServer};
 use tsukuyomi_juniper::executor::Executor;
 
 #[test]
@@ -34,14 +34,14 @@ fn integration_test() {
     }).unwrap();
 
     let integration = TestTsukuyomiIntegration {
-        local_server: RefCell::new(LocalServer::new(app).unwrap()),
+        local_server: RefCell::new(test_server(app)),
     };
 
     http_tests::run_http_test_suite(&integration);
 }
 
 struct TestTsukuyomiIntegration {
-    local_server: RefCell<LocalServer<tsukuyomi::app::App>>,
+    local_server: RefCell<TestServer<tsukuyomi::app::App>>,
 }
 
 impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
@@ -49,8 +49,6 @@ impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
         let response = self
             .local_server
             .borrow_mut()
-            .client()
-            .unwrap()
             .perform(Request::get(custom_url_encode(url)))
             .unwrap();
         make_test_response(&response)
@@ -60,8 +58,6 @@ impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
         let response = self
             .local_server
             .borrow_mut()
-            .client()
-            .unwrap()
             .perform(
                 Request::post(custom_url_encode(url))
                     .header("content-type", "application/json")
@@ -79,7 +75,7 @@ fn custom_url_encode(url: &str) -> String {
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(cast_lossless))]
-fn make_test_response(response: &Response<Data>) -> http_tests::TestResponse {
+fn make_test_response(response: &Response<TestOutput>) -> http_tests::TestResponse {
     let status_code = response.status().as_u16() as i32;
     let content_type = response
         .headers()

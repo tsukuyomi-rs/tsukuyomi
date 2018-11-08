@@ -21,7 +21,7 @@ enum ReceiveState<Bd: Payload> {
         chunks: Vec<Bytes>,
         end_of_chunks: bool,
     },
-    Done(Data),
+    Done(TestOutput),
     Gone,
 }
 
@@ -72,7 +72,7 @@ impl<Bd: Payload> Receive<Bd> {
                     ..
                 } => {
                     debug_assert!(end_of_chunks);
-                    self.state = ReceiveState::Done(Data {
+                    self.state = ReceiveState::Done(TestOutput {
                         chunks,
                         trailers,
                         content_length: self.content_length,
@@ -84,7 +84,7 @@ impl<Bd: Payload> Receive<Bd> {
         }
     }
 
-    pub(super) fn into_data(self) -> Option<Data> {
+    pub(super) fn into_data(self) -> Option<TestOutput> {
         match self.state {
             ReceiveState::Done(data) => Some(data),
             _ => None,
@@ -96,14 +96,14 @@ impl<Bd: Payload> Receive<Bd> {
 ///
 /// This type is usually used by the testing framework.
 #[derive(Debug)]
-pub struct Data {
+pub struct TestOutput {
     chunks: Vec<Bytes>,
     trailers: Option<HeaderMap>,
     content_length: Option<u64>,
 }
 
 #[allow(missing_docs)]
-impl Data {
+impl TestOutput {
     pub fn chunks(&self) -> &Vec<Bytes> {
         &self.chunks
     }

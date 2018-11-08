@@ -6,9 +6,9 @@ use service::http::RequestBody;
 
 // ==== traits ====
 
-pub trait Input: InputImpl {}
+pub trait TestInput: TestInputImpl {}
 
-pub trait InputImpl {
+pub trait TestInputImpl {
     fn build_request(self) -> http::Result<Request<RequestBody>>;
 }
 
@@ -23,8 +23,8 @@ pub trait IntoRequestBodyImpl {
 
 // === implementors ===
 
-impl<T: IntoRequestBody> Input for Request<T> {}
-impl<T: IntoRequestBody> InputImpl for Request<T> {
+impl<T: IntoRequestBody> TestInput for Request<T> {}
+impl<T: IntoRequestBody> TestInputImpl for Request<T> {
     fn build_request(mut self) -> http::Result<Request<RequestBody>> {
         if let Some(content_type) = self.body().content_type() {
             self.headers_mut().append("content-type", content_type);
@@ -33,22 +33,22 @@ impl<T: IntoRequestBody> InputImpl for Request<T> {
     }
 }
 
-impl<T: IntoRequestBody, E: Into<http::Error>> Input for Result<Request<T>, E> {}
-impl<T: IntoRequestBody, E: Into<http::Error>> InputImpl for Result<Request<T>, E> {
+impl<T: IntoRequestBody, E: Into<http::Error>> TestInput for Result<Request<T>, E> {}
+impl<T: IntoRequestBody, E: Into<http::Error>> TestInputImpl for Result<Request<T>, E> {
     fn build_request(self) -> http::Result<Request<RequestBody>> {
         self.map_err(Into::into)?.build_request()
     }
 }
 
-impl Input for http::request::Builder {}
-impl InputImpl for http::request::Builder {
+impl TestInput for http::request::Builder {}
+impl TestInputImpl for http::request::Builder {
     fn build_request(mut self) -> http::Result<Request<RequestBody>> {
         (&mut self).build_request()
     }
 }
 
-impl<'a> Input for &'a mut http::request::Builder {}
-impl<'a> InputImpl for &'a mut http::request::Builder {
+impl<'a> TestInput for &'a mut http::request::Builder {}
+impl<'a> TestInputImpl for &'a mut http::request::Builder {
     fn build_request(self) -> http::Result<Request<RequestBody>> {
         self.body(RequestBody(Default::default()))
     }
