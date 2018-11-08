@@ -1,0 +1,18 @@
+[package]
+name = "example-http-proxy"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "example_http_proxy"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.4.0-dev"
+
+bytes = "0.4"
+futures = "0.1"
+http = "0.1"
+reqwest = "0.9"

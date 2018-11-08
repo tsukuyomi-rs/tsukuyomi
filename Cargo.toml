@@ -36,6 +36,7 @@ members = [
 
   "examples/basic",
   "examples/diesel",
+  "examples/http-proxy",
   "examples/juniper",
   "examples/json",
   "examples/routing",
