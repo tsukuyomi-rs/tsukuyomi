@@ -28,15 +28,8 @@ mod session;
 mod storage;
 mod util;
 
-pub use crate::session::Session;
+pub use crate::session::{extractor, Session};
 pub use crate::storage::SessionStorage;
-
-use tsukuyomi::extractor::HasExtractor;
-
-#[allow(missing_docs)]
-pub fn extractor() -> <Session as HasExtractor>::Extractor {
-    Session::extractor()
-}
 
 #[allow(missing_docs)]
 pub fn storage<B>(backend: B) -> SessionStorage<B>

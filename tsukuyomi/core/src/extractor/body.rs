@@ -1,17 +1,16 @@
 //! Extractors for parsing message body.
 
-use std::fmt;
-use std::marker::PhantomData;
 use std::str;
 
 use bytes::Bytes;
-use futures::{Async, Future, Poll};
+use futures::{Async, Future};
 use mime::Mime;
 use serde::de::DeserializeOwned;
 
 use crate::error::Error;
-use crate::extractor::{Extract, Extractor};
+use crate::extractor::Extractor;
 use crate::input::Input;
+use crate::server::service::http::RequestBody;
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]
@@ -132,106 +131,63 @@ mod decode {
     }
 }
 
-pub type Plain<T> = Body<T, self::decode::PlainTextDecoder>;
-pub type Json<T> = Body<T, self::decode::JsonDecoder>;
-pub type Urlencoded<T> = Body<T, self::decode::UrlencodedDecoder>;
-
-pub fn plain<T>() -> Plain<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    Plain::default()
-}
-
-pub fn json<T>() -> Json<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    Json::default()
-}
-
-pub fn urlencoded<T>() -> Urlencoded<T>
-where
-    T: DeserializeOwned + 'static,
-{
-    Urlencoded::default()
-}
-
-/// The instance of `FromInput` which deserializes the message body to the specified type.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct Body<T, D: self::decode::Decoder<T>> {
-    decoder: D,
-    _marker: PhantomData<fn() -> T>,
-}
-
-impl<T, D> Default for Body<T, D>
-where
-    D: self::decode::Decoder<T> + Default,
-{
-    fn default() -> Self {
-        Self {
-            decoder: D::default(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T, D> fmt::Debug for Body<T, D>
-where
-    D: self::decode::Decoder<T> + fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Body")
-            .field("decoder", &self.decoder)
-            .finish()
-    }
-}
-
-impl<T, D> Extractor for Body<T, D>
+fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,), Error = Error>
 where
     T: 'static,
     D: self::decode::Decoder<T> + Send + Sync + 'static,
 {
-    type Output = (T,);
-    type Error = Error;
-    type Future = self::imp::BodyFuture<T, D>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+    super::lazy(move |input| {
         {
             let mime_opt = get_mime_opt(input).map_err(crate::error::bad_request)?;
-            self.decoder
+            decoder
                 .validate_mime(mime_opt)
                 .map_err(crate::error::bad_request)?;
         }
-        Ok(Extract::Incomplete(self::imp::BodyFuture {
-            read_all: input.body_mut().read_all(),
-            _marker: PhantomData,
+
+        let mut read_all = input.body_mut().read_all();
+        Ok(futures::future::poll_fn(move || {
+            let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
+            D::decode(&data)
+                .map(Async::Ready)
+                .map_err(crate::error::bad_request)
         }))
-    }
+    })
 }
 
-mod imp {
-    use super::*;
+#[inline]
+pub fn plain<T>() -> impl Extractor<Output = (T,), Error = Error>
+where
+    T: DeserializeOwned + 'static,
+{
+    self::decoded(self::decode::PlainTextDecoder::default())
+}
 
-    #[allow(missing_debug_implementations)]
-    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-    pub struct BodyFuture<T, D: super::decode::Decoder<T>> {
-        pub(super) read_all: crate::input::body::ReadAll,
-        pub(super) _marker: PhantomData<(D, fn() -> T)>,
-    }
+#[inline]
+pub fn json<T>() -> impl Extractor<Output = (T,), Error = Error>
+where
+    T: DeserializeOwned + 'static,
+{
+    self::decoded(self::decode::JsonDecoder::default())
+}
 
-    impl<T, D> Future for BodyFuture<T, D>
-    where
-        D: self::decode::Decoder<T>,
-    {
-        type Item = (T,);
-        type Error = Error;
+#[inline]
+pub fn urlencoded<T>() -> impl Extractor<Output = (T,), Error = Error>
+where
+    T: DeserializeOwned + 'static,
+{
+    self::decoded(self::decode::UrlencodedDecoder::default())
+}
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
-            D::decode(&data)
-                .map(|out| Async::Ready((out,)))
-                .map_err(crate::error::bad_request)
-        }
-    }
+pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
+    super::lazy(|input| Ok(input.body_mut().read_all().map_err(Error::critical)))
+}
+
+pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
+    super::ready(|input| {
+        input.body_mut().raw().ok_or_else(|| {
+            crate::error::internal_server_error(
+                "The instance of raw RequestBody has already stolen.",
+            )
+        })
+    })
 }

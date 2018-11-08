@@ -15,20 +15,17 @@ where
     type Error = Error;
     type Future = OrFuture<L::Future, R::Future>;
 
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
         match self.left.extract(input) {
-            Ok(Extract::Ready(out)) => Ok(Extract::Ready(out)),
-            Ok(Extract::Incomplete(left)) => match self.right.extract(input) {
-                Ok(Extract::Ready(out)) => Ok(Extract::Ready(out)),
-                Ok(Extract::Incomplete(right)) => Ok(Extract::Incomplete(OrFuture::Both(
+            Ok(left) => match self.right.extract(input) {
+                Ok(right) => Ok(OrFuture::Both(
                     left.map_err(Into::into as fn(L::Error) -> Error)
                         .select(right.map_err(Into::into as fn(R::Error) -> Error)),
-                ))),
-                Err(..) => Ok(Extract::Incomplete(OrFuture::Left(left))),
+                )),
+                Err(..) => Ok(OrFuture::Left(left)),
             },
             Err(..) => match self.right.extract(input).map_err(Into::into)? {
-                Extract::Ready(out) => Ok(Extract::Ready(out)),
-                Extract::Incomplete(right) => Ok(Extract::Incomplete(OrFuture::Right(right))),
+                right => Ok(OrFuture::Right(right)),
             },
         }
     }

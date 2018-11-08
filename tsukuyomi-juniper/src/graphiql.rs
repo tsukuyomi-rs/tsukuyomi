@@ -10,7 +10,7 @@ use tsukuyomi::output::Responder;
 /// Creates a handler function which returns a GraphiQL source.
 pub fn graphiql(
     url: impl AsRef<str> + 'static,
-) -> impl Fn() -> GraphiQLSource + Send + Sync + 'static {
+) -> impl Fn() -> GraphiQLSource + Clone + Send + Sync + 'static {
     let source: Bytes = graphiql_source(url.as_ref()).into();
     move || GraphiQLSource {
         source: source.clone(),

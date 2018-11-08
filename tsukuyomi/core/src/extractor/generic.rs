@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 // ==== Tuple/HList ====
 
 pub trait Tuple: Sized {
@@ -181,6 +183,18 @@ where
 pub trait Func<Args: Tuple> {
     type Out;
     fn call(&self, args: Args) -> Self::Out;
+}
+
+impl<F, Args: Tuple> Func<Args> for Arc<F>
+where
+    F: Func<Args>,
+{
+    type Out = F::Out;
+
+    #[inline]
+    fn call(&self, args: Args) -> Self::Out {
+        (**self).call(args)
+    }
 }
 
 impl<F, R> Func<()> for F

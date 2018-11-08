@@ -48,9 +48,6 @@ pub use self::global::{is_set_current, with_get_current};
 // ====
 
 use http::Request;
-use std::cell::UnsafeCell;
-use std::fmt;
-use std::marker::PhantomData;
 
 use crate::app::route::RouteId;
 use crate::app::App;
@@ -178,73 +175,5 @@ impl<'task> Input<'task> {
     #[cfg_attr(tarpaulin, skip)]
     pub fn locals_mut(&mut self) -> &mut LocalMap {
         &mut self.parts.locals
-    }
-}
-
-/// A proxy object for accessing the value in the protocol extensions.
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-pub struct Extension<T> {
-    _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
-}
-
-impl<T> fmt::Debug for Extension<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Extension").finish()
-    }
-}
-
-impl<T> Extension<T>
-where
-    T: Send + Sync + 'static,
-{
-    pub(crate) fn new() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn with<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        crate::input::with_get_current(|input| {
-            let state = input.extensions().get::<T>().expect("should be exist");
-            f(state)
-        })
-    }
-}
-
-/// A proxy object for accessing the global state.
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-pub struct State<T> {
-    _marker: PhantomData<(fn() -> T, UnsafeCell<()>)>,
-}
-
-impl<T> fmt::Debug for State<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("State").finish()
-    }
-}
-
-impl<T> State<T>
-where
-    T: Send + Sync + 'static,
-{
-    pub(crate) fn new() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
-
-    #[allow(missing_docs)]
-    pub fn with<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        crate::input::with_get_current(|input| {
-            let state = input.state::<T>().expect("should be exist");
-            f(state)
-        })
     }
 }

@@ -12,18 +12,20 @@ where
     type Future = OptionalFuture<E::Future>;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
         match self.0.extract(input) {
-            Ok(Extract::Ready((out,))) => Ok(Extract::Ready((Some(out),))),
-            Ok(Extract::Incomplete(future)) => Ok(Extract::Incomplete(OptionalFuture(future))),
-            Err(..) => Ok(Extract::Ready((None,))),
+            Ok(future) => Ok(OptionalFuture::Polling(future)),
+            Err(..) => Ok(OptionalFuture::Failed),
         }
     }
 }
 
 #[allow(missing_debug_implementations)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct OptionalFuture<F>(F);
+pub enum OptionalFuture<F> {
+    Polling(F),
+    Failed,
+}
 
 impl<F, T> Future for OptionalFuture<F>
 where
@@ -34,10 +36,13 @@ where
 
     #[inline]
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.0.poll() {
-            Ok(Async::Ready((out,))) => Ok(Async::Ready((Some(out),))),
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(..) => Ok(Async::Ready((None,))),
+        match self {
+            OptionalFuture::Polling(ref mut future) => match future.poll() {
+                Ok(Async::Ready((out,))) => Ok(Async::Ready((Some(out),))),
+                Ok(Async::NotReady) => Ok(Async::NotReady),
+                Err(..) => Ok(Async::Ready((None,))),
+            },
+            OptionalFuture::Failed => Ok(Async::Ready((None,))),
         }
     }
 }

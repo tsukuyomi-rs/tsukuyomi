@@ -17,22 +17,13 @@ where
     type Error = Error;
     type Future = AndFuture<L::Future, R::Future>;
 
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        let left = match self.left.extract(input).map_err(Into::into)? {
-            Extract::Ready(out) => MaybeDone::Ready(out),
-            Extract::Incomplete(future) => MaybeDone::Pending(future),
-        };
-        let right = match self.right.extract(input).map_err(Into::into)? {
-            Extract::Ready(out) => MaybeDone::Ready(out),
-            Extract::Incomplete(future) => MaybeDone::Pending(future),
-        };
-
-        match (left, right) {
-            (MaybeDone::Ready(left), MaybeDone::Ready(right)) => {
-                Ok(Extract::Ready(left.combine(right)))
-            }
-            (left, right) => Ok(Extract::Incomplete(AndFuture { left, right })),
-        }
+    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
+        let left = self.left.extract(input).map_err(Into::into)?;
+        let right = self.right.extract(input).map_err(Into::into)?;
+        Ok(AndFuture {
+            left: MaybeDone::Pending(left),
+            right: MaybeDone::Pending(right),
+        })
     }
 }
 

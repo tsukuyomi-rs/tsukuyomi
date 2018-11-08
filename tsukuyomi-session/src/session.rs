@@ -4,9 +4,9 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use serde_json;
 
-use tsukuyomi::extractor::{Extract, Extractor, HasExtractor};
+use tsukuyomi::error::Error;
+use tsukuyomi::extractor::Extractor;
 use tsukuyomi::input::local_map::local_key;
-use tsukuyomi::input::Input;
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
@@ -123,32 +123,15 @@ impl Session {
     }
 }
 
-impl HasExtractor for Session {
-    type Extractor = SessionExtractor;
-
-    fn extractor() -> Self::Extractor {
-        SessionExtractor { _priv: () }
-    }
-}
-
-#[derive(Debug)]
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct SessionExtractor {
-    _priv: (),
-}
-
-impl Extractor for SessionExtractor {
-    type Output = (Session,);
-    type Error = tsukuyomi::error::Error;
-    type Future = tsukuyomi::extractor::Placeholder<Self::Output, Self::Error>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+#[allow(missing_docs)]
+pub fn extractor() -> impl Extractor<Output = (Session,), Error = Error> {
+    tsukuyomi::extractor::ready(|input| {
         if input.locals_mut().contains_key(&SessionInner::KEY) {
-            Ok(Extract::Ready((Session { _priv: () },)))
+            Ok(Session { _priv: () })
         } else {
             Err(tsukuyomi::error::internal_server_error(
                 "The session is not available at the current scope.",
             ))
         }
-    }
+    })
 }

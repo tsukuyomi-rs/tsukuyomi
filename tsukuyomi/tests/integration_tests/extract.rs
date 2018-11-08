@@ -243,7 +243,7 @@ fn local_data() {
             scope.modifier(MyModifier);
             scope.route(
                 route::index()
-                    .with(extractor::local(&MyData::KEY))
+                    .with(extractor::local::local(&MyData::KEY))
                     .reply(|x: MyData| x.0),
             );
         }).unwrap()
@@ -268,7 +268,7 @@ fn missing_local_data() {
         tsukuyomi::app(|scope| {
             scope.route(
                 route::index()
-                    .with(extractor::local(&MyData::KEY))
+                    .with(extractor::local::local(&MyData::KEY))
                     .reply(|x: MyData| x.0),
             );
         }).unwrap()
@@ -319,49 +319,6 @@ fn optional() {
         ).unwrap();
     assert_eq!(response.status().as_u16(), 500);
     assert_eq!(response.body().to_utf8().unwrap(), "####none####");
-}
-
-#[test]
-fn fallible() {
-    #[derive(Debug, serde::Deserialize)]
-    struct Params {
-        id: u32,
-        name: String,
-    }
-
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
-                route::post("/")
-                    .with(extractor::body::json().fallible())
-                    .handle(|params: Result<Params, _>| {
-                        if let Ok(params) = params {
-                            Ok(format!("{},{}", params.id, params.name))
-                        } else {
-                            Err(tsukuyomi::error::internal_server_error("####err####"))
-                        }
-                    }),
-            );
-        }).unwrap()
-    });
-
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/json")
-                .body(&br#"{"id":23, "name":"bob"}"#[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
-
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(&b"id=23&name=bob"[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 500);
-    assert_eq!(response.body().to_utf8().unwrap(), "####err####");
 }
 
 #[test]

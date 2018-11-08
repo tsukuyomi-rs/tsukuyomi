@@ -1,57 +1,70 @@
-use futures::{Async, Future, Poll};
+use futures::{Async, Future};
 use http::{Method, Response, StatusCode};
 use juniper::InputValue;
 use percent_encoding::percent_decode;
 
 use tsukuyomi::error::Error;
-use tsukuyomi::extractor::{Extract, Extractor, HasExtractor};
+use tsukuyomi::extractor::Extractor;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 
-pub fn request() -> GraphQLRequestExtractor {
-    GraphQLRequestExtractor { _priv: () }
-}
+pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
+    #[allow(missing_debug_implementations)]
+    enum RequestKind {
+        Query(Option<GraphQLRequest>),
+        Json,
+        GraphQL,
+    }
 
-#[derive(Debug)]
-pub struct GraphQLRequestExtractor {
-    _priv: (),
-}
-
-impl Extractor for GraphQLRequestExtractor {
-    type Output = (GraphQLRequest,);
-    type Error = Error;
-    type Future = GraphQLRequestExtractorFuture;
-
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        match *input.method() {
+    tsukuyomi::extractor::lazy(|input| {
+        let mut kind = match *input.method() {
             Method::GET => {
                 let query_str = input
                     .uri()
                     .query()
                     .ok_or_else(|| tsukuyomi::error::bad_request("missing query string"))?;
                 let request = parse_query_str(query_str)?;
-                Ok(Extract::Ready((request,)))
+                RequestKind::Query(Some(request))
             }
-            Method::POST => {
-                let kind = match tsukuyomi::input::header::content_type(input)? {
-                    Some(mime) if *mime == mime::APPLICATION_JSON => RequestKind::Json,
-                    Some(mime) if *mime == "application/graphql" => RequestKind::GraphQL,
-                    Some(mime) => {
-                        return Err(tsukuyomi::error::bad_request(format!(
-                            "invalid content type: {}",
-                            mime
-                        )))
-                    }
-                    None => return Err(tsukuyomi::error::bad_request("missing content-type")),
-                };
-                Ok(Extract::Incomplete(GraphQLRequestExtractorFuture {
-                    kind,
-                    read_all: input.body_mut().read_all(),
-                }))
+            Method::POST => match tsukuyomi::input::header::content_type(input)? {
+                Some(mime) if *mime == mime::APPLICATION_JSON => RequestKind::Json,
+                Some(mime) if *mime == "application/graphql" => RequestKind::GraphQL,
+                Some(mime) => {
+                    return Err(tsukuyomi::error::bad_request(format!(
+                        "invalid content type: {}",
+                        mime
+                    )))
+                }
+                None => return Err(tsukuyomi::error::bad_request("missing content-type")),
+            },
+            _ => return Err(tsukuyomi::error::bad_request("invalid method")),
+        };
+
+        let mut read_all = match kind {
+            RequestKind::Json | RequestKind::GraphQL => Some(input.body_mut().read_all()),
+            _ => None,
+        };
+
+        Ok(futures::future::poll_fn(move || match kind {
+            RequestKind::Query(ref mut request) => {
+                let request = request.take().expect("This future has already polled.");
+                Ok(Async::Ready(request))
             }
-            _ => Err(tsukuyomi::error::bad_request("invalid method")),
-        }
-    }
+            RequestKind::Json => {
+                let data =
+                    futures::try_ready!(read_all.as_mut().unwrap().poll().map_err(Error::critical));
+                let request = serde_json::from_slice(&*data).unwrap_or_else(GraphQLRequest::error);
+                Ok(Async::Ready(request))
+            }
+            RequestKind::GraphQL => {
+                let data =
+                    futures::try_ready!(read_all.as_mut().unwrap().poll().map_err(Error::critical));
+                String::from_utf8(data.to_vec())
+                    .map(|query| Async::Ready(GraphQLRequest::single(query, None, None)))
+                    .map_err(tsukuyomi::error::bad_request)
+            }
+        }))
+    })
 }
 
 fn parse_query_str(s: &str) -> tsukuyomi::error::Result<GraphQLRequest> {
@@ -89,37 +102,6 @@ fn parse_query_str(s: &str) -> tsukuyomi::error::Result<GraphQLRequest> {
         })?;
 
     Ok(GraphQLRequest::single(query, operation_name, variables))
-}
-
-enum RequestKind {
-    Json,
-    GraphQL,
-}
-
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-pub struct GraphQLRequestExtractorFuture {
-    kind: RequestKind,
-    read_all: tsukuyomi::input::body::ReadAll,
-}
-
-impl Future for GraphQLRequestExtractorFuture {
-    type Item = (GraphQLRequest,);
-    type Error = Error;
-
-    #[inline]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let data = futures::try_ready!(self.read_all.poll().map_err(Error::critical));
-        match self.kind {
-            RequestKind::Json => {
-                let request = serde_json::from_slice(&*data).unwrap_or_else(GraphQLRequest::error);
-                Ok(Async::Ready((request,)))
-            }
-            RequestKind::GraphQL => String::from_utf8(data.to_vec())
-                .map(|query| Async::Ready((GraphQLRequest::single(query, None, None),)))
-                .map_err(tsukuyomi::error::bad_request),
-        }
-    }
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -180,15 +162,6 @@ impl GraphQLRequest {
                 }
             }
         }
-    }
-}
-
-impl HasExtractor for GraphQLRequest {
-    type Extractor = GraphQLRequestExtractor;
-
-    #[inline]
-    fn extractor() -> Self::Extractor {
-        request()
     }
 }
 

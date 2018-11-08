@@ -2,12 +2,11 @@
 
 use std::sync::Arc;
 
-use futures::{Async, Future, Poll};
+use futures::{Async, Future};
 use juniper::{GraphQLType, RootNode};
 
 use tsukuyomi::error::Error;
-use tsukuyomi::extractor::{Extract, Extractor};
-use tsukuyomi::input::Input;
+use tsukuyomi::extractor::Extractor;
 
 use crate::request::{GraphQLRequest, GraphQLResponse};
 
@@ -86,61 +85,20 @@ where
 }
 
 /// Creates an `Extractor` which extracts an `Executor<S>`.
-pub fn executor<S>(schema: S) -> ExecutorExtractor<S> {
-    ExecutorExtractor {
-        schema: Arc::new(schema),
-        request: crate::request::request(),
-    }
-}
-
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct ExecutorExtractor<S> {
-    schema: Arc<S>,
-    request: crate::request::GraphQLRequestExtractor,
-}
-
-impl<S> Extractor for ExecutorExtractor<S>
+pub fn executor<S>(schema: S) -> impl Extractor<Output = (Executor<S>,), Error = Error>
 where
     S: Schema,
 {
-    type Output = (Executor<S>,);
-    type Error = Error;
-    type Future = ExecutorExtractorFuture<S>;
+    let schema = Arc::new(schema);
+    let request = crate::request::request();
 
-    #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        match self.request.extract(input)? {
-            Extract::Ready((request,)) => Ok(Extract::Ready((Executor {
-                request,
-                schema: self.schema.clone(),
-            },))),
-            Extract::Incomplete(request) => Ok(Extract::Incomplete(ExecutorExtractorFuture {
-                request,
-                schema: Some(self.schema.clone()),
-            })),
-        }
-    }
-}
-
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-pub struct ExecutorExtractorFuture<S> {
-    schema: Option<Arc<S>>,
-    request: crate::request::GraphQLRequestExtractorFuture,
-}
-
-impl<S> Future for ExecutorExtractorFuture<S>
-where
-    S: Schema,
-{
-    type Item = (Executor<S>,);
-    type Error = Error;
-
-    #[inline]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (request,) = futures::try_ready!(self.request.poll());
-        let schema = self.schema.take().unwrap();
-        Ok(Async::Ready((Executor { schema, request },)))
-    }
+    tsukuyomi::extractor::lazy(move |input| {
+        let mut request = request.extract(input)?;
+        let mut schema = Some(schema.clone());
+        Ok(futures::future::poll_fn(move || {
+            let (request,) = futures::try_ready!(request.poll());
+            let schema = schema.take().expect("The future has already polled.");
+            Ok(Async::Ready(Executor { schema, request }))
+        }))
+    })
 }
