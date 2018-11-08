@@ -34,7 +34,7 @@ fn route_single_method() {
 #[test]
 fn route_multiple_method() {
     let app = App::build(|scope| {
-        scope.route(route::index().reply(|| ""));
+        scope.route(route::get("/").reply(|| ""));
         scope.route(route::post("/").reply(|| ""));
     }).unwrap();
 
@@ -72,7 +72,7 @@ fn route_fallback_head_disabled() {
 #[test]
 fn route_fallback_options_enabled() {
     let app = App::build(|scope| {
-        scope.route(route::index().reply(|| "")); // 0
+        scope.route(route::get("/").reply(|| "")); // 0
         scope.route(route::post("/").reply(|| "")); // 1
         scope.route(route::options("/options").reply(|| "")); // 2
     }).unwrap();

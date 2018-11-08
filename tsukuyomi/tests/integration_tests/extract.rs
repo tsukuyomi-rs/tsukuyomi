@@ -44,22 +44,20 @@ fn params() {
 fn route_macros() {
     drop(
         App::build(|scope| {
-            scope.route(route::get!("/index").reply(|| "index"));
+            scope.route(route!("/index").reply(|| "index"));
+            scope.route(route!("/params/:id/:name").reply(|id: i32, name: String| {
+                drop((id, name));
+                "dummy"
+            }));
             scope.route(
-                route::get!("/params/:id/:name").reply(|id: i32, name: String| {
-                    drop((id, name));
-                    "dummy"
-                }),
-            );
-            scope.route(
-                route::put!("/posts/:id/edit")
+                route!("/posts/:id/edit", methods = ["PUT"])
                     .with(extractor::body::plain::<String>())
                     .reply(|id: u32, body: String| {
                         drop((id, body));
                         "dummy"
                     }),
             );
-            scope.route(route::get!("/static/*path").reply(|path: String| {
+            scope.route(route!("/static/*path").reply(|path: String| {
                 drop(path);
                 "dummy"
             }));

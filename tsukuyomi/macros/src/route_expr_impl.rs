@@ -1,36 +1,15 @@
 use proc_macro2::{Span, TokenStream};
 use quote::*;
 
-mod parsing {
-    use syn::parse::{Parse, ParseStream, Result};
-
-    #[derive(Debug)]
-    pub struct RouteInput {
-        pub method: syn::Ident,
-        pub uri: syn::LitStr,
-        _priv: (),
-    }
-
-    impl Parse for RouteInput {
-        fn parse(input: ParseStream<'_>) -> Result<Self> {
-            Ok(Self {
-                method: input.parse()?,
-                uri: input.parse()?,
-                _priv: (),
-            })
-        }
-    }
-}
-
 #[allow(nonstandard_style)]
-pub fn derive(input: &parsing::RouteInput) -> TokenStream {
+pub fn route_expr_impl(uri: &syn::LitStr) -> TokenStream {
     enum ParamKind {
         Pos(usize),
         Wildcard,
     }
 
     let mut params = vec![];
-    for segment in input.uri.value().split('/') {
+    for segment in uri.value().split('/') {
         match segment.as_bytes().get(0) {
             Some(b':') => {
                 let i = params.len();
@@ -47,17 +26,15 @@ pub fn derive(input: &parsing::RouteInput) -> TokenStream {
     }
 
     let name = quote!(route);
-    let method = &input.method;
-    let uri = &input.uri;
     let Extractor = quote!(tsukuyomi::extractor::Extractor);
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
     let Builder = quote!(tsukuyomi::route::Builder);
-    let route = quote!(tsukuyomi::route);
+    let route = quote!(tsukuyomi::route::route);
 
     if params.is_empty() {
         quote! {
             fn #name() -> #Builder<impl #Extractor<Output = ()>> {
-                #route::#method(#uri)
+                #route(#uri)
             }
         }
     } else {
@@ -77,7 +54,7 @@ pub fn derive(input: &parsing::RouteInput) -> TokenStream {
             where
                 #( #bounds )*
             {
-                #route::#method(#uri)
+                #route(#uri)
                     #( .with(#extractors) )*
             }
         )

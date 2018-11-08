@@ -1,6 +1,5 @@
 //! The procedural macros for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-macros/0.4.0-dev")]
 #![warn(
     nonstandard_style,
     rust_2018_idioms,
@@ -17,15 +16,15 @@ extern crate proc_macro2;
 extern crate quote;
 extern crate syn;
 
-mod route_impl;
+mod route_expr_impl;
 
 use proc_macro::TokenStream;
 
 #[proc_macro]
 #[cfg_attr(feature = "cargo-clippy", allow(result_map_unwrap_or_else))]
-pub fn route_impl(input: TokenStream) -> TokenStream {
+pub fn route_expr_impl(input: TokenStream) -> TokenStream {
     syn::parse(input)
-        .map(|input| crate::route_impl::derive(&input))
+        .map(|input| crate::route_expr_impl::route_expr_impl(&input))
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

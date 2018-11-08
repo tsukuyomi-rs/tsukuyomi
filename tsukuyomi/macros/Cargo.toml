@@ -12,6 +12,3 @@ proc-macro = true
 syn = { version = "0.15", features = ["full", "extra-traits"] }
 quote = "0.6"
 proc-macro2 = "0.4.20"
-
-[dev-dependencies]
-cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }

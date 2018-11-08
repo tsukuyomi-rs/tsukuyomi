@@ -17,14 +17,9 @@ extern crate tsukuyomi_server;
 
 extern crate futures;
 
-pub use tsukuyomi_core::{app, error, extractor, input, modifier, output};
+pub use tsukuyomi_core::route::route;
+pub use tsukuyomi_core::{app, error, extractor, input, modifier, output, route};
 pub use tsukuyomi_server::{local, server, service};
-
-#[allow(missing_docs)]
-pub mod route {
-    pub use tsukuyomi_core::route::*;
-    pub use tsukuyomi_core::{connect, delete, get, head, options, patch, post, put, trace};
-}
 
 #[allow(missing_docs)]
 pub mod rt {
