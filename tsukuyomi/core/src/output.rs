@@ -300,3 +300,93 @@ fn json_response<T>(body: T) -> Response<T> {
     );
     response
 }
+
+#[allow(missing_docs)]
+#[inline]
+pub fn html<T>(body: T) -> Html<T>
+where
+    T: Into<ResponseBody>,
+{
+    Html(body)
+}
+
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct Html<T>(T);
+
+impl<T> Responder for Html<T>
+where
+    T: Into<ResponseBody>,
+{
+    type Body = T;
+    type Error = Never;
+
+    #[inline]
+    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        Ok(Response::builder()
+            .header("content-type", "text/html; charset=utf-8")
+            .body(self.0)
+            .expect("should be a valid response"))
+    }
+}
+
+#[allow(missing_docs)]
+pub mod redirect {
+    use super::*;
+
+    use http::{Response, StatusCode};
+    use std::borrow::Cow;
+
+    #[derive(Debug)]
+    pub struct Redirect {
+        status: StatusCode,
+        location: Cow<'static, str>,
+    }
+
+    impl Redirect {
+        pub fn new<T>(status: StatusCode, location: T) -> Self
+        where
+            T: Into<Cow<'static, str>>,
+        {
+            Self {
+                status,
+                location: location.into(),
+            }
+        }
+    }
+
+    impl Responder for Redirect {
+        type Body = ();
+        type Error = Never;
+
+        #[inline]
+        fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+            Ok(Response::builder()
+                .status(self.status)
+                .header("location", &*self.location)
+                .body(())
+                .expect("should be a valid response"))
+        }
+    }
+
+    macro_rules! define_funcs {
+        ($( $name:ident => $STATUS:ident, )*) => {$(
+            #[inline]
+            pub fn $name<T>(location: T) -> Redirect
+            where
+                T: Into<Cow<'static, str>>,
+            {
+                Redirect::new(StatusCode::$STATUS, location)
+            }
+        )*};
+    }
+
+    define_funcs! {
+        moved_permanently => MOVED_PERMANENTLY,
+        found => FOUND,
+        see_other => SEE_OTHER,
+        temporary_redirect => TEMPORARY_REDIRECT,
+        permanent_redirect => PERMANENT_REDIRECT,
+        to => MOVED_PERMANENTLY,
+    }
+}
