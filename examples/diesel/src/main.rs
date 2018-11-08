@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
+extern crate failure;
 extern crate pretty_env_logger;
 extern crate serde;
 extern crate tsukuyomi;

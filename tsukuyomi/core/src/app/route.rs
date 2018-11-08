@@ -1,12 +1,11 @@
 use std::fmt;
-use std::sync::Arc;
 
 use futures::{Async, Future, IntoFuture};
 use http::{HttpTryFrom, Method};
 use indexmap::IndexSet;
 
 use crate::error::Error;
-use crate::extractor::{And, Combine, Extract, Extractor, ExtractorExt, Func};
+use crate::extractor::{And, Combine, Extractor, ExtractorExt, Func};
 use crate::handler::{Handle, Handler};
 use crate::output::Responder;
 use crate::recognizer::uri::Uri;
@@ -191,22 +190,13 @@ where
     /// The provided handler always succeeds and immediately returns a value of `Responder`.
     pub fn reply<F>(self, handler: F) -> Route
     where
-        F: Func<E::Output> + Send + Sync + 'static,
+        F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
     {
         self.finish(move |extractor| {
-            let handler = Arc::new(handler);
             move |input| match extractor.extract(input) {
-                Ok(Extract::Ready(arg)) => {
-                    let x = handler.call(arg);
-                    let result = x
-                        .respond_to(input)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into);
-                    Handle::ready(result)
-                }
                 Err(e) => Handle::ready(Err(e.into())),
-                Ok(Extract::Incomplete(future)) => {
+                Ok(future) => {
                     let handler = handler.clone();
                     let mut future = future.map(move |arg| handler.call(arg));
                     Handle::polling(move |input| {
@@ -226,25 +216,15 @@ where
     /// The result of provided handler is returned by `Future`.
     pub fn handle<F, R>(self, handler: F) -> Route
     where
-        F: Func<E::Output, Out = R> + Send + Sync + 'static,
+        F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
         R: IntoFuture<Error = Error> + 'static,
         R::Future: Send + 'static,
         R::Item: Responder,
     {
         self.finish(move |extractor| {
-            let handler = Arc::new(handler);
             move |input| match extractor.extract(input) {
-                Ok(Extract::Ready(arg)) => {
-                    let mut future = handler.call(arg).into_future();
-                    Handle::polling(move |input| {
-                        futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
-                            .respond_to(input)
-                            .map(|response| Async::Ready(response.map(Into::into)))
-                            .map_err(Into::into)
-                    })
-                }
                 Err(e) => Handle::ready(Err(e.into())),
-                Ok(Extract::Incomplete(future)) => {
+                Ok(future) => {
                     let handler = handler.clone();
                     let mut future = future
                         .map_err(Into::into)

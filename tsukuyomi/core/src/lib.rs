@@ -48,4 +48,3 @@ mod recognizer;
 pub mod route;
 
 pub use crate::app::app;
-pub use crate::extractor::extractor;

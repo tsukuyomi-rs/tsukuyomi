@@ -34,7 +34,7 @@ pub use tokio_tungstenite::WebSocketStream;
 pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 use tsukuyomi::error::Error;
-use tsukuyomi::extractor::{Extract, Extractor, HasExtractor};
+use tsukuyomi::extractor::Extractor;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 use tsukuyomi::service::http::UpgradedIo;
@@ -102,25 +102,10 @@ fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
     })
 }
 
-pub fn extractor() -> WsExtractor {
-    WsExtractor::default()
-}
-
-/// An `Extractor` which validates the handshake request.
-#[derive(Debug, Default)]
-pub struct WsExtractor(());
-
-impl Extractor for WsExtractor {
-    type Output = (Ws,);
-    type Error = Error;
-    type Future = tsukuyomi::extractor::Placeholder<Self::Output, Self::Error>;
-
-    #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
-        self::handshake2(input)
-            .map(|out| Extract::Ready((out,)))
-            .map_err(tsukuyomi::error::bad_request)
-    }
+pub fn extractor() -> impl Extractor<Output = (Ws,), Error = Error> {
+    tsukuyomi::extractor::ready(|input| {
+        self::handshake2(input).map_err(tsukuyomi::error::bad_request)
+    })
 }
 
 /// The builder for constructing WebSocket response.
@@ -129,15 +114,6 @@ pub struct Ws {
     accept_hash: String,
     config: Option<WebSocketConfig>,
     extra_headers: Option<HeaderMap>,
-}
-
-impl HasExtractor for Ws {
-    type Extractor = WsExtractor;
-
-    #[inline]
-    fn extractor() -> Self::Extractor {
-        WsExtractor::default()
-    }
 }
 
 impl Ws {

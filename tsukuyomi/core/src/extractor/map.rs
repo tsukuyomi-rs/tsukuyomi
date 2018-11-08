@@ -1,30 +1,27 @@
 use super::*;
 
-use std::sync::Arc;
-
 #[derive(Debug)]
 pub struct Map<E, F> {
     pub(super) extractor: E,
-    pub(super) f: Arc<F>,
+    pub(super) f: F,
 }
 
-impl<E, F, T, R> Extractor for Map<E, F>
+impl<E, F, R> Extractor for Map<E, F>
 where
-    E: Extractor<Output = (T,)>,
-    F: Fn(T) -> R + Send + Sync + 'static,
+    E: Extractor,
+    F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
 {
     type Output = (R,);
     type Error = E::Error;
     type Future = MapFuture<E::Future, F>;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
         match self.extractor.extract(input)? {
-            Extract::Ready((out,)) => Ok(Extract::Ready(((*self.f)(out),))),
-            Extract::Incomplete(future) => Ok(Extract::Incomplete(MapFuture {
+            future => Ok(MapFuture {
                 future,
                 f: self.f.clone(),
-            })),
+            }),
         }
     }
 }
@@ -33,20 +30,20 @@ where
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct MapFuture<Fut, F> {
     future: Fut,
-    f: Arc<F>,
+    f: F,
 }
 
-impl<Fut, F, T, R> Future for MapFuture<Fut, F>
+impl<Fut, F, R> Future for MapFuture<Fut, F>
 where
-    Fut: Future<Item = (T,)>,
-    F: Fn(T) -> R,
+    Fut: Future,
+    Fut::Item: Tuple,
+    F: Func<Fut::Item, Out = R>,
 {
     type Item = (R,);
     type Error = Fut::Error;
 
     #[inline]
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (out,) = futures::try_ready!(self.future.poll());
-        Ok(Async::Ready(((*self.f)(out),)))
+        self.future.poll().map(|x| x.map(|out| (self.f.call(out),)))
     }
 }
