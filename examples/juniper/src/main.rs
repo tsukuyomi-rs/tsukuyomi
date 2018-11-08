@@ -12,24 +12,23 @@ use std::sync::Arc;
 use tsukuyomi_juniper::executor::Executor;
 
 fn main() {
-    let context = Arc::new(crate::context::Context::default());
+    // Extractor for extracting `Executor` for executing a GraphQL request from client.
+    let extract_graphql_executor = tsukuyomi_juniper::executor(crate::schema::create_schema());
 
-    let extract_graphql_executor = {
-        let schema = crate::schema::create_schema();
-        let extractor = tsukuyomi_juniper::executor(schema);
-        Arc::new(extractor)
+    // Extractor which constructs a context value used by `Executor`.
+    let fetch_graphql_context = {
+        let context = Arc::new(crate::context::Context::default());
+        tsukuyomi::extractor::value(context)
     };
 
     let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route!().reply(tsukuyomi_juniper::graphiql("/graphql")));
+        scope.route(tsukuyomi::route::index().reply(tsukuyomi_juniper::graphiql("/graphql")));
 
         scope.route(
             tsukuyomi::route!("/graphql", methods = ["GET", "POST"])
-                .with(extract_graphql_executor.clone())
-                .handle({
-                    let context = context.clone();
-                    move |exec: Executor<_>| exec.execute(context.clone())
-                }),
+                .with(extract_graphql_executor)
+                .with(fetch_graphql_context)
+                .handle(move |exec: Executor<_>, context| exec.execute(context)),
         );
     }).unwrap();
 

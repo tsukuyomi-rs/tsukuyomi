@@ -248,3 +248,27 @@ where
 
     assert_impl_extractor(ExtractorFn(f))
 }
+
+pub fn value<T>(value: T) -> impl Extractor<Output = (T,)>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    #[allow(missing_debug_implementations)]
+    struct ValueExtractor<T>(T);
+
+    impl<T> Extractor for ValueExtractor<T>
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        type Output = (T,);
+        type Error = Never;
+        type Future = self::Placeholder<Self::Output, Self::Error>;
+
+        #[inline]
+        fn extract(&self, _: &mut Input<'_>) -> Result<Extract<Self>, Self::Error> {
+            Ok(Extract::Ready((self.0.clone(),)))
+        }
+    }
+
+    ValueExtractor(value)
+}
