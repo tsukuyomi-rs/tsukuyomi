@@ -9,9 +9,10 @@
 //!
 //! #[derive(
 //!     askama::Template,
-//!     tsukuyomi_askama::TemplateResponder,
+//!     tsukuyomi::output::Responder,
 //! )]
 //! #[template(source = "Hello, {{name}}!", ext = "html")]
+//! #[responder(respond_to = "tsukuyomi_askama::respond_to")]
 //! struct Index {
 //!     name: String,
 //! }
@@ -41,48 +42,34 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
-extern crate tsukuyomi_askama_macros as macros;
-
 extern crate askama;
 extern crate http;
 extern crate mime_guess;
 extern crate tsukuyomi;
 
-pub use crate::macros::TemplateResponder;
-pub use crate::private::TemplateResponder;
+use askama::Template;
+use http::header::{HeaderValue, CONTENT_TYPE};
+use http::Response;
+use mime_guess::get_mime_type_str;
+use tsukuyomi::input::Input;
 
-// not a public API.
-#[doc(hidden)]
-pub mod private {
-    pub use askama::Template;
-    pub use http::Response;
-    pub use tsukuyomi::error::Error;
-    pub use tsukuyomi::input::Input;
-    pub use tsukuyomi::output::Responder;
-
-    use http::header::{HeaderValue, CONTENT_TYPE};
-    use mime_guess::get_mime_type_str;
-
-    /// A marker trait representing that the implementor type implements
-    /// both `askama::Template` and `tsukuyomi::output::Responder`.
-    ///
-    /// The implementation of this trait is automatically derived by the custom Derive.
-    pub trait TemplateResponder: Template + Responder + Sealed {}
-
-    pub trait Sealed {}
-
-    /// A helper function to generate an HTTP response from Askama template.
-    ///
-    /// This function is used by the custom Derive `TemplateResponder` internally.
-    pub fn respond(t: &dyn Template, ext: &str) -> tsukuyomi::error::Result<Response<String>> {
-        let content_type = get_mime_type_str(ext).unwrap_or("text/html; charset=utf-8");
-        let mut response = t
-            .render()
-            .map(Response::new)
-            .map_err(tsukuyomi::error::internal_server_error)?;
-        response
-            .headers_mut()
-            .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-        Ok(response)
-    }
+/// A helper function to generate an HTTP response from Askama template.
+#[inline]
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+pub fn respond_to<T>(t: T, _: &mut Input<'_>) -> tsukuyomi::error::Result<Response<String>>
+where
+    T: Template,
+{
+    let content_type = t
+        .extension()
+        .and_then(get_mime_type_str)
+        .unwrap_or("text/html; charset=utf-8");
+    let mut response = t
+        .render()
+        .map(Response::new)
+        .map_err(tsukuyomi::error::internal_server_error)?;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+    Ok(response)
 }

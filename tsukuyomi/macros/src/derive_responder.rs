@@ -77,7 +77,7 @@ impl ToTokens for ResponderInput {
         let ResponseBody = quote!(tsukuyomi::output::ResponseBody);
         let Error = quote!(tsukuyomi::error::Error);
         let Input = quote!(tsukuyomi::input::Input);
-        let Response = quote!(http::Response);
+        let Response = quote!(tsukuyomi::output::internal::Response);
 
         tokens.append_all(quote!(
             impl #Responder for #Self_ {

@@ -14,6 +14,12 @@ use crate::server::service::http::{Body, Payload};
 
 pub use crate::macros::Responder;
 
+// not a public API.
+#[doc(hidden)]
+pub mod internal {
+    pub use http::Response;
+}
+
 /// A type representing the message body in an HTTP response.
 #[derive(Debug, Default)]
 pub struct ResponseBody(Body);
