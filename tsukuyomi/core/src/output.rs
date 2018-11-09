@@ -3,8 +3,8 @@
 use bytes::{Buf, Bytes, IntoBuf};
 use either::Either;
 use futures::{Poll, Stream};
-use http::header::{HeaderMap, HeaderValue};
-use http::{header, Response, StatusCode};
+use http::header::HeaderMap;
+use http::{Response, StatusCode};
 use serde::Serialize;
 
 use crate::error::{Error, Never};
@@ -199,8 +199,8 @@ impl Responder for &'static str {
     type Error = Never;
 
     #[inline]
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(text_response(self))
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        self::responder::plain(self, input)
     }
 }
 
@@ -209,85 +209,8 @@ impl Responder for String {
     type Error = Never;
 
     #[inline]
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(text_response(self))
-    }
-}
-
-fn text_response<T>(body: T) -> Response<T> {
-    let mut response = Response::new(body);
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/plain; charset=utf-8"),
-    );
-    response
-}
-
-/// A function which creates a JSON responder.
-pub fn json<T>(data: T) -> Json<T>
-where
-    T: Serialize,
-{
-    Json {
-        data,
-        pretty: false,
-    }
-}
-
-/// A function which creates a JSON responder with pretty output.
-pub fn json_pretty<T>(data: T) -> Json<T>
-where
-    T: Serialize,
-{
-    json(data).pretty()
-}
-
-/// A wraper struct representing a statically typed JSON value.
-#[derive(Debug)]
-pub struct Json<T> {
-    data: T,
-    pretty: bool,
-}
-
-impl<T> Json<T>
-where
-    T: Serialize,
-{
-    /// Enables pretty output.
-    pub fn pretty(self) -> Self {
-        Self {
-            pretty: true,
-            ..self
-        }
-    }
-}
-
-impl<T> From<T> for Json<T>
-where
-    T: Serialize,
-{
-    fn from(data: T) -> Self {
-        Self {
-            data,
-            pretty: false,
-        }
-    }
-}
-
-impl<T> Responder for Json<T>
-where
-    T: Serialize,
-{
-    type Body = Vec<u8>;
-    type Error = Error;
-
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        let body = if self.pretty {
-            serde_json::to_vec_pretty(&self.data).map_err(crate::error::internal_server_error)?
-        } else {
-            serde_json::to_vec(&self.data).map_err(crate::error::internal_server_error)?
-        };
-        Ok(json_response(body))
+    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        self::responder::plain(self, input)
     }
 }
 
@@ -296,46 +219,64 @@ impl Responder for serde_json::Value {
     type Error = Never;
 
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(json_response(self.to_string()))
+        Ok(self::responder::make_response(self.to_string(), "application/json"))
     }
 }
 
-fn json_response<T>(body: T) -> Response<T> {
-    let mut response = Response::new(body);
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
-    response
+/// Creates an instance of `Responder` from the specified function.
+pub fn responder<F, T, E>(f: F) -> impl Responder
+where
+    F: FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+    T: Into<ResponseBody>,
+    E: Into<Error>,
+{
+    #[allow(missing_debug_implementations)]
+    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+    pub struct ResponderFn<F>(F);
+
+    impl<F, T, E> Responder for ResponderFn<F>
+    where
+        F: FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+        T: Into<ResponseBody>,
+        E: Into<Error>,
+    {
+        type Body = T;
+        type Error = E;
+
+        #[inline]
+        fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+            (self.0)(input)
+        }
+    }
+
+    ResponderFn(f)
 }
 
-#[allow(missing_docs)]
+/// Creates a JSON responder from the specified data.
 #[inline]
-pub fn html<T>(body: T) -> Html<T>
+pub fn json<T>(data: T) -> impl Responder
 where
-    T: Into<ResponseBody>,
+    T: Serialize,
 {
-    Html(body)
+    self::responder(move |input| self::responder::json(data, input))
 }
 
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct Html<T>(T);
+/// Creates a JSON responder with pretty output from the specified data.
+#[inline]
+pub fn json_pretty<T>(data: T) -> impl Responder
+where
+    T: Serialize,
+{
+    self::responder(move |input| self::responder::json_pretty(data, input))
+}
 
-impl<T> Responder for Html<T>
+/// Creates an HTML responder with the specified response body.
+#[inline]
+pub fn html<T>(body: T) -> impl Responder
 where
     T: Into<ResponseBody>,
 {
-    type Body = T;
-    type Error = Never;
-
-    #[inline]
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(Response::builder()
-            .header("content-type", "text/html; charset=utf-8")
-            .body(self.0)
-            .expect("should be a valid response"))
-    }
+    self::responder(move |input| self::responder::html(body, input))
 }
 
 #[allow(missing_docs)]
@@ -396,5 +337,60 @@ pub mod redirect {
         temporary_redirect => TEMPORARY_REDIRECT,
         permanent_redirect => PERMANENT_REDIRECT,
         to => MOVED_PERMANENTLY,
+    }
+}
+
+#[allow(missing_docs)]
+pub mod responder {
+    use http::Response;
+    use serde::Serialize;
+
+    use super::ResponseBody;
+    use crate::error::{Error, Never};
+    use crate::input::Input;
+
+    #[inline]
+    pub fn json<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec(&data)
+            .map(|body| self::make_response(body, "application/json"))
+            .map_err(crate::error::internal_server_error)
+    }
+
+    #[inline]
+    pub fn json_pretty<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec_pretty(&data)
+            .map(|body| self::make_response(body, "application/json"))
+            .map_err(crate::error::internal_server_error)
+    }
+
+    #[inline]
+    pub fn html<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
+    where
+        T: Into<ResponseBody>,
+    {
+        Ok(self::make_response(body, "text/html"))
+    }
+
+    #[inline]
+    pub fn plain<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
+    where
+        T: Into<ResponseBody>,
+    {
+        Ok(self::make_response(body, "text/plain; charset=utf-8"))
+    }
+
+    pub(super) fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
+        let mut response = Response::new(body);
+        response.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::header::HeaderValue::from_static(content_type),
+        );
+        response
     }
 }
