@@ -1,6 +1,6 @@
 <img src="https://raw.githubusercontent.com/tsukuyomi-rs/tsukuyomi/master/tsukuyomi-header.png" alt="header" width="500" />
 
-> An asynchronous Web framework for Rust.
+> Asynchronous Web framework for Rust.
 
 ---
 
@@ -11,26 +11,14 @@
 [![Coverage Status][codecov-badge]][codecov]
 [![Gitter][gitter-badge]][gitter]
 
-## Documentation
-
-* [Released][docs-rs]
-* [Master][master-doc]
-
 ## Features
 
-* Supports HTTP/1.x and HTTP/2.0 protocols, based on Hyper 0.12
-* Basic support for HTTP/1.1 protocol upgrade
-* TLS support by using `rustls`
-* Support for both TCP and Unix domain socket
-* Custom error handling
-* Basic support for Cookie management
-* Middlewares
-* Embedded WebSocket handling
-
-The following features does not currently implemented but will be supported in the future version:
-
-* Custom session storage
-* Authentication
+* Type-safe and composable handlers based on `Extractor` system
+* Scoped routing and middlewares
+* Asynchronous HTTP server based on `hyper` 0.12 and `tower-service`
+  - HTTP/1.1 protocol upgrade
+  - TLS transport (using `rustls`)
+  - Unix domain socket
 
 ## Usage
 
@@ -56,6 +44,18 @@ fn main() {
 }
 ```
 
+## Documentation
+
+* [API documentation (released, 0.3)][docs-rs]
+* [API documentation (master, 0.4)][master-doc]
+
+## Extensions
+
+- [`tsukuyomi-askama`] - template support using [`askama`]
+- [`tsukuyomi-juniper`] - GraphQL integration using [`juniper`]
+- [`tsukuyomi-fs`] - serving static files
+- [`tsukuyomi-session`] - session management
+- [`tsukuyomi-websocket`] - WebSocket support using [`tungstenite`]
 
 ## License
 Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE) at your option.
@@ -78,3 +78,13 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0-dev/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
+
+[`askama`]: https://github.com/djc/askama
+[`juniper`]: https://github.com/graphql-rust/juniper
+[`tungstenite`]: https://github.com/snapview/tungstenite-rs
+
+[`tsukuyomi-askama`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-askama
+[`tsukuyomi-juniper`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-juniper
+[`tsukuyomi-fs`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-fs
+[`tsukuyomi-session`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-session
+[`tsukuyomi-websocket`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-websocket
