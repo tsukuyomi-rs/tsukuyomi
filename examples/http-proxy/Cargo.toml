@@ -12,7 +12,6 @@ doc = false
 [dependencies]
 tsukuyomi = "0.4.0-dev"
 
-bytes = "0.4"
 futures = "0.1"
 http = "0.1"
 reqwest = "0.9"
