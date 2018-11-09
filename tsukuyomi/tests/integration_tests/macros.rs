@@ -1,46 +1,4 @@
-use tsukuyomi::test::test_server;
-
-#[test]
-fn test_custom_responder() {
-    use http::Response;
-    use std::fmt;
-    use tsukuyomi::error::Never;
-    use tsukuyomi::input::Input;
-
-    fn respond_to<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>
-    where
-        T: fmt::Display,
-    {
-        Ok(Response::builder()
-            .header("content-type", "text/plain; charset=utf-8")
-            .body(this.to_string())
-            .unwrap())
-    }
-
-    #[derive(tsukuyomi::output::Responder)]
-    struct Foo(String);
-
-    impl fmt::Display for Foo {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            self.0.fmt(f)
-        }
-    }
-
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(tsukuyomi::route::index().reply(|| Foo("Foo".into())));
-        }).unwrap()
-    });
-    let response = server.perform(http::Request::get("/")).unwrap();
-    assert_eq!(response.status(), 200);
-    assert_eq!(
-        response.headers().get("content-type").unwrap(),
-        "text/plain; charset=utf-8"
-    );
-    assert_eq!(response.body().to_utf8().unwrap(), "Foo");
-}
-
-mod custom {
+mod responder {
     use std::fmt;
     use tsukuyomi::test::test_server;
 
@@ -84,5 +42,38 @@ mod custom {
             "text/plain; charset=utf-8"
         );
         assert_eq!(response.body().to_utf8().unwrap(), "Foo");
+    }
+
+    #[test]
+    #[ignore]
+    #[allow(dead_code)]
+    fn compiletest_derive_responder_enum() {
+        use tsukuyomi::output::Responder;
+
+        fn assert_impl_responder<T: Responder>(t: T) {
+            drop(t);
+        }
+
+        #[derive(Responder)]
+        enum Single {
+            Foo,
+        }
+
+        #[derive(Responder)]
+        enum WithValue {
+            A,
+            Foo(String),
+        }
+
+        #[derive(Responder)]
+        enum Multi {
+            Foo(String),
+            Single(Single),
+            WithValue { a: WithValue },
+        }
+
+        assert_impl_responder(Single::Foo);
+        assert_impl_responder(WithValue::Foo("foo".into()));
+        assert_impl_responder(Multi::Single(Single::Foo));
     }
 }

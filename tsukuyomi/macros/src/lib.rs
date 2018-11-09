@@ -35,7 +35,7 @@ pub fn route_expr_impl(input: TokenStream) -> TokenStream {
 pub fn Responder(input: TokenStream) -> TokenStream {
     syn::parse(input)
         .and_then(crate::derive_responder::parse)
-        .map(quote::ToTokens::into_token_stream)
+        .and_then(|input| input.derive())
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

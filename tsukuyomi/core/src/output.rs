@@ -17,7 +17,21 @@ pub use crate::macros::Responder;
 // not a public API.
 #[doc(hidden)]
 pub mod internal {
+    use super::{Responder, ResponseBody};
+    use crate::error::Error;
+    use crate::input::Input;
+
     pub use http::Response;
+
+    #[inline]
+    pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
+    where
+        T: Responder,
+    {
+        Responder::respond_to(t, input)
+            .map(|resp| resp.map(Into::into))
+            .map_err(Into::into)
+    }
 }
 
 /// A type representing the message body in an HTTP response.
@@ -219,7 +233,10 @@ impl Responder for serde_json::Value {
     type Error = Never;
 
     fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self::responder::make_response(self.to_string(), "application/json"))
+        Ok(self::responder::make_response(
+            self.to_string(),
+            "application/json",
+        ))
     }
 }
 
