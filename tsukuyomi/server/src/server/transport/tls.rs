@@ -6,8 +6,7 @@ use futures::{Future, Stream};
 use rustls::ServerSession;
 use tokio_rustls::{TlsAcceptor, TlsStream};
 
-use super::imp::TransportImpl;
-use super::Transport;
+use super::imp::{HasConnectionInfo, Transport, TransportImpl};
 use crate::server::CritError;
 
 pub fn tls<T, A>(raw_transport: T, acceptor: A) -> TlsConfig<T>
@@ -53,9 +52,10 @@ where
     T: Transport,
     T::Error: 'static,
 {
-    type Item = TlsStream<T::Item, ServerSession>;
+    type Info = T::Info;
+    type Io = TlsStream<T::Io, ServerSession>;
     type Error = CritError;
-    type Incoming = Box<dyn Stream<Item = Self::Item, Error = Self::Error> + Send + 'static>;
+    type Incoming = Box<dyn Stream<Item = Self::Io, Error = Self::Error> + Send + 'static>;
 
     fn incoming(self) -> io::Result<Self::Incoming> {
         let Self {
@@ -72,5 +72,16 @@ where
         );
 
         Ok(incoming)
+    }
+}
+
+impl<Io, S> HasConnectionInfo for TlsStream<Io, S>
+where
+    Io: HasConnectionInfo,
+{
+    type ConnectionInfo = Io::ConnectionInfo;
+
+    fn connection_info(&self) -> Self::ConnectionInfo {
+        self.get_ref().0.connection_info()
     }
 }

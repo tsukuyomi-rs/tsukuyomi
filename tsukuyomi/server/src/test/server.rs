@@ -146,11 +146,11 @@ where
         loop {
             let response = match *self {
                 Initial(ref mut f) => {
-                    let response = try_ready!(f.poll().map_err(Into::into));
+                    let response = futures::try_ready!(f.poll().map_err(Into::into));
                     Some(response)
                 }
                 Receive(_, ref mut receive) => {
-                    try_ready!(receive.poll_ready().map_err(Into::into));
+                    futures::try_ready!(receive.poll_ready().map_err(Into::into));
                     None
                 }
                 _ => unreachable!("unexpected state"),

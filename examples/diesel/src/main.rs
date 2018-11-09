@@ -101,8 +101,5 @@ fn main() {
         });
     }).unwrap();
 
-    tsukuyomi::server(app)
-        .bind("127.0.0.1:4000")
-        .run_forever()
-        .unwrap();
+    tsukuyomi::server(app).run_forever().unwrap();
 }

@@ -1,6 +1,7 @@
 extern crate rustls;
 extern crate tsukuyomi;
 
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -18,7 +19,9 @@ fn main() {
         .unwrap();
 }
 
-fn tls_transport<'a>(addr: &'a str) -> impl tsukuyomi::server::Transport + 'a {
+fn tls_transport(addr: &str) -> tsukuyomi::server::transport::TlsConfig<SocketAddr> {
+    let addr: SocketAddr = addr.parse().unwrap();
+
     let client_auth = rustls::NoClientAuth::new();
 
     let mut config = rustls::ServerConfig::new(client_auth);

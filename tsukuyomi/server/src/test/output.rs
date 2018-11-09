@@ -44,13 +44,13 @@ impl<Bd: Payload> Receive<Bd> {
                     ref mut end_of_chunks,
                 } => {
                     if !*end_of_chunks {
-                        while let Some(chunk) = try_ready!(body.poll_data()) {
+                        while let Some(chunk) = futures::try_ready!(body.poll_data()) {
                             chunks.push(chunk.collect());
                         }
                         *end_of_chunks = true;
                         continue;
                     } else {
-                        try_ready!(body.poll_trailers())
+                        futures::try_ready!(body.poll_trailers())
                     }
                 }
                 ReceiveState::Done(..) => return Ok(Async::Ready(())),

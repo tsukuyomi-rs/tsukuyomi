@@ -12,12 +12,9 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
 extern crate bytes;
-#[macro_use]
 extern crate futures;
 extern crate http;
 extern crate hyper;
-#[macro_use]
-extern crate log;
 extern crate tokio;
 extern crate tokio_threadpool;
 extern crate tower_service;
