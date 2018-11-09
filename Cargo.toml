@@ -26,7 +26,6 @@ members = [
   "tsukuyomi/server",
 
   "tsukuyomi-askama",
-  "tsukuyomi-askama/macros",
   "tsukuyomi-fs",
   "tsukuyomi-juniper",
   "tsukuyomi-session",

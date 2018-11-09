@@ -4,18 +4,19 @@ extern crate tsukuyomi_askama;
 
 use askama::Template;
 use tsukuyomi::app::App;
+use tsukuyomi::output::Responder;
 use tsukuyomi::route;
-use tsukuyomi_askama::TemplateResponder;
 
 #[inline]
-fn assert_impl<T: TemplateResponder>(x: T) -> T {
+fn assert_impl<T: Responder>(x: T) -> T {
     x
 }
 
 #[test]
 fn test_template() {
-    #[derive(Template, TemplateResponder)]
+    #[derive(Template, Responder)]
     #[template(path = "index.html")]
+    #[responder(respond_to = "tsukuyomi_askama::respond_to")]
     struct Index {
         name: &'static str,
     }
