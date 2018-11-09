@@ -1,0 +1,16 @@
+[package]
+name = "example-template-tera"
+version = "0.1.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+
+[[bin]]
+name = "example_template_tera"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.4.0-dev"
+tera = "0.11"
+http = "0.1"
+serde = { version = "1", features = ["derive"] }
+mime_guess = "2.0.0-alpha.6"
