@@ -42,6 +42,7 @@ members = [
   "examples/routing",
   "examples/session",
   "examples/staticfile",
+  "examples/template-askama",
   "examples/tls",
   "examples/unix-socket",
   "examples/websocket",

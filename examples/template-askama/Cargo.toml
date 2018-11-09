@@ -1,0 +1,15 @@
+[package]
+name = "example-template-askama"
+version = "0.0.0"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "example_template_askama"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.4.0-dev"
+tsukuyomi-askama = "0.1.0"
+askama = "0.7"
