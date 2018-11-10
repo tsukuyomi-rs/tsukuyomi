@@ -11,3 +11,6 @@ coverage:
     project: yes
     patch: no
     changes: no
+
+ignore:
+  - "examples/"
