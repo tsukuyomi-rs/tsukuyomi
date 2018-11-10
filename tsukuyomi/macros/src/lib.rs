@@ -1,5 +1,6 @@
 //! The procedural macros for Tsukuyomi.
 
+#![recursion_limit = "256"]
 #![warn(
     nonstandard_style,
     rust_2018_idioms,
@@ -33,9 +34,7 @@ pub fn route_expr_impl(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Responder, attributes(responder))]
 #[allow(nonstandard_style)]
 pub fn Responder(input: TokenStream) -> TokenStream {
-    syn::parse(input)
-        .and_then(crate::derive_responder::parse)
-        .and_then(|input| input.derive())
+    crate::derive_responder::derive_responder(input.into())
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

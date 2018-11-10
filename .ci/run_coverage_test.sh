@@ -8,7 +8,7 @@ chmod +x .codecov
 codecov() {
     local branch="${BUILD_SOURCEBRANCHNAME:-}"
     local commit="${BUILD_SOURCEVERSION:-}"
-    local pr="${SYSTEM_PULLREQUEST_PULLREQUESTID:-}"
+    local pr="${SYSTEM_PULLREQUEST_PULLREQUESTNUMBER:-}"
     local build="${BUILD_BUILDID:-}"
     ./.codecov -B "$branch" -C "$commit" -P "$pr" -b "$build" -K "$@"
 }
