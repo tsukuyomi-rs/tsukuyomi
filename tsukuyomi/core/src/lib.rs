@@ -28,11 +28,7 @@ extern crate tower_service;
 extern crate url;
 extern crate uuid;
 
-extern crate tsukuyomi_macros as macros;
 extern crate tsukuyomi_server as server;
-
-#[doc(hidden)]
-pub use crate::macros::*;
 
 #[cfg(test)]
 extern crate matches;

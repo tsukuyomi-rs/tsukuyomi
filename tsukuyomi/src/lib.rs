@@ -17,8 +17,9 @@ extern crate tsukuyomi_macros;
 extern crate tsukuyomi_server;
 
 extern crate futures;
+extern crate http;
 
-pub use tsukuyomi_core::{app, error, extractor, input, modifier, output};
+pub use tsukuyomi_core::{app, error, extractor, input, modifier};
 #[doc(hidden)]
 pub use tsukuyomi_macros::route_expr_impl;
 pub use tsukuyomi_server::server::server;
@@ -44,6 +45,32 @@ macro_rules! route {
             $( .method($methods) )*
     };
     () => ( $crate::route() );
+}
+
+#[allow(missing_docs)]
+pub mod output {
+    pub use tsukuyomi_core::output::*;
+    pub use tsukuyomi_macros::Responder;
+
+    // not a public API.
+    #[doc(hidden)]
+    pub mod internal {
+        use crate::error::Error;
+        use crate::input::Input;
+        use crate::output::{Responder, ResponseBody};
+
+        pub use http::Response;
+
+        #[inline]
+        pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
+        where
+            T: Responder,
+        {
+            Responder::respond_to(t, input)
+                .map(|resp| resp.map(Into::into))
+                .map_err(Into::into)
+        }
+    }
 }
 
 #[allow(missing_docs)]

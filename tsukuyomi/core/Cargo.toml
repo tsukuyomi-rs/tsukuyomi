@@ -27,10 +27,6 @@ uuid = "0.7.1"
 version = "0.4.0-dev" # <cargo-version-sync>
 path = "../server"
 
-[dependencies.tsukuyomi-macros]
-version = "0.4.0-dev" # <cargo-version-sync>
-path = "../macros"
-
 [dev-dependencies]
 matches = "0.1"
 cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
