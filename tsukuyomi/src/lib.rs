@@ -17,7 +17,6 @@ extern crate tsukuyomi_server;
 
 extern crate futures;
 
-pub use tsukuyomi_core::route::route;
 pub use tsukuyomi_core::{app, error, extractor, input, modifier, output, route};
 pub use tsukuyomi_server::server::server;
 pub use tsukuyomi_server::{server, service, test};

@@ -1,10 +1,21 @@
 #![allow(missing_docs)]
 
 pub use crate::app::route::Builder;
-pub use crate::route_expr as route;
+
+pub(crate) mod imp {
+    use super::*;
+
+    #[inline]
+    pub fn route<T>(uri: T) -> Builder<()>
+    where
+        T: AsRef<str>,
+    {
+        Builder::new(()).uri(uri)
+    }
+}
 
 #[macro_export(local_inner_macros)]
-macro_rules! route_expr {
+macro_rules! route {
     ($uri:expr) => {{
         enum __Dummy {}
         impl __Dummy {
@@ -13,7 +24,7 @@ macro_rules! route_expr {
         __Dummy::route()
     }};
     ($uri:expr, methods = [$($methods:expr),*]) => {
-        route_expr!($uri)
+        route!($uri)
             $( .method($methods) )*
     };
     () => {
@@ -22,16 +33,8 @@ macro_rules! route_expr {
 }
 
 #[inline]
-pub fn route<T>(uri: T) -> Builder<()>
-where
-    T: AsRef<str>,
-{
-    Builder::new(()).uri(uri)
-}
-
-#[inline]
 pub fn index() -> Builder<()> {
-    self::route("/")
+    self::imp::route("/")
 }
 
 macro_rules! define_route {
@@ -40,7 +43,7 @@ macro_rules! define_route {
         where
             T: AsRef<str>,
         {
-            self::route(uri).method(http::Method::$METHOD)
+            self::imp::route(uri).method(http::Method::$METHOD)
         }
     )*}
 }
@@ -63,7 +66,7 @@ mod tests {
     use crate::extractor::Extractor;
 
     fn generated() -> Builder<impl Extractor<Output = (u32, String)>> {
-        self::route("/:id/:name")
+        crate::route("/:id/:name")
             .with(crate::extractor::param::pos(0))
             .with(crate::extractor::param::pos(1))
     }

@@ -45,7 +45,7 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
     let Builder = quote!(tsukuyomi::route::Builder);
     let Error = quote!(tsukuyomi::error::Error);
-    let route = quote!(tsukuyomi::route::route);
+    let route = quote!(tsukuyomi::route);
     let uri = &input.uri;
 
     if input.params.is_empty() {
@@ -100,7 +100,7 @@ t! {
     source: ("/"),
     expected: {
         fn route() -> tsukuyomi::route::Builder<()> {
-            tsukuyomi::route::route("/")
+            tsukuyomi::route("/")
         }
     },
 }
@@ -115,7 +115,7 @@ t! {
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::route::route("/:id")
+            tsukuyomi::route("/:id")
                 .with(tsukuyomi::extractor::param::pos(0usize))
         }
     },
@@ -131,7 +131,7 @@ t! {
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::route::route("/*path")
+            tsukuyomi::route("/*path")
                 .with(tsukuyomi::extractor::param::wildcard())
         }
     },
@@ -149,7 +149,7 @@ t! {
             T1: tsukuyomi::extractor::param::FromParam,
             T2: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::route::route("/:id/people/:name/*path")
+            tsukuyomi::route("/:id/people/:name/*path")
                 .with(tsukuyomi::extractor::param::pos(0usize))
                 .with(tsukuyomi::extractor::param::pos(1usize))
                 .with(tsukuyomi::extractor::param::wildcard())
