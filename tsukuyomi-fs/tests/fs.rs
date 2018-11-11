@@ -3,8 +3,7 @@ extern crate tsukuyomi;
 extern crate tsukuyomi_fs;
 
 use futures::prelude::*;
-use tsukuyomi::app::App;
-use tsukuyomi::route;
+use tsukuyomi::app::{App, Route};
 use tsukuyomi_fs::{NamedFile, Staticfiles};
 
 #[test]
@@ -13,7 +12,7 @@ fn compiletest() {
     drop(
         App::build(|scope| {
             scope.route(
-                route::get("/index.html")
+                Route::get("/index.html")
                     .handle(|| NamedFile::open("/path/to/index.html").map_err(Into::into)),
             );
         }).unwrap(),

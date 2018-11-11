@@ -1,4 +1,4 @@
-use tsukuyomi::app::App;
+use tsukuyomi::app::{App, Route};
 use tsukuyomi::extractor;
 use tsukuyomi::extractor::ExtractorExt;
 use tsukuyomi::route;
@@ -10,7 +10,7 @@ use http::Request;
 fn unit_input() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
-            scope.route(route::index().reply(|| "dummy"));
+            scope.route(Route::index().reply(|| "dummy"));
         }).unwrap()
     });
     let response = server.perform(Request::get("/")).unwrap();
@@ -24,7 +24,7 @@ fn params() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::get("/:id/:name/*path")
+                Route::get("/:id/:name/*path")
                     .with(param::pos(0))
                     .with(param::named("name"))
                     .with(param::wildcard())
@@ -75,7 +75,7 @@ fn plain_body() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::post("/")
+                Route::post("/")
                     .with(extractor::body::plain())
                     .reply(|body: String| body),
             );
@@ -125,7 +125,7 @@ fn json_body() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::post("/")
+                Route::post("/")
                     .with(extractor::body::json())
                     .reply(|params: Params| format!("{},{}", params.id, params.name)),
             );
@@ -175,7 +175,7 @@ fn urlencoded_body() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::post("/")
+                Route::post("/")
                     .with(extractor::body::urlencoded())
                     .reply(|params: Params| format!("{},{}", params.id, params.name)),
             );
@@ -242,7 +242,7 @@ fn local_data() {
         tsukuyomi::app(|scope| {
             scope.modifier(MyModifier);
             scope.route(
-                route::index()
+                Route::index()
                     .with(extractor::local::local(&MyData::KEY))
                     .reply(|x: MyData| x.0),
             );
@@ -267,7 +267,7 @@ fn missing_local_data() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::index()
+                Route::index()
                     .with(extractor::local::local(&MyData::KEY))
                     .reply(|x: MyData| x.0),
             );
@@ -289,7 +289,7 @@ fn optional() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::post("/")
+                Route::post("/")
                     .with(extractor::body::json().optional())
                     .handle(|params: Option<Params>| {
                         if let Some(params) = params {
@@ -336,7 +336,7 @@ fn either_or() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::post("/")
+                Route::post("/")
                     .with(params_extractor)
                     .reply(|params: Params| format!("{},{}", params.id, params.name)),
             );

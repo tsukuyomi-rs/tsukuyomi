@@ -42,7 +42,7 @@ fn main() {
                 let parse_query = extractor::query::query()
                     .optional()
                     .map(|param: Option<Param>| param.unwrap_or_else(|| Param { count: 20 }));
-                route::get("/")
+                route!("/", methods = ["GET"])
                     .with(parse_query)
                     .with(db_conn.clone())
                     .handle(|param: Param, conn: Conn| {
@@ -64,7 +64,7 @@ fn main() {
                     title: String,
                     body: String,
                 }
-                route::post("/")
+                route!("/", methods = ["POST"])
                     .with(extractor::body::json())
                     .with(db_conn.clone())
                     .handle(|param: Param, conn: Conn| {
@@ -84,20 +84,22 @@ fn main() {
                     })
             });
 
-            scope.route(route!("/:id", methods = ["GET"]).with(db_conn).handle(
-                |id: i32, conn: Conn| {
-                    tsukuyomi::rt::blocking_section(move || {
-                        use crate::schema::posts::dsl;
-                        use diesel::prelude::*;
-                        dsl::posts
-                            .filter(dsl::id.eq(id))
-                            .get_result::<Post>(&*conn)
-                            .optional()
-                            .map(tsukuyomi::output::json)
-                            .map_err(tsukuyomi::error::internal_server_error)
-                    })
-                },
-            ));
+            scope.route(
+                route!("/:id", methods = ["GET"]) //
+                    .with(db_conn)
+                    .handle(|id: i32, conn: Conn| {
+                        tsukuyomi::rt::blocking_section(move || {
+                            use crate::schema::posts::dsl;
+                            use diesel::prelude::*;
+                            dsl::posts
+                                .filter(dsl::id.eq(id))
+                                .get_result::<Post>(&*conn)
+                                .optional()
+                                .map(tsukuyomi::output::json)
+                                .map_err(tsukuyomi::error::internal_server_error)
+                        })
+                    }),
+            );
         });
     }).unwrap();
 

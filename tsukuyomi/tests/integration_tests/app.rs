@@ -1,5 +1,5 @@
+use tsukuyomi::app::Route;
 use tsukuyomi::extractor;
-use tsukuyomi::route;
 use tsukuyomi::test::test_server;
 
 use http::{header, Request, StatusCode};
@@ -16,7 +16,7 @@ fn empty_routes() {
 fn single_route() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
-            scope.route(route::get("/hello").reply(|| "Tsukuyomi"));
+            scope.route(Route::get("/hello").reply(|| "Tsukuyomi"));
         }).unwrap()
     });
 
@@ -45,7 +45,7 @@ fn post_body() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                tsukuyomi::route::post("/hello")
+                Route::post("/hello")
                     .with(tsukuyomi::extractor::body::plain())
                     .reply(|body: String| body),
             );
@@ -84,7 +84,7 @@ fn cookies() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.route(
-                route::get("/login")
+                Route::get("/login")
                     .with(extractor::validate(move |input| {
                         let cookie = Cookie::build("session", "dummy_session_id")
                             .domain("www.example.com")
@@ -96,7 +96,7 @@ fn cookies() {
                     })).reply(|| "Logged in"),
             );
             scope.route(
-                route::get("/logout")
+                Route::get("/logout")
                     .with(extractor::validate(|input| {
                         input.cookies().map(|mut cookies| {
                             cookies.remove(Cookie::named("session"));
@@ -149,8 +149,8 @@ fn default_options() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope
-                .route(route::get("/path").reply(|| "get"))
-                .route(route::post("/path").reply(|| "post"));
+                .route(Route::get("/path").reply(|| "get"))
+                .route(Route::post("/path").reply(|| "post"));
         }).unwrap()
     });
 
@@ -175,8 +175,8 @@ fn test_case_5_disable_default_options() {
     let mut server = test_server({
         tsukuyomi::app(|scope| {
             scope.global().fallback_options(false);
-            scope.route(route::get("/path").reply(|| "get"));
-            scope.route(route::post("/path").reply(|| "post"));
+            scope.route(Route::get("/path").reply(|| "get"));
+            scope.route(Route::post("/path").reply(|| "post"));
         }).unwrap()
     });
 

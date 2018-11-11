@@ -45,7 +45,5 @@ pub mod input;
 pub mod modifier;
 pub mod output;
 mod recognizer;
-pub mod route;
 
 pub use crate::app::app;
-pub use crate::route::imp::route;

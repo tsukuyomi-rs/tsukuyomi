@@ -42,6 +42,10 @@ futures = "0.1"
 version = "0.4.0-dev" # <cargo-version-sync>
 path = "./core"
 
+[dependencies.tsukuyomi-macros]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "./macros"
+
 [dependencies.tsukuyomi-server]
 version = "0.4.0-dev" # <cargo-version-sync>
 path = "./server"

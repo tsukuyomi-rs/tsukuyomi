@@ -502,7 +502,7 @@ where
                 let path = entry.path().canonicalize()?;
 
                 let config = config.clone();
-                scope.route(tsukuyomi::route::get(&prefix).handle(move || {
+                scope.route(tsukuyomi::app::Route::get(&prefix).handle(move || {
                     if let Some(ref config) = config {
                         NamedFile::open_with_config(path.clone(), config.clone())
                             .map_err(Into::into)

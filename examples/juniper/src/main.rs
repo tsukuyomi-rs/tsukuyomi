@@ -9,11 +9,15 @@ mod context;
 mod schema;
 
 use std::sync::Arc;
+use tsukuyomi::app::Route;
 use tsukuyomi_juniper::executor::Executor;
 
 fn main() {
     // Extractor for extracting `Executor` for executing a GraphQL request from client.
-    let extract_graphql_executor = tsukuyomi_juniper::executor(crate::schema::create_schema());
+    let extract_graphql_executor = tsukuyomi_juniper::executor(
+        //
+        crate::schema::create_schema(),
+    );
 
     // Extractor which constructs a context value used by `Executor`.
     let fetch_graphql_context = {
@@ -22,7 +26,10 @@ fn main() {
     };
 
     let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route::index().reply(tsukuyomi_juniper::graphiql("/graphql")));
+        scope.route(
+            Route::index() //
+                .reply(tsukuyomi_juniper::graphiql("/graphql")),
+        );
 
         scope.route(
             tsukuyomi::route!("/graphql", methods = ["GET", "POST"])

@@ -13,7 +13,10 @@ fn main() {
         .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
     let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route::index().reply(|| "Hello, Tsukuyomi!\n"));
+        scope.route(
+            tsukuyomi::route!("/") //
+                .reply(|| "Hello, Tsukuyomi!\n"),
+        );
     }).unwrap();
 
     println!("Serving on {}...", sock_path.display());

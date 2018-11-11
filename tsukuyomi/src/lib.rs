@@ -13,13 +13,38 @@
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
 extern crate tsukuyomi_core;
+extern crate tsukuyomi_macros;
 extern crate tsukuyomi_server;
 
 extern crate futures;
 
-pub use tsukuyomi_core::{app, error, extractor, input, modifier, output, route};
+pub use tsukuyomi_core::{app, error, extractor, input, modifier, output};
+#[doc(hidden)]
+pub use tsukuyomi_macros::route_expr_impl;
 pub use tsukuyomi_server::server::server;
 pub use tsukuyomi_server::{server, service, test};
+
+#[allow(missing_docs)]
+#[inline]
+pub fn route() -> crate::app::route::Builder<()> {
+    crate::app::route::Route::builder()
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! route {
+    ($uri:expr) => {{
+        enum __Dummy {}
+        impl __Dummy {
+            route_expr_impl!($uri);
+        }
+        __Dummy::route()
+    }};
+    ($uri:expr, methods = [$($methods:expr),*]) => {
+        route!($uri)
+            $( .method($methods) )*
+    };
+    () => ( $crate::route() );
+}
 
 #[allow(missing_docs)]
 pub mod rt {

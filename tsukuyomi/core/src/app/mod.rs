@@ -1,7 +1,7 @@
 //! Components for constructing HTTP applications.
 
 mod container;
-pub(crate) mod route;
+pub mod route;
 pub(crate) mod scope;
 mod service;
 

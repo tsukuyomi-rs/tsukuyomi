@@ -1,9 +1,9 @@
+use tsukuyomi::app::Route;
 use tsukuyomi::error::internal_server_error;
 use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
 use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::{Output, ResponseBody};
-use tsukuyomi::route;
 use tsukuyomi::test::test_server;
 
 use http::{Request, Response};
@@ -39,7 +39,7 @@ fn global_modifier() {
 
     let mut server = test_server({
         tsukuyomi::app(|scope| {
-            scope.route(route::index().reply({
+            scope.route(Route::index().reply({
                 let marker = marker.clone();
                 move || {
                     marker.lock().unwrap().push("H");
@@ -70,7 +70,7 @@ fn global_modifier_error_on_before() {
 
     let mut server = test_server({
         tsukuyomi::app(|scope| {
-            scope.route(route::index().reply({
+            scope.route(Route::index().reply({
                 let marker = marker.clone();
                 move || {
                     marker.lock().unwrap().push("H");
@@ -101,7 +101,7 @@ fn global_modifiers() {
 
     let mut server = test_server({
         tsukuyomi::app(|scope| {
-            scope.route(route::index().reply({
+            scope.route(Route::index().reply({
                 let marker = marker.clone();
                 move || {
                     marker.lock().unwrap().push("H");
@@ -166,7 +166,7 @@ fn scoped_modifier() {
                         Ok(Response::new(ResponseBody::empty()))
                     },
                 });
-                s.route(route::index().reply({
+                s.route(Route::index().reply({
                     let marker = marker.clone();
                     move || {
                         marker.lock().unwrap().push("H1");
@@ -174,7 +174,7 @@ fn scoped_modifier() {
                     }
                 }));
             });
-            scope.route(route::get("/path2").reply({
+            scope.route(Route::get("/path2").reply({
                 let marker = marker.clone();
                 move || {
                     marker.lock().unwrap().push("H2");
@@ -222,7 +222,7 @@ fn nested_modifiers() {
                             Ok(Response::new(ResponseBody::empty()))
                         },
                     });
-                    s.route(route::index().reply({
+                    s.route(Route::index().reply({
                         let marker = marker.clone();
                         move || {
                             marker.lock().unwrap().push("H1");
@@ -242,7 +242,7 @@ fn nested_modifiers() {
                                 Ok(Response::new(ResponseBody::empty()))
                             },
                         });
-                        s.route(route::index().reply({
+                        s.route(Route::index().reply({
                             let marker = marker.clone();
                             move || {
                                 marker.lock().unwrap().push("H2");

@@ -14,7 +14,10 @@ struct Index {
 
 fn main() {
     let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route!("/:name").reply(|name| Index { name }));
+        scope.route(
+            tsukuyomi::route!("/:name") //
+                .reply(|name| Index { name }),
+        );
     }).unwrap();
 
     tsukuyomi::server(app).run_forever().unwrap();

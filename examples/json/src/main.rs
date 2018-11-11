@@ -1,7 +1,7 @@
 extern crate serde;
 extern crate tsukuyomi;
 
-use tsukuyomi::route;
+use tsukuyomi::app::Route;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct User {
@@ -11,14 +11,17 @@ struct User {
 
 fn main() {
     let app = tsukuyomi::app(|scope| {
-        scope.route(route::get("/").reply(|| {
-            tsukuyomi::output::json(User {
-                name: "Sakura Kinomoto".into(),
-                age: 13,
-            })
-        }));
         scope.route(
-            route::post("/")
+            Route::get("/") //
+                .reply(|| {
+                    tsukuyomi::output::json(User {
+                        name: "Sakura Kinomoto".into(),
+                        age: 13,
+                    })
+                }),
+        );
+        scope.route(
+            Route::post("/")
                 .with(tsukuyomi::extractor::body::json::<User>())
                 .reply(tsukuyomi::output::json),
         );

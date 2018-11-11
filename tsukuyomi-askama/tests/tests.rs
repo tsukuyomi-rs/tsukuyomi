@@ -7,7 +7,6 @@ extern crate tsukuyomi_askama;
 use askama::Template;
 use http::Request;
 use tsukuyomi::output::Responder;
-use tsukuyomi::route;
 use tsukuyomi::test::test_server;
 
 #[test]
@@ -31,7 +30,10 @@ fn test_template() {
 
     let mut server = test_server({
         tsukuyomi::app(|scope| {
-            scope.route(route::index().reply(|| assert_impl(Index { name: "Alice" })));
+            scope.route(
+                tsukuyomi::app::Route::index() //
+                    .reply(|| assert_impl(Index { name: "Alice" })),
+            );
         }).unwrap()
     });
 

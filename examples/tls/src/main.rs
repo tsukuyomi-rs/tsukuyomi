@@ -10,7 +10,10 @@ const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pe
 
 fn main() {
     let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route!().reply(|| "Hello, Tsukuyomi.\n"));
+        scope.route(
+            tsukuyomi::route!() //
+                .reply(|| "Hello, Tsukuyomi.\n"),
+        );
     }).unwrap();
 
     tsukuyomi::server(app)

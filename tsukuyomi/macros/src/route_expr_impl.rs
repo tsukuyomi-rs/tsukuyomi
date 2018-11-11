@@ -43,15 +43,16 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
     let name = quote!(route);
     let Extractor = quote!(tsukuyomi::extractor::Extractor);
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
-    let Builder = quote!(tsukuyomi::route::Builder);
     let Error = quote!(tsukuyomi::error::Error);
-    let route = quote!(tsukuyomi::route);
+    let Route = quote!(tsukuyomi::app::route::Route);
+    let Builder = quote!(tsukuyomi::app::route::Builder);
     let uri = &input.uri;
 
     if input.params.is_empty() {
         quote! {
             fn #name() -> #Builder<()> {
-                #route(#uri)
+                #Route::builder()
+                    .uri(#uri)
             }
         }
     } else {
@@ -72,7 +73,8 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
             where
                 #( #bounds )*
             {
-                #route(#uri)
+                #Route::builder()
+                    .uri(#uri)
                     #( .with(#extractors) )*
             }
         )

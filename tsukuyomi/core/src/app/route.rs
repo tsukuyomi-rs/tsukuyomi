@@ -56,10 +56,44 @@ impl fmt::Debug for RouteInner {
     }
 }
 
+macro_rules! define_route {
+    ($($method:ident => $METHOD:ident,)*) => {$(
+        pub fn $method<T>(uri: T) -> Builder<()>
+        where
+            T: AsRef<str>,
+        {
+            Self::builder()
+                .uri(uri)
+                .method(http::Method::$METHOD)
+        }
+    )*}
+}
+
 impl Route {
     /// Creates a builder of this type.
     pub fn builder() -> Builder<()> {
-        Builder::new(())
+        Builder {
+            extractor: (),
+            uri: Ok(Uri::root()),
+            methods: Ok(IndexSet::new()),
+        }
+    }
+
+    #[inline]
+    pub fn index() -> Builder<()> {
+        Self::builder()
+    }
+
+    define_route! {
+        get => GET,
+        post => POST,
+        put => PUT,
+        delete => DELETE,
+        head => HEAD,
+        options => OPTIONS,
+        connect => CONNECT,
+        patch => PATCH,
+        trace => TRACE,
     }
 }
 
@@ -79,14 +113,6 @@ impl<E> Builder<E>
 where
     E: Extractor,
 {
-    pub(crate) fn new(extractor: E) -> Self {
-        Builder {
-            extractor,
-            uri: Ok(Uri::root()),
-            methods: Ok(IndexSet::new()),
-        }
-    }
-
     /// Sets the URI of this route.
     pub fn uri<U>(self, uri: U) -> Self
     where
@@ -238,5 +264,44 @@ where
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn generated() -> Builder<impl Extractor<Output = (u32, String)>> {
+        Route::get("/:id/:name")
+            .with(crate::extractor::param::pos(0))
+            .with(crate::extractor::param::pos(1))
+    }
+
+    #[test]
+    #[ignore]
+    fn compiletest1() {
+        drop(
+            crate::app(|scope| {
+                scope.route(generated().reply(|id: u32, name: String| {
+                    drop((id, name));
+                    "dummy"
+                }));
+            }).expect("failed to construct App"),
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn compiletest2() {
+        drop(
+            crate::app(|scope| {
+                scope.route(generated().with(crate::extractor::body::plain()).reply(
+                    |id: u32, name: String, body: String| {
+                        drop((id, name, body));
+                        "dummy"
+                    },
+                ));
+            }).expect("failed to construct App"),
+        );
     }
 }

@@ -23,7 +23,7 @@ fn integration_test() {
 
     let app = tsukuyomi::app(|scope| {
         scope.route(
-            tsukuyomi::route::index()
+            tsukuyomi::app::Route::index()
                 .methods(vec!["GET", "POST"])
                 .with(executor.clone())
                 .handle({
