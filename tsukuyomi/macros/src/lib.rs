@@ -24,15 +24,16 @@ mod route_expr_impl;
 use proc_macro::TokenStream;
 
 #[proc_macro]
+#[cfg_attr(tarpaulin, skip)]
 pub fn route_expr_impl(input: TokenStream) -> TokenStream {
-    syn::parse(input)
-        .map(|input| crate::route_expr_impl::route_expr_impl(&input))
+    crate::route_expr_impl::route_expr_impl(input)
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }
 
 #[proc_macro_derive(Responder, attributes(responder))]
 #[allow(nonstandard_style)]
+#[cfg_attr(tarpaulin, skip)]
 pub fn Responder(input: TokenStream) -> TokenStream {
     crate::derive_responder::derive_responder(input.into())
         .unwrap_or_else(|err| err.to_compile_error())

@@ -1,12 +1,22 @@
 use proc_macro2::{Span, TokenStream};
 use quote::*;
 
-#[allow(nonstandard_style)]
-pub fn route_expr_impl(uri: &syn::LitStr) -> TokenStream {
-    enum ParamKind {
-        Pos(usize),
-        Wildcard,
-    }
+pub fn route_expr_impl(input: impl Into<TokenStream>) -> syn::parse::Result<TokenStream> {
+    parse(input.into()).map(|input| derive(&input))
+}
+
+enum ParamKind {
+    Pos(usize),
+    Wildcard,
+}
+
+struct RouteExprImplInput {
+    uri: syn::LitStr,
+    params: Vec<(syn::Ident, ParamKind)>,
+}
+
+fn parse(input: TokenStream) -> syn::parse::Result<RouteExprImplInput> {
+    let uri: syn::LitStr = syn::parse2(input)?;
 
     let mut params = vec![];
     for segment in uri.value().split('/') {
@@ -25,23 +35,30 @@ pub fn route_expr_impl(uri: &syn::LitStr) -> TokenStream {
         }
     }
 
+    Ok(RouteExprImplInput { uri, params })
+}
+
+#[allow(nonstandard_style)]
+fn derive(input: &RouteExprImplInput) -> TokenStream {
     let name = quote!(route);
     let Extractor = quote!(tsukuyomi::extractor::Extractor);
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
     let Builder = quote!(tsukuyomi::route::Builder);
+    let Error = quote!(tsukuyomi::error::Error);
     let route = quote!(tsukuyomi::route::route);
+    let uri = &input.uri;
 
-    if params.is_empty() {
+    if input.params.is_empty() {
         quote! {
-            fn #name() -> #Builder<impl #Extractor<Output = ()>> {
+            fn #name() -> #Builder<()> {
                 #route(#uri)
             }
         }
     } else {
-        let type_params = params.iter().map(|(ty, _)| ty);
-        let return_types = params.iter().map(|(ty, _)| ty);
-        let bounds = params.iter().map(|(ty, _)| quote!(#ty: #FromParam,));
-        let extractors = params.iter().map(|(_, kind)| -> syn::Expr {
+        let type_params = input.params.iter().map(|(ty, _)| ty);
+        let return_types = input.params.iter().map(|(ty, _)| ty);
+        let bounds = input.params.iter().map(|(ty, _)| quote!(#ty: #FromParam,));
+        let extractors = input.params.iter().map(|(_, kind)| -> syn::Expr {
             match kind {
                 ParamKind::Pos(i) => syn::parse_quote!(tsukuyomi::extractor::param::pos(#i)),
                 ParamKind::Wildcard => syn::parse_quote!(tsukuyomi::extractor::param::wildcard()),
@@ -49,8 +66,9 @@ pub fn route_expr_impl(uri: &syn::LitStr) -> TokenStream {
         });
 
         quote!(
-            fn #name<#(#type_params),*>()
-                -> #Builder<impl #Extractor<Output = (#(#return_types,)*)>>
+            fn #name<#(#type_params),*>() -> #Builder<
+                impl #Extractor<Output = (#(#return_types,)*), Error = #Error>,
+            >
             where
                 #( #bounds )*
             {
@@ -59,4 +77,82 @@ pub fn route_expr_impl(uri: &syn::LitStr) -> TokenStream {
             }
         )
     }
+}
+
+macro_rules! t {
+    (
+        name: $name:ident,
+        source: ($($source:tt)*),
+        expected: { $($expected:tt)* },
+    ) => {
+        #[test]
+        fn $name() {
+            match route_expr_impl(quote!($($source)*)) {
+                Ok(output) => assert_eq!(quote!(#output).to_string(), quote!($($expected)*).to_string()),
+                Err(err) => panic!("{}", err),
+            }
+        }
+    };
+}
+
+t! {
+    name: index,
+    source: ("/"),
+    expected: {
+        fn route() -> tsukuyomi::route::Builder<()> {
+            tsukuyomi::route::route("/")
+        }
+    },
+}
+
+t! {
+    name: single_param,
+    source: ("/:id"),
+    expected: {
+        fn route<T0>() -> tsukuyomi::route::Builder<
+            impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
+        >
+        where
+            T0: tsukuyomi::extractor::param::FromParam,
+        {
+            tsukuyomi::route::route("/:id")
+                .with(tsukuyomi::extractor::param::pos(0usize))
+        }
+    },
+}
+
+t! {
+    name: wildcard_param,
+    source: ("/*path"),
+    expected: {
+        fn route<T0>() -> tsukuyomi::route::Builder<
+            impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
+        >
+        where
+            T0: tsukuyomi::extractor::param::FromParam,
+        {
+            tsukuyomi::route::route("/*path")
+                .with(tsukuyomi::extractor::param::wildcard())
+        }
+    },
+}
+
+t! {
+    name: compound_params,
+    source: ("/:id/people/:name/*path"),
+    expected: {
+        fn route<T0, T1, T2>() -> tsukuyomi::route::Builder<
+            impl tsukuyomi::extractor::Extractor<Output = (T0, T1, T2,), Error = tsukuyomi::error::Error>,
+        >
+        where
+            T0: tsukuyomi::extractor::param::FromParam,
+            T1: tsukuyomi::extractor::param::FromParam,
+            T2: tsukuyomi::extractor::param::FromParam,
+        {
+            tsukuyomi::route::route("/:id/people/:name/*path")
+                .with(tsukuyomi::extractor::param::pos(0usize))
+                .with(tsukuyomi::extractor::param::pos(1usize))
+                .with(tsukuyomi::extractor::param::wildcard())
+        }
+    },
 }
