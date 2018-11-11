@@ -35,8 +35,11 @@ extern crate matches;
 pub mod app;
 pub mod error;
 pub mod extractor;
-pub mod input;
 pub mod output;
+
+pub mod input {
+    pub use crate::app::service::input::*;
+}
 
 #[doc(hidden)]
 pub use tsukuyomi_macros::route_expr_impl;

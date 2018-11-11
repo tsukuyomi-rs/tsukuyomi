@@ -53,8 +53,10 @@ where
 
 /// Creates an extractor which parses the header field `Content-type`.
 pub fn content_type() -> impl Extractor<Output = (Mime,), Error = Error> {
-    super::ready(|input| match crate::input::header::content_type(input)? {
-        Some(mime) => Ok(mime.clone()),
-        None => Err(crate::error::bad_request("missing Content-type")),
+    super::ready(|input| {
+        input
+            .content_type()?
+            .cloned()
+            .ok_or_else(|| crate::error::bad_request("missing Content-type"))
     })
 }

@@ -35,7 +35,6 @@ use std::any::TypeId;
 use std::fmt;
 use std::io;
 
-use crate::input::RequestBody;
 use crate::output::ResponseBody;
 use crate::server::CritError;
 
@@ -50,7 +49,7 @@ pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static {
 
     /// Generates a message body from this error value.
     #[allow(unused_variables)]
-    fn to_response(&mut self, request: &Request<RequestBody>) -> Response<ResponseBody> {
+    fn to_response(&mut self, request: &Request<()>) -> Response<ResponseBody> {
         Response::builder()
             .status(self.status_code())
             .body(self.to_string().into())
@@ -68,7 +67,7 @@ impl HttpError for StatusCode {
         *self
     }
 
-    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+    fn to_response(&mut self, _: &Request<()>) -> Response<ResponseBody> {
         let mut response = Response::new(ResponseBody::default());
         *response.status_mut() = *self;
         response
@@ -77,7 +76,7 @@ impl HttpError for StatusCode {
 
 /// The implementation of `HttpError` for the standard I/O error.
 impl HttpError for io::Error {
-    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+    fn to_response(&mut self, _: &Request<()>) -> Response<ResponseBody> {
         Response::builder()
             .status(self.status_code())
             .body(format!("I/O error: {}", self).into())
@@ -95,7 +94,7 @@ impl HttpError for io::Error {
 
 /// The implementation of `HttpError` for the standard I/O error.
 impl HttpError for failure::Error {
-    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+    fn to_response(&mut self, _: &Request<()>) -> Response<ResponseBody> {
         Response::builder()
             .status(self.status_code())
             .body(format!("generic error: {}", self).into())
@@ -133,7 +132,7 @@ impl HttpError for Never {
         match *self {}
     }
 
-    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+    fn to_response(&mut self, _: &Request<()>) -> Response<ResponseBody> {
         match *self {}
     }
 }
@@ -232,7 +231,7 @@ where
         }
     }
 
-    fn to_response(&mut self, _: &Request<RequestBody>) -> Response<ResponseBody> {
+    fn to_response(&mut self, _: &Request<()>) -> Response<ResponseBody> {
         let parts = self
             .parts
             .take()

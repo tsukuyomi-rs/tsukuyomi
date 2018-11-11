@@ -26,7 +26,7 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
                 let request = parse_query_str(query_str)?;
                 RequestKind::Query(Some(request))
             }
-            Method::POST => match tsukuyomi::input::header::content_type(input)? {
+            Method::POST => match input.content_type()? {
                 Some(mime) if *mime == mime::APPLICATION_JSON => RequestKind::Json,
                 Some(mime) if *mime == "application/graphql" => RequestKind::GraphQL,
                 Some(mime) => {
@@ -41,7 +41,7 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
         };
 
         let mut read_all = match kind {
-            RequestKind::Json | RequestKind::GraphQL => Some(input.body_mut().read_all()),
+            RequestKind::Json | RequestKind::GraphQL => Some(input.read_all()),
             _ => None,
         };
 

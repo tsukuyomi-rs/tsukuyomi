@@ -4,7 +4,6 @@ use http::{Request, Response};
 
 use super::Error;
 
-use crate::input::RequestBody;
 use crate::output::ResponseBody;
 use crate::server::CritError;
 
@@ -15,19 +14,19 @@ pub trait ErrorHandler {
     fn handle_error(
         &self,
         err: Error,
-        request: &Request<RequestBody>,
+        request: &Request<()>,
     ) -> Result<Response<ResponseBody>, CritError>;
 }
 
 impl<F, Bd> ErrorHandler for F
 where
-    F: Fn(Error, &Request<RequestBody>) -> Result<Response<Bd>, CritError>,
+    F: Fn(Error, &Request<()>) -> Result<Response<Bd>, CritError>,
     Bd: Into<ResponseBody>,
 {
     fn handle_error(
         &self,
         err: Error,
-        request: &Request<RequestBody>,
+        request: &Request<()>,
     ) -> Result<Response<ResponseBody>, CritError> {
         (*self)(err, request).map(|response| response.map(Into::into))
     }
@@ -43,7 +42,7 @@ impl ErrorHandler for DefaultErrorHandler {
     fn handle_error(
         &self,
         err: Error,
-        request: &Request<RequestBody>,
+        request: &Request<()>,
     ) -> Result<Response<ResponseBody>, CritError> {
         let mut err = err.0?;
         let status = err.status_code();

@@ -30,13 +30,16 @@ tsukuyomi = "0.4.0-dev"
 ```rust,no_run
 extern crate tsukuyomi;
 
+use tsukuyomi::app::{App, Route};
+
 fn main() {
-    let app = tsukuyomi::app(|scope| {
-        scope.route(
-            tsukuyomi::route::index()
+    let app = App::builder()
+        .route(
+            Route::index()
                 .reply(|| "Hello, world.\n")
-        );
-    }).expect("failed to construct App");
+        )
+        .finish()
+        .expect("failed to construct App");
 
     tsukuyomi::server(app)
         .run_forever()

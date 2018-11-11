@@ -9,7 +9,6 @@ use serde::de::DeserializeOwned;
 
 use crate::error::Error;
 use crate::extractor::Extractor;
-use crate::input::Input;
 use crate::server::service::http::RequestBody;
 
 #[doc(hidden)]
@@ -35,10 +34,6 @@ pub enum ExtractBodyError {
         cause
     )]
     InvalidContent { cause: failure::Error },
-}
-
-fn get_mime_opt<'a>(input: &'a mut Input<'_>) -> Result<Option<&'a Mime>, ExtractBodyError> {
-    crate::input::header::content_type(input).map_err(|_| ExtractBodyError::InvalidMime)
 }
 
 mod decode {
@@ -138,13 +133,13 @@ where
 {
     super::lazy(move |input| {
         {
-            let mime_opt = get_mime_opt(input).map_err(crate::error::bad_request)?;
+            let mime_opt = input.content_type()?;
             decoder
                 .validate_mime(mime_opt)
                 .map_err(crate::error::bad_request)?;
         }
 
-        let mut read_all = input.body_mut().read_all();
+        let mut read_all = input.read_all();
         Ok(futures::future::poll_fn(move || {
             let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
             D::decode(&data)
@@ -179,12 +174,12 @@ where
 }
 
 pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
-    super::lazy(|input| Ok(input.body_mut().read_all().map_err(Error::critical)))
+    super::lazy(|input| Ok(input.read_all().map_err(Error::critical)))
 }
 
 pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
     super::ready(|input| {
-        input.body_mut().raw().ok_or_else(|| {
+        input.take_body().ok_or_else(|| {
             crate::error::internal_server_error(
                 "The instance of raw RequestBody has already stolen.",
             )

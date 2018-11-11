@@ -4,7 +4,7 @@ mod handler;
 pub mod modifier;
 pub mod route;
 pub(crate) mod scope;
-mod service;
+pub(crate) mod service;
 
 #[cfg(test)]
 mod tests;
@@ -120,6 +120,33 @@ impl App {
         T: Send + Sync + 'static,
     {
         self.data.states.get(id.0)
+    }
+
+    pub(crate) fn get_modifier(
+        &self,
+        id: ModifierId,
+    ) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
+        match id {
+            ModifierId(ScopeId::Global, pos) => self.data.modifiers.get(pos).map(|m| &**m),
+            ModifierId(ScopeId::Local(id), pos) => {
+                self.data.scopes.get(id)?.modifiers.get(pos).map(|m| &**m)
+            }
+        }
+    }
+
+    pub(crate) fn get_route(&self, id: RouteId) -> Option<&RouteData> {
+        self.data.routes.get(id.1)
+    }
+
+    fn find_modifier_by_pos(
+        &self,
+        route_id: RouteId,
+        pos: usize,
+    ) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
+        self.get_route(route_id)?
+            .modifier_ids
+            .get(pos)
+            .and_then(|&id| self.get_modifier(id))
     }
 }
 

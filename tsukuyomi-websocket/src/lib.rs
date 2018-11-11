@@ -170,7 +170,6 @@ where
         } = self;
 
         input
-            .body_mut()
             .upgrade(move |io: UpgradedIo| {
                 let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
                 on_upgrade(transport).into_future()

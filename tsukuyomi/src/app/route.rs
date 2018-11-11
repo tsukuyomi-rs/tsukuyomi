@@ -16,7 +16,7 @@ use super::{AppError, AppResult, ModifierId};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
 
-pub(super) struct RouteData {
+pub(crate) struct RouteData {
     pub(super) id: RouteId,
     pub(super) uri: Uri,
     pub(super) methods: IndexSet<Method>,
