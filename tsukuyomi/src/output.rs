@@ -9,8 +9,30 @@ use serde::Serialize;
 
 use crate::error::{Error, Never};
 use crate::input::Input;
-use crate::server::server::CritError;
 use crate::server::service::http::{Body, Payload};
+use crate::server::CritError;
+
+pub use tsukuyomi_macros::Responder;
+
+// not a public API.
+#[doc(hidden)]
+pub mod internal {
+    use crate::error::Error;
+    use crate::input::Input;
+    use crate::output::{Responder, ResponseBody};
+
+    pub use http::Response;
+
+    #[inline]
+    pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
+    where
+        T: Responder,
+    {
+        Responder::respond_to(t, input)
+            .map(|resp| resp.map(Into::into))
+            .map_err(Into::into)
+    }
+}
 
 /// A type representing the message body in an HTTP response.
 #[derive(Debug, Default)]

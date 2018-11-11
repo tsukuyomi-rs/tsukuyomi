@@ -1,0 +1,10 @@
+[package]
+name = "tsukuyomi-internal"
+version = "0.4.0-dev" # <cargo-version-sync>
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+build = "build.rs"
+publish = false
+
+[dependencies]
+failure = "0.1.3"
+indexmap = "1"

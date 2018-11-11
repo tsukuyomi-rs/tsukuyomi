@@ -3,7 +3,7 @@ extern crate serde;
 extern crate tsukuyomi;
 extern crate tsukuyomi_session;
 
-use tsukuyomi::app::Route;
+use tsukuyomi::app::{App, Route};
 use tsukuyomi::output::{html, redirect};
 use tsukuyomi_session::backend::CookieSessionBackend;
 use tsukuyomi_session::Session;
@@ -13,10 +13,9 @@ use either::Either;
 fn main() {
     let backend = CookieSessionBackend::plain();
 
-    let app = tsukuyomi::app(|scope| {
-        scope.modifier(tsukuyomi_session::storage(backend));
-
-        scope.route(
+    let app = App::builder()
+        .modifier(tsukuyomi_session::storage(backend))
+        .route(
             Route::get("/") //
                 .with(tsukuyomi_session::extractor())
                 .handle(|session: Session| {
@@ -35,9 +34,8 @@ fn main() {
                         }
                     })
                 }),
-        );
-
-        scope.route(
+        ) //
+        .route(
             Route::get("/login")
                 .with(tsukuyomi_session::extractor())
                 .reply(|session: Session| {
@@ -53,9 +51,8 @@ fn main() {
                         ))
                     }
                 }),
-        );
-
-        scope.route(
+        ) //
+        .route(
             Route::post("/login")
                 .with(tsukuyomi::extractor::body::urlencoded())
                 .with(tsukuyomi_session::extractor())
@@ -69,17 +66,17 @@ fn main() {
                         Ok(redirect::to("/"))
                     }
                 }),
-        );
-
-        scope.route(
+        ) //
+        .route(
             Route::post("/logout")
                 .with(tsukuyomi_session::extractor())
                 .reply(|mut session: Session| {
                     session.remove("username");
                     redirect::to("/")
                 }),
-        );
-    }).unwrap();
+        ) //
+        .finish()
+        .unwrap();
 
     tsukuyomi::server(app).run_forever().unwrap();
 }

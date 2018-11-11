@@ -4,9 +4,9 @@ use bytes::{Bytes, BytesMut};
 use futures::{Async, Future, IntoFuture, Poll};
 use std::mem;
 
-use crate::server::rt;
-use crate::server::server::CritError;
+use crate::rt;
 use crate::server::service::http::{Payload as _Payload, RequestBody as RawBody, UpgradedIo};
+use crate::server::CritError;
 
 // ==== RequestBody ====
 

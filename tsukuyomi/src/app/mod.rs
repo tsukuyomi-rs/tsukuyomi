@@ -1,6 +1,7 @@
 //! Components for constructing HTTP applications.
 
-mod container;
+mod handler;
+pub mod modifier;
 pub mod route;
 pub(crate) mod scope;
 mod service;
@@ -17,33 +18,21 @@ use http::{header, Method, Response};
 use indexmap::IndexMap;
 
 use crate::error::handler::{DefaultErrorHandler, ErrorHandler};
-use crate::handler;
-use crate::handler::{Handle, Handler};
-use crate::modifier::Modifier;
+use crate::internal::recognizer::Recognizer;
+use crate::internal::scoped_map::Builder as ScopedContainerBuilder;
+use crate::internal::scoped_map::{ScopeId, ScopedContainer};
+use crate::internal::uri;
+use crate::internal::uri::Uri;
 use crate::output::ResponseBody;
-use crate::recognizer::uri;
-use crate::recognizer::uri::Uri;
-use crate::recognizer::Recognizer;
 
-use self::container::Builder as ScopedContainerBuilder;
-use self::container::ScopedContainer;
+use self::handler::{Handle, Handler};
+use self::modifier::Modifier;
 use self::route::{RouteData, RouteId};
-use self::scope::{ScopeBuilder, ScopeData, ScopeId};
+use self::scope::{ScopeBuilder, ScopeData};
 
 pub use self::route::Route;
 pub use self::scope::Scope;
 pub use self::service::RecognizeError;
-
-/// Configure an instance of `App` using the specified function.
-///
-/// This function is a shortcut of `App::build`.
-#[inline]
-pub fn app<F>(f: F) -> AppResult<App>
-where
-    F: FnOnce(&mut Scope<'_>),
-{
-    App::build(f)
-}
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -118,14 +107,8 @@ pub struct App {
 }
 
 impl App {
-    /// Configure an instance of `App` using the specified function.
-    pub fn build<F>(f: F) -> AppResult<Self>
-    where
-        F: FnOnce(&mut Scope<'_>),
-    {
-        let mut builder = AppBuilder::new();
-        f(&mut Scope::new(&mut builder, ScopeId::Global));
-        builder.finish()
+    pub fn builder() -> AppBuilder {
+        AppBuilder::default()
     }
 
     pub(crate) fn uri(&self, id: RouteId) -> &Uri {
@@ -141,14 +124,14 @@ impl App {
 }
 
 /// A builder object for constructing an instance of `App`.
-struct AppBuilder {
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct AppBuilder {
     routes: Vec<(ScopeId, Route)>,
     scopes: Vec<ScopeBuilder>,
     config: Config,
     error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     states: ScopedContainerBuilder,
-    result: AppResult<()>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -158,13 +141,12 @@ impl fmt::Debug for AppBuilder {
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)
             .field("config", &self.config)
-            .field("result", &self.result)
             .finish()
     }
 }
 
-impl AppBuilder {
-    pub(super) fn new() -> Self {
+impl Default for AppBuilder {
+    fn default() -> Self {
         Self {
             routes: vec![],
             scopes: vec![],
@@ -172,38 +154,62 @@ impl AppBuilder {
             error_handler: None,
             modifiers: vec![],
             states: ScopedContainerBuilder::default(),
-            result: Ok(()),
         }
     }
+}
 
-    fn modify(&mut self, f: impl FnOnce(&mut Self) -> AppResult<()>) {
-        if self.result.is_ok() {
-            self.result = f(self);
-        }
-    }
-
-    pub(super) fn new_route(&mut self, scope_id: ScopeId, route: Route) {
-        if self.result.is_ok() {
-            self.routes.push((scope_id, route));
-        }
-    }
-
-    pub(super) fn new_scope<F>(&mut self, parent: ScopeId, prefix: &str, f: F)
+impl AppBuilder {
+    /// Shortcut of `app.scope(|s| { s.mount(f); })`.
+    pub fn mount<F, E>(&mut self, prefix: &str, f: F) -> AppResult<&mut Self>
     where
-        F: FnOnce(&mut Scope<'_>),
+        F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
+        E: Into<failure::Error>,
     {
-        if self.result.is_err() {
-            return;
-        }
+        self.new_scope(ScopeId::Global, prefix, f)?;
+        Ok(self)
+    }
 
-        let prefix = match prefix.parse() {
-            Ok(prefix) => prefix,
-            Err(err) => {
-                self.mark_error(err);
-                return;
-            }
-        };
+    /// Shortcut of `app.scope(|s| { s.route(route); })`.
+    pub fn route(&mut self, route: Route) -> &mut Self {
+        self.new_route(ScopeId::Global, route);
+        self
+    }
 
+    pub fn state<T>(&mut self, state: T) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+    {
+        Scope::new(self, ScopeId::Global).state(state);
+        self
+    }
+
+    pub fn modifier<M>(&mut self, modifier: M) -> &mut Self
+    where
+        M: Modifier + Send + Sync + 'static,
+    {
+        Scope::new(self, ScopeId::Global).modifier(modifier);
+        self
+    }
+
+    /// Returns a proxy object for modifying the global-level configuration.
+    pub fn config<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnOnce(&mut Global<'_>),
+    {
+        f(&mut Global { builder: self });
+        self
+    }
+
+    fn new_route(&mut self, scope_id: ScopeId, route: Route) {
+        self.routes.push((scope_id, route));
+    }
+
+    fn new_scope<F, E>(&mut self, parent: ScopeId, prefix: &str, f: F) -> AppResult<()>
+    where
+        F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
+        E: Into<failure::Error>,
+    {
+        let prefix = prefix.parse().map_err(AppError::from_failure)?;
         let id = ScopeId::Local(self.scopes.len());
         let mut chain = parent
             .local_id()
@@ -217,52 +223,38 @@ impl AppBuilder {
             chain,
         });
 
-        f(&mut Scope::new(self, id));
+        f(&mut Scope::new(self, id)).map_err(AppError::from_failure)?;
+
+        Ok(())
     }
 
-    pub(super) fn add_modifier(
-        &mut self,
-        id: ScopeId,
-        modifier: impl Modifier + Send + Sync + 'static,
-    ) {
-        if self.result.is_ok() {
-            match id {
-                ScopeId::Global => self.modifiers.push(Box::new(modifier)),
-                ScopeId::Local(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
-            }
+    fn add_modifier<M>(&mut self, id: ScopeId, modifier: M)
+    where
+        M: Modifier + Send + Sync + 'static,
+    {
+        match id {
+            ScopeId::Global => self.modifiers.push(Box::new(modifier)),
+            ScopeId::Local(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
         }
     }
 
-    pub(super) fn set_state<T>(&mut self, value: T, id: ScopeId)
+    fn set_state<T>(&mut self, value: T, id: ScopeId)
     where
         T: Send + Sync + 'static,
     {
-        if self.result.is_ok() {
-            self.states.set(value, id);
-        }
-    }
-
-    pub(super) fn mark_error(&mut self, err: impl Into<failure::Error>) {
-        self.result = Err(AppError::from_failure(err));
+        self.states.set(value, id);
     }
 
     /// Creates a configured `App` using the current settings.
-    pub(crate) fn finish(&mut self) -> AppResult<App> {
+    pub fn finish(&mut self) -> AppResult<App> {
         let Self {
             routes,
             config,
-            result,
             error_handler,
             modifiers,
             states,
             scopes,
-        } = std::mem::replace(self, Self::new());
-        self.mark_error(failure::format_err!("The build has already used"));
-
-        if let Err(err) = result {
-            log::debug!("error before building App: {}", err);
-            return Err(err);
-        }
+        } = std::mem::replace(self, Self::default());
 
         // finalize endpoints based on the created scope information.
         let mut routes: Vec<RouteData> = routes
@@ -414,10 +406,7 @@ impl<'a> Global<'a> {
     ///
     /// The default value is `true`.
     pub fn fallback_head(&mut self, enabled: bool) -> &mut Self {
-        self.builder.modify(move |self_| {
-            self_.config.fallback_head = enabled;
-            Ok(())
-        });
+        self.builder.config.fallback_head = enabled;
         self
     }
 
@@ -426,10 +415,7 @@ impl<'a> Global<'a> {
     /// If `enabled`, it creates the default OPTIONS handlers by collecting the registered
     /// methods from the router and then adds them to the *global* scope.
     pub fn fallback_options(&mut self, enabled: bool) -> &mut Self {
-        self.builder.modify(move |self_| {
-            self_.config.fallback_options = enabled;
-            Ok(())
-        });
+        self.builder.config.fallback_options = enabled;
         self
     }
 
@@ -438,9 +424,7 @@ impl<'a> Global<'a> {
     where
         E: ErrorHandler + Send + Sync + 'static,
     {
-        if self.builder.result.is_ok() {
-            self.builder.error_handler = Some(Box::new(error_handler));
-        }
+        self.builder.error_handler = Some(Box::new(error_handler));
         self
     }
 }

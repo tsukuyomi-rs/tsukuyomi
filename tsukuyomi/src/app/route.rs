@@ -6,11 +6,12 @@ use indexmap::IndexSet;
 
 use crate::error::Error;
 use crate::extractor::{And, Combine, Extractor, ExtractorExt, Func};
-use crate::handler::{Handle, Handler};
+use crate::internal::scoped_map::ScopeId;
+use crate::internal::uri::Uri;
 use crate::output::Responder;
-use crate::recognizer::uri::Uri;
 
-use super::{AppError, AppResult, ModifierId, ScopeId};
+use super::handler::{Handle, Handler};
+use super::{AppError, AppResult, ModifierId};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
@@ -206,7 +207,7 @@ where
             inner: Ok(RouteInner {
                 methods,
                 uri,
-                handler: Box::new(crate::handler::raw(f(extractor))),
+                handler: Box::new(super::handler::raw(f(extractor))),
             }),
         }
     }
@@ -281,12 +282,13 @@ mod tests {
     #[ignore]
     fn compiletest1() {
         drop(
-            crate::app(|scope| {
-                scope.route(generated().reply(|id: u32, name: String| {
+            crate::app::App::builder()
+                .route(generated().reply(|id: u32, name: String| {
                     drop((id, name));
                     "dummy"
-                }));
-            }).expect("failed to construct App"),
+                })) //
+                .finish()
+                .expect("failed to construct App"),
         );
     }
 
@@ -294,14 +296,15 @@ mod tests {
     #[ignore]
     fn compiletest2() {
         drop(
-            crate::app(|scope| {
-                scope.route(generated().with(crate::extractor::body::plain()).reply(
+            crate::app::App::builder()
+                .route(generated().with(crate::extractor::body::plain()).reply(
                     |id: u32, name: String, body: String| {
                         drop((id, name, body));
                         "dummy"
                     },
-                ));
-            }).expect("failed to construct App"),
+                )) //
+                .finish()
+                .expect("failed to construct App"),
         );
     }
 }

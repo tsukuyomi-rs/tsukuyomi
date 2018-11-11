@@ -3,12 +3,12 @@ extern crate tsukuyomi;
 extern crate tsukuyomi_websocket;
 
 use futures::prelude::*;
-use tsukuyomi::app::Route;
+use tsukuyomi::app::{App, Route};
 use tsukuyomi_websocket::{Message, Ws};
 
 fn main() {
-    let app = tsukuyomi::app(|scope| {
-        scope.route(
+    let app = App::builder()
+        .route(
             Route::get("/ws")
                 .with(tsukuyomi_websocket::extractor())
                 .reply(|ws: Ws| {
@@ -25,8 +25,11 @@ fn main() {
                         .then(|_| Ok(()))
                     })
                 }),
-        );
-    }).unwrap();
+        ) //
+        .finish()
+        .unwrap();
 
-    tsukuyomi::server(app).run_forever().unwrap();
+    tsukuyomi::server(app) //
+        .run_forever()
+        .unwrap();
 }

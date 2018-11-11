@@ -1,19 +1,22 @@
-use super::captures::CaptureNames;
 use failure::Error;
+use indexmap::IndexSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 /// A helper trait representing the conversion into an `Uri`.
-pub(crate) trait TryIntoUri {
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub trait TryIntoUri {
     type Error: Into<Error>;
-    fn try_into(self) -> Result<Uri, Self::Error>;
+
+    fn try_into_uri(self) -> Result<Uri, Self::Error>;
 }
 
 impl TryIntoUri for Uri {
     type Error = Error;
 
-    fn try_into(self) -> Result<Uri, Self::Error> {
+    #[inline]
+    fn try_into_uri(self) -> Result<Uri, Self::Error> {
         Ok(self)
     }
 }
@@ -21,13 +24,14 @@ impl TryIntoUri for Uri {
 impl<'a> TryIntoUri for &'a str {
     type Error = Error;
 
-    fn try_into(self) -> Result<Uri, Self::Error> {
+    #[inline]
+    fn try_into_uri(self) -> Result<Uri, Self::Error> {
         self.parse()
     }
 }
 
 /// Concatenate a list of Uris to an Uri.
-pub(crate) fn join_all<I>(segments: I) -> Result<Uri, Error>
+pub fn join_all<I>(segments: I) -> Result<Uri, Error>
 where
     I: IntoIterator,
     I::Item: AsRef<Uri>,
@@ -39,7 +43,7 @@ where
 
 /// A type representing the URI of a route.
 #[derive(Debug, Clone)]
-pub(crate) struct Uri(UriKind);
+pub struct Uri(UriKind);
 
 #[derive(Debug, Clone, PartialEq)]
 enum UriKind {
@@ -127,7 +131,7 @@ impl FromStr for Uri {
 }
 
 impl Uri {
-    pub(crate) fn root() -> Self {
+    pub fn root() -> Self {
         Uri(UriKind::Root)
     }
 
@@ -145,14 +149,14 @@ impl Uri {
         Uri(UriKind::Segments(s.into(), Some(names)))
     }
 
-    pub(super) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self.0 {
             UriKind::Root => "/",
             UriKind::Segments(ref s, ..) => s.as_str(),
         }
     }
 
-    pub(crate) fn capture_names(&self) -> Option<&CaptureNames> {
+    pub fn capture_names(&self) -> Option<&CaptureNames> {
         match self.0 {
             UriKind::Segments(_, Some(ref names)) => Some(names),
             _ => None,
@@ -198,6 +202,51 @@ impl AsRef<Uri> for Uri {
 impl fmt::Display for Uri {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CaptureNames {
+    pub(crate) params: IndexSet<String>,
+    pub(crate) wildcard: bool,
+}
+
+impl CaptureNames {
+    pub(super) fn append(&mut self, name: impl Into<String>) -> Result<(), Error> {
+        if self.wildcard {
+            failure::bail!("The wildcard parameter has already set");
+        }
+
+        let name = name.into();
+        if name.is_empty() {
+            failure::bail!("empty parameter name");
+        }
+        if !self.params.insert(name) {
+            failure::bail!("the duplicated parameter name");
+        }
+        Ok(())
+    }
+
+    pub(super) fn extend<T>(&mut self, names: impl IntoIterator<Item = T>) -> Result<(), Error>
+    where
+        T: Into<String>,
+    {
+        for name in names {
+            self.append(name)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn set_wildcard(&mut self) -> Result<(), Error> {
+        if self.wildcard {
+            failure::bail!("The wildcard parameter has already set");
+        }
+        self.wildcard = true;
+        Ok(())
+    }
+
+    pub fn get_position(&self, name: &str) -> Option<usize> {
+        Some(self.params.get_full(name)?.0)
     }
 }
 

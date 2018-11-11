@@ -6,7 +6,7 @@ use super::Error;
 
 use crate::input::RequestBody;
 use crate::output::ResponseBody;
-use crate::server::server::CritError;
+use crate::server::CritError;
 
 /// A trait representing a global error handlers.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]

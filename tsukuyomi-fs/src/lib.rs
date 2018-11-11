@@ -493,7 +493,8 @@ where
         }
     }
 
-    fn register_inner(self, scope: &mut Scope<'_>) -> Fallible<()> {
+    #[allow(missing_docs)]
+    pub fn register(self, scope: &mut Scope<'_>) -> Fallible<()> {
         let Self { walkdir, config } = self;
         for entry in walkdir {
             let entry = entry?;
@@ -513,12 +514,5 @@ where
             }
         }
         Ok(())
-    }
-
-    #[allow(missing_docs)]
-    pub fn register(self, scope: &mut Scope<'_>) {
-        if let Err(err) = self.register_inner(scope) {
-            scope.mark_error(err);
-        }
     }
 }

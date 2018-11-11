@@ -1,29 +1,43 @@
 //! The implementation of route recognizer.
 
-pub(crate) mod captures;
-mod tree;
-pub(crate) mod uri;
-
 #[path = "tests_recognize.rs"]
 mod tests;
+mod tree;
 
+use self::tree::Tree;
+use crate::uri::{TryIntoUri, Uri};
 use failure::Error;
 
-use self::captures::Captures;
-use self::tree::Tree;
-use self::uri::{TryIntoUri, Uri};
+#[derive(Debug, Default, PartialEq)]
+pub struct Captures {
+    params: Vec<(usize, usize)>,
+    wildcard: Option<(usize, usize)>,
+}
+
+impl Captures {
+    pub fn params(&self) -> &Vec<(usize, usize)> {
+        &self.params
+    }
+
+    pub fn wildcard(&self) -> Option<(usize, usize)> {
+        self.wildcard
+    }
+}
 
 /// A route recognizer.
 #[derive(Debug, Default)]
-pub(crate) struct Recognizer {
+pub struct Recognizer {
     tree: Tree,
     uris: Vec<Uri>,
 }
 
 impl Recognizer {
     /// Add a path to this builder with a value of `T`.
-    pub(crate) fn add_route(&mut self, uri: impl TryIntoUri) -> Result<(), Error> {
-        let uri = uri.try_into().map_err(Into::<Error>::into)?;
+    pub fn add_route<T>(&mut self, uri: T) -> Result<(), Error>
+    where
+        T: TryIntoUri,
+    {
+        let uri = uri.try_into_uri().map_err(Into::<Error>::into)?;
 
         if !uri.as_str().is_ascii() {
             failure::bail!("The path must be a sequence of ASCII characters");
@@ -39,7 +53,7 @@ impl Recognizer {
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub(crate) fn recognize(&self, path: &str) -> Option<(usize, Option<Captures>)> {
+    pub fn recognize(&self, path: &str) -> Option<(usize, Option<Captures>)> {
         self.tree.recognize(path)
     }
 }

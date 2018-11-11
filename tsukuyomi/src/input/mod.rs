@@ -1,11 +1,11 @@
 //! Components for parsing incoming HTTP requests and accessing the global or request-local data.
 
-#[macro_use]
-pub mod local_map;
 pub mod body;
 mod cookie;
 mod global;
 pub mod param;
+
+pub use crate::internal::local_map;
 
 #[allow(missing_docs)]
 pub mod header {
@@ -13,6 +13,7 @@ pub mod header {
     use mime::Mime;
 
     use crate::error::Error;
+    use crate::internal::local_map::local_key;
 
     use super::local_map::Entry;
     use super::Input;
@@ -52,7 +53,7 @@ use http::Request;
 use crate::app::route::RouteId;
 use crate::app::App;
 use crate::error::Error;
-use crate::recognizer::captures::Captures;
+use crate::internal::recognizer::Captures;
 
 use self::cookie::CookieManager;
 use self::local_map::LocalMap;

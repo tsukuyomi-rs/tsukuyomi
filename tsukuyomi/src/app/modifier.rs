@@ -8,10 +8,9 @@
 //! ```
 //! # extern crate tsukuyomi;
 //! use std::sync::atomic::{AtomicUsize, Ordering};
-//! use tsukuyomi::app::App;
-//! use tsukuyomi::route;
+//! use tsukuyomi::app::{App, Route};
+//! use tsukuyomi::app::modifier::{Modifier, BeforeHandle};
 //! use tsukuyomi::input::Input;
-//! use tsukuyomi::modifier::{Modifier, BeforeHandle};
 //!
 //! #[derive(Default)]
 //! struct RequestCounter(AtomicUsize);
@@ -24,13 +23,11 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
-//! # drop(
-//! App::build(|scope| {
-//!     scope.route(route::index().reply(|| "Hello"));
-//!     scope.modifier(RequestCounter::default());
-//! })?
-//! );
-//! # Ok(())
+//! App::builder()
+//!     .route(Route::index().reply(|| "Hello"))
+//!     .modifier(RequestCounter::default())
+//!     .finish()
+//! #   .map(drop)
 //! # }
 //! ```
 

@@ -37,7 +37,7 @@ use tsukuyomi::error::Error;
 use tsukuyomi::extractor::Extractor;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
-use tsukuyomi::service::http::UpgradedIo;
+use tsukuyomi::server::service::http::UpgradedIo;
 
 /// A transport for exchanging data frames with the peer.
 pub type Transport = WebSocketStream<UpgradedIo>;

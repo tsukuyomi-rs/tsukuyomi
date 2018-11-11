@@ -3,6 +3,7 @@ extern crate tsukuyomi;
 extern crate tsukuyomi_askama;
 
 use askama::Template;
+use tsukuyomi::app::App;
 use tsukuyomi::output::Responder;
 
 #[derive(Template, Responder)]
@@ -13,12 +14,15 @@ struct Index {
 }
 
 fn main() {
-    let app = tsukuyomi::app(|scope| {
-        scope.route(
+    let app = App::builder()
+        .route(
             tsukuyomi::route!("/:name") //
                 .reply(|name| Index { name }),
-        );
-    }).unwrap();
+        ) //
+        .finish()
+        .unwrap();
 
-    tsukuyomi::server(app).run_forever().unwrap();
+    tsukuyomi::server(app) //
+        .run_forever()
+        .unwrap();
 }

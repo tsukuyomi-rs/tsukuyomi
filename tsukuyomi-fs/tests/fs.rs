@@ -10,12 +10,13 @@ use tsukuyomi_fs::{NamedFile, Staticfiles};
 #[ignore]
 fn compiletest() {
     drop(
-        App::build(|scope| {
-            scope.route(
+        App::builder()
+            .route(
                 Route::get("/index.html")
                     .handle(|| NamedFile::open("/path/to/index.html").map_err(Into::into)),
-            );
-        }).unwrap(),
+            ) //
+            .finish()
+            .unwrap(),
     );
 }
 
@@ -23,17 +24,20 @@ fn compiletest() {
 #[ignore]
 fn compiletest_staticfiles() {
     drop(
-        App::build(|scope| {
-            Staticfiles::new("./public")
-                .follow_links(true)
-                .same_file_system(false)
-                .filter_entry(|entry| {
-                    entry
-                        .file_name()
-                        .to_str()
-                        .map(|s| s.starts_with('.'))
-                        .unwrap_or(false)
-                }).register(scope);
-        }).unwrap(),
+        App::builder()
+            .mount("/", |scope| {
+                Staticfiles::new("./public")
+                    .follow_links(true)
+                    .same_file_system(false)
+                    .filter_entry(|entry| {
+                        entry
+                            .file_name()
+                            .to_str()
+                            .map(|s| s.starts_with('.'))
+                            .unwrap_or(false)
+                    }).register(scope)
+            }).unwrap() //
+            .finish()
+            .unwrap(),
     );
 }

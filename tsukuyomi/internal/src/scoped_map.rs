@@ -3,7 +3,20 @@ use std::collections::hash_map::{Entry, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 
-use super::ScopeId;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ScopeId {
+    Global,
+    Local(usize),
+}
+
+impl ScopeId {
+    pub fn local_id(self) -> Option<usize> {
+        match self {
+            ScopeId::Global => None,
+            ScopeId::Local(id) => Some(id),
+        }
+    }
+}
 
 // ==== ScopedValue ====
 
@@ -180,12 +193,12 @@ impl Hasher for IdentHash {
 }
 
 #[derive(Debug)]
-pub(crate) struct ScopedContainer {
+pub struct ScopedContainer {
     map: HashMap<TypeId, Box<dyn ScopedValue>, BuildHasherDefault<IdentHash>>,
 }
 
 impl ScopedContainer {
-    pub(crate) fn get<T>(&self, id: ScopeId) -> Option<&T>
+    pub fn get<T>(&self, id: ScopeId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
@@ -199,7 +212,7 @@ impl ScopedContainer {
 }
 
 #[derive(Default)]
-pub(crate) struct Builder {
+pub struct Builder {
     map: HashMap<TypeId, Box<dyn ScopedValue>, BuildHasherDefault<IdentHash>>,
 }
 
@@ -210,7 +223,7 @@ impl fmt::Debug for Builder {
 }
 
 impl Builder {
-    pub(crate) fn set<T>(&mut self, value: T, id: ScopeId)
+    pub fn set<T>(&mut self, value: T, id: ScopeId)
     where
         T: Send + Sync + 'static,
     {
@@ -224,7 +237,7 @@ impl Builder {
         }
     }
 
-    pub(crate) fn finish(mut self, parents: &[ScopeId]) -> ScopedContainer {
+    pub fn finish(mut self, parents: &[ScopeId]) -> ScopedContainer {
         for value in self.map.values_mut() {
             value.finalize(parents);
         }

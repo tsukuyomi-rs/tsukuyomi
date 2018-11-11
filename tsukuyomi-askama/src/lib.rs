@@ -6,6 +6,7 @@
 //! extern crate tsukuyomi_askama;
 //!
 //! use askama::Template;
+//! use tsukuyomi::app::App;
 //!
 //! #[derive(
 //!     askama::Template,
@@ -18,15 +19,13 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::AppResult<()> {
-//! # drop(
-//! tsukuyomi::app(|scope| {
-//!     scope.route(
+//! App::builder()
+//!     .route(
 //!         tsukuyomi::route!("/:name")
 //!             .reply(|name| Index { name })
-//!     );
-//! })?
-//! # );
-//! # Ok(())
+//!     )
+//!     .finish()
+//! #   .map(drop)
 //! # }
 //! ```
 

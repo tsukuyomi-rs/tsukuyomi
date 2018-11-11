@@ -1,7 +1,7 @@
 use futures::{try_ready, Async};
 
+use tsukuyomi::app::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::input::Input;
-use tsukuyomi::modifier::{AfterHandle, BeforeHandle, Modifier};
 use tsukuyomi::output::Output;
 
 use crate::backend::imp::{ReadFuture, WriteFuture};

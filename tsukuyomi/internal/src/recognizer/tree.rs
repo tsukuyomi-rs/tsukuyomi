@@ -4,7 +4,7 @@ mod tests;
 use failure::Error;
 use std::{cmp, fmt, mem};
 
-use super::captures::Captures;
+use super::Captures;
 
 #[derive(Clone, PartialEq)]
 enum PathKind {

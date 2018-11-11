@@ -8,12 +8,13 @@ use tsukuyomi_websocket::Ws;
 #[ignore]
 fn compiletest() {
     drop(
-        App::build(|scope| {
-            scope.route(
+        App::builder()
+            .route(
                 Route::get("/ws")
                     .with(tsukuyomi_websocket::extractor())
                     .handle(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
-            );
-        }).unwrap(),
+            ) //
+            .finish()
+            .unwrap(),
     );
 }

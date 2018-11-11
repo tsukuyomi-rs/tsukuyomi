@@ -1,25 +1,11 @@
 use std::fmt;
 
-use crate::modifier::Modifier;
-use crate::recognizer::uri::Uri;
+use crate::internal::scoped_map::ScopeId;
+use crate::internal::uri::Uri;
 
+use super::modifier::Modifier;
 use super::route::Route;
-use super::{AppBuilder, Global};
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum ScopeId {
-    Global,
-    Local(usize),
-}
-
-impl ScopeId {
-    pub(super) fn local_id(self) -> Option<usize> {
-        match self {
-            ScopeId::Global => None,
-            ScopeId::Local(id) => Some(id),
-        }
-    }
-}
+use super::{AppBuilder, AppResult};
 
 pub(super) struct ScopeData {
     pub(super) id: ScopeId,
@@ -70,13 +56,6 @@ impl<'a> Scope<'a> {
         Self { builder, id }
     }
 
-    /// Returns a proxy object for modifying the global-level configuration.
-    pub fn global(&mut self) -> Global<'_> {
-        Global {
-            builder: &mut *self.builder,
-        }
-    }
-
     /// Adds a route into the current scope.
     pub fn route(&mut self, route: Route) -> &mut Self {
         self.builder.new_route(self.id, route);
@@ -84,13 +63,14 @@ impl<'a> Scope<'a> {
     }
 
     /// Create a new scope mounted to the certain URI.
-    #[inline(always)]
-    pub fn mount<F>(&mut self, prefix: &str, f: F) -> &mut Self
+    #[inline]
+    pub fn mount<F, E>(&mut self, prefix: &str, f: F) -> AppResult<&mut Self>
     where
-        F: FnOnce(&mut Scope<'_>),
+        F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
+        E: Into<failure::Error>,
     {
-        self.builder.new_scope(self.id, prefix, f);
-        self
+        self.builder.new_scope(self.id, prefix, f)?;
+        Ok(self)
     }
 
     /// Adds a *scope-local* variable into the application.
@@ -111,15 +91,8 @@ impl<'a> Scope<'a> {
         self
     }
 
-    /// Report an error to the builder context.
-    ///
-    /// After calling this method, all operations in the builder are invalidated and
-    /// `AppBuilder::finish()` always returns an error.
-    pub fn mark_error<E>(&mut self, err: E) -> &mut Self
-    where
-        E: Into<failure::Error>,
-    {
-        self.builder.mark_error(err);
-        self
+    #[allow(missing_docs)]
+    pub fn done(&mut self) -> AppResult<()> {
+        Ok(())
     }
 }

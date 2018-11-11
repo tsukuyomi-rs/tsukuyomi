@@ -5,16 +5,18 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
+use tsukuyomi::app::App;
+
 const CERTS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/cert.pem");
 const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pem");
 
 fn main() {
-    let app = tsukuyomi::app(|scope| {
-        scope.route(
+    let app = App::builder()
+        .route(
             tsukuyomi::route!() //
                 .reply(|| "Hello, Tsukuyomi.\n"),
-        );
-    }).unwrap();
+        ).finish()
+        .unwrap();
 
     tsukuyomi::server(app)
         .bind(tls_transport("127.0.0.1:4000"))

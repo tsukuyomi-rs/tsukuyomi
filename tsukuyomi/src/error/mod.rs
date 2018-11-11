@@ -37,7 +37,7 @@ use std::io;
 
 use crate::input::RequestBody;
 use crate::output::ResponseBody;
-use crate::server::server::CritError;
+use crate::server::CritError;
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
 pub type Result<T> = std::result::Result<T, Error>;

@@ -21,7 +21,7 @@ features = ["user-hooks"]
 [workspace]
 members = [
   "tsukuyomi",
-  "tsukuyomi/core",
+  "tsukuyomi/internal",
   "tsukuyomi/macros",
   "tsukuyomi/server",
 

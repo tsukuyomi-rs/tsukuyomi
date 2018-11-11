@@ -12,18 +12,36 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
-extern crate tsukuyomi_core;
+extern crate tsukuyomi_internal as internal;
 extern crate tsukuyomi_macros;
 extern crate tsukuyomi_server;
 
+extern crate bytes;
+extern crate cookie;
+extern crate either;
+extern crate failure;
 extern crate futures;
 extern crate http;
+extern crate indexmap;
+extern crate mime;
+extern crate serde;
+extern crate tower_service;
+extern crate url;
+extern crate uuid;
 
-pub use tsukuyomi_core::{app, error, extractor, input, modifier};
+#[cfg(test)]
+extern crate matches;
+
+pub mod app;
+pub mod error;
+pub mod extractor;
+pub mod input;
+pub mod output;
+
 #[doc(hidden)]
 pub use tsukuyomi_macros::route_expr_impl;
 pub use tsukuyomi_server::server::server;
-pub use tsukuyomi_server::{server, service, test};
+pub use tsukuyomi_server::test;
 
 #[allow(missing_docs)]
 #[inline]
@@ -45,32 +63,6 @@ macro_rules! route {
             $( .method($methods) )*
     };
     () => ( $crate::route() );
-}
-
-#[allow(missing_docs)]
-pub mod output {
-    pub use tsukuyomi_core::output::*;
-    pub use tsukuyomi_macros::Responder;
-
-    // not a public API.
-    #[doc(hidden)]
-    pub mod internal {
-        use crate::error::Error;
-        use crate::input::Input;
-        use crate::output::{Responder, ResponseBody};
-
-        pub use http::Response;
-
-        #[inline]
-        pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
-        where
-            T: Responder,
-        {
-            Responder::respond_to(t, input)
-                .map(|resp| resp.map(Into::into))
-                .map_err(Into::into)
-        }
-    }
 }
 
 #[allow(missing_docs)]
@@ -111,4 +103,9 @@ pub mod rt {
             }
         }
     }
+}
+
+pub mod server {
+    pub use tsukuyomi_server::server::*;
+    pub use tsukuyomi_server::service;
 }

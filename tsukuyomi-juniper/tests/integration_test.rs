@@ -21,8 +21,8 @@ fn integration_test() {
     let executor = tsukuyomi_juniper::executor(schema);
     let executor = std::sync::Arc::new(executor);
 
-    let app = tsukuyomi::app(|scope| {
-        scope.route(
+    let app = tsukuyomi::app::App::builder()
+        .route(
             tsukuyomi::app::Route::index()
                 .methods(vec!["GET", "POST"])
                 .with(executor.clone())
@@ -30,8 +30,8 @@ fn integration_test() {
                     let database = database.clone();
                     move |exec: Executor<_>| exec.execute(database.clone())
                 }),
-        );
-    }).unwrap();
+        ).finish()
+        .unwrap();
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server(app)),

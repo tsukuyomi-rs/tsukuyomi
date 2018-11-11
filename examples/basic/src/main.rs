@@ -1,9 +1,12 @@
 extern crate tsukuyomi;
 
+use tsukuyomi::app::App;
+
 fn main() {
-    let app = tsukuyomi::app(|scope| {
-        scope.route(tsukuyomi::route!().reply(|| "Hello, world!\n"));
-    }).expect("failed to construct App");
+    let app = App::builder()
+        .route(tsukuyomi::route!().reply(|| "Hello, world!\n"))
+        .finish()
+        .expect("failed to construct App");
 
     tsukuyomi::server(app)
         .run_forever()

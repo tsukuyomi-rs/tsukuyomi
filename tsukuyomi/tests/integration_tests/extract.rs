@@ -8,11 +8,12 @@ use http::Request;
 
 #[test]
 fn unit_input() {
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(Route::index().reply(|| "dummy"));
-        }).unwrap()
-    });
+    let mut server = test_server(
+        App::builder()
+            .route(Route::index().reply(|| "dummy"))
+            .finish()
+            .unwrap(),
+    );
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status().as_u16(), 200);
 }
@@ -21,9 +22,9 @@ fn unit_input() {
 fn params() {
     use tsukuyomi::extractor::param;
 
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+    let mut server = test_server(
+        App::builder()
+            .route(
                 Route::get("/:id/:name/*path")
                     .with(param::pos(0))
                     .with(param::named("name"))
@@ -31,9 +32,10 @@ fn params() {
                     .reply(|id: u32, name: String, path: String| {
                         format!("{},{},{}", id, name, path)
                     }),
-            );
-        }).unwrap()
-    });
+            ) //
+            .finish()
+            .unwrap(),
+    );
 
     let response = server
         .perform(Request::get("/23/bob/path/to/file"))
@@ -45,42 +47,42 @@ fn params() {
 }
 
 #[test]
-#[ignore]
 fn route_macros() {
     drop(
-        App::build(|scope| {
-            scope.route(route!("/index").reply(|| "index"));
-            scope.route(route!("/params/:id/:name").reply(|id: i32, name: String| {
+        App::builder()
+            .route(route!("/index").reply(|| "index"))
+            .route(route!("/params/:id/:name").reply(|id: i32, name: String| {
                 drop((id, name));
                 "dummy"
-            }));
-            scope.route(
+            })) //
+            .route(
                 route!("/posts/:id/edit", methods = ["PUT"])
                     .with(extractor::body::plain::<String>())
                     .reply(|id: u32, body: String| {
                         drop((id, body));
                         "dummy"
                     }),
-            );
-            scope.route(route!("/static/*path").reply(|path: String| {
+            ) //
+            .route(route!("/static/*path").reply(|path: String| {
                 drop(path);
                 "dummy"
-            }));
-        }).unwrap(),
+            })).finish()
+            .unwrap(),
     );
 }
 
 #[test]
 fn plain_body() {
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+    let mut server = test_server(
+        App::builder()
+            .route(
                 Route::post("/")
                     .with(extractor::body::plain())
                     .reply(|body: String| body),
-            );
-        }).unwrap()
-    });
+            ) //
+            .finish()
+            .unwrap(),
+    );
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
 
@@ -122,15 +124,16 @@ fn json_body() {
         id: u32,
         name: String,
     }
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+    let mut server = test_server(
+        App::builder()
+            .route(
                 Route::post("/")
                     .with(extractor::body::json())
                     .reply(|params: Params| format!("{},{}", params.id, params.name)),
-            );
-        }).unwrap()
-    });
+            ) //
+            .finish()
+            .unwrap(),
+    );
 
     let response = server
         .perform(
@@ -172,15 +175,16 @@ fn urlencoded_body() {
         id: u32,
         name: String,
     }
-    let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+    let mut server = test_server(
+        App::builder()
+            .route(
                 Route::post("/")
                     .with(extractor::body::urlencoded())
                     .reply(|params: Params| format!("{},{}", params.id, params.name)),
-            );
-        }).unwrap()
-    });
+            ) //
+            .finish()
+            .unwrap(),
+    );
 
     const BODY: &[u8] = b"id=23&name=bob";
 
@@ -217,9 +221,9 @@ fn urlencoded_body() {
 
 #[test]
 fn local_data() {
+    use tsukuyomi::app::modifier::{BeforeHandle, Modifier};
     use tsukuyomi::input::local_map::local_key;
     use tsukuyomi::input::Input;
-    use tsukuyomi::modifier::{BeforeHandle, Modifier};
 
     #[derive(Clone)]
     struct MyData(String);
@@ -239,14 +243,15 @@ fn local_data() {
     }
 
     let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.modifier(MyModifier);
-            scope.route(
+        App::builder()
+            .modifier(MyModifier)
+            .route(
                 Route::index()
                     .with(extractor::local::local(&MyData::KEY))
                     .reply(|x: MyData| x.0),
-            );
-        }).unwrap()
+            ) //
+            .finish()
+            .unwrap()
     });
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -265,13 +270,14 @@ fn missing_local_data() {
     }
 
     let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+        App::builder()
+            .route(
                 Route::index()
                     .with(extractor::local::local(&MyData::KEY))
                     .reply(|x: MyData| x.0),
-            );
-        }).unwrap()
+            ) //
+            .finish()
+            .unwrap()
     });
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -287,8 +293,8 @@ fn optional() {
     }
 
     let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+        App::builder()
+            .route(
                 Route::post("/")
                     .with(extractor::body::json().optional())
                     .handle(|params: Option<Params>| {
@@ -298,8 +304,9 @@ fn optional() {
                             Err(tsukuyomi::error::internal_server_error("####none####"))
                         }
                     }),
-            );
-        }).unwrap()
+            ) //
+            .finish()
+            .unwrap()
     });
 
     let response = server
@@ -334,13 +341,14 @@ fn either_or() {
         .or(extractor::verb::post(extractor::body::urlencoded()));
 
     let mut server = test_server({
-        tsukuyomi::app(|scope| {
-            scope.route(
+        App::builder()
+            .route(
                 Route::post("/")
                     .with(params_extractor)
                     .reply(|params: Params| format!("{},{}", params.id, params.name)),
-            );
-        }).unwrap()
+            ) //
+            .finish()
+            .unwrap()
     });
 
     let response = server

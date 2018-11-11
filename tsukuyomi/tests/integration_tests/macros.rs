@@ -93,9 +93,10 @@ mod responder {
         }
 
         let mut server = test_server({
-            tsukuyomi::app(|scope| {
-                scope.route(tsukuyomi::app::Route::index().reply(|| Foo("Foo".into())));
-            }).unwrap()
+            tsukuyomi::app::App::builder()
+                .route(tsukuyomi::app::Route::index().reply(|| Foo("Foo".into())))
+                .finish()
+                .unwrap()
         });
         let response = server.perform(http::Request::get("/")).unwrap();
         assert_eq!(response.status(), 200);

@@ -101,8 +101,9 @@ t! {
     name: index,
     source: ("/"),
     expected: {
-        fn route() -> tsukuyomi::route::Builder<()> {
-            tsukuyomi::route("/")
+        fn route() -> tsukuyomi::app::route::Builder<()> {
+            tsukuyomi::app::route::Route::builder()
+                .uri("/")
         }
     },
 }
@@ -111,13 +112,14 @@ t! {
     name: single_param,
     source: ("/:id"),
     expected: {
-        fn route<T0>() -> tsukuyomi::route::Builder<
+        fn route<T0>() -> tsukuyomi::app::route::Builder<
             impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
         >
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::route("/:id")
+            tsukuyomi::app::route::Route::builder()
+                .uri("/:id")
                 .with(tsukuyomi::extractor::param::pos(0usize))
         }
     },
@@ -127,13 +129,14 @@ t! {
     name: wildcard_param,
     source: ("/*path"),
     expected: {
-        fn route<T0>() -> tsukuyomi::route::Builder<
+        fn route<T0>() -> tsukuyomi::app::route::Builder<
             impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
         >
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::route("/*path")
+            tsukuyomi::app::route::Route::builder()
+                .uri("/*path")
                 .with(tsukuyomi::extractor::param::wildcard())
         }
     },
@@ -143,7 +146,7 @@ t! {
     name: compound_params,
     source: ("/:id/people/:name/*path"),
     expected: {
-        fn route<T0, T1, T2>() -> tsukuyomi::route::Builder<
+        fn route<T0, T1, T2>() -> tsukuyomi::app::route::Builder<
             impl tsukuyomi::extractor::Extractor<Output = (T0, T1, T2,), Error = tsukuyomi::error::Error>,
         >
         where
@@ -151,7 +154,8 @@ t! {
             T1: tsukuyomi::extractor::param::FromParam,
             T2: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::route("/:id/people/:name/*path")
+            tsukuyomi::app::route::Route::builder()
+                .uri("/:id/people/:name/*path")
                 .with(tsukuyomi::extractor::param::pos(0usize))
                 .with(tsukuyomi::extractor::param::pos(1usize))
                 .with(tsukuyomi::extractor::param::wildcard())
