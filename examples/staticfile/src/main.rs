@@ -4,7 +4,8 @@ extern crate tsukuyomi_fs;
 
 use futures::prelude::*;
 use tsukuyomi::app::App;
-use tsukuyomi_fs::{NamedFile, Staticfiles};
+use tsukuyomi::fs::NamedFile;
+use tsukuyomi_fs::Staticfiles;
 
 fn main() {
     let app = App::builder()

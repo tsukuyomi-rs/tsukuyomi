@@ -14,31 +14,32 @@ use either::Either;
 fn main() {
     let backend = CookieSessionBackend::plain();
 
-    let app =
-        App::builder()
-            .modifier(tsukuyomi_session::storage(backend))
-            .route(
-                route!("/") //
-                    .with(tsukuyomi_session::extractor())
-                    .handle(|session: Session| {
-                        session.get::<String>("username").map(|username| {
-                            if let Some(username) = username {
-                                Either::Right(html(format!(
-                                    "Hello, {}! <br />\n\
-                                     <form method=\"post\" action=\"/logout\">\n\
-                                     <input type=\"submit\" value=\"Log out\" />\n\
-                                     </form>\
-                                     ",
-                                    username
-                                )))
-                            } else {
-                                Either::Left(redirect::to("/login"))
-                            }
-                        })
-                    }),
-            ) //
-            .route(route!("/login").with(tsukuyomi_session::extractor()).reply(
-                |session: Session| {
+    let app = App::builder()
+        .modifier(tsukuyomi_session::storage(backend))
+        .route(
+            route!("/") //
+                .with(tsukuyomi_session::extractor())
+                .handle(|session: Session| {
+                    session.get::<String>("username").map(|username| {
+                        if let Some(username) = username {
+                            Either::Right(html(format!(
+                                "Hello, {}! <br />\n\
+                                 <form method=\"post\" action=\"/logout\">\n\
+                                 <input type=\"submit\" value=\"Log out\" />\n\
+                                 </form>\
+                                 ",
+                                username
+                            )))
+                        } else {
+                            Either::Left(redirect::to("/login"))
+                        }
+                    })
+                }),
+        ) //
+        .route(
+            route!("/login") //
+                .with(tsukuyomi_session::extractor())
+                .reply(|session: Session| {
                     if session.contains("username") {
                         Either::Left(redirect::to("/"))
                     } else {
@@ -50,33 +51,33 @@ fn main() {
                              </form>",
                         ))
                     }
-                },
-            )) //
-            .route(
-                route!("/login")
-                    .with(tsukuyomi::extractor::body::urlencoded())
-                    .with(tsukuyomi_session::extractor())
-                    .handle({
-                        #[derive(Debug, serde::Deserialize)]
-                        struct Form {
-                            username: String,
-                        }
-                        |form: Form, mut session: Session| -> tsukuyomi::error::Result<_> {
-                            session.set("username", form.username)?;
-                            Ok(redirect::to("/"))
-                        }
-                    }),
-            ) //
-            .route(
-                route!("/logout")
-                    .with(tsukuyomi_session::extractor())
-                    .reply(|mut session: Session| {
-                        session.remove("username");
-                        redirect::to("/")
-                    }),
-            ) //
-            .finish()
-            .unwrap();
+                }),
+        ) //
+        .route(
+            route!("/login")
+                .with(tsukuyomi::extractor::body::urlencoded())
+                .with(tsukuyomi_session::extractor())
+                .handle({
+                    #[derive(Debug, serde::Deserialize)]
+                    struct Form {
+                        username: String,
+                    }
+                    |form: Form, mut session: Session| -> tsukuyomi::error::Result<_> {
+                        session.set("username", form.username)?;
+                        Ok(redirect::to("/"))
+                    }
+                }),
+        ) //
+        .route(
+            route!("/logout")
+                .with(tsukuyomi_session::extractor())
+                .reply(|mut session: Session| {
+                    session.remove("username");
+                    redirect::to("/")
+                }),
+        ) //
+        .finish()
+        .unwrap();
 
     tsukuyomi::server(app).run_forever().unwrap();
 }

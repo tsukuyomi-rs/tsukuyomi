@@ -1,7 +1,6 @@
 extern crate tsukuyomi;
 
-use tsukuyomi::app::{scope, App};
-use tsukuyomi::route;
+use tsukuyomi::app::{route, scope, App};
 
 fn main() {
     let app = App::builder()

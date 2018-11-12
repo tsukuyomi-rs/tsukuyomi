@@ -20,11 +20,14 @@ extern crate bytes;
 extern crate cookie;
 extern crate either;
 extern crate failure;
+extern crate filetime;
 extern crate futures;
 extern crate http;
 extern crate indexmap;
+extern crate log;
 extern crate mime;
 extern crate serde;
+extern crate time;
 extern crate tower_service;
 extern crate url;
 extern crate uuid;
@@ -35,6 +38,7 @@ extern crate matches;
 pub mod app;
 pub mod error;
 pub mod extractor;
+pub mod fs;
 pub mod output;
 
 pub mod input {
