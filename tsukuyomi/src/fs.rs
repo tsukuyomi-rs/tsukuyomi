@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fs::{File, Metadata};
 use std::io;
 use std::io::Read as _Read;
-use std::path::PathBuf;
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 use std::{cmp, fmt, mem};
@@ -128,17 +128,23 @@ pub struct NamedFile {
 
 impl NamedFile {
     /// Open a specified file with the default configuration.
-    pub fn open(path: impl Into<PathBuf>) -> OpenFuture {
+    pub fn open<P>(path: P) -> OpenFuture<P>
+    where
+        P: AsRef<Path>,
+    {
         OpenFuture {
-            path: path.into(),
+            path: path,
             config: None,
         }
     }
 
     /// Open a specified file with the provided configuration.
-    pub fn open_with_config(path: impl Into<PathBuf>, config: OpenConfig) -> OpenFuture {
+    pub fn open_with_config<P>(path: P, config: OpenConfig) -> OpenFuture<P>
+    where
+        P: AsRef<Path>,
+    {
         OpenFuture {
-            path: path.into(),
+            path: path,
             config: Some(config),
         }
     }
@@ -237,12 +243,15 @@ impl Responder for NamedFile {
 
 /// A future waiting for opening the file.
 #[derive(Debug)]
-pub struct OpenFuture {
-    path: PathBuf,
+pub struct OpenFuture<P> {
+    path: P,
     config: Option<OpenConfig>,
 }
 
-impl Future for OpenFuture {
+impl<P> Future for OpenFuture<P>
+where
+    P: AsRef<Path>,
+{
     type Item = NamedFile;
     type Error = io::Error;
 

@@ -1,8 +1,12 @@
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
 use futures::{Async, Future, IntoFuture};
 use indexmap::IndexSet;
 
 use crate::error::Error;
 use crate::extractor::{And, Combine, Extractor, ExtractorExt, Func};
+use crate::fs::NamedFile;
 use crate::internal::uri::Uri;
 use crate::output::Responder;
 
@@ -148,6 +152,27 @@ where
                 }
             })
         })
+    }
+}
+
+impl<E> Builder<E>
+where
+    E: Extractor<Output = ()>,
+{
+    pub fn serve_file(self, path: impl AsRef<Path>) -> impl RouteConfig {
+        #[derive(Clone)]
+        #[allow(missing_debug_implementations)]
+        struct ArcPath(Arc<PathBuf>);
+
+        impl AsRef<Path> for ArcPath {
+            fn as_ref(&self) -> &Path {
+                (*self.0).as_ref()
+            }
+        }
+
+        let arc_path = ArcPath(Arc::new(path.as_ref().to_path_buf()));
+
+        self.handle(move || NamedFile::open(arc_path.clone()).map_err(Into::into))
     }
 }
 
