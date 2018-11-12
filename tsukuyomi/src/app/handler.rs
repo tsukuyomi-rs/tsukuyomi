@@ -1,4 +1,4 @@
-//! `Handler` and supplemental components.
+//! Definition of `Handler` and `Modifier`.
 
 use either::Either;
 use futures::{Async, Poll};
@@ -12,16 +12,17 @@ use crate::output::Output;
 /// A trait representing handler functions.
 pub trait Handler {
     /// Applies an incoming request to this handler.
-    fn handle(&self, input: &mut Input<'_>) -> Handle;
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output>;
 }
 
-impl<F> Handler for F
+impl<F, R> Handler for F
 where
-    F: Fn(&mut Input<'_>) -> Handle,
+    F: Fn(&mut Input<'_>) -> R,
+    R: Into<AsyncResult<Output>>,
 {
     #[inline]
-    fn handle(&self, input: &mut Input<'_>) -> Handle {
-        (*self)(input)
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+        (*self)(input).into()
     }
 }
 
@@ -30,7 +31,7 @@ where
     H: Handler,
 {
     #[inline]
-    fn handle(&self, input: &mut Input<'_>) -> Handle {
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
         (**self).handle(input)
     }
 }
@@ -41,7 +42,7 @@ where
     R: Handler,
 {
     #[inline]
-    fn handle(&self, input: &mut Input<'_>) -> Handle {
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
         match self {
             Either::Left(ref handler) => handler.handle(input),
             Either::Right(ref handler) => handler.handle(input),
@@ -50,65 +51,137 @@ where
 }
 
 /// A helper function which creates a `Handler` from the specified closure.
-pub fn raw(f: impl Fn(&mut Input<'_>) -> Handle) -> impl Handler {
+pub fn raw<F, R>(f: F) -> impl Handler
+where
+    F: Fn(&mut Input<'_>) -> R,
+    R: Into<AsyncResult<Output>>,
+{
     #[allow(missing_debug_implementations)]
     struct Raw<F>(F);
 
-    impl<F> Handler for Raw<F>
+    impl<F, R> Handler for Raw<F>
     where
-        F: Fn(&mut Input<'_>) -> Handle,
+        F: Fn(&mut Input<'_>) -> R,
+        R: Into<AsyncResult<Output>>,
     {
         #[inline]
-        fn handle(&self, input: &mut Input<'_>) -> Handle {
-            (self.0)(input)
+        fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+            (self.0)(input).into()
         }
     }
 
     Raw(f)
 }
 
-// ----------------------------------------------------------------------------
+/// A trait representing a `Modifier`.
+///
+/// The purpose of this trait is to insert some processes before and after
+/// applying `Handler` in a certain scope.
+///
+/// # Examples
+///
+/// ```
+/// # extern crate tsukuyomi;
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+/// use tsukuyomi::app::{App, Route, Modifier, AsyncResult};
+/// use tsukuyomi::input::Input;
+/// use tsukuyomi::output::Output;
+///
+/// #[derive(Default)]
+/// struct RequestCounter(AtomicUsize);
+///
+/// impl Modifier for RequestCounter {
+///     fn before_handle(&self, _: &mut Input) -> AsyncResult<Option<Output>> {
+///        self.0.fetch_add(1, Ordering::SeqCst);
+///        AsyncResult::ready(Ok(None))
+///     }
+/// }
+///
+/// # fn main() -> tsukuyomi::app::AppResult<()> {
+/// App::builder()
+///     .route(Route::index().reply(|| "Hello"))
+///     .modifier(RequestCounter::default())
+///     .finish()
+/// #   .map(drop)
+/// # }
+/// ```
+pub trait Modifier {
+    /// Performs the process before calling the handler.
+    ///
+    /// By default, this method does nothing.
+    #[allow(unused_variables)]
+    #[cfg_attr(tarpaulin, skip)]
+    fn before_handle(&self, input: &mut Input<'_>) -> AsyncResult<Option<Output>> {
+        AsyncResult::ready(Ok(None))
+    }
+
+    /// Modifies the returned value from a handler.
+    ///
+    /// By default, this method does nothing and immediately return the provided `Output`.
+    #[allow(unused_variables)]
+    #[cfg_attr(tarpaulin, skip)]
+    fn after_handle(
+        &self,
+        input: &mut Input<'_>,
+        result: Result<Output, Error>,
+    ) -> AsyncResult<Output> {
+        AsyncResult::ready(result)
+    }
+}
 
 /// A type representing the return value from `Handler::handle`.
-pub struct Handle(HandleKind);
+pub struct AsyncResult<T, E = Error>(AsyncResultKind<T, E>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
-enum HandleKind {
-    Ready(Option<Result<Output, Error>>),
-    Polling(Box<dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static>),
+enum AsyncResultKind<T, E> {
+    Ready(Option<Result<T, E>>),
+    Polling(Box<dyn FnMut(&mut Input<'_>) -> Poll<T, E> + Send + 'static>),
 }
 
 #[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Handle {
+impl<T, E> fmt::Debug for AsyncResult<T, E>
+where
+    T: fmt::Debug,
+    E: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
-            HandleKind::Ready(ref res) => f.debug_tuple("Ready").field(res).finish(),
-            HandleKind::Polling(..) => f.debug_tuple("Polling").finish(),
+            AsyncResultKind::Ready(ref res) => f.debug_tuple("Ready").field(res).finish(),
+            AsyncResultKind::Polling(..) => f.debug_tuple("Polling").finish(),
         }
     }
 }
 
-impl Handle {
-    /// Creates a `Handle` from an immediately value.
-    pub fn ready(result: Result<Output, Error>) -> Self {
-        Handle(HandleKind::Ready(Some(result)))
+impl<T, E> From<Result<T, E>> for AsyncResult<T, E>
+where
+    Error: From<E>,
+{
+    fn from(result: Result<T, E>) -> Self {
+        Self::ready(result.map_err(Into::into))
+    }
+}
+
+impl<T, E> AsyncResult<T, E> {
+    /// Creates an `AsyncResult` from an immediately value.
+    pub fn ready(result: Result<T, E>) -> Self {
+        AsyncResult(AsyncResultKind::Ready(Some(result)))
     }
 
-    /// Creates a `Handle` from a closure representing an asynchronous computation.
+    /// Creates an `AsyncResult` from a closure representing an asynchronous computation.
     pub fn polling<F>(f: F) -> Self
     where
-        F: FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static,
+        F: FnMut(&mut Input<'_>) -> Poll<T, E> + Send + 'static,
     {
-        Handle(HandleKind::Polling(Box::new(f)))
+        AsyncResult(AsyncResultKind::Polling(Box::new(f)))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, Error> {
+    pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, E> {
         match self.0 {
-            HandleKind::Ready(ref mut res) => res
+            AsyncResultKind::Ready(ref mut res) => res
                 .take()
                 .expect("this future has already polled")
                 .map(Async::Ready),
-            HandleKind::Polling(ref mut f) => (f)(input),
+            AsyncResultKind::Polling(ref mut f) => (f)(input),
         }
     }
 }

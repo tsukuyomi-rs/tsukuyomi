@@ -3,21 +3,21 @@ extern crate tsukuyomi;
 extern crate tsukuyomi_fs;
 
 use futures::prelude::*;
-use tsukuyomi::app::{App, Route};
+use tsukuyomi::app::App;
 use tsukuyomi_fs::{NamedFile, Staticfiles};
 
 fn main() {
     let app = App::builder()
         .route(
-            Route::get("/index.html") //
+            tsukuyomi::route!("/index.html") //
                 .handle(|| {
                     NamedFile::open(concat!(env!("CARGO_MANIFEST_DIR"), "/static/index.html"))
                         .map_err(Into::into)
                 }),
-        ).mount("/static", |scope| {
-            Staticfiles::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")) //
-                .register(scope)
-        }).unwrap() //
+        ).mount(
+            "/static",
+            Staticfiles::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")),
+        ).unwrap() //
         .finish()
         .unwrap();
 

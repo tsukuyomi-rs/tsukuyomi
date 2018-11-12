@@ -1,9 +1,9 @@
 //! Components for constructing HTTP applications.
 
+mod error;
 mod handler;
-pub mod modifier;
 pub mod route;
-pub(crate) mod scope;
+pub mod scope;
 pub(crate) mod service;
 
 #[cfg(test)]
@@ -25,32 +25,14 @@ use crate::internal::uri;
 use crate::internal::uri::Uri;
 use crate::output::ResponseBody;
 
-use self::handler::{Handle, Handler};
-use self::modifier::Modifier;
 use self::route::{RouteData, RouteId};
 use self::scope::{ScopeBuilder, ScopeData};
 
+pub use self::error::{AppError, AppErrorKind, AppResult};
+pub use self::handler::{AsyncResult, Handler, Modifier};
 pub use self::route::Route;
-pub use self::scope::Scope;
+pub use self::scope::{Scope, ScopeConfig};
 pub use self::service::RecognizeError;
-
-/// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub type AppResult<T> = std::result::Result<T, AppError>;
-
-/// An error type which will be thrown from `AppBuilder`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-#[derive(Debug, failure::Fail)]
-#[fail(display = "{}", inner)]
-pub struct AppError {
-    inner: failure::Error,
-}
-
-impl AppError {
-    pub(crate) fn from_failure(err: impl Into<failure::Error>) -> Self {
-        Self { inner: err.into() }
-    }
-}
 
 #[derive(Debug)]
 struct Config {
@@ -186,44 +168,45 @@ impl Default for AppBuilder {
 }
 
 impl AppBuilder {
-    /// Shortcut of `app.scope(|s| { s.mount(f); })`.
-    pub fn mount<F, E>(&mut self, prefix: &str, f: F) -> AppResult<&mut Self>
-    where
-        F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
-        E: Into<failure::Error>,
-    {
-        self.new_scope(ScopeId::Global, prefix, f)?;
-        Ok(self)
-    }
-
-    /// Shortcut of `app.scope(|s| { s.route(route); })`.
-    pub fn route(&mut self, route: Route) -> &mut Self {
+    /// Adds a route into the global scope.
+    pub fn route(mut self, route: Route) -> Self {
         self.new_route(ScopeId::Global, route);
         self
     }
 
-    pub fn state<T>(&mut self, state: T) -> &mut Self
+    /// Creates a new scope mounted into the specified prefix onto the global scope.
+    pub fn mount<S>(mut self, prefix: &str, scope: S) -> AppResult<Self>
+    where
+        S: ScopeConfig,
+    {
+        self.new_scope(ScopeId::Global, prefix, scope)?;
+        Ok(self)
+    }
+
+    /// Adds a *global* variable into the application.
+    pub fn state<T>(mut self, state: T) -> Self
     where
         T: Send + Sync + 'static,
     {
-        Scope::new(self, ScopeId::Global).state(state);
+        self.set_state(state, ScopeId::Global);
         self
     }
 
-    pub fn modifier<M>(&mut self, modifier: M) -> &mut Self
+    /// Register a `Modifier` into the global scope.
+    pub fn modifier<M>(mut self, modifier: M) -> Self
     where
         M: Modifier + Send + Sync + 'static,
     {
-        Scope::new(self, ScopeId::Global).modifier(modifier);
+        self.add_modifier(ScopeId::Global, modifier);
         self
     }
 
     /// Returns a proxy object for modifying the global-level configuration.
-    pub fn config<F>(&mut self, f: F) -> &mut Self
+    pub fn config<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&mut Global<'_>),
     {
-        f(&mut Global { builder: self });
+        f(&mut Global { builder: &mut self });
         self
     }
 
@@ -231,12 +214,11 @@ impl AppBuilder {
         self.routes.push((scope_id, route));
     }
 
-    fn new_scope<F, E>(&mut self, parent: ScopeId, prefix: &str, f: F) -> AppResult<()>
+    fn new_scope<S>(&mut self, parent: ScopeId, prefix: &str, scope: S) -> AppResult<()>
     where
-        F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
-        E: Into<failure::Error>,
+        S: ScopeConfig,
     {
-        let prefix = prefix.parse().map_err(AppError::from_failure)?;
+        let prefix = prefix.parse()?;
         let id = ScopeId::Local(self.scopes.len());
         let mut chain = parent
             .local_id()
@@ -250,7 +232,9 @@ impl AppBuilder {
             chain,
         });
 
-        f(&mut Scope::new(self, id)).map_err(AppError::from_failure)?;
+        scope
+            .configure(&mut Scope::new(self, id))
+            .map_err(Into::into)?;
 
         Ok(())
     }
@@ -273,7 +257,7 @@ impl AppBuilder {
     }
 
     /// Creates a configured `App` using the current settings.
-    pub fn finish(&mut self) -> AppResult<App> {
+    pub fn finish(self) -> AppResult<App> {
         let Self {
             routes,
             config,
@@ -281,14 +265,13 @@ impl AppBuilder {
             modifiers,
             states,
             scopes,
-        } = std::mem::replace(self, Self::default());
+        } = self;
 
         // finalize endpoints based on the created scope information.
         let mut routes: Vec<RouteData> = routes
             .into_iter()
             .enumerate()
             .map(|(route_id, (scope_id, route))| -> AppResult<RouteData> {
-                let route = route.inner?;
                 // build absolute URI.
                 let mut uris = vec![&route.uri];
                 let mut current = scope_id.local_id();
@@ -296,7 +279,7 @@ impl AppBuilder {
                     uris.extend(Some(&scope.prefix));
                     current = scope.parent.local_id();
                 }
-                let uri = uri::join_all(uris.into_iter().rev()).map_err(AppError::from_failure)?;
+                let uri = uri::join_all(uris.into_iter().rev())?;
 
                 let handler = route.handler;
 
@@ -342,7 +325,7 @@ impl AppBuilder {
 
                 for method in &route.methods {
                     if methods.contains_key(method) {
-                        return Err(AppError::from_failure(failure::format_err!(
+                        return Err(AppError::from(failure::format_err!(
                             "Adding routes with duplicate URI and method is currenly not supported. \
                             (uri={}, method={})",
                             route.uri,
@@ -383,7 +366,7 @@ impl AppBuilder {
                     });
                 }
 
-                recognizer.add_route(uri).map_err(AppError::from_failure)?;
+                recognizer.add_route(uri)?;
                 route_ids.push(methods);
             }
 
@@ -476,6 +459,6 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
         response
             .headers_mut()
             .insert(header::ALLOW, allowed_methods.clone());
-        Handle::ready(Ok(response))
+        AsyncResult::ready(Ok(response))
     }))
 }

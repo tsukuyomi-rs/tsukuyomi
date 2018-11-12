@@ -7,9 +7,10 @@ use http::{header, Request, StatusCode};
 #[test]
 fn empty_routes() {
     let mut server = test_server(
-        App::builder() //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder() //
+                .finish()
+        }.unwrap(),
     );
 
     let response = server.perform(Request::get("/")).unwrap();
@@ -19,10 +20,11 @@ fn empty_routes() {
 #[test]
 fn single_route() {
     let mut server = test_server(
-        App::builder()
-            .route(Route::get("/hello").reply(|| "Tsukuyomi"))
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(Route::get("/hello")?.reply(|| "Tsukuyomi"))
+                .finish()
+        }.unwrap(),
     );
 
     let response = server.perform(Request::get("/hello")).unwrap();
@@ -48,14 +50,15 @@ fn single_route() {
 #[test]
 fn post_body() {
     let mut server = test_server(
-        App::builder()
-            .route(
-                Route::post("/hello")
-                    .with(tsukuyomi::extractor::body::plain())
-                    .reply(|body: String| body),
-            ) //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::post("/hello")?
+                        .with(tsukuyomi::extractor::body::plain())
+                        .reply(|body: String| body),
+                ) //
+                .finish()
+        }.unwrap(),
     );
 
     let response = server
@@ -88,29 +91,30 @@ fn cookies() {
     let expires_in = time::now() + Duration::days(7);
 
     let mut server = test_server(
-        App::builder()
-            .route(
-                Route::get("/login")
-                    .with(extractor::validate(move |input| {
-                        let cookie = Cookie::build("session", "dummy_session_id")
-                            .domain("www.example.com")
-                            .expires(expires_in)
-                            .finish();
-                        input.cookies().map(|mut cookies| {
-                            cookies.add(cookie);
-                        })
-                    })).reply(|| "Logged in"),
-            ) //
-            .route(
-                Route::get("/logout")
-                    .with(extractor::validate(|input| {
-                        input.cookies().map(|mut cookies| {
-                            cookies.remove(Cookie::named("session"));
-                        })
-                    })).reply(|| "Logged out"),
-            ) //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::get("/login")?
+                        .with(extractor::validate(move |input| {
+                            let cookie = Cookie::build("session", "dummy_session_id")
+                                .domain("www.example.com")
+                                .expires(expires_in)
+                                .finish();
+                            input.cookies().map(|mut cookies| {
+                                cookies.add(cookie);
+                            })
+                        })).reply(|| "Logged in"),
+                ) //
+                .route(
+                    Route::get("/logout")?
+                        .with(extractor::validate(|input| {
+                            input.cookies().map(|mut cookies| {
+                                cookies.remove(Cookie::named("session"));
+                            })
+                        })).reply(|| "Logged out"),
+                ) //
+                .finish()
+        }.unwrap(),
     );
 
     let response = server.perform(Request::get("/login")).unwrap();
@@ -154,11 +158,12 @@ fn cookies() {
 #[test]
 fn default_options() {
     let mut server = test_server(
-        App::builder()
-            .route(Route::get("/path").reply(|| "get"))
-            .route(Route::post("/path").reply(|| "post"))
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(Route::get("/path")?.reply(|| "get"))
+                .route(Route::post("/path")?.reply(|| "post"))
+                .finish()
+        }.unwrap(),
     );
 
     let response = server.perform(Request::options("/path")).unwrap();
@@ -180,14 +185,15 @@ fn default_options() {
 #[test]
 fn test_case_5_disable_default_options() {
     let mut server = test_server(
-        App::builder()
-            .config(|g| {
-                g.fallback_options(false);
-            }) //
-            .route(Route::get("/path").reply(|| "get"))
-            .route(Route::post("/path").reply(|| "post"))
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .config(|g| {
+                    g.fallback_options(false);
+                }) //
+                .route(Route::get("/path")?.reply(|| "get"))
+                .route(Route::post("/path")?.reply(|| "post"))
+                .finish()
+        }.unwrap(),
     );
 
     let response = server.perform(Request::options("/path")).unwrap();

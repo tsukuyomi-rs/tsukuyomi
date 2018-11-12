@@ -33,7 +33,6 @@ use std::time::Duration;
 use std::{cmp, fmt, mem};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use failure::Fallible;
 use filetime::FileTime;
 use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
@@ -45,7 +44,7 @@ use walkdir::{FilterEntry, WalkDir};
 #[doc(no_inline)]
 pub use walkdir::DirEntry;
 
-use tsukuyomi::app::Scope;
+use tsukuyomi::app::{AppError, AppResult, Route, Scope, ScopeConfig};
 use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Responder, ResponseBody};
@@ -492,9 +491,15 @@ where
             ..self
         }
     }
+}
 
-    #[allow(missing_docs)]
-    pub fn register(self, scope: &mut Scope<'_>) -> Fallible<()> {
+impl<W> ScopeConfig for Staticfiles<W>
+where
+    W: IntoIterator<Item = walkdir::Result<DirEntry>>,
+{
+    type Error = AppError;
+
+    fn configure(self, scope: &mut Scope<'_>) -> AppResult<()> {
         let Self { walkdir, config } = self;
         for entry in walkdir {
             let entry = entry?;
@@ -503,7 +508,7 @@ where
                 let path = entry.path().canonicalize()?;
 
                 let config = config.clone();
-                scope.route(tsukuyomi::app::Route::get(&prefix).handle(move || {
+                scope.route(Route::get(&prefix)?.handle(move || {
                     if let Some(ref config) = config {
                         NamedFile::open_with_config(path.clone(), config.clone())
                             .map_err(Into::into)

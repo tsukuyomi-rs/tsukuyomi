@@ -10,8 +10,8 @@ use crate::internal::scoped_map::ScopeId;
 use crate::internal::uri::Uri;
 use crate::output::Responder;
 
-use super::handler::{Handle, Handler};
-use super::{AppError, AppResult, ModifierId};
+use super::handler::{AsyncResult, Handler};
+use super::{AppResult, ModifierId};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
@@ -37,20 +37,15 @@ impl fmt::Debug for RouteData {
 }
 
 /// The type representing a route of HTTP application.
-#[derive(Debug)]
 pub struct Route {
-    pub(super) inner: AppResult<RouteInner>,
-}
-
-pub(super) struct RouteInner {
     pub(super) methods: IndexSet<Method>,
     pub(super) uri: Uri,
     pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
 }
 
-impl fmt::Debug for RouteInner {
+impl fmt::Debug for Route {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RouteInner")
+        f.debug_struct("Route")
             .field("methods", &self.methods)
             .field("uri", &self.uri)
             .finish()
@@ -59,12 +54,12 @@ impl fmt::Debug for RouteInner {
 
 macro_rules! define_route {
     ($($method:ident => $METHOD:ident,)*) => {$(
-        pub fn $method<T>(uri: T) -> Builder<()>
+        pub fn $method<T>(uri: T) -> AppResult<Builder<()>>
         where
             T: AsRef<str>,
         {
             Self::builder()
-                .uri(uri)
+                .uri(uri)?
                 .method(http::Method::$METHOD)
         }
     )*}
@@ -75,8 +70,8 @@ impl Route {
     pub fn builder() -> Builder<()> {
         Builder {
             extractor: (),
-            uri: Ok(Uri::root()),
-            methods: Ok(IndexSet::new()),
+            uri: Uri::root(),
+            methods: IndexSet::new(),
         }
     }
 
@@ -105,8 +100,8 @@ where
     E: Extractor,
 {
     extractor: E,
-    methods: http::Result<IndexSet<Method>>,
-    uri: failure::Fallible<Uri>,
+    methods: IndexSet<Method>,
+    uri: Uri,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
@@ -115,49 +110,49 @@ where
     E: Extractor,
 {
     /// Sets the URI of this route.
-    pub fn uri<U>(self, uri: U) -> Self
+    pub fn uri<U>(self, uri: U) -> AppResult<Self>
     where
         U: AsRef<str>,
     {
-        Builder {
-            uri: self.uri.and_then(|_| uri.as_ref().parse()),
+        Ok(Self {
+            uri: uri.as_ref().parse()?,
             ..self
-        }
+        })
     }
 
     /// Sets the method of this route.
-    pub fn method<M>(self, method: M) -> Self
+    pub fn method<M>(self, method: M) -> AppResult<Self>
     where
         Method: HttpTryFrom<M>,
     {
-        Builder {
-            methods: self.methods.and_then(|mut methods| {
-                Method::try_from(method)
-                    .map(|method| {
-                        methods.insert(method);
-                        methods
-                    }).map_err(Into::into)
-            }),
+        Ok(Self {
+            methods: {
+                let mut methods = self.methods;
+                let method = Method::try_from(method).map_err(Into::into)?;
+                methods.insert(method);
+                methods
+            },
             ..self
-        }
+        })
     }
 
     /// Sets the HTTP methods of this route.
-    pub fn methods<I, M>(self, methods: I) -> Self
+    pub fn methods<I, M>(self, methods: I) -> AppResult<Self>
     where
         I: IntoIterator<Item = M>,
         Method: HttpTryFrom<M>,
     {
-        Builder {
-            methods: self.methods.and_then(|mut orig_methods| {
+        Ok(Self {
+            methods: {
+                let mut orig_methods = self.methods;
                 for method in methods {
                     let method = Method::try_from(method).map_err(Into::into)?;
                     orig_methods.insert(method);
                 }
-                Ok(orig_methods)
-            }),
+                orig_methods
+            },
             ..self
-        }
+        })
     }
 
     /// Appends an `Extractor` to this builder.
@@ -174,10 +169,10 @@ where
         }
     }
 
-    fn finish<F, R>(self, f: F) -> Route
+    fn finish<F, H>(self, f: F) -> Route
     where
-        F: FnOnce(E) -> R,
-        R: Fn(&mut crate::input::Input<'_>) -> Handle + Send + Sync + 'static,
+        F: FnOnce(E) -> H,
+        H: Handler + Send + Sync + 'static,
     {
         let Self {
             extractor,
@@ -185,30 +180,10 @@ where
             methods,
         } = self;
 
-        let methods = match methods {
-            Ok(methods) => methods,
-            Err(err) => {
-                return Route {
-                    inner: Err(AppError::from_failure(err)),
-                }
-            }
-        };
-
-        let uri = match uri {
-            Ok(uri) => uri,
-            Err(err) => {
-                return Route {
-                    inner: Err(AppError::from_failure(err)),
-                }
-            }
-        };
-
         Route {
-            inner: Ok(RouteInner {
-                methods,
-                uri,
-                handler: Box::new(super::handler::raw(f(extractor))),
-            }),
+            methods,
+            uri,
+            handler: Box::new(f(extractor)),
         }
     }
 
@@ -221,12 +196,12 @@ where
         F::Out: Responder,
     {
         self.finish(move |extractor| {
-            move |input| match extractor.extract(input) {
-                Err(e) => Handle::ready(Err(e.into())),
+            super::handler::raw(move |input| match extractor.extract(input) {
+                Err(e) => AsyncResult::ready(Err(e.into())),
                 Ok(future) => {
                     let handler = handler.clone();
                     let mut future = future.map(move |arg| handler.call(arg));
-                    Handle::polling(move |input| {
+                    AsyncResult::polling(move |input| {
                         futures::try_ready!(crate::input::with_set_current(input, || future
                             .poll()
                             .map_err(Into::into))).respond_to(input)
@@ -234,7 +209,7 @@ where
                         .map_err(Into::into)
                     })
                 }
-            }
+            })
         })
     }
 
@@ -244,28 +219,53 @@ where
     pub fn handle<F, R>(self, handler: F) -> Route
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-        R: IntoFuture<Error = Error> + 'static,
+        R: IntoFuture<Error = Error>,
         R::Future: Send + 'static,
         R::Item: Responder,
     {
         self.finish(move |extractor| {
-            move |input| match extractor.extract(input) {
-                Err(e) => Handle::ready(Err(e.into())),
+            super::handler::raw(move |input| match extractor.extract(input) {
+                Err(e) => AsyncResult::ready(Err(e.into())),
                 Ok(future) => {
                     let handler = handler.clone();
                     let mut future = future
                         .map_err(Into::into)
-                        .and_then(move |arg| handler.call(arg));
-                    Handle::polling(move |input| {
+                        .and_then(move |arg| handler.call(arg).into_future());
+                    AsyncResult::polling(move |input| {
                         futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
                             .respond_to(input)
                             .map(|response| Async::Ready(response.map(Into::into)))
                             .map_err(Into::into)
                     })
                 }
-            }
+            })
         })
     }
+}
+
+impl Builder<()> {
+    pub fn raw<H>(self, handler: H) -> Route
+    where
+        H: Handler + Send + Sync + 'static,
+    {
+        self.finish(move |()| handler)
+    }
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! route {
+    ($uri:expr) => {{
+        enum __Dummy {}
+        impl __Dummy {
+            route_expr_impl!($uri);
+        }
+        __Dummy::route()
+    }};
+    ($uri:expr, methods = [$($methods:expr),*]) => {
+        route!($uri)
+            $( .method($methods).expect("should be validate by proc-macro") )*
+    };
+    () => ( $crate::route() );
 }
 
 #[cfg(test)]
@@ -274,6 +274,7 @@ mod tests {
 
     fn generated() -> Builder<impl Extractor<Output = (u32, String)>> {
         Route::get("/:id/:name")
+            .unwrap()
             .with(crate::extractor::param::pos(0))
             .with(crate::extractor::param::pos(1))
     }

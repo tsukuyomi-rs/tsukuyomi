@@ -8,7 +8,8 @@ extern crate tsukuyomi;
 mod proxy;
 
 use futures::prelude::*;
-use tsukuyomi::app::{App, Route};
+use tsukuyomi::app::App;
+use tsukuyomi::route;
 
 use crate::proxy::Client;
 
@@ -18,7 +19,7 @@ fn main() {
 
     let app = App::builder()
         .route(
-            Route::index()
+            route!("/")
                 .with(proxy_client.clone())
                 .handle(|client: Client| {
                     client
@@ -27,7 +28,7 @@ fn main() {
                 }),
         ) //
         .route(
-            Route::get("/streaming")
+            route!("/streaming")
                 .with(proxy_client)
                 .handle(|client: Client| {
                     client.send_forwarded_request("https://www.rust-lang.org/en-US/")

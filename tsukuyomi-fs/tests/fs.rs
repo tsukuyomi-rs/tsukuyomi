@@ -13,6 +13,7 @@ fn compiletest() {
         App::builder()
             .route(
                 Route::get("/index.html")
+                    .unwrap()
                     .handle(|| NamedFile::open("/path/to/index.html").map_err(Into::into)),
             ) //
             .finish()
@@ -25,7 +26,8 @@ fn compiletest() {
 fn compiletest_staticfiles() {
     drop(
         App::builder()
-            .mount("/", |scope| {
+            .mount(
+                "/",
                 Staticfiles::new("./public")
                     .follow_links(true)
                     .same_file_system(false)
@@ -35,8 +37,8 @@ fn compiletest_staticfiles() {
                             .to_str()
                             .map(|s| s.starts_with('.'))
                             .unwrap_or(false)
-                    }).register(scope)
-            }).unwrap() //
+                    }),
+            ).unwrap() //
             .finish()
             .unwrap(),
     );

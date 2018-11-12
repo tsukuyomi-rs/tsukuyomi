@@ -52,7 +52,7 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
         quote! {
             fn #name() -> #Builder<()> {
                 #Route::builder()
-                    .uri(#uri)
+                    .uri(#uri).expect("this is a bug")
             }
         }
     } else {
@@ -74,7 +74,7 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
                 #( #bounds )*
             {
                 #Route::builder()
-                    .uri(#uri)
+                    .uri(#uri).expect("this is a bug")
                     #( .with(#extractors) )*
             }
         )
@@ -103,7 +103,7 @@ t! {
     expected: {
         fn route() -> tsukuyomi::app::route::Builder<()> {
             tsukuyomi::app::route::Route::builder()
-                .uri("/")
+                .uri("/").expect("this is a bug")
         }
     },
 }
@@ -119,7 +119,7 @@ t! {
             T0: tsukuyomi::extractor::param::FromParam,
         {
             tsukuyomi::app::route::Route::builder()
-                .uri("/:id")
+                .uri("/:id").expect("this is a bug")
                 .with(tsukuyomi::extractor::param::pos(0usize))
         }
     },
@@ -136,7 +136,7 @@ t! {
             T0: tsukuyomi::extractor::param::FromParam,
         {
             tsukuyomi::app::route::Route::builder()
-                .uri("/*path")
+                .uri("/*path").expect("this is a bug")
                 .with(tsukuyomi::extractor::param::wildcard())
         }
     },
@@ -155,7 +155,7 @@ t! {
             T2: tsukuyomi::extractor::param::FromParam,
         {
             tsukuyomi::app::route::Route::builder()
-                .uri("/:id/people/:name/*path")
+                .uri("/:id/people/:name/*path").expect("this is a bug")
                 .with(tsukuyomi::extractor::param::pos(0usize))
                 .with(tsukuyomi::extractor::param::pos(1usize))
                 .with(tsukuyomi::extractor::param::wildcard())

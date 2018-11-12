@@ -25,6 +25,7 @@ fn integration_test() {
         .route(
             tsukuyomi::app::Route::index()
                 .methods(vec!["GET", "POST"])
+                .unwrap()
                 .with(executor.clone())
                 .handle({
                     let database = database.clone();

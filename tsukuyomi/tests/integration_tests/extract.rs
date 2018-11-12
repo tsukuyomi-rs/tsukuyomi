@@ -23,18 +23,19 @@ fn params() {
     use tsukuyomi::extractor::param;
 
     let mut server = test_server(
-        App::builder()
-            .route(
-                Route::get("/:id/:name/*path")
-                    .with(param::pos(0))
-                    .with(param::named("name"))
-                    .with(param::wildcard())
-                    .reply(|id: u32, name: String, path: String| {
-                        format!("{},{},{}", id, name, path)
-                    }),
-            ) //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::get("/:id/:name/*path")?
+                        .with(param::pos(0))
+                        .with(param::named("name"))
+                        .with(param::wildcard())
+                        .reply(|id: u32, name: String, path: String| {
+                            format!("{},{},{}", id, name, path)
+                        }),
+                ) //
+                .finish()
+        }.unwrap(),
     );
 
     let response = server
@@ -74,14 +75,15 @@ fn route_macros() {
 #[test]
 fn plain_body() {
     let mut server = test_server(
-        App::builder()
-            .route(
-                Route::post("/")
-                    .with(extractor::body::plain())
-                    .reply(|body: String| body),
-            ) //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::post("/")?
+                        .with(extractor::body::plain())
+                        .reply(|body: String| body),
+                ) //
+                .finish()
+        }.unwrap(),
     );
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
@@ -125,14 +127,15 @@ fn json_body() {
         name: String,
     }
     let mut server = test_server(
-        App::builder()
-            .route(
-                Route::post("/")
-                    .with(extractor::body::json())
-                    .reply(|params: Params| format!("{},{}", params.id, params.name)),
-            ) //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::post("/")?
+                        .with(extractor::body::json())
+                        .reply(|params: Params| format!("{},{}", params.id, params.name)),
+                ) //
+                .finish()
+        }.unwrap(),
     );
 
     let response = server
@@ -176,14 +179,15 @@ fn urlencoded_body() {
         name: String,
     }
     let mut server = test_server(
-        App::builder()
-            .route(
-                Route::post("/")
-                    .with(extractor::body::urlencoded())
-                    .reply(|params: Params| format!("{},{}", params.id, params.name)),
-            ) //
-            .finish()
-            .unwrap(),
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::post("/")?
+                        .with(extractor::body::urlencoded())
+                        .reply(|params: Params| format!("{},{}", params.id, params.name)),
+                ) //
+                .finish()
+        }.unwrap(),
     );
 
     const BODY: &[u8] = b"id=23&name=bob";
@@ -221,9 +225,10 @@ fn urlencoded_body() {
 
 #[test]
 fn local_data() {
-    use tsukuyomi::app::modifier::{BeforeHandle, Modifier};
+    use tsukuyomi::app::{AsyncResult, Modifier};
     use tsukuyomi::input::local_map::local_key;
     use tsukuyomi::input::Input;
+    use tsukuyomi::output::Output;
 
     #[derive(Clone)]
     struct MyData(String);
@@ -234,11 +239,11 @@ fn local_data() {
 
     struct MyModifier;
     impl Modifier for MyModifier {
-        fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
+        fn before_handle(&self, input: &mut Input<'_>) -> AsyncResult<Option<Output>> {
             input
                 .locals_mut()
                 .insert(&MyData::KEY, MyData("dummy".into()));
-            BeforeHandle::ready(Ok(None))
+            AsyncResult::ready(Ok(None))
         }
     }
 
@@ -292,22 +297,23 @@ fn optional() {
         name: String,
     }
 
-    let mut server = test_server({
-        App::builder()
-            .route(
-                Route::post("/")
-                    .with(extractor::body::json().optional())
-                    .handle(|params: Option<Params>| {
-                        if let Some(params) = params {
-                            Ok(format!("{},{}", params.id, params.name))
-                        } else {
-                            Err(tsukuyomi::error::internal_server_error("####none####"))
-                        }
-                    }),
-            ) //
-            .finish()
-            .unwrap()
-    });
+    let mut server = test_server(
+        try_expr!{
+            App::builder()
+                .route(
+                    Route::post("/")?
+                        .with(extractor::body::json().optional())
+                        .handle(|params: Option<Params>| {
+                            if let Some(params) = params {
+                                Ok(format!("{},{}", params.id, params.name))
+                            } else {
+                                Err(tsukuyomi::error::internal_server_error("####none####"))
+                            }
+                        }),
+                ) //
+                .finish()
+        }.unwrap(),
+    );
 
     let response = server
         .perform(
@@ -340,16 +346,17 @@ fn either_or() {
         .or(extractor::verb::post(extractor::body::json()))
         .or(extractor::verb::post(extractor::body::urlencoded()));
 
-    let mut server = test_server({
-        App::builder()
-            .route(
-                Route::post("/")
-                    .with(params_extractor)
-                    .reply(|params: Params| format!("{},{}", params.id, params.name)),
-            ) //
-            .finish()
-            .unwrap()
-    });
+    let mut server = test_server(
+        try_expr! {
+            App::builder()
+                .route(
+                    Route::post("/")?
+                        .with(params_extractor)
+                        .reply(|params: Params| format!("{},{}", params.id, params.name)),
+                ) //
+                .finish()
+        }.unwrap(),
+    );
 
     let response = server
         .perform(

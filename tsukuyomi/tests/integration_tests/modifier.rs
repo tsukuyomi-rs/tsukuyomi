@@ -1,5 +1,5 @@
-use tsukuyomi::app::modifier::{AfterHandle, BeforeHandle, Modifier};
-use tsukuyomi::app::{App, Route};
+use tsukuyomi::app::{App, Route, Scope};
+use tsukuyomi::app::{AsyncResult, Modifier};
 use tsukuyomi::error::internal_server_error;
 use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
@@ -24,11 +24,11 @@ where
     T1: Fn(&mut Vec<&'static str>) -> Result<Option<Output>, Error>,
     T2: Fn(&mut Vec<&'static str>) -> Result<Output, Error>,
 {
-    fn before_handle(&self, _: &mut Input) -> BeforeHandle {
+    fn before_handle(&self, _: &mut Input) -> AsyncResult<Option<Output>> {
         (self.before)(&mut *self.marker.lock().unwrap()).into()
     }
 
-    fn after_handle(&self, _: &mut Input, _: Result<Output, Error>) -> AfterHandle {
+    fn after_handle(&self, _: &mut Input, _: Result<Output, Error>) -> AsyncResult<Output> {
         (self.after)(&mut *self.marker.lock().unwrap()).into()
     }
 }
@@ -145,6 +145,7 @@ fn scoped_modifier() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
+        try_expr! {
         App::builder()
             .modifier(MarkModifier {
                 marker: marker.clone(),
@@ -157,7 +158,7 @@ fn scoped_modifier() {
                     Ok(Response::new(ResponseBody::empty()))
                 },
             }) //
-            .mount("/path1", |s| {
+            .mount("/path1", |s: &mut Scope<'_>| {
                 s.modifier(MarkModifier {
                     marker: marker.clone(),
                     before: |m| {
@@ -177,8 +178,8 @@ fn scoped_modifier() {
                     }
                 })) //
                 .done()
-            }).unwrap() //
-            .route(Route::get("/path2").reply({
+            })? //
+            .route(Route::get("/path2")?.reply({
                 let marker = marker.clone();
                 move || {
                     marker.lock().unwrap().push("H2");
@@ -186,7 +187,7 @@ fn scoped_modifier() {
                 }
             })) //
             .finish()
-            .unwrap(),
+        }.unwrap(),
     );
 
     let _ = server.perform(Request::get("/path1")).unwrap();
@@ -202,64 +203,65 @@ fn nested_modifiers() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        App::builder()
-            .mount("/path", |s| {
-                s.modifier(MarkModifier {
-                    marker: marker.clone(),
-                    before: |m| {
-                        m.push("B1");
-                        Ok(None)
-                    },
-                    after: |m| {
-                        m.push("A1");
-                        Ok(Response::new(ResponseBody::empty()))
-                    },
-                }) //
-                .mount("/to", |s| {
+        try_expr! {
+            App::builder()
+                .mount("/path", |s: &mut Scope<'_>| {
                     s.modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
-                            m.push("B2");
+                            m.push("B1");
                             Ok(None)
                         },
                         after: |m| {
-                            m.push("A2");
+                            m.push("A1");
                             Ok(Response::new(ResponseBody::empty()))
                         },
                     }) //
-                    .route(Route::index().reply({
-                        let marker = marker.clone();
-                        move || {
-                            marker.lock().unwrap().push("H1");
-                            ""
-                        }
-                    })) //
-                    .mount("/a", |s| {
+                    .mount("/to", |s: &mut Scope<'_>| {
                         s.modifier(MarkModifier {
                             marker: marker.clone(),
                             before: |m| {
-                                m.push("B3");
-                                Ok(Some(Response::new(ResponseBody::empty())))
+                                m.push("B2");
+                                Ok(None)
                             },
                             after: |m| {
-                                m.push("A3");
+                                m.push("A2");
                                 Ok(Response::new(ResponseBody::empty()))
                             },
                         }) //
                         .route(Route::index().reply({
                             let marker = marker.clone();
                             move || {
-                                marker.lock().unwrap().push("H2");
+                                marker.lock().unwrap().push("H1");
                                 ""
                             }
                         })) //
+                        .mount("/a", |s: &mut Scope<'_>| {
+                            s.modifier(MarkModifier {
+                                marker: marker.clone(),
+                                before: |m| {
+                                    m.push("B3");
+                                    Ok(Some(Response::new(ResponseBody::empty())))
+                                },
+                                after: |m| {
+                                    m.push("A3");
+                                    Ok(Response::new(ResponseBody::empty()))
+                                },
+                            }) //
+                            .route(Route::index().reply({
+                                let marker = marker.clone();
+                                move || {
+                                    marker.lock().unwrap().push("H2");
+                                    ""
+                                }
+                            })) //
+                            .done()
+                        })? //
                         .done()
-                    })? //
-                    .done()
-                })?.done()
-            }).unwrap() //
-            .finish()
-            .unwrap(),
+                    })?.done()
+                })? //
+                .finish()
+        }.unwrap(),
     );
 
     let _ = server.perform(Request::get("/path/to")).unwrap();

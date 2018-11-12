@@ -10,6 +10,7 @@ fn main() {
     let app = App::builder()
         .route(
             Route::get("/ws")
+                .unwrap()
                 .with(tsukuyomi_websocket::extractor())
                 .reply(|ws: Ws| {
                     ws.finish(|transport| {

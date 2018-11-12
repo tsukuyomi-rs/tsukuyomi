@@ -17,8 +17,7 @@ use crate::output::{Output, ResponseBody};
 use crate::server::service::http::Payload;
 use crate::server::CritError;
 
-use super::handler::Handle;
-use super::modifier::{AfterHandle, BeforeHandle};
+use super::handler::AsyncResult;
 use super::route::{RouteData, RouteId};
 use super::App;
 
@@ -139,17 +138,17 @@ enum AppFutureState {
     Init(RequestBody),
     BeforeHandle {
         context: AppContext,
-        in_flight: BeforeHandle,
+        in_flight: AsyncResult<Option<Output>>,
         pos: usize,
     },
     Handle {
         context: AppContext,
-        in_flight: Handle,
+        in_flight: AsyncResult<Output>,
         pos: usize,
     },
     AfterHandle {
         context: AppContext,
-        in_flight: AfterHandle,
+        in_flight: AsyncResult<Output>,
         pos: usize,
     },
     Done,

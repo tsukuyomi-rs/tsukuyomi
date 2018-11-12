@@ -1,6 +1,6 @@
 use futures::{try_ready, Async};
 
-use tsukuyomi::app::modifier::{AfterHandle, BeforeHandle, Modifier};
+use tsukuyomi::app::{AsyncResult, Modifier};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Output;
 
@@ -29,10 +29,10 @@ impl<B> Modifier for SessionStorage<B>
 where
     B: Backend,
 {
-    fn before_handle(&self, input: &mut Input<'_>) -> BeforeHandle {
+    fn before_handle(&self, input: &mut Input<'_>) -> AsyncResult<Option<Output>> {
         let mut read_future = self.backend.read(input);
 
-        BeforeHandle::polling(move |input| {
+        AsyncResult::polling(move |input| {
             let session_inner = try_ready!(read_future.poll_read(input));
             input.locals_mut().insert(&SessionInner::KEY, session_inner);
             Ok(Async::Ready(None))
@@ -43,7 +43,7 @@ where
         &self,
         input: &mut Input<'_>,
         result: tsukuyomi::error::Result<Output>,
-    ) -> AfterHandle {
+    ) -> AsyncResult<Output> {
         match result {
             Ok(output) => {
                 let session_inner = input
@@ -52,13 +52,13 @@ where
                     .expect("should be Some");
                 let mut write_future = self.backend.write(input, session_inner);
                 let mut output_opt = Some(output);
-                AfterHandle::polling(move |input| {
+                AsyncResult::polling(move |input| {
                     try_ready!(write_future.poll_write(input));
                     let output = output_opt.take().unwrap();
                     Ok(Async::Ready(output))
                 })
             }
-            Err(err) => AfterHandle::ready(Err(err)),
+            Err(err) => AsyncResult::ready(Err(err)),
         }
     }
 }

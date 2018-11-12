@@ -11,6 +11,7 @@ fn compiletest() {
         App::builder()
             .route(
                 Route::get("/ws")
+                    .unwrap()
                     .with(tsukuyomi_websocket::extractor())
                     .handle(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
             ) //

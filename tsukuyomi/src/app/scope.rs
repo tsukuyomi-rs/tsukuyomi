@@ -3,9 +3,9 @@ use std::fmt;
 use crate::internal::scoped_map::ScopeId;
 use crate::internal::uri::Uri;
 
-use super::modifier::Modifier;
+use super::handler::Modifier;
 use super::route::Route;
-use super::{AppBuilder, AppResult};
+use super::{AppBuilder, AppError, AppResult};
 
 pub(super) struct ScopeData {
     pub(super) id: ScopeId,
@@ -44,6 +44,36 @@ impl fmt::Debug for ScopeBuilder {
     }
 }
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub trait ScopeConfig {
+    type Error: Into<AppError>;
+
+    fn configure(self, cx: &mut Scope<'_>) -> Result<(), Self::Error>;
+}
+
+impl<F, E> ScopeConfig for F
+where
+    F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
+    E: Into<AppError>,
+{
+    type Error = E;
+
+    fn configure(self, cx: &mut Scope<'_>) -> Result<(), Self::Error> {
+        (self)(cx)
+    }
+}
+
+impl ScopeConfig for Vec<Route> {
+    type Error = crate::error::Never;
+
+    fn configure(self, cx: &mut Scope<'_>) -> Result<(), Self::Error> {
+        for route in self {
+            cx.route(route);
+        }
+        Ok(())
+    }
+}
+
 /// A proxy object for configuration of a scope.
 #[derive(Debug)]
 pub struct Scope<'a> {
@@ -64,12 +94,11 @@ impl<'a> Scope<'a> {
 
     /// Create a new scope mounted to the certain URI.
     #[inline]
-    pub fn mount<F, E>(&mut self, prefix: &str, f: F) -> AppResult<&mut Self>
+    pub fn mount<S>(&mut self, prefix: &str, scope: S) -> AppResult<&mut Self>
     where
-        F: FnOnce(&mut Scope<'_>) -> Result<(), E>,
-        E: Into<failure::Error>,
+        S: ScopeConfig,
     {
-        self.builder.new_scope(self.id, prefix, f)?;
+        self.builder.new_scope(self.id, prefix, scope)?;
         Ok(self)
     }
 

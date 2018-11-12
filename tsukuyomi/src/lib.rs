@@ -52,22 +52,6 @@ pub fn route() -> crate::app::route::Builder<()> {
     crate::app::route::Route::builder()
 }
 
-#[macro_export(local_inner_macros)]
-macro_rules! route {
-    ($uri:expr) => {{
-        enum __Dummy {}
-        impl __Dummy {
-            route_expr_impl!($uri);
-        }
-        __Dummy::route()
-    }};
-    ($uri:expr, methods = [$($methods:expr),*]) => {
-        route!($uri)
-            $( .method($methods) )*
-    };
-    () => ( $crate::route() );
-}
-
 #[allow(missing_docs)]
 pub mod rt {
     pub use tsukuyomi_server::rt::*;
