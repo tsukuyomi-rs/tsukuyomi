@@ -44,7 +44,8 @@ use walkdir::{FilterEntry, WalkDir};
 #[doc(no_inline)]
 pub use walkdir::DirEntry;
 
-use tsukuyomi::app::{AppError, AppResult, Route, Scope, ScopeConfig};
+use tsukuyomi::app::scope::{ScopeConfig, ScopeContext};
+use tsukuyomi::app::{AppError, AppResult};
 use tsukuyomi::error::Error;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Responder, ResponseBody};
@@ -499,7 +500,7 @@ where
 {
     type Error = AppError;
 
-    fn configure(self, scope: &mut Scope<'_>) -> AppResult<()> {
+    fn configure(self, cx: &mut ScopeContext<'_>) -> AppResult<()> {
         let Self { walkdir, config } = self;
         for entry in walkdir {
             let entry = entry?;
@@ -508,14 +509,18 @@ where
                 let path = entry.path().canonicalize()?;
 
                 let config = config.clone();
-                scope.route(Route::get(&prefix)?.handle(move || {
-                    if let Some(ref config) = config {
-                        NamedFile::open_with_config(path.clone(), config.clone())
-                            .map_err(Into::into)
-                    } else {
-                        NamedFile::open(path.clone()).map_err(Into::into)
-                    }
-                }));
+                cx.route(
+                    tsukuyomi::app::route::builder()
+                        .uri(prefix.parse()?)
+                        .handle(move || {
+                            if let Some(ref config) = config {
+                                NamedFile::open_with_config(path.clone(), config.clone())
+                                    .map_err(Into::into)
+                            } else {
+                                NamedFile::open(path.clone()).map_err(Into::into)
+                            }
+                        }),
+                )?;
             }
         }
         Ok(())

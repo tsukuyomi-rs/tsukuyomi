@@ -30,12 +30,12 @@ tsukuyomi = "0.4.0-dev"
 ```rust,no_run
 extern crate tsukuyomi;
 
-use tsukuyomi::app::{App, Route};
+use tsukuyomi::app::{App, route};
 
 fn main() {
     let app = App::builder()
         .route(
-            Route::index()
+            route!()
                 .reply(|| "Hello, world.\n")
         )
         .finish()

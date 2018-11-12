@@ -14,10 +14,11 @@ fn main() {
                     NamedFile::open(concat!(env!("CARGO_MANIFEST_DIR"), "/static/index.html"))
                         .map_err(Into::into)
                 }),
-        ).mount(
+        ) //
+        .mount(
             "/static",
             Staticfiles::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")),
-        ).unwrap() //
+        ) //
         .finish()
         .unwrap();
 

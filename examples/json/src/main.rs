@@ -24,7 +24,7 @@ fn main() {
                 }),
         ) //
         .route(
-            route!("/", methods = ["POST"])
+            route!("/", method = POST)
                 .with(extractor::body::json())
                 .reply(|user: User| user),
         ) //

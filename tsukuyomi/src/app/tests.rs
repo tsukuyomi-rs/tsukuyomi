@@ -1,20 +1,12 @@
-use super::*;
+use crate::app::{route, scope, App, RecognizeError, RouteId};
+use crate::internal::scoped_map::ScopeId;
 
 use http::Method;
 use matches::assert_matches;
 
-macro_rules! try_expr {
-    ($body:expr) => {{
-        #[cfg_attr(feature = "cargo-clippy", allow(redundant_closure_call))]
-        (|| $body)()
-    }};
-}
-
 #[test]
 fn empty() {
-    let app = try_expr! {
-        App::builder().finish()
-    }.unwrap();
+    let app = App::builder().finish().unwrap();
     assert_matches!(
         app.recognize("/", &Method::GET),
         Err(RecognizeError::NotFound)
@@ -23,11 +15,10 @@ fn empty() {
 
 #[test]
 fn route_single_method() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::index().reply(|| ""))
-            .finish()
-    }.unwrap();
+    let app = App::builder()
+        .route(route::builder().reply(|| ""))
+        .finish()
+        .unwrap();
 
     assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
 
@@ -43,12 +34,11 @@ fn route_single_method() {
 
 #[test]
 fn route_multiple_method() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::get("/")?.reply(|| ""))
-            .route(Route::post("/")?.reply(|| ""))
-            .finish()
-    }.unwrap();
+    let app = App::builder()
+        .route(route::builder().reply(|| ""))
+        .route(route::builder().method(Method::POST).reply(|| ""))
+        .finish()
+        .unwrap();
 
     assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
     assert_matches!(app.recognize("/", &Method::POST), Ok((1, ..)));
@@ -61,25 +51,23 @@ fn route_multiple_method() {
 
 #[test]
 fn route_fallback_head_enabled() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::index().reply(|| ""))
-            .finish()
-    }.unwrap();
+    let app = App::builder()
+        .route(route::builder().reply(|| ""))
+        .finish()
+        .unwrap();
 
     assert_matches!(app.recognize("/", &Method::HEAD), Ok((0, ..)));
 }
 
 #[test]
 fn route_fallback_head_disabled() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::index().reply(|| ""))
-            .config(|cfg| {
-                cfg.fallback_head(false);
-            }) //
-            .finish()
-    }.unwrap();
+    let app = App::builder()
+        .route(route::builder().reply(|| ""))
+        .config(|cfg| {
+            cfg.fallback_head(false);
+        }) //
+        .finish()
+        .unwrap();
 
     assert_matches!(
         app.recognize("/", &Method::HEAD),
@@ -89,13 +77,17 @@ fn route_fallback_head_disabled() {
 
 #[test]
 fn route_fallback_options_enabled() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::get("/")?.reply(|| "")) // 0
-            .route(Route::post("/")?.reply(|| "")) // 1
-            .route(Route::options("/options")?.reply(|| "")) // 2
-            .finish()
-    }.unwrap();
+    let app = App::builder()
+        .route(route::builder().reply(|| "")) // 0
+        .route(route::builder().method(Method::POST).reply(|| "")) // 1
+        .route(
+            route::builder()
+                .uri("/options".parse().unwrap())
+                .method(Method::OPTIONS)
+                .reply(|| ""),
+        ) // 2
+        .finish()
+        .unwrap();
 
     assert_matches!(app.recognize("/", &Method::OPTIONS), Ok((3, ..)));
     assert_matches!(app.recognize("/options", &Method::OPTIONS), Ok((2, ..)));
@@ -103,16 +95,14 @@ fn route_fallback_options_enabled() {
 
 #[test]
 fn route_fallback_options_disabled() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::index().reply(|| ""))
-            .route(Route::post("/")?.reply(|| ""))
-            .config(|cfg| {
-                cfg.fallback_options(false);
-            }) //
-            .finish()
-    } //
-    .unwrap();
+    let app = App::builder()
+        .route(route::builder().reply(|| ""))
+        .route(route::builder().method(Method::POST).reply(|| ""))
+        .config(|cfg| {
+            cfg.fallback_options(false);
+        }) //
+        .finish()
+        .unwrap();
 
     assert_matches!(
         app.recognize("/", &Method::OPTIONS),
@@ -122,23 +112,20 @@ fn route_fallback_options_disabled() {
 
 #[test]
 fn scope_simple() {
-    let app = try_expr! {
-        App::builder()
-            .mount("/", |s: &mut Scope<'_>| {
-                s.route(Route::get("/a")?.reply(|| ""));
-                s.route(Route::get("/b")?.reply(|| ""));
-                s.done()
-        })? //
-        .route(Route::get("/foo")?.reply(|| ""))
-        .mount("/c", |scope: &mut Scope<'_>| {
-            scope
-                .route(Route::get("/d")?.reply(|| ""))
-                .route(Route::get("/e")?.reply(|| ""))
-                .done()
-        })? //
+    let app = App::builder()
+        .mount("/", {
+            scope::builder()
+                .route(route::builder().uri("/a".parse().unwrap()).reply(|| ""))
+                .route(route::builder().uri("/b".parse().unwrap()).reply(|| ""))
+        }) //
+        .route(route::builder().uri("/foo".parse().unwrap()).reply(|| ""))
+        .mount("/c", {
+            scope::builder()
+                .route(route::builder().uri("/d".parse().unwrap()).reply(|| ""))
+                .route(route::builder().uri("/e".parse().unwrap()).reply(|| ""))
+        }) //
         .finish()
-    } //
-    .unwrap();
+        .unwrap();
 
     assert_matches!(app.recognize("/a", &Method::GET), Ok((0, ..)));
     assert_matches!(app.recognize("/b", &Method::GET), Ok((1, ..)));
@@ -149,28 +136,26 @@ fn scope_simple() {
 
 #[test]
 fn scope_nested() {
-    let app = try_expr! {
-        App::builder()
-            .mount("/", |scope: &mut Scope<'_>| {
-                scope
-                    .route(Route::get("/foo")?.reply(|| "")) // /foo
-                    .route(Route::get("/bar")?.reply(|| "")) // /bar
-                    .done()
-            })? //
-            .mount("/baz", |scope: &mut Scope<'_>| {
-                scope
-                    .route(Route::index().reply(|| "")) // /baz
-                    .mount("/", |scope: &mut Scope<'_>| {
-                        scope
-                            .route(Route::get("/foobar")?.reply(|| "")) // /baz/foobar
-                            .done()
-                    })? //
-                    .done()
-            })? //
-            .route(Route::get("/hoge")?.reply(|| "")) // /hoge
-            .finish()
-    } //
-    .unwrap();
+    let app = App::builder()
+        .mount("/", {
+            scope::builder()
+                .route(route::builder().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
+                .route(route::builder().uri("/bar".parse().unwrap()).reply(|| "")) // /bar
+        }) //
+        .mount("/baz", {
+            scope::builder()
+                .route(route::builder().reply(|| "")) // /baz
+                .mount("/", {
+                    scope::builder().route(
+                        route::builder()
+                            .uri("/foobar".parse().unwrap())
+                            .reply(|| ""),
+                    ) // /baz/foobar
+                }) //
+        }) //
+        .route(route::builder().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
+        .finish()
+        .unwrap();
 
     assert_matches!(app.recognize("/foo", &Method::GET), Ok((0, ..)));
     assert_matches!(app.recognize("/bar", &Method::GET), Ok((1, ..)));
@@ -186,47 +171,42 @@ fn scope_nested() {
 
 #[test]
 fn scope_variable() {
-    let app = try_expr! {
-        App::builder()
-            .state::<String>("G".into())
-            .route(Route::get("/rg")?.reply(|| ""))
-            .mount("/s0", |scope: &mut Scope<'_>| {
-                scope
-                    .route(Route::get("/r0")?.reply(|| ""))
-                    .mount("/s1", |scope: &mut Scope<'_>| {
-                        scope
-                            .state::<String>("A".into())
-                            .route(Route::get("/r1")?.reply(|| ""))
-                            .done()
-                    })? //
-                    .done()
-            })? //
-            .mount("/s2", |scope: &mut Scope<'_>| {
-                scope
-                    .state::<String>("B".into())
-                    .route(Route::get("/r2")?.reply(|| ""))
-                    .mount("/s3", |scope: &mut Scope<'_>| {
-                        scope
-                            .state::<String>("C".into())
-                            .route(Route::get("/r3")?.reply(|| ""))
-                            .mount("/s4", |scope: &mut Scope<'_>| {
-                                scope.route(Route::get("/r4")?.reply(|| "")).done()
-                            })? //
-                            .done()
-                    })? //
-                    .mount("/s5", |scope: &mut Scope<'_>| {
-                        scope
-                            .route(Route::get("/r5")?.reply(|| ""))
-                            .mount("/s6", |scope: &mut Scope<'_>| {
-                                scope.route(Route::get("/r6")?.reply(|| "")).done()
-                            })? //
-                            .done()
-                    })? //
-                    .done()
-            })? //
-            .finish()
-    } //
-    .unwrap();
+    let app = App::builder()
+        .state::<String>("G".into())
+        .route(route::builder().uri("/rg".parse().unwrap()).reply(|| ""))
+        .mount("/s0", {
+            scope::builder()
+                .route(route::builder().uri("/r0".parse().unwrap()).reply(|| ""))
+                .mount("/s1", {
+                    scope::builder()
+                        .state::<String>("A".into())
+                        .route(route::builder().uri("/r1".parse().unwrap()).reply(|| ""))
+                })
+        }) //
+        .mount("/s2", {
+            scope::builder()
+                .state::<String>("B".into())
+                .route(route::builder().uri("/r2".parse().unwrap()).reply(|| ""))
+                .mount("/s3", {
+                    scope::builder()
+                        .state::<String>("C".into())
+                        .route(route::builder().uri("/r3".parse().unwrap()).reply(|| ""))
+                        .mount("/s4", {
+                            scope::builder()
+                                .route(route::builder().uri("/r4".parse().unwrap()).reply(|| ""))
+                        })
+                }) //
+                .mount("/s5", {
+                    scope::builder()
+                        .route(route::builder().uri("/r5".parse().unwrap()).reply(|| ""))
+                        .mount("/s6", {
+                            scope::builder()
+                                .route(route::builder().uri("/r6".parse().unwrap()).reply(|| ""))
+                        })
+                }) //
+        }) //
+        .finish()
+        .unwrap();
 
     assert_eq!(
         app.get_state(RouteId(ScopeId::Global, 0))
@@ -272,24 +252,20 @@ fn scope_variable() {
 
 #[test]
 fn failcase_duplicate_uri_and_method() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::get("/path")?.reply(|| ""))
-            .route(Route::get("/path")?.reply(|| ""))
-            .finish()
-    };
+    let app = App::builder()
+        .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
+        .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
+        .finish();
     assert!(app.is_err());
 }
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() {
-    let app = try_expr! {
-        App::builder()
-            .route(Route::get("/path")?.reply(|| ""))
-            .mount("/", |scope: &mut Scope<'_>| {
-                scope.route(Route::get("/path")?.reply(|| "")).done()
-            })? //
-            .finish()
-    };
+    let app = App::builder()
+        .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
+        .mount("/", {
+            scope::builder().route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
+        }) //
+        .finish();
     assert!(app.is_err());
 }

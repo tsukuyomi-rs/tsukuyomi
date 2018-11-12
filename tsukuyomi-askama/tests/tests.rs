@@ -32,7 +32,7 @@ fn test_template() {
     let mut server = test_server(
         App::builder()
             .route(
-                tsukuyomi::app::Route::index() //
+                tsukuyomi::route!("/") //
                     .reply(|| assert_impl(Index { name: "Alice" })),
             ) //
             .finish()

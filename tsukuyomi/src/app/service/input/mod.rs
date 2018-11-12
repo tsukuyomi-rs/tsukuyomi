@@ -37,7 +37,7 @@ pub struct Input<'task> {
 }
 
 impl<'task> Input<'task> {
-    pub(crate) fn new(
+    pub(super) fn new(
         request: &'task Request<()>,
         app: &'task App,
         context: &'task mut AppContext,

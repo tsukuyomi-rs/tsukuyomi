@@ -1,95 +1,22 @@
-use std::fmt;
-
 use futures::{Async, Future, IntoFuture};
-use http::{HttpTryFrom, Method};
 use indexmap::IndexSet;
 
 use crate::error::Error;
 use crate::extractor::{And, Combine, Extractor, ExtractorExt, Func};
-use crate::internal::scoped_map::ScopeId;
 use crate::internal::uri::Uri;
 use crate::output::Responder;
 
 use super::handler::{AsyncResult, Handler};
-use super::{AppResult, ModifierId};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
+#[doc(hidden)]
+pub use http::Method;
 
-pub(crate) struct RouteData {
-    pub(super) id: RouteId,
-    pub(super) uri: Uri,
-    pub(super) methods: IndexSet<Method>,
-    pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
-    pub(super) modifier_ids: Vec<ModifierId>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for RouteData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RouteData")
-            .field("id", &self.id)
-            .field("uri", &self.uri)
-            .field("methods", &self.methods)
-            .field("modifier_ids", &self.modifier_ids)
-            .finish()
-    }
-}
-
-/// The type representing a route of HTTP application.
-pub struct Route {
-    pub(super) methods: IndexSet<Method>,
-    pub(super) uri: Uri,
-    pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
-}
-
-impl fmt::Debug for Route {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Route")
-            .field("methods", &self.methods)
-            .field("uri", &self.uri)
-            .finish()
-    }
-}
-
-macro_rules! define_route {
-    ($($method:ident => $METHOD:ident,)*) => {$(
-        pub fn $method<T>(uri: T) -> AppResult<Builder<()>>
-        where
-            T: AsRef<str>,
-        {
-            Self::builder()
-                .uri(uri)?
-                .method(http::Method::$METHOD)
-        }
-    )*}
-}
-
-impl Route {
-    /// Creates a builder of this type.
-    pub fn builder() -> Builder<()> {
-        Builder {
-            extractor: (),
-            uri: Uri::root(),
-            methods: IndexSet::new(),
-        }
-    }
-
-    #[inline]
-    pub fn index() -> Builder<()> {
-        Self::builder()
-    }
-
-    define_route! {
-        get => GET,
-        post => POST,
-        put => PUT,
-        delete => DELETE,
-        head => HEAD,
-        options => OPTIONS,
-        connect => CONNECT,
-        patch => PATCH,
-        trace => TRACE,
+/// Creates a builder of this type.
+pub fn builder() -> Builder<()> {
+    Builder {
+        extractor: (),
+        uri: Uri::root(),
+        methods: IndexSet::new(),
     }
 }
 
@@ -110,49 +37,35 @@ where
     E: Extractor,
 {
     /// Sets the URI of this route.
-    pub fn uri<U>(self, uri: U) -> AppResult<Self>
-    where
-        U: AsRef<str>,
-    {
-        Ok(Self {
-            uri: uri.as_ref().parse()?,
-            ..self
-        })
+    pub fn uri(self, uri: Uri) -> Self {
+        Self { uri, ..self }
     }
 
     /// Sets the method of this route.
-    pub fn method<M>(self, method: M) -> AppResult<Self>
-    where
-        Method: HttpTryFrom<M>,
-    {
-        Ok(Self {
+    pub fn method(self, method: Method) -> Self {
+        Self {
             methods: {
                 let mut methods = self.methods;
-                let method = Method::try_from(method).map_err(Into::into)?;
                 methods.insert(method);
                 methods
             },
             ..self
-        })
+        }
     }
 
     /// Sets the HTTP methods of this route.
-    pub fn methods<I, M>(self, methods: I) -> AppResult<Self>
+    pub fn methods<I>(self, methods: I) -> Self
     where
-        I: IntoIterator<Item = M>,
-        Method: HttpTryFrom<M>,
+        I: IntoIterator<Item = Method>,
     {
-        Ok(Self {
+        Self {
             methods: {
                 let mut orig_methods = self.methods;
-                for method in methods {
-                    let method = Method::try_from(method).map_err(Into::into)?;
-                    orig_methods.insert(method);
-                }
+                orig_methods.extend(methods);
                 orig_methods
             },
             ..self
-        })
+        }
     }
 
     /// Appends an `Extractor` to this builder.
@@ -169,28 +82,23 @@ where
         }
     }
 
-    fn finish<F, H>(self, f: F) -> Route
+    fn finish<F, H>(self, f: F) -> impl RouteConfig
     where
         F: FnOnce(E) -> H,
         H: Handler + Send + Sync + 'static,
     {
-        let Self {
-            extractor,
-            uri,
-            methods,
-        } = self;
-
-        Route {
-            methods,
-            uri,
-            handler: Box::new(f(extractor)),
+        move |cx: &mut RouteContext| {
+            let handler = f(self.extractor);
+            cx.methods(self.methods);
+            cx.uri(self.uri);
+            cx.handler(handler);
         }
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified handler function.
     ///
     /// The provided handler always succeeds and immediately returns a value of `Responder`.
-    pub fn reply<F>(self, handler: F) -> Route
+    pub fn reply<F>(self, handler: F) -> impl RouteConfig
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
@@ -216,7 +124,7 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified handler function.
     ///
     /// The result of provided handler is returned by `Future`.
-    pub fn handle<F, R>(self, handler: F) -> Route
+    pub fn handle<F, R>(self, handler: F) -> impl RouteConfig
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
         R: IntoFuture<Error = Error>,
@@ -244,7 +152,7 @@ where
 }
 
 impl Builder<()> {
-    pub fn raw<H>(self, handler: H) -> Route
+    pub fn raw<H>(self, handler: H) -> impl RouteConfig
     where
         H: Handler + Send + Sync + 'static,
     {
@@ -252,20 +160,75 @@ impl Builder<()> {
     }
 }
 
+#[allow(missing_debug_implementations)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct RouteContext {
+    pub(super) uri: Uri,
+    pub(super) methods: Option<IndexSet<Method>>,
+    pub(super) handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
+}
+
+impl RouteContext {
+    fn uri(&mut self, uri: Uri) {
+        self.uri = uri;
+    }
+
+    fn methods<I>(&mut self, methods: I)
+    where
+        I: IntoIterator<Item = Method>,
+    {
+        self.methods = Some(methods.into_iter().collect());
+    }
+
+    fn handler<H>(&mut self, handler: H)
+    where
+        H: Handler + Send + Sync + 'static,
+    {
+        self.handler = Some(Box::new(handler));
+    }
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub trait RouteConfig {
+    fn configure(self, cx: &mut RouteContext);
+}
+
+impl<F> RouteConfig for F
+where
+    F: FnOnce(&mut RouteContext),
+{
+    fn configure(self, cx: &mut RouteContext) {
+        self(cx)
+    }
+}
+
 #[macro_export(local_inner_macros)]
 macro_rules! route {
-    ($uri:expr) => {{
+    (
+        $uri:expr
+            $(
+                , method = $METHOD:ident
+            )*
+            $(
+                , methods = [$($METHODS:ident),*]
+            )*
+    ) => {{
+        use $crate::app::route::Method;
         enum __Dummy {}
         impl __Dummy {
             route_expr_impl!($uri);
         }
         __Dummy::route()
+            $( .method(Method::$METHOD) )*
+            $( .methods(__tsukuyomi_vec![$(Method::$METHODS),*]) )*
     }};
-    ($uri:expr, methods = [$($methods:expr),*]) => {
-        route!($uri)
-            $( .method($methods).expect("should be validate by proc-macro") )*
-    };
-    () => ( $crate::route() );
+    () => ( $crate::app::route::builder() );
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __tsukuyomi_vec {
+    ($($t:tt)*) => (vec![$($t)*]);
 }
 
 #[cfg(test)]
@@ -273,8 +236,8 @@ mod tests {
     use super::*;
 
     fn generated() -> Builder<impl Extractor<Output = (u32, String)>> {
-        Route::get("/:id/:name")
-            .unwrap()
+        builder()
+            .uri("/:id/:name".parse().unwrap())
             .with(crate::extractor::param::pos(0))
             .with(crate::extractor::param::pos(1))
     }

@@ -94,7 +94,7 @@ mod responder {
 
         let mut server = test_server({
             tsukuyomi::app::App::builder()
-                .route(tsukuyomi::app::Route::index().reply(|| Foo("Foo".into())))
+                .route(tsukuyomi::app::route::builder().reply(|| Foo("Foo".into())))
                 .finish()
                 .unwrap()
         });

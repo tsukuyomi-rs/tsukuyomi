@@ -18,8 +18,7 @@ use crate::server::service::http::Payload;
 use crate::server::CritError;
 
 use super::handler::AsyncResult;
-use super::route::{RouteData, RouteId};
-use super::App;
+use super::{App, RouteData, RouteId};
 
 macro_rules! ready {
     ($e:expr) => {
@@ -56,7 +55,8 @@ impl HttpError for RecognizeError {
 }
 
 impl App {
-    pub(super) fn recognize(
+    #[doc(hidden)]
+    pub fn recognize(
         &self,
         path: &str,
         method: &Method,
@@ -344,27 +344,27 @@ impl Future for AppFuture {
 }
 
 #[derive(Debug)]
-pub(crate) struct AppContext {
+struct AppContext {
     body: Option<RequestBody>,
-    pub(crate) is_upgraded: bool,
+    is_upgraded: bool,
     route: RouteId,
-    pub(crate) captures: Option<Captures>,
-    pub(crate) locals: LocalMap,
+    captures: Option<Captures>,
+    locals: LocalMap,
     cookies: Option<CookieJar>,
     _priv: (),
 }
 
 impl AppContext {
-    pub(crate) fn route_id(&self) -> RouteId {
+    fn route_id(&self) -> RouteId {
         self.route
     }
 
-    pub(crate) fn route<'a>(&self, app: &'a App) -> &'a RouteData {
+    fn route<'a>(&self, app: &'a App) -> &'a RouteData {
         app.get_route(self.route)
             .expect("the route ID should be valid")
     }
 
-    pub(crate) fn init_cookie_jar(&mut self, h: &HeaderMap) -> Result<&mut CookieJar, Error> {
+    fn init_cookie_jar(&mut self, h: &HeaderMap) -> Result<&mut CookieJar, Error> {
         if let Some(ref mut jar) = self.cookies {
             return Ok(jar);
         }

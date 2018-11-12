@@ -47,12 +47,6 @@ pub use tsukuyomi_server::server::server;
 pub use tsukuyomi_server::test;
 
 #[allow(missing_docs)]
-#[inline]
-pub fn route() -> crate::app::route::Builder<()> {
-    crate::app::route::Route::builder()
-}
-
-#[allow(missing_docs)]
 pub mod rt {
     pub use tsukuyomi_server::rt::*;
 

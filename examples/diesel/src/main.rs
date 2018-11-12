@@ -17,7 +17,7 @@ use dotenv::dotenv;
 use std::env;
 use std::sync::Arc;
 
-use tsukuyomi::app::App;
+use tsukuyomi::app::{scope, App};
 use tsukuyomi::extractor;
 use tsukuyomi::extractor::ExtractorExt;
 use tsukuyomi::route;
@@ -43,7 +43,7 @@ fn main() {
             .optional()
             .map(|param: Option<Param>| param.unwrap_or_else(|| Param { count: 20 }));
 
-        route!("/", methods = ["GET"])
+        route!("/", method = GET)
             .with(parse_query)
             .with(db_conn.clone())
             .handle(|param: Param, conn: Conn| {
@@ -66,7 +66,7 @@ fn main() {
             body: String,
         }
 
-        route!("/", methods = ["POST"])
+        route!("/", method = POST)
             .with(extractor::body::json())
             .with(db_conn.clone())
             .handle(|param: Param, conn: Conn| {
@@ -86,7 +86,7 @@ fn main() {
             })
     };
 
-    let get_post = route!("/:id", methods = ["GET"]) //
+    let get_post = route!("/:id", method = GET) //
         .with(db_conn)
         .handle(|id: i32, conn: Conn| {
             tsukuyomi::rt::blocking_section(move || {
@@ -102,9 +102,13 @@ fn main() {
         });
 
     let app = App::builder()
-        .mount("/api/v1/posts", vec![get_posts, create_post, get_post])
-        .unwrap() //
-        .finish()
+        .mount(
+            "/api/v1/posts",
+            scope::builder()
+                .route(get_posts)
+                .route(create_post)
+                .route(get_post),
+        ).finish()
         .unwrap();
 
     tsukuyomi::server(app) //
