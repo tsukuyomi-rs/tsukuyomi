@@ -86,7 +86,7 @@ impl fmt::Debug for AppData {
 struct ScopeData {
     id: ScopeId,
     parent: ScopeId,
-    prefix: Uri,
+    prefix: Option<Uri>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
@@ -132,6 +132,10 @@ impl App {
         AppBuilder::default()
     }
 
+    pub fn with_prefix(prefix: &str) -> AppBuilder {
+        AppBuilder::with_prefix(prefix)
+    }
+
     fn uri(&self, id: RouteId) -> &Uri {
         &self.data.routes[id.1].uri
     }
@@ -174,6 +178,16 @@ impl App {
 pub struct AppBuilder<S: ScopeConfig = (), G: GlobalConfig = ()> {
     scope: S,
     global: G,
+    prefix: Option<String>,
+}
+
+impl AppBuilder<(), ()> {
+    pub fn with_prefix(prefix: &str) -> Self {
+        Self {
+            prefix: Some(prefix.to_owned()),
+            ..AppBuilder::default()
+        }
+    }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
@@ -187,9 +201,14 @@ where
         self,
         route: impl RouteConfig,
     ) -> AppBuilder<impl ScopeConfig<Error = AppError>, G> {
-        let Self { scope, global } = self;
+        let Self {
+            scope,
+            global,
+            prefix,
+        } = self;
         AppBuilder {
             global,
+            prefix,
             scope: self::scope::scope_config(move |cx| {
                 scope.configure(cx).map_err(Into::into)?;
                 cx.route(route)?;
@@ -201,15 +220,19 @@ where
     /// Creates a new scope mounted into the specified prefix onto the global scope.
     pub fn mount(
         self,
-        prefix: impl AsRef<str>,
         new_scope: impl ScopeConfig,
     ) -> AppBuilder<impl ScopeConfig<Error = AppError>, G> {
-        let Self { global, scope } = self;
+        let Self {
+            global,
+            scope,
+            prefix,
+        } = self;
         AppBuilder {
             global,
+            prefix,
             scope: self::scope::scope_config(move |cx| {
                 scope.configure(cx).map_err(Into::into)?;
-                cx.mount(prefix.as_ref(), new_scope)?;
+                cx.mount(new_scope)?;
                 Ok(())
             }),
         }
@@ -220,9 +243,14 @@ where
     where
         T: Send + Sync + 'static,
     {
-        let Self { scope, global } = self;
+        let Self {
+            scope,
+            global,
+            prefix,
+        } = self;
         AppBuilder {
             global,
+            prefix,
             scope: self::scope::scope_config(move |cx| {
                 scope.configure(cx)?;
                 cx.state(state);
@@ -236,9 +264,14 @@ where
     where
         M: Modifier + Send + Sync + 'static,
     {
-        let Self { global, scope } = self;
+        let Self {
+            global,
+            scope,
+            prefix,
+        } = self;
         AppBuilder {
             global,
+            prefix,
             scope: self::scope::scope_config(move |cx| {
                 scope.configure(cx)?;
                 cx.modifier(modifier);
@@ -252,9 +285,14 @@ where
     where
         F: FnOnce(&mut Global<'_>),
     {
-        let Self { global, scope } = self;
+        let Self {
+            global,
+            scope,
+            prefix,
+        } = self;
         AppBuilder {
             scope,
+            prefix,
             global: move |cx: &mut Global<'_>| {
                 global.configure(cx);
                 f(cx);
@@ -269,6 +307,9 @@ where
             .configure(&mut ScopeContext::new(&mut cx, ScopeId::Global))
             .map_err(Into::into)?;
         self.global.configure(&mut Global { cx: &mut cx });
+        if let Some(prefix) = self.prefix {
+            cx.set_prefix(ScopeId::Global, &prefix)?;
+        }
         cx.finish()
     }
 }

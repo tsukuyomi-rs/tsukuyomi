@@ -15,10 +15,7 @@ fn main() {
                         .map_err(Into::into)
                 }),
         ) //
-        .mount(
-            "/static",
-            Staticfiles::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")),
-        ) //
+        .mount(Staticfiles::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")).prefix("/static")) //
         .finish()
         .unwrap();
 

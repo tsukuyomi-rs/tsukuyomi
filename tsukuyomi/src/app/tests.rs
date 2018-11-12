@@ -113,17 +113,17 @@ fn route_fallback_options_disabled() {
 #[test]
 fn scope_simple() {
     let app = App::builder()
-        .mount("/", {
+        .mount(
             scope::builder()
                 .route(route::builder().uri("/a".parse().unwrap()).reply(|| ""))
-                .route(route::builder().uri("/b".parse().unwrap()).reply(|| ""))
-        }) //
+                .route(route::builder().uri("/b".parse().unwrap()).reply(|| "")),
+        ) //
         .route(route::builder().uri("/foo".parse().unwrap()).reply(|| ""))
-        .mount("/c", {
-            scope::builder()
+        .mount(
+            scope::with_prefix("/c")
                 .route(route::builder().uri("/d".parse().unwrap()).reply(|| ""))
-                .route(route::builder().uri("/e".parse().unwrap()).reply(|| ""))
-        }) //
+                .route(route::builder().uri("/e".parse().unwrap()).reply(|| "")),
+        ) //
         .finish()
         .unwrap();
 
@@ -137,22 +137,22 @@ fn scope_simple() {
 #[test]
 fn scope_nested() {
     let app = App::builder()
-        .mount("/", {
+        .mount(
             scope::builder()
                 .route(route::builder().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
-                .route(route::builder().uri("/bar".parse().unwrap()).reply(|| "")) // /bar
-        }) //
-        .mount("/baz", {
-            scope::builder()
+                .route(route::builder().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
+        ) //
+        .mount(
+            scope::with_prefix("/baz")
                 .route(route::builder().reply(|| "")) // /baz
-                .mount("/", {
+                .mount(
                     scope::builder().route(
                         route::builder()
-                            .uri("/foobar".parse().unwrap())
+                            .uri("/foobar".parse().unwrap()) // /baz/foobar
                             .reply(|| ""),
-                    ) // /baz/foobar
-                }) //
-        }) //
+                    ),
+                ), //
+        ) //
         .route(route::builder().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
         .finish()
         .unwrap();
@@ -174,37 +174,37 @@ fn scope_variable() {
     let app = App::builder()
         .state::<String>("G".into())
         .route(route::builder().uri("/rg".parse().unwrap()).reply(|| ""))
-        .mount("/s0", {
-            scope::builder()
+        .mount(
+            scope::with_prefix("/s0")
                 .route(route::builder().uri("/r0".parse().unwrap()).reply(|| ""))
-                .mount("/s1", {
-                    scope::builder()
+                .mount(
+                    scope::with_prefix("/s1")
                         .state::<String>("A".into())
-                        .route(route::builder().uri("/r1".parse().unwrap()).reply(|| ""))
-                })
-        }) //
-        .mount("/s2", {
-            scope::builder()
+                        .route(route::builder().uri("/r1".parse().unwrap()).reply(|| "")),
+                ),
+        ) //
+        .mount(
+            scope::with_prefix("/s2")
                 .state::<String>("B".into())
                 .route(route::builder().uri("/r2".parse().unwrap()).reply(|| ""))
-                .mount("/s3", {
-                    scope::builder()
+                .mount(
+                    scope::with_prefix("/s3")
                         .state::<String>("C".into())
                         .route(route::builder().uri("/r3".parse().unwrap()).reply(|| ""))
-                        .mount("/s4", {
-                            scope::builder()
-                                .route(route::builder().uri("/r4".parse().unwrap()).reply(|| ""))
-                        })
-                }) //
-                .mount("/s5", {
-                    scope::builder()
+                        .mount(
+                            scope::with_prefix("/s4")
+                                .route(route::builder().uri("/r4".parse().unwrap()).reply(|| "")),
+                        ),
+                ) //
+                .mount(
+                    scope::with_prefix("/s5")
                         .route(route::builder().uri("/r5".parse().unwrap()).reply(|| ""))
-                        .mount("/s6", {
-                            scope::builder()
-                                .route(route::builder().uri("/r6".parse().unwrap()).reply(|| ""))
-                        })
-                }) //
-        }) //
+                        .mount(
+                            scope::with_prefix("/s6")
+                                .route(route::builder().uri("/r6".parse().unwrap()).reply(|| "")),
+                        ),
+                ), //
+        ) //
         .finish()
         .unwrap();
 
@@ -263,9 +263,7 @@ fn failcase_duplicate_uri_and_method() {
 fn failcase_different_scope_at_the_same_uri() {
     let app = App::builder()
         .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
-        .mount("/", {
-            scope::builder().route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
-        }) //
+        .mount(scope::builder().route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))) //
         .finish();
     assert!(app.is_err());
 }

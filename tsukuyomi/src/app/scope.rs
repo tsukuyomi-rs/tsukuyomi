@@ -43,12 +43,23 @@ where
 }
 
 pub fn builder() -> ScopeBuilder<()> {
-    ScopeBuilder { config: () }
+    ScopeBuilder {
+        config: (),
+        prefix: None,
+    }
+}
+
+pub fn with_prefix(prefix: &str) -> ScopeBuilder<()> {
+    ScopeBuilder {
+        config: (),
+        prefix: Some(prefix.to_owned()),
+    }
 }
 
 #[derive(Debug)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct ScopeBuilder<S: ScopeConfig = ()> {
+    prefix: Option<String>,
     config: S,
 }
 
@@ -62,8 +73,9 @@ where
         self,
         route: impl RouteConfig,
     ) -> ScopeBuilder<impl ScopeConfig<Error = AppError>> {
-        let Self { config } = self;
+        let Self { config, prefix } = self;
         ScopeBuilder {
+            prefix,
             config: scope_config(move |scope| {
                 config.configure(scope).map_err(Into::into)?;
                 scope.route(route)?;
@@ -76,14 +88,14 @@ where
     #[inline]
     pub fn mount(
         self,
-        prefix: impl AsRef<str>,
         scope: impl ScopeConfig,
     ) -> ScopeBuilder<impl ScopeConfig<Error = AppError>> {
-        let Self { config } = self;
+        let Self { config, prefix } = self;
         ScopeBuilder {
+            prefix,
             config: scope_config(move |cx| {
                 config.configure(cx).map_err(Into::into)?;
-                cx.mount(prefix.as_ref(), scope)?;
+                cx.mount(scope)?;
                 Ok(())
             }),
         }
@@ -94,8 +106,9 @@ where
     where
         T: Send + Sync + 'static,
     {
-        let Self { config } = self;
+        let Self { config, prefix } = self;
         ScopeBuilder {
+            prefix,
             config: scope_config(move |cx| {
                 config.configure(cx)?;
                 cx.state(state);
@@ -109,8 +122,9 @@ where
     where
         M: Modifier + Send + Sync + 'static,
     {
-        let Self { config } = self;
+        let Self { config, prefix } = self;
         ScopeBuilder {
+            prefix,
             config: scope_config(move |cx| {
                 config.configure(cx)?;
                 cx.modifier(modifier);
@@ -124,10 +138,14 @@ impl<S> ScopeConfig for ScopeBuilder<S>
 where
     S: ScopeConfig,
 {
-    type Error = S::Error;
+    type Error = AppError;
 
     fn configure(self, cx: &mut ScopeContext<'_>) -> Result<(), Self::Error> {
-        self.config.configure(cx)
+        self.config.configure(cx).map_err(Into::into)?;
+        if let Some(prefix) = self.prefix {
+            cx.prefix(&prefix)?;
+        }
+        Ok(())
     }
 }
 
@@ -145,18 +163,21 @@ impl<'a> ScopeContext<'a> {
     }
 
     /// Adds a route into the current scope.
-    pub fn route(&mut self, route: impl RouteConfig) -> AppResult<&mut Self> {
+    pub fn route<R>(&mut self, route: R) -> AppResult<&mut Self>
+    where
+        R: RouteConfig,
+    {
         self.cx.new_route(self.id, route)?;
         Ok(self)
     }
 
     /// Create a new scope mounted to the certain URI.
     #[inline]
-    pub fn mount<S>(&mut self, prefix: &str, scope: S) -> AppResult<&mut Self>
+    pub fn mount<S>(&mut self, scope: S) -> AppResult<&mut Self>
     where
         S: ScopeConfig,
     {
-        self.cx.new_scope(self.id, prefix, scope)?;
+        self.cx.new_scope(self.id, scope)?;
         Ok(self)
     }
 
@@ -176,5 +197,10 @@ impl<'a> ScopeContext<'a> {
     {
         self.cx.add_modifier(self.id, modifier);
         self
+    }
+
+    pub fn prefix(&mut self, prefix: &str) -> AppResult<&mut Self> {
+        self.cx.set_prefix(self.id, prefix)?;
+        Ok(self)
     }
 }

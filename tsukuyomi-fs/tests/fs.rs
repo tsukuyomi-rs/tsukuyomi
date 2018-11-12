@@ -26,7 +26,6 @@ fn compiletest_staticfiles() {
     drop(
         App::builder()
             .mount(
-                "/",
                 Staticfiles::new("./public")
                     .follow_links(true)
                     .same_file_system(false)

@@ -17,7 +17,7 @@ use dotenv::dotenv;
 use std::env;
 use std::sync::Arc;
 
-use tsukuyomi::app::{scope, App};
+use tsukuyomi::app::App;
 use tsukuyomi::extractor;
 use tsukuyomi::extractor::ExtractorExt;
 use tsukuyomi::route;
@@ -101,14 +101,11 @@ fn main() {
             })
         });
 
-    let app = App::builder()
-        .mount(
-            "/api/v1/posts",
-            scope::builder()
-                .route(get_posts)
-                .route(create_post)
-                .route(get_post),
-        ).finish()
+    let app = App::with_prefix("/api/v1/posts")
+        .route(get_posts)
+        .route(create_post)
+        .route(get_post)
+        .finish()
         .unwrap();
 
     tsukuyomi::server(app) //

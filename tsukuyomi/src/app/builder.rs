@@ -29,6 +29,7 @@ pub(super) struct AppBuilderContext {
     error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     states: ScopedContainerBuilder,
+    prefix: Option<Uri>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -38,6 +39,7 @@ impl fmt::Debug for AppBuilderContext {
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)
             .field("config", &self.config)
+            .field("prefix", &self.prefix)
             .finish()
     }
 }
@@ -51,6 +53,7 @@ impl Default for AppBuilderContext {
             error_handler: None,
             modifiers: vec![],
             states: ScopedContainerBuilder::default(),
+            prefix: None,
         }
     }
 }
@@ -83,11 +86,10 @@ impl AppBuilderContext {
         Ok(())
     }
 
-    pub(super) fn new_scope<S>(&mut self, parent: ScopeId, prefix: &str, scope: S) -> AppResult<()>
+    pub(super) fn new_scope<S>(&mut self, parent: ScopeId, scope: S) -> AppResult<()>
     where
         S: ScopeConfig,
     {
-        let prefix = prefix.parse()?;
         let id = ScopeId::Local(self.scopes.len());
         let mut chain = parent
             .local_id()
@@ -96,7 +98,7 @@ impl AppBuilderContext {
         self.scopes.push(ScopeBuilder {
             id,
             parent,
-            prefix,
+            prefix: None,
             modifiers: vec![],
             chain,
         });
@@ -141,14 +143,24 @@ impl AppBuilderContext {
         self.error_handler = Some(Box::new(error_handler));
     }
 
+    pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: &str) -> AppResult<()> {
+        let prefix = prefix.parse().unwrap();
+        match id {
+            ScopeId::Global => self.prefix = Some(prefix),
+            ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
+        }
+        Ok(())
+    }
+
     pub(super) fn finish(self) -> AppResult<App> {
         let Self {
             routes,
+            scopes,
             config,
             error_handler,
             modifiers,
             states,
-            scopes,
+            prefix,
         } = self;
 
         // finalize endpoints based on the created scope information.
@@ -160,9 +172,10 @@ impl AppBuilderContext {
                 let mut uris = vec![&route.uri];
                 let mut current = route.scope_id.local_id();
                 while let Some(scope) = current.and_then(|i| scopes.get(i)) {
-                    uris.extend(Some(&scope.prefix));
+                    uris.extend(scope.prefix.as_ref());
                     current = scope.parent.local_id();
                 }
+                uris.extend(prefix.as_ref());
                 let uri = uri::join_all(uris.into_iter().rev())?;
 
                 let handler = route.handler;
@@ -310,7 +323,7 @@ struct ScopeBuilder {
     id: ScopeId,
     parent: ScopeId,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
-    prefix: Uri,
+    prefix: Option<Uri>,
     chain: Vec<ScopeId>,
 }
 

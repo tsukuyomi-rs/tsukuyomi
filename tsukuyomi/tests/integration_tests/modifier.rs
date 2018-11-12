@@ -158,8 +158,8 @@ fn scoped_modifier() {
                     Ok(Response::new(ResponseBody::empty()))
                 },
             }) //
-            .mount("/path1", {
-                scope::builder()
+            .mount(
+                scope::with_prefix("/path1")
                     .modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
@@ -177,8 +177,8 @@ fn scoped_modifier() {
                             marker.lock().unwrap().push("H1");
                             ""
                         }
-                    })) //
-            }) //
+                    })), //
+            ) //
             .route(route!("/path2").reply({
                 let marker = marker.clone();
                 move || {
@@ -204,8 +204,8 @@ fn nested_modifiers() {
 
     let mut server = test_server(
         App::builder()
-            .mount("/path", {
-                scope::builder()
+            .mount(
+                scope::with_prefix("/path")
                     .modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
@@ -217,8 +217,8 @@ fn nested_modifiers() {
                             Ok(Response::new(ResponseBody::empty()))
                         },
                     }) //
-                    .mount("/to", {
-                        scope::builder()
+                    .mount(
+                        scope::with_prefix("/to")
                             .modifier(MarkModifier {
                                 marker: marker.clone(),
                                 before: |m| {
@@ -237,8 +237,8 @@ fn nested_modifiers() {
                                     ""
                                 }
                             })) //
-                            .mount("/a", {
-                                scope::builder()
+                            .mount(
+                                scope::with_prefix("/a")
                                     .modifier(MarkModifier {
                                         marker: marker.clone(),
                                         before: |m| {
@@ -256,10 +256,10 @@ fn nested_modifiers() {
                                             marker.lock().unwrap().push("H2");
                                             ""
                                         }
-                                    }))
-                            })
-                    })
-            }) //
+                                    })),
+                            ),
+                    ),
+            ) //
             .finish()
             .unwrap(),
     );
