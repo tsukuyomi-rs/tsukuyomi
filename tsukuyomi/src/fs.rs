@@ -132,10 +132,7 @@ impl NamedFile {
     where
         P: AsRef<Path>,
     {
-        OpenFuture {
-            path: path,
-            config: None,
-        }
+        OpenFuture { path, config: None }
     }
 
     /// Open a specified file with the provided configuration.
@@ -144,7 +141,7 @@ impl NamedFile {
         P: AsRef<Path>,
     {
         OpenFuture {
-            path: path,
+            path,
             config: Some(config),
         }
     }
