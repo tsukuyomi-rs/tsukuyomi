@@ -10,7 +10,7 @@ fn main() {
     let app = App::builder()
         .route(
             route!("/") //
-                .serve_file(manifest_dir.join("/static/index.html")),
+                .serve_file(manifest_dir.join("static/index.html")),
         ) //
         .mount(
             scope::builder() //
