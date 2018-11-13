@@ -25,12 +25,28 @@ mod validate_prefix;
 use tsukuyomi_internal::uri;
 
 use proc_macro::TokenStream;
+use quote::quote_spanned;
+
+#[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+fn to_compile_error(err: syn::parse::Error) -> proc_macro2::TokenStream {
+    let message = err.to_string();
+    quote_spanned!(err.span() => __tsukuyomi_compile_error!(#message);)
+}
 
 #[proc_macro]
 #[cfg_attr(tarpaulin, skip)]
 pub fn route_expr_impl(input: TokenStream) -> TokenStream {
     crate::route_expr_impl::route_expr_impl(input)
-        .unwrap_or_else(|err| err.to_compile_error())
+        .unwrap_or_else(to_compile_error)
+        .into()
+}
+
+#[proc_macro]
+#[cfg_attr(tarpaulin, skip)]
+pub fn validate_prefix(input: TokenStream) -> TokenStream {
+    validate_prefix::validate(input.into())
+        .map(|_| quote::quote!(const _DUMMY: () = ();))
+        .unwrap_or_else(to_compile_error)
         .into()
 }
 
@@ -39,14 +55,6 @@ pub fn route_expr_impl(input: TokenStream) -> TokenStream {
 #[cfg_attr(tarpaulin, skip)]
 pub fn Responder(input: TokenStream) -> TokenStream {
     crate::derive_responder::derive_responder(input.into())
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
-}
-
-#[proc_macro]
-pub fn validate_prefix(input: TokenStream) -> TokenStream {
-    validate_prefix::validate(input.into())
-        .map(|_| quote::quote!(const _DUMMY: () = ();))
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

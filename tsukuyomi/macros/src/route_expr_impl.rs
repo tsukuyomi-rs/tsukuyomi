@@ -21,7 +21,10 @@ fn parse(input: TokenStream) -> syn::parse::Result<RouteExprImplInput> {
     let uri: syn::LitStr = syn::parse2(input)?;
 
     if let Err(err) = uri.value().parse::<Uri>() {
-        return Err(syn::parse::Error::new(uri.span(), err));
+        return Err(syn::parse::Error::new(
+            uri.span(),
+            format!("URI parse error: {}", err),
+        ));
     }
 
     let mut params = vec![];
@@ -185,17 +188,17 @@ t! {
 t! {
     name: empty_str,
     source: (""),
-    error: "invalid URI",
+    error: "URI parse error: invalid URI",
 }
 
 t! {
     name: empty_segment,
     source: ("/path//to"),
-    error: "empty segment",
+    error: "URI parse error: empty segment",
 }
 
 t! {
     name: incorret_character_in_segment,
     source: ("/path/to/pa:ram"),
-    error: "invalid character in a segment",
+    error: "URI parse error: invalid character in a segment",
 }

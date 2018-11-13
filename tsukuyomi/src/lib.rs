@@ -123,3 +123,9 @@ macro_rules! app {
         $crate::app().prefix($prefix.parse().expect("this is a bug"))
     }};
 }
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __tsukuyomi_compile_error {
+    ($($t:tt)*) => { compile_error! { $($t)* } };
+}
