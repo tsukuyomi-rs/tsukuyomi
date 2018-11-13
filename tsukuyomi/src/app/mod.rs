@@ -185,7 +185,7 @@ impl AppBuilder<(), ()> {
     pub fn with_prefix(prefix: &str) -> Self {
         Self {
             prefix: Some(prefix.to_owned()),
-            ..AppBuilder::default()
+            ..Self::default()
         }
     }
 }

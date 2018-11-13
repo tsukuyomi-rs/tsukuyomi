@@ -39,7 +39,6 @@ mod support_tera {
     use http::header::HeaderValue;
     use http::Response;
     use tera::Tera;
-    use tsukuyomi::input::Input;
 
     pub trait TemplateExt {
         fn template_name(&self) -> &str;
@@ -48,9 +47,10 @@ mod support_tera {
         }
     }
 
+    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
     pub fn respond_to<T>(
         ctx: T,
-        input: &mut Input<'_>,
+        input: &mut tsukuyomi::input::Input<'_>,
     ) -> tsukuyomi::error::Result<Response<String>>
     where
         T: serde::Serialize + TemplateExt,
