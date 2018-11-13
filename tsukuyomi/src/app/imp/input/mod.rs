@@ -22,7 +22,7 @@ use futures::{Future, IntoFuture};
 use http::Request;
 use mime::Mime;
 
-use crate::app::service::AppContext;
+use crate::app::imp::AppContext;
 use crate::app::App;
 use crate::error::Error;
 

@@ -1,10 +1,7 @@
-use tsukuyomi::app::{scope, App};
-use tsukuyomi::app::{AsyncResult, Modifier};
-use tsukuyomi::error::internal_server_error;
-use tsukuyomi::error::Error;
+use tsukuyomi::app::{route, scope, AsyncResult, Modifier};
+use tsukuyomi::error::{internal_server_error, Error};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Output, ResponseBody};
-use tsukuyomi::route;
 use tsukuyomi::test::test_server;
 
 use http::{Request, Response};
@@ -39,7 +36,7 @@ fn global_modifier() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(route!().reply({
                 let marker = marker.clone();
                 move || {
@@ -71,7 +68,7 @@ fn global_modifier_error_on_before() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(route!().reply({
                 let marker = marker.clone();
                 move || {
@@ -103,7 +100,7 @@ fn global_modifiers() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(route!().reply({
                 let marker = marker.clone();
                 move || {
@@ -146,7 +143,7 @@ fn scoped_modifier() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .modifier(MarkModifier {
                 marker: marker.clone(),
                 before: |m| {
@@ -159,7 +156,8 @@ fn scoped_modifier() {
                 },
             }) //
             .mount(
-                scope::with_prefix("/path1")
+                scope()
+                    .prefix("/path1")
                     .modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
@@ -203,9 +201,10 @@ fn nested_modifiers() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .mount(
-                scope::with_prefix("/path")
+                scope()
+                    .prefix("/path")
                     .modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
@@ -218,7 +217,8 @@ fn nested_modifiers() {
                         },
                     }) //
                     .mount(
-                        scope::with_prefix("/to")
+                        scope()
+                            .prefix("/to")
                             .modifier(MarkModifier {
                                 marker: marker.clone(),
                                 before: |m| {
@@ -238,7 +238,8 @@ fn nested_modifiers() {
                                 }
                             })) //
                             .mount(
-                                scope::with_prefix("/a")
+                                scope()
+                                    .prefix("/a")
                                     .modifier(MarkModifier {
                                         marker: marker.clone(),
                                         before: |m| {

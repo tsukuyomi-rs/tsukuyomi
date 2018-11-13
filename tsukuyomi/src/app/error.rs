@@ -2,23 +2,22 @@ use failure::Fail;
 use std::fmt;
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub type AppResult<T> = std::result::Result<T, AppError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// An error type which will be thrown from `AppBuilder`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
-pub struct AppError {
-    kind: AppErrorKind,
+pub struct Error {
+    compat: Compat,
 }
 
-impl fmt::Display for AppError {
+impl fmt::Display for Error {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.kind.fmt(f)
+        self.compat.fmt(f)
     }
 }
 
-impl<E> From<E> for AppError
+impl<E> From<E> for Error
 where
     E: Into<failure::Error>,
 {
@@ -27,25 +26,25 @@ where
     }
 }
 
-impl AppError {
+impl Error {
     pub fn custom<E>(cause: E) -> Self
     where
         E: Into<failure::Error>,
     {
         Self {
-            kind: AppErrorKind::Custom {
+            compat: Compat::Custom {
                 cause: cause.into(),
             },
         }
     }
 
-    pub fn into_kind(self) -> AppErrorKind {
-        self.kind
+    pub fn compat(self) -> Compat {
+        self.compat
     }
 }
 
 #[derive(Debug, Fail)]
-pub enum AppErrorKind {
+pub enum Compat {
     #[fail(display = "{}", cause)]
     Custom { cause: failure::Error },
 }

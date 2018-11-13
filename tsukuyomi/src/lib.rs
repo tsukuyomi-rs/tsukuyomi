@@ -42,7 +42,7 @@ pub mod fs;
 pub mod output;
 
 pub mod input {
-    pub use crate::app::service::input::*;
+    pub use crate::app::imp::input::*;
 }
 
 #[doc(hidden)]
@@ -93,4 +93,8 @@ pub mod rt {
 pub mod server {
     pub use tsukuyomi_server::server::*;
     pub use tsukuyomi_server::service;
+}
+
+pub fn app() -> crate::app::Builder<(), ()> {
+    crate::app::Builder::default()
 }

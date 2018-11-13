@@ -1,10 +1,8 @@
 extern crate tsukuyomi;
 
-use tsukuyomi::app::App;
-
 fn main() {
-    let app = App::builder()
-        .route(tsukuyomi::route!().reply(|| "Hello, world!\n"))
+    let app = tsukuyomi::app()
+        .route(tsukuyomi::app::route!().reply(|| "Hello, world!\n"))
         .finish()
         .expect("failed to construct App");
 

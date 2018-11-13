@@ -15,24 +15,22 @@ use super::handler::{AsyncResult, Handler};
 #[doc(hidden)]
 pub use http::Method;
 
-/// Creates a builder of this type.
-pub fn builder() -> Builder<()> {
-    Builder {
-        extractor: (),
-        uri: Uri::root(),
-        methods: IndexSet::new(),
-    }
-}
-
 /// A builder of `Route`.
 #[derive(Debug)]
-pub struct Builder<E>
-where
-    E: Extractor,
-{
+pub struct Builder<E: Extractor = ()> {
     extractor: E,
     methods: IndexSet<Method>,
     uri: Uri,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self {
+            extractor: (),
+            methods: IndexSet::new(),
+            uri: Uri::root(),
+        }
+    }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
@@ -86,23 +84,23 @@ where
         }
     }
 
-    fn finish<F, H>(self, f: F) -> impl RouteConfig
+    fn finish<F, H>(self, f: F) -> impl Route
     where
         F: FnOnce(E) -> H,
         H: Handler + Send + Sync + 'static,
     {
-        move |cx: &mut RouteContext| {
+        raw(move |cx| {
             let handler = f(self.extractor);
             cx.methods(self.methods);
             cx.uri(self.uri);
             cx.handler(handler);
-        }
+        })
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified handler function.
     ///
     /// The provided handler always succeeds and immediately returns a value of `Responder`.
-    pub fn reply<F>(self, handler: F) -> impl RouteConfig
+    pub fn reply<F>(self, handler: F) -> impl Route
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
@@ -128,7 +126,7 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified handler function.
     ///
     /// The result of provided handler is returned by `Future`.
-    pub fn handle<F, R>(self, handler: F) -> impl RouteConfig
+    pub fn handle<F, R>(self, handler: F) -> impl Route
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
         R: IntoFuture<Error = Error>,
@@ -155,11 +153,61 @@ where
     }
 }
 
+impl Builder<()> {
+    pub fn raw<H>(self, handler: H) -> impl Route
+    where
+        H: Handler + Send + Sync + 'static,
+    {
+        self.finish(move |()| handler)
+    }
+}
+
 impl<E> Builder<E>
 where
     E: Extractor<Output = ()>,
 {
-    pub fn serve_file(self, path: impl AsRef<Path>) -> impl RouteConfig {
+    pub fn serve_file<P>(self, path: P) -> ServeFile<E, P>
+    where
+        P: AsRef<Path>,
+    {
+        ServeFile {
+            builder: self,
+            path,
+            config: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ServeFile<E, P>
+where
+    E: Extractor<Output = ()>,
+    P: AsRef<Path>,
+{
+    builder: Builder<E>,
+    path: P,
+    config: Option<crate::fs::OpenConfig>,
+}
+
+impl<E, P> ServeFile<E, P>
+where
+    E: Extractor<Output = ()>,
+    P: AsRef<Path>,
+{
+    pub fn open_config(self, config: crate::fs::OpenConfig) -> Self {
+        Self {
+            config: Some(config),
+            ..self
+        }
+    }
+}
+
+impl<E, P> Route for ServeFile<E, P>
+where
+    E: Extractor<Output = ()>,
+    P: AsRef<Path>,
+{
+    fn configure(self, cx: &mut Context) {
         #[derive(Clone)]
         #[allow(missing_debug_implementations)]
         struct ArcPath(Arc<PathBuf>);
@@ -170,30 +218,50 @@ where
             }
         }
 
-        let arc_path = ArcPath(Arc::new(path.as_ref().to_path_buf()));
+        let path = ArcPath(Arc::new(self.path.as_ref().to_path_buf()));
+        let config = self.config;
 
-        self.handle(move || NamedFile::open(arc_path.clone()).map_err(Into::into))
+        self.builder
+            .handle(move || {
+                match config {
+                    Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
+                    None => NamedFile::open(path.clone()),
+                }.map_err(Into::into)
+            }).configure(cx);
     }
 }
 
-impl Builder<()> {
-    pub fn raw<H>(self, handler: H) -> impl RouteConfig
+pub trait Route {
+    fn configure(self, cx: &mut Context);
+}
+
+fn raw<F>(f: F) -> impl Route
+where
+    F: FnOnce(&mut Context),
+{
+    #[allow(missing_debug_implementations)]
+    struct Raw<F>(F);
+
+    impl<F> Route for Raw<F>
     where
-        H: Handler + Send + Sync + 'static,
+        F: FnOnce(&mut Context),
     {
-        self.finish(move |()| handler)
+        fn configure(self, cx: &mut Context) {
+            (self.0)(cx)
+        }
     }
+
+    Raw(f)
 }
 
 #[allow(missing_debug_implementations)]
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct RouteContext {
+pub struct Context {
     pub(super) uri: Uri,
     pub(super) methods: Option<IndexSet<Method>>,
     pub(super) handler: Option<Box<dyn Handler + Send + Sync + 'static>>,
 }
 
-impl RouteContext {
+impl Context {
     fn uri(&mut self, uri: Uri) {
         self.uri = uri;
     }
@@ -210,20 +278,6 @@ impl RouteContext {
         H: Handler + Send + Sync + 'static,
     {
         self.handler = Some(Box::new(handler));
-    }
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait RouteConfig {
-    fn configure(self, cx: &mut RouteContext);
-}
-
-impl<F> RouteConfig for F
-where
-    F: FnOnce(&mut RouteContext),
-{
-    fn configure(self, cx: &mut RouteContext) {
-        self(cx)
     }
 }
 
@@ -247,7 +301,7 @@ macro_rules! route {
             $( .method(Method::$METHOD) )*
             $( .methods(__tsukuyomi_vec![$(Method::$METHODS),*]) )*
     }};
-    () => ( $crate::app::route::builder() );
+    () => ( $crate::app::route::Builder::default() );
 }
 
 #[doc(hidden)]
@@ -261,7 +315,7 @@ mod tests {
     use super::*;
 
     fn generated() -> Builder<impl Extractor<Output = (u32, String)>> {
-        builder()
+        crate::app::route()
             .uri("/:id/:name".parse().unwrap())
             .with(crate::extractor::param::pos(0))
             .with(crate::extractor::param::pos(1))
@@ -271,11 +325,14 @@ mod tests {
     #[ignore]
     fn compiletest1() {
         drop(
-            crate::app::App::builder()
-                .route(generated().reply(|id: u32, name: String| {
-                    drop((id, name));
-                    "dummy"
-                })) //
+            crate::app()
+                .route(
+                    generated() //
+                        .reply(|id: u32, name: String| {
+                            drop((id, name));
+                            "dummy"
+                        }),
+                ) //
                 .finish()
                 .expect("failed to construct App"),
         );
@@ -285,13 +342,15 @@ mod tests {
     #[ignore]
     fn compiletest2() {
         drop(
-            crate::app::App::builder()
-                .route(generated().with(crate::extractor::body::plain()).reply(
-                    |id: u32, name: String, body: String| {
-                        drop((id, name, body));
-                        "dummy"
-                    },
-                )) //
+            crate::app()
+                .route(
+                    generated() //
+                        .with(crate::extractor::body::plain())
+                        .reply(|id: u32, name: String, body: String| {
+                            drop((id, name, body));
+                            "dummy"
+                        }),
+                ) //
                 .finish()
                 .expect("failed to construct App"),
         );

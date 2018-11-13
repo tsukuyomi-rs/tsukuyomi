@@ -21,9 +21,9 @@ fn integration_test() {
     let executor = tsukuyomi_juniper::executor(schema);
     let executor = std::sync::Arc::new(executor);
 
-    let app = tsukuyomi::app::App::builder()
+    let app = tsukuyomi::app()
         .route(
-            tsukuyomi::route!("/", methods = [GET, POST])
+            tsukuyomi::app::route!("/", methods = [GET, POST])
                 .with(executor.clone())
                 .handle({
                     let database = database.clone();

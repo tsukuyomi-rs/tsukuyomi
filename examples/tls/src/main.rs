@@ -5,15 +5,13 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-use tsukuyomi::app::App;
-
 const CERTS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/cert.pem");
 const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pem");
 
 fn main() {
-    let app = App::builder()
+    let app = tsukuyomi::app()
         .route(
-            tsukuyomi::route!() //
+            tsukuyomi::app::route!() //
                 .reply(|| "Hello, Tsukuyomi.\n"),
         ).finish()
         .unwrap();

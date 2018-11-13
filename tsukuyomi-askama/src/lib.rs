@@ -18,10 +18,10 @@
 //!     name: String,
 //! }
 //!
-//! # fn main() -> tsukuyomi::app::AppResult<()> {
-//! App::builder()
+//! # fn main() -> tsukuyomi::app::Result<()> {
+//! tsukuyomi::app()
 //!     .route(
-//!         tsukuyomi::route!("/:name")
+//!         tsukuyomi::app::route!("/:name")
 //!             .reply(|name| Index { name })
 //!     )
 //!     .finish()

@@ -1,7 +1,6 @@
-use tsukuyomi::app::App;
+use tsukuyomi::app::route;
 use tsukuyomi::extractor;
 use tsukuyomi::extractor::ExtractorExt;
-use tsukuyomi::route;
 use tsukuyomi::test::test_server;
 
 use http::Request;
@@ -9,7 +8,7 @@ use http::Request;
 #[test]
 fn unit_input() {
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(route!().reply(|| "dummy"))
             .finish()
             .unwrap(),
@@ -21,7 +20,7 @@ fn unit_input() {
 #[test]
 fn params() {
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/:id/:name/*path").reply(|id: u32, name: String, path: String| {
                     format!("{},{},{}", id, name, path)
@@ -43,7 +42,7 @@ fn params() {
 #[test]
 fn route_macros() {
     drop(
-        App::builder()
+        tsukuyomi::app()
             .route(route!("/index").reply(|| "index"))
             .route(route!("/params/:id/:name").reply(|id: i32, name: String| {
                 drop((id, name));
@@ -68,7 +67,7 @@ fn route_macros() {
 #[test]
 fn plain_body() {
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/", method = POST)
                     .with(extractor::body::plain())
@@ -119,7 +118,7 @@ fn json_body() {
         name: String,
     }
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/", method = POST)
                     .with(extractor::body::json())
@@ -170,7 +169,7 @@ fn urlencoded_body() {
         name: String,
     }
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/", method = POST)
                     .with(extractor::body::urlencoded())
@@ -238,7 +237,7 @@ fn local_data() {
     }
 
     let mut server = test_server({
-        App::builder()
+        tsukuyomi::app()
             .modifier(MyModifier)
             .route(
                 route!()
@@ -265,7 +264,7 @@ fn missing_local_data() {
     }
 
     let mut server = test_server({
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!()
                     .with(extractor::local::local(&MyData::KEY))
@@ -288,7 +287,7 @@ fn optional() {
     }
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/", method = POST)
                     .with(extractor::body::json().optional())
@@ -336,7 +335,7 @@ fn either_or() {
         .or(extractor::verb::post(extractor::body::urlencoded()));
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/", method = POST)
                     .with(params_extractor)

@@ -8,8 +8,7 @@ extern crate tsukuyomi;
 mod proxy;
 
 use futures::prelude::*;
-use tsukuyomi::app::App;
-use tsukuyomi::route;
+use tsukuyomi::app::route;
 
 use crate::proxy::Client;
 
@@ -17,7 +16,7 @@ fn main() {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::async::Client::new()));
 
-    let app = App::builder()
+    let app = tsukuyomi::app()
         .route(
             route!("/")
                 .with(proxy_client.clone())

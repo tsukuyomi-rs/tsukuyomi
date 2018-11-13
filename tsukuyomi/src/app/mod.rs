@@ -1,11 +1,14 @@
 //! Components for constructing HTTP applications.
 
+#![cfg_attr(feature = "cargo-clippy", forbid(stutter))]
+
 mod builder;
 mod error;
+pub mod global;
 mod handler;
+pub(crate) mod imp;
 pub mod route;
 pub mod scope;
-pub(crate) mod service;
 
 #[cfg(test)]
 mod tests;
@@ -21,16 +24,26 @@ use crate::internal::recognizer::Recognizer;
 use crate::internal::scoped_map::{ScopeId, ScopedContainer};
 use crate::internal::uri::Uri;
 
-use self::builder::AppBuilderContext;
-use self::scope::ScopeContext;
-
-pub use self::error::{AppError, AppErrorKind, AppResult};
+pub use self::error::{Error, Result};
+pub use self::global::Global;
 pub use self::handler::{AsyncResult, Handler, Modifier};
-pub use self::route::RouteConfig;
-pub use self::scope::ScopeConfig;
-pub use self::service::RecognizeError;
+pub use self::imp::RecognizeError;
+pub use self::route::Route;
+pub use self::scope::Scope;
 
 pub use crate::route;
+
+pub fn route() -> self::route::Builder<()> {
+    self::route::Builder::<()>::default()
+}
+
+pub fn scope() -> self::scope::Builder<()> {
+    self::scope::Builder::<()>::default()
+}
+
+pub fn global() -> self::global::Builder<()> {
+    self::global::Builder::<()>::default()
+}
 
 #[derive(Debug)]
 struct Config {
@@ -59,14 +72,14 @@ pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
 struct AppData {
     routes: Vec<RouteData>,
     scopes: Vec<ScopeData>,
+    global_scope: ScopeData,
 
     recognizer: Recognizer,
     route_ids: Vec<IndexMap<Method, usize>>,
-    config: Config,
 
     states: ScopedContainer,
     error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
-    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    config: Config,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -75,10 +88,11 @@ impl fmt::Debug for AppData {
         f.debug_struct("AppData")
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)
+            .field("global_scope", &self.global_scope)
             .field("recognizer", &self.recognizer)
             .field("route_ids", &self.route_ids)
-            .field("config", &self.config)
             .field("states", &self.states)
+            .field("config", &self.config)
             .finish()
     }
 }
@@ -98,6 +112,12 @@ impl fmt::Debug for ScopeData {
             .field("parent", &self.parent)
             .field("prefix", &self.prefix)
             .finish()
+    }
+}
+
+impl ScopeData {
+    fn modifier(&self, pos: usize) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
+        self.modifiers.get(pos).map(|m| &**m)
     }
 }
 
@@ -128,12 +148,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn builder() -> AppBuilder {
-        AppBuilder::default()
-    }
-
-    pub fn with_prefix(prefix: &str) -> AppBuilder {
-        AppBuilder::with_prefix(prefix)
+    #[doc(hidden)]
+    #[deprecated(note = "use `tsukuyomi::app` instead.")]
+    pub fn builder() -> Builder {
+        Builder::default()
     }
 
     fn uri(&self, id: RouteId) -> &Uri {
@@ -147,12 +165,10 @@ impl App {
         self.data.states.get(id.0)
     }
 
-    fn get_modifier(&self, id: ModifierId) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
+    fn get_scope(&self, id: ScopeId) -> Option<&ScopeData> {
         match id {
-            ModifierId(ScopeId::Global, pos) => self.data.modifiers.get(pos).map(|m| &**m),
-            ModifierId(ScopeId::Local(id), pos) => {
-                self.data.scopes.get(id)?.modifiers.get(pos).map(|m| &**m)
-            }
+            ScopeId::Global => Some(&self.data.global_scope),
+            ScopeId::Local(id) => self.data.scopes.get(id),
         }
     }
 
@@ -168,199 +184,126 @@ impl App {
         self.get_route(route_id)?
             .modifier_ids
             .get(pos)
-            .and_then(|&id| self.get_modifier(id))
+            .and_then(|&id| self.get_scope(id.0)?.modifier(id.1))
     }
 }
 
 /// A builder object for constructing an instance of `App`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug, Default)]
-pub struct AppBuilder<S: ScopeConfig = (), G: GlobalConfig = ()> {
+pub struct Builder<S: Scope = (), G: Global = ()> {
     scope: S,
     global: G,
-    prefix: Option<String>,
-}
-
-impl AppBuilder<(), ()> {
-    pub fn with_prefix(prefix: &str) -> Self {
-        Self {
-            prefix: Some(prefix.to_owned()),
-            ..Self::default()
-        }
-    }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, G> AppBuilder<S, G>
+impl<S, G> Builder<S, G>
 where
-    S: ScopeConfig,
-    G: GlobalConfig,
+    S: Scope,
+    G: Global,
 {
     /// Adds a route into the global scope.
-    pub fn route(
-        self,
-        route: impl RouteConfig,
-    ) -> AppBuilder<impl ScopeConfig<Error = AppError>, G> {
-        let Self {
-            scope,
+    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, G> {
+        let Self { scope, global } = self;
+        Builder {
             global,
-            prefix,
-        } = self;
-        AppBuilder {
-            global,
-            prefix,
-            scope: self::scope::scope_config(move |cx| {
+            scope: self::scope::raw(move |cx| {
                 scope.configure(cx).map_err(Into::into)?;
-                cx.route(route)?;
+                cx.add_route(route)?;
                 Ok(())
             }),
         }
     }
 
-    /// Creates a new scope mounted into the specified prefix onto the global scope.
-    pub fn mount(
-        self,
-        new_scope: impl ScopeConfig,
-    ) -> AppBuilder<impl ScopeConfig<Error = AppError>, G> {
+    /// Creates a new scope onto the global scope using the specified `Scope`.
+    pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>, G> {
+        let Self { global, scope } = self;
+        Builder {
+            global,
+            scope: self::scope::raw(move |cx| {
+                scope.configure(cx).map_err(Into::into)?;
+                cx.add_scope(new_scope)?;
+                Ok(())
+            }),
+        }
+    }
+
+    /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
+    pub fn with(self, next: impl Scope) -> Builder<impl Scope<Error = Error>, G> {
         let Self {
             global,
-            scope,
-            prefix,
+            scope: current,
         } = self;
-        AppBuilder {
+        Builder {
             global,
-            prefix,
-            scope: self::scope::scope_config(move |cx| {
-                scope.configure(cx).map_err(Into::into)?;
-                cx.mount(new_scope)?;
+            scope: self::scope::raw(move |cx| {
+                current.configure(cx).map_err(Into::into)?;
+                next.configure(cx).map_err(Into::into)?;
                 Ok(())
             }),
         }
     }
 
     /// Adds a *global* variable into the application.
-    pub fn state<T>(self, state: T) -> AppBuilder<impl ScopeConfig<Error = S::Error>, G>
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, G>
     where
         T: Send + Sync + 'static,
     {
-        let Self {
-            scope,
+        let Self { scope, global } = self;
+        Builder {
             global,
-            prefix,
-        } = self;
-        AppBuilder {
-            global,
-            prefix,
-            scope: self::scope::scope_config(move |cx| {
+            scope: self::scope::raw(move |cx| {
                 scope.configure(cx)?;
-                cx.state(state);
+                cx.set_state(state);
                 Ok(())
             }),
         }
     }
 
     /// Register a `Modifier` into the global scope.
-    pub fn modifier<M>(self, modifier: M) -> AppBuilder<impl ScopeConfig<Error = S::Error>, G>
+    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>, G>
     where
         M: Modifier + Send + Sync + 'static,
     {
-        let Self {
+        let Self { global, scope } = self;
+        Builder {
             global,
-            scope,
-            prefix,
-        } = self;
-        AppBuilder {
-            global,
-            prefix,
-            scope: self::scope::scope_config(move |cx| {
+            scope: self::scope::raw(move |cx| {
                 scope.configure(cx)?;
-                cx.modifier(modifier);
+                cx.add_modifier(modifier);
                 Ok(())
             }),
         }
     }
 
-    /// Returns a proxy object for modifying the global-level configuration.
-    pub fn config<F>(self, f: F) -> AppBuilder<S, impl GlobalConfig>
-    where
-        F: FnOnce(&mut Global<'_>),
-    {
-        let Self {
+    pub fn prefix(self, prefix: impl AsRef<str>) -> Builder<impl Scope<Error = Error>, G> {
+        let Self { global, scope } = self;
+        Builder {
             global,
+            scope: self::scope::raw(move |cx| {
+                scope.configure(cx).map_err(Into::into)?;
+                cx.set_prefix(prefix.as_ref())?;
+                Ok(())
+            }),
+        }
+    }
+
+    /// Add the global-level configuration to this application.
+    pub fn global(self, global: impl Global) -> Builder<S, impl Global> {
+        let Self {
+            global: current,
             scope,
-            prefix,
         } = self;
-        AppBuilder {
+        Builder {
             scope,
-            prefix,
-            global: move |cx: &mut Global<'_>| {
+            global: self::global::raw(move |cx| {
+                current.configure(cx);
                 global.configure(cx);
-                f(cx);
-            },
+            }),
         }
     }
 
     /// Creates a configured `App` using the current settings.
-    pub fn finish(self) -> AppResult<App> {
-        let mut cx = AppBuilderContext::default();
-        self.scope
-            .configure(&mut ScopeContext::new(&mut cx, ScopeId::Global))
-            .map_err(Into::into)?;
-        self.global.configure(&mut Global { cx: &mut cx });
-        if let Some(prefix) = self.prefix {
-            cx.set_prefix(ScopeId::Global, &prefix)?;
-        }
-        cx.finish()
-    }
-}
-
-pub trait GlobalConfig {
-    fn configure(self, cx: &mut Global<'_>);
-}
-
-impl GlobalConfig for () {
-    fn configure(self, _: &mut Global<'_>) {}
-}
-
-impl<F> GlobalConfig for F
-where
-    F: FnOnce(&mut Global<'_>),
-{
-    fn configure(self, cx: &mut Global<'_>) {
-        self(cx)
-    }
-}
-
-/// A proxy object for global-level configuration.
-#[derive(Debug)]
-pub struct Global<'a> {
-    cx: &'a mut AppBuilderContext,
-}
-
-impl<'a> Global<'a> {
-    /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
-    ///
-    /// The default value is `true`.
-    pub fn fallback_head(&mut self, enabled: bool) -> &mut Self {
-        self.cx.fallback_head(enabled);
-        self
-    }
-
-    /// Specifies whether to use the default `OPTIONS` handlers if it is not registered.
-    ///
-    /// If `enabled`, it creates the default OPTIONS handlers by collecting the registered
-    /// methods from the router and then adds them to the *global* scope.
-    pub fn fallback_options(&mut self, enabled: bool) -> &mut Self {
-        self.cx.fallback_options(enabled);
-        self
-    }
-
-    /// Sets the instance to an error handler into this builder.
-    pub fn error_handler<E>(&mut self, error_handler: E) -> &mut Self
-    where
-        E: ErrorHandler + Send + Sync + 'static,
-    {
-        self.cx.set_error_handler(error_handler);
-        self
+    pub fn finish(self) -> Result<App> {
+        self::builder::build(self.scope, self.global)
     }
 }

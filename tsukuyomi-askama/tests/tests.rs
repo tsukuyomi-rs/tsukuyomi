@@ -6,7 +6,6 @@ extern crate tsukuyomi_askama;
 
 use askama::Template;
 use http::Request;
-use tsukuyomi::app::App;
 use tsukuyomi::output::Responder;
 use tsukuyomi::test::test_server;
 
@@ -30,9 +29,9 @@ fn test_template() {
     }
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
-                tsukuyomi::route!("/") //
+                tsukuyomi::app::route!("/") //
                     .reply(|| assert_impl(Index { name: "Alice" })),
             ) //
             .finish()

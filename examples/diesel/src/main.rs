@@ -17,10 +17,9 @@ use dotenv::dotenv;
 use std::env;
 use std::sync::Arc;
 
-use tsukuyomi::app::App;
+use tsukuyomi::app::route;
 use tsukuyomi::extractor;
 use tsukuyomi::extractor::ExtractorExt;
-use tsukuyomi::route;
 
 use crate::conn::Conn;
 use crate::model::{NewPost, Post};
@@ -101,7 +100,8 @@ fn main() {
             })
         });
 
-    let app = App::with_prefix("/api/v1/posts")
+    let app = tsukuyomi::app()
+        .prefix("/api/v1/posts")
         .route(get_posts)
         .route(create_post)
         .route(get_post)

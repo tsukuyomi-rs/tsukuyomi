@@ -3,7 +3,6 @@ extern crate tsukuyomi;
 extern crate tsukuyomi_askama;
 
 use askama::Template;
-use tsukuyomi::app::App;
 use tsukuyomi::output::Responder;
 
 #[derive(Template, Responder)]
@@ -14,9 +13,9 @@ struct Index {
 }
 
 fn main() {
-    let app = App::builder()
+    let app = tsukuyomi::app()
         .route(
-            tsukuyomi::route!("/:name") //
+            tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),
         ) //
         .finish()

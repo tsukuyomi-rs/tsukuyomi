@@ -1,6 +1,5 @@
-use tsukuyomi::app::App;
+use tsukuyomi::app::route;
 use tsukuyomi::extractor;
-use tsukuyomi::route;
 use tsukuyomi::test::test_server;
 
 use http::{header, Request, StatusCode};
@@ -8,7 +7,7 @@ use http::{header, Request, StatusCode};
 #[test]
 fn empty_routes() {
     let mut server = test_server(
-        App::builder() //
+        tsukuyomi::app() //
             .finish()
             .unwrap(),
     );
@@ -20,7 +19,7 @@ fn empty_routes() {
 #[test]
 fn single_route() {
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(route!("/hello").reply(|| "Tsukuyomi"))
             .finish()
             .unwrap(),
@@ -49,7 +48,7 @@ fn single_route() {
 #[test]
 fn post_body() {
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/hello", method = POST)
                     .with(tsukuyomi::extractor::body::plain())
@@ -89,7 +88,7 @@ fn cookies() {
     let expires_in = time::now() + Duration::days(7);
 
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(
                 route!("/login")
                     .with(extractor::validate(move |input| {
@@ -155,7 +154,7 @@ fn cookies() {
 #[test]
 fn default_options() {
     let mut server = test_server(
-        App::builder()
+        tsukuyomi::app()
             .route(route!("/path").reply(|| "get"))
             .route(route!("/path", method = POST).reply(|| "post"))
             .finish()
@@ -181,10 +180,8 @@ fn default_options() {
 #[test]
 fn test_case_5_disable_default_options() {
     let mut server = test_server(
-        App::builder()
-            .config(|g| {
-                g.fallback_options(false);
-            }) //
+        tsukuyomi::app()
+            .global(tsukuyomi::app::global().fallback_options(false)) //
             .route(route!("/path").reply(|| "get"))
             .route(route!("/path", method = POST).reply(|| "post"))
             .finish()

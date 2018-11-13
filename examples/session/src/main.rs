@@ -3,9 +3,8 @@ extern crate serde;
 extern crate tsukuyomi;
 extern crate tsukuyomi_session;
 
-use tsukuyomi::app::App;
+use tsukuyomi::app::route;
 use tsukuyomi::output::{html, redirect};
-use tsukuyomi::route;
 use tsukuyomi_session::backend::CookieSessionBackend;
 use tsukuyomi_session::Session;
 
@@ -14,7 +13,7 @@ use either::Either;
 fn main() {
     let backend = CookieSessionBackend::plain();
 
-    let app = App::builder()
+    let app = tsukuyomi::app()
         .modifier(tsukuyomi_session::storage(backend))
         .route(
             route!("/") //

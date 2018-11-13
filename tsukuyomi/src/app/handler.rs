@@ -83,7 +83,7 @@ where
 /// ```
 /// # extern crate tsukuyomi;
 /// use std::sync::atomic::{AtomicUsize, Ordering};
-/// use tsukuyomi::app::{App, route, Modifier, AsyncResult};
+/// use tsukuyomi::app::{route, Modifier, AsyncResult};
 /// use tsukuyomi::input::Input;
 /// use tsukuyomi::output::Output;
 ///
@@ -97,8 +97,8 @@ where
 ///     }
 /// }
 ///
-/// # fn main() -> tsukuyomi::app::AppResult<()> {
-/// App::builder()
+/// # fn main() -> tsukuyomi::app::Result<()> {
+/// tsukuyomi::app()
 ///     .route(route!().reply(|| "Hello"))
 ///     .modifier(RequestCounter::default())
 ///     .finish()

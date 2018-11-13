@@ -1,4 +1,4 @@
-use crate::app::{route, scope, App, RecognizeError, RouteId};
+use crate::app::{global, route, scope, RecognizeError, RouteId};
 use crate::internal::scoped_map::ScopeId;
 
 use http::Method;
@@ -6,7 +6,7 @@ use matches::assert_matches;
 
 #[test]
 fn empty() {
-    let app = App::builder().finish().unwrap();
+    let app = crate::app().finish().unwrap();
     assert_matches!(
         app.recognize("/", &Method::GET),
         Err(RecognizeError::NotFound)
@@ -15,10 +15,7 @@ fn empty() {
 
 #[test]
 fn route_single_method() {
-    let app = App::builder()
-        .route(route::builder().reply(|| ""))
-        .finish()
-        .unwrap();
+    let app = crate::app().route(route().reply(|| "")).finish().unwrap();
 
     assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
 
@@ -34,9 +31,9 @@ fn route_single_method() {
 
 #[test]
 fn route_multiple_method() {
-    let app = App::builder()
-        .route(route::builder().reply(|| ""))
-        .route(route::builder().method(Method::POST).reply(|| ""))
+    let app = crate::app()
+        .route(route().reply(|| ""))
+        .route(route().method(Method::POST).reply(|| ""))
         .finish()
         .unwrap();
 
@@ -51,21 +48,16 @@ fn route_multiple_method() {
 
 #[test]
 fn route_fallback_head_enabled() {
-    let app = App::builder()
-        .route(route::builder().reply(|| ""))
-        .finish()
-        .unwrap();
+    let app = crate::app().route(route().reply(|| "")).finish().unwrap();
 
     assert_matches!(app.recognize("/", &Method::HEAD), Ok((0, ..)));
 }
 
 #[test]
 fn route_fallback_head_disabled() {
-    let app = App::builder()
-        .route(route::builder().reply(|| ""))
-        .config(|cfg| {
-            cfg.fallback_head(false);
-        }) //
+    let app = crate::app()
+        .route(route().reply(|| ""))
+        .global(global().fallback_head(false)) //
         .finish()
         .unwrap();
 
@@ -77,11 +69,11 @@ fn route_fallback_head_disabled() {
 
 #[test]
 fn route_fallback_options_enabled() {
-    let app = App::builder()
-        .route(route::builder().reply(|| "")) // 0
-        .route(route::builder().method(Method::POST).reply(|| "")) // 1
+    let app = crate::app()
+        .route(route().reply(|| "")) // 0
+        .route(route().method(Method::POST).reply(|| "")) // 1
         .route(
-            route::builder()
+            route()
                 .uri("/options".parse().unwrap())
                 .method(Method::OPTIONS)
                 .reply(|| ""),
@@ -95,12 +87,10 @@ fn route_fallback_options_enabled() {
 
 #[test]
 fn route_fallback_options_disabled() {
-    let app = App::builder()
-        .route(route::builder().reply(|| ""))
-        .route(route::builder().method(Method::POST).reply(|| ""))
-        .config(|cfg| {
-            cfg.fallback_options(false);
-        }) //
+    let app = crate::app()
+        .route(route().reply(|| ""))
+        .route(route().method(Method::POST).reply(|| ""))
+        .global(global().fallback_options(false)) //
         .finish()
         .unwrap();
 
@@ -112,17 +102,18 @@ fn route_fallback_options_disabled() {
 
 #[test]
 fn scope_simple() {
-    let app = App::builder()
+    let app = crate::app()
         .mount(
-            scope::builder()
-                .route(route::builder().uri("/a".parse().unwrap()).reply(|| ""))
-                .route(route::builder().uri("/b".parse().unwrap()).reply(|| "")),
+            scope()
+                .route(route().uri("/a".parse().unwrap()).reply(|| ""))
+                .route(route().uri("/b".parse().unwrap()).reply(|| "")),
         ) //
-        .route(route::builder().uri("/foo".parse().unwrap()).reply(|| ""))
+        .route(route().uri("/foo".parse().unwrap()).reply(|| ""))
         .mount(
-            scope::with_prefix("/c")
-                .route(route::builder().uri("/d".parse().unwrap()).reply(|| ""))
-                .route(route::builder().uri("/e".parse().unwrap()).reply(|| "")),
+            scope()
+                .prefix("/c")
+                .route(route().uri("/d".parse().unwrap()).reply(|| ""))
+                .route(route().uri("/e".parse().unwrap()).reply(|| "")),
         ) //
         .finish()
         .unwrap();
@@ -136,24 +127,25 @@ fn scope_simple() {
 
 #[test]
 fn scope_nested() {
-    let app = App::builder()
+    let app = crate::app()
         .mount(
-            scope::builder()
-                .route(route::builder().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
-                .route(route::builder().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
+            scope()
+                .route(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
+                .route(route().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
         ) //
         .mount(
-            scope::with_prefix("/baz")
-                .route(route::builder().reply(|| "")) // /baz
+            scope()
+                .prefix("/baz")
+                .route(route().reply(|| "")) // /baz
                 .mount(
-                    scope::builder().route(
-                        route::builder()
+                    scope().route(
+                        route()
                             .uri("/foobar".parse().unwrap()) // /baz/foobar
                             .reply(|| ""),
                     ),
                 ), //
         ) //
-        .route(route::builder().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
+        .route(route().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
         .finish()
         .unwrap();
 
@@ -171,37 +163,44 @@ fn scope_nested() {
 
 #[test]
 fn scope_variable() {
-    let app = App::builder()
+    let app = crate::app()
         .state::<String>("G".into())
-        .route(route::builder().uri("/rg".parse().unwrap()).reply(|| ""))
+        .route(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .mount(
-            scope::with_prefix("/s0")
-                .route(route::builder().uri("/r0".parse().unwrap()).reply(|| ""))
+            scope()
+                .prefix("/s0")
+                .route(route().uri("/r0".parse().unwrap()).reply(|| ""))
                 .mount(
-                    scope::with_prefix("/s1")
+                    scope()
+                        .prefix("/s1")
                         .state::<String>("A".into())
-                        .route(route::builder().uri("/r1".parse().unwrap()).reply(|| "")),
+                        .route(route().uri("/r1".parse().unwrap()).reply(|| "")),
                 ),
         ) //
         .mount(
-            scope::with_prefix("/s2")
+            scope()
+                .prefix("/s2")
                 .state::<String>("B".into())
-                .route(route::builder().uri("/r2".parse().unwrap()).reply(|| ""))
+                .route(route().uri("/r2".parse().unwrap()).reply(|| ""))
                 .mount(
-                    scope::with_prefix("/s3")
+                    scope()
+                        .prefix("/s3")
                         .state::<String>("C".into())
-                        .route(route::builder().uri("/r3".parse().unwrap()).reply(|| ""))
+                        .route(route().uri("/r3".parse().unwrap()).reply(|| ""))
                         .mount(
-                            scope::with_prefix("/s4")
-                                .route(route::builder().uri("/r4".parse().unwrap()).reply(|| "")),
+                            scope()
+                                .prefix("/s4")
+                                .route(route().uri("/r4".parse().unwrap()).reply(|| "")),
                         ),
                 ) //
                 .mount(
-                    scope::with_prefix("/s5")
-                        .route(route::builder().uri("/r5".parse().unwrap()).reply(|| ""))
+                    scope()
+                        .prefix("/s5")
+                        .route(route().uri("/r5".parse().unwrap()).reply(|| ""))
                         .mount(
-                            scope::with_prefix("/s6")
-                                .route(route::builder().uri("/r6".parse().unwrap()).reply(|| "")),
+                            scope()
+                                .prefix("/s6")
+                                .route(route().uri("/r6".parse().unwrap()).reply(|| "")),
                         ),
                 ), //
         ) //
@@ -252,18 +251,18 @@ fn scope_variable() {
 
 #[test]
 fn failcase_duplicate_uri_and_method() {
-    let app = App::builder()
-        .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
-        .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
+    let app = crate::app()
+        .route(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .finish();
     assert!(app.is_err());
 }
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() {
-    let app = App::builder()
-        .route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))
-        .mount(scope::builder().route(route::builder().uri("/path".parse().unwrap()).reply(|| ""))) //
+    let app = crate::app()
+        .route(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .mount(scope().route(route().uri("/path".parse().unwrap()).reply(|| ""))) //
         .finish();
     assert!(app.is_err());
 }

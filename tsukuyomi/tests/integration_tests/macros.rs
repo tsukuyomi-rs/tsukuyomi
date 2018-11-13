@@ -93,9 +93,11 @@ mod responder {
         }
 
         let mut server = test_server({
-            tsukuyomi::app::App::builder()
-                .route(tsukuyomi::app::route::builder().reply(|| Foo("Foo".into())))
-                .finish()
+            tsukuyomi::app()
+                .route(
+                    tsukuyomi::app::route() //
+                        .reply(|| Foo("Foo".into())),
+                ).finish()
                 .unwrap()
         });
         let response = server.perform(http::Request::get("/")).unwrap();

@@ -4,7 +4,6 @@ extern crate serde;
 extern crate tera;
 extern crate tsukuyomi;
 
-use tsukuyomi::app::App;
 use tsukuyomi::output::Responder;
 
 #[derive(Debug, serde::Serialize, Responder)]
@@ -22,10 +21,10 @@ impl crate::support_tera::TemplateExt for Index {
 fn main() {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    let app = App::builder()
+    let app = tsukuyomi::app()
         .state(engine)
         .route(
-            tsukuyomi::route!("/:name") //
+            tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),
         ).finish()
         .unwrap();

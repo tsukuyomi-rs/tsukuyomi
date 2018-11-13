@@ -95,7 +95,6 @@ impl NewService for App {
 }
 
 /// A `Service` representation of the application, created by `App`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]
 pub struct AppService {
     app: App,

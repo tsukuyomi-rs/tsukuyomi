@@ -21,8 +21,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tsukuyomi::app::scope::{ScopeConfig, ScopeContext};
-use tsukuyomi::app::{AppError, AppResult};
+use tsukuyomi::app;
+use tsukuyomi::app::scope;
 use tsukuyomi::fs::{NamedFile, OpenConfig};
 
 #[allow(missing_debug_implementations)]
@@ -78,13 +78,13 @@ where
     }
 }
 
-impl<P> ScopeConfig for Staticfiles<P>
+impl<P> scope::Scope for Staticfiles<P>
 where
     P: AsRef<Path>,
 {
-    type Error = AppError;
+    type Error = app::Error;
 
-    fn configure(self, cx: &mut ScopeContext<'_>) -> AppResult<()> {
+    fn configure(self, cx: &mut scope::Context<'_>) -> app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in fs::read_dir(root_dir)? {
@@ -103,20 +103,24 @@ where
             if file_type.is_file() {
                 let uri = format!("/{}", name).parse()?;
 
-                cx.route(tsukuyomi::app::route::builder().uri(uri).handle(move || {
-                    if let Some(ref config) = config {
-                        NamedFile::open_with_config(path.clone(), config.clone())
-                            .map_err(Into::into)
-                    } else {
-                        NamedFile::open(path.clone()).map_err(Into::into)
-                    }
-                }))?;
+                cx.add_route(
+                    tsukuyomi::app::route() //
+                        .uri(uri)
+                        .handle(move || {
+                            if let Some(ref config) = config {
+                                NamedFile::open_with_config(path.clone(), config.clone())
+                                    .map_err(Into::into)
+                            } else {
+                                NamedFile::open(path.clone()).map_err(Into::into)
+                            }
+                        }),
+                )?;
             } else if file_type.is_dir() {
                 let uri = format!("/{}/*path", name).parse()?;
                 let root_dir = path;
 
-                cx.route(
-                    tsukuyomi::app::route::builder()
+                cx.add_route(
+                    tsukuyomi::app::route()
                         .uri(uri)
                         .with(tsukuyomi::extractor::param::wildcard())
                         .handle(move |suffix: PathBuf| {

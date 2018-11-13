@@ -1,9 +1,8 @@
 extern crate serde;
 extern crate tsukuyomi;
 
-use tsukuyomi::app::App;
+use tsukuyomi::app::route;
 use tsukuyomi::extractor;
-use tsukuyomi::route;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, tsukuyomi::output::Responder)]
 #[responder(respond_to = "tsukuyomi::output::responder::json")]
@@ -13,7 +12,7 @@ struct User {
 }
 
 fn main() {
-    let app = App::builder()
+    let app = tsukuyomi::app()
         .route(
             route!("/") //
                 .reply(|| {
