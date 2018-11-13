@@ -132,6 +132,18 @@ where
             }),
         }
     }
+
+    pub fn with(self, other: impl ScopeConfig) -> ScopeBuilder<impl ScopeConfig<Error = AppError>> {
+        let Self { config, prefix } = self;
+        ScopeBuilder {
+            prefix,
+            config: scope_config(move |cx| {
+                config.configure(cx).map_err(Into::into)?;
+                other.configure(cx).map_err(Into::into)?;
+                Ok(())
+            }),
+        }
+    }
 }
 
 impl<S> ScopeConfig for ScopeBuilder<S>

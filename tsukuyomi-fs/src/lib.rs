@@ -37,7 +37,6 @@ pub use walkdir::DirEntry;
 pub struct Staticfiles<W = WalkDir> {
     walkdir: W,
     config: Option<OpenConfig>,
-    prefix: Option<String>,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
@@ -47,7 +46,6 @@ impl Staticfiles {
         Self {
             walkdir: WalkDir::new(root_dir).min_depth(1),
             config: None,
-            prefix: None,
         }
     }
 
@@ -111,7 +109,6 @@ impl Staticfiles {
         Staticfiles {
             walkdir: self.walkdir.into_iter().filter_entry(predicate),
             config: self.config,
-            prefix: self.prefix,
         }
     }
 }
@@ -127,13 +124,6 @@ where
             ..self
         }
     }
-
-    pub fn prefix(self, prefix: impl AsRef<str>) -> Self {
-        Self {
-            prefix: Some(prefix.as_ref().to_owned()),
-            ..self
-        }
-    }
 }
 
 impl<W> ScopeConfig for Staticfiles<W>
@@ -143,15 +133,7 @@ where
     type Error = AppError;
 
     fn configure(self, cx: &mut ScopeContext<'_>) -> AppResult<()> {
-        let Self {
-            walkdir,
-            config,
-            prefix,
-        } = self;
-
-        if let Some(prefix) = prefix {
-            cx.prefix(&prefix)?;
-        }
+        let Self { walkdir, config } = self;
 
         for entry in walkdir {
             let entry = entry?;
@@ -174,6 +156,7 @@ where
                 )?;
             }
         }
+
         Ok(())
     }
 }
