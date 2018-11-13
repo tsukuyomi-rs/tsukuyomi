@@ -1,5 +1,5 @@
 use crate::app::{global, route, scope, RecognizeError, RouteId};
-use crate::internal::scoped_map::ScopeId;
+use crate::scoped_map::ScopeId;
 
 use http::Method;
 use matches::assert_matches;
@@ -111,7 +111,7 @@ fn scope_simple() {
         .route(route().uri("/foo".parse().unwrap()).reply(|| ""))
         .mount(
             scope()
-                .prefix("/c")
+                .prefix("/c".parse().unwrap())
                 .route(route().uri("/d".parse().unwrap()).reply(|| ""))
                 .route(route().uri("/e".parse().unwrap()).reply(|| "")),
         ) //
@@ -135,7 +135,7 @@ fn scope_nested() {
         ) //
         .mount(
             scope()
-                .prefix("/baz")
+                .prefix("/baz".parse().unwrap())
                 .route(route().reply(|| "")) // /baz
                 .mount(
                     scope().route(
@@ -168,38 +168,38 @@ fn scope_variable() {
         .route(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .mount(
             scope()
-                .prefix("/s0")
+                .prefix("/s0".parse().unwrap())
                 .route(route().uri("/r0".parse().unwrap()).reply(|| ""))
                 .mount(
                     scope()
-                        .prefix("/s1")
+                        .prefix("/s1".parse().unwrap())
                         .state::<String>("A".into())
                         .route(route().uri("/r1".parse().unwrap()).reply(|| "")),
                 ),
         ) //
         .mount(
             scope()
-                .prefix("/s2")
+                .prefix("/s2".parse().unwrap())
                 .state::<String>("B".into())
                 .route(route().uri("/r2".parse().unwrap()).reply(|| ""))
                 .mount(
                     scope()
-                        .prefix("/s3")
+                        .prefix("/s3".parse().unwrap())
                         .state::<String>("C".into())
                         .route(route().uri("/r3".parse().unwrap()).reply(|| ""))
                         .mount(
                             scope()
-                                .prefix("/s4")
+                                .prefix("/s4".parse().unwrap())
                                 .route(route().uri("/r4".parse().unwrap()).reply(|| "")),
                         ),
                 ) //
                 .mount(
                     scope()
-                        .prefix("/s5")
+                        .prefix("/s5".parse().unwrap())
                         .route(route().uri("/r5".parse().unwrap()).reply(|| ""))
                         .mount(
                             scope()
-                                .prefix("/s6")
+                                .prefix("/s6".parse().unwrap())
                                 .route(route().uri("/r6".parse().unwrap()).reply(|| "")),
                         ),
                 ), //

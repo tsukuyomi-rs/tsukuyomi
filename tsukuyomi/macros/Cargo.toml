@@ -12,3 +12,7 @@ proc-macro = true
 syn = { version = "0.15", features = ["full", "extra-traits"] }
 quote = "0.6"
 proc-macro2 = "0.4.20"
+
+[dependencies.tsukuyomi-internal]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "../internal"

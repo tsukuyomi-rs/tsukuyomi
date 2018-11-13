@@ -36,14 +36,17 @@ fn global_modifier() {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = test_server(
-        tsukuyomi::app()
-            .route(route!().reply({
-                let marker = marker.clone();
-                move || {
-                    marker.lock().unwrap().push("H");
-                    ""
-                }
-            })) //
+        tsukuyomi::app!()
+            .route(
+                route!() //
+                    .reply({
+                        let marker = marker.clone();
+                        move || {
+                            marker.lock().unwrap().push("H");
+                            ""
+                        }
+                    }),
+            ) //
             .modifier(MarkModifier {
                 marker: marker.clone(),
                 before: |m| {
@@ -156,8 +159,7 @@ fn scoped_modifier() {
                 },
             }) //
             .mount(
-                scope()
-                    .prefix("/path1")
+                scope!("/path1")
                     .modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
@@ -203,8 +205,7 @@ fn nested_modifiers() {
     let mut server = test_server(
         tsukuyomi::app()
             .mount(
-                scope()
-                    .prefix("/path")
+                scope!("/path")
                     .modifier(MarkModifier {
                         marker: marker.clone(),
                         before: |m| {
@@ -217,8 +218,7 @@ fn nested_modifiers() {
                         },
                     }) //
                     .mount(
-                        scope()
-                            .prefix("/to")
+                        scope!("/to")
                             .modifier(MarkModifier {
                                 marker: marker.clone(),
                                 before: |m| {
@@ -238,8 +238,7 @@ fn nested_modifiers() {
                                 }
                             })) //
                             .mount(
-                                scope()
-                                    .prefix("/a")
+                                scope!("/a")
                                     .modifier(MarkModifier {
                                         marker: marker.clone(),
                                         before: |m| {

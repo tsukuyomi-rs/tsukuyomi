@@ -13,7 +13,4 @@ extern crate failure;
 #[cfg_attr(test, macro_use)]
 extern crate indexmap;
 
-pub mod local_map;
-pub mod recognizer;
-pub mod scoped_map;
 pub mod uri;

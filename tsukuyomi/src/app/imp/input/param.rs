@@ -2,8 +2,8 @@
 
 use std::ops::Index;
 
-use crate::internal::recognizer::Captures;
-use crate::internal::uri::CaptureNames;
+use crate::recognizer::Captures;
+use crate::uri::CaptureNames;
 
 /// A proxy object for accessing extracted parameters.
 #[derive(Debug)]

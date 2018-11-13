@@ -1,6 +1,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::*;
 
+use crate::uri::Uri;
+
 pub fn route_expr_impl(input: impl Into<TokenStream>) -> syn::parse::Result<TokenStream> {
     parse(input.into()).map(|input| derive(&input))
 }
@@ -17,6 +19,10 @@ struct RouteExprImplInput {
 
 fn parse(input: TokenStream) -> syn::parse::Result<RouteExprImplInput> {
     let uri: syn::LitStr = syn::parse2(input)?;
+
+    if let Err(err) = uri.value().parse::<Uri>() {
+        return Err(syn::parse::Error::new(uri.span(), err));
+    }
 
     let mut params = vec![];
     for segment in uri.value().split('/') {
@@ -95,6 +101,19 @@ macro_rules! t {
             }
         }
     };
+        (
+        name: $name:ident,
+        source: ($($source:tt)*),
+        error: $message:expr,
+    ) => {
+        #[test]
+        fn $name() {
+            match route_expr_impl(quote!($($source)*)) {
+                Ok(..) => panic!("should be failed"),
+                Err(err) => assert_eq!(err.to_string(), $message),
+            }
+        }
+    };
 }
 
 t! {
@@ -161,4 +180,22 @@ t! {
                 .with(tsukuyomi::extractor::param::wildcard())
         }
     },
+}
+
+t! {
+    name: empty_str,
+    source: (""),
+    error: "invalid URI",
+}
+
+t! {
+    name: empty_segment,
+    source: ("/path//to"),
+    error: "empty segment",
+}
+
+t! {
+    name: incorret_character_in_segment,
+    source: ("/path/to/pa:ram"),
+    error: "invalid character in a segment",
 }

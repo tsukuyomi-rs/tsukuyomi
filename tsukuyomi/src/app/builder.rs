@@ -9,11 +9,10 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::error::handler::DefaultErrorHandler;
 use crate::error::ErrorHandler;
-use crate::internal::recognizer::Recognizer;
-use crate::internal::scoped_map::{Builder as ScopedContainerBuilder, ScopeId};
-use crate::internal::uri;
-use crate::internal::uri::Uri;
 use crate::output::ResponseBody;
+use crate::recognizer::Recognizer;
+use crate::scoped_map::{Builder as ScopedContainerBuilder, ScopeId};
+use crate::uri::Uri;
 
 use super::error::{Error, Result};
 use super::global::{Context as GlobalContext, Global};
@@ -60,7 +59,7 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
                 current = scope.parent.local_id();
             }
             uris.extend(prefix.as_ref());
-            let uri = uri::join_all(uris.into_iter().rev())?;
+            let uri = crate::uri::join_all(uris.into_iter().rev())?;
 
             let handler = route.handler;
 
@@ -290,13 +289,11 @@ impl AppContext {
         self.error_handler = Some(Box::new(error_handler));
     }
 
-    pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: &str) -> Result<()> {
-        let prefix = prefix.parse().unwrap();
+    pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) {
         match id {
             ScopeId::Global => self.prefix = Some(prefix),
             ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
         }
-        Ok(())
     }
 }
 

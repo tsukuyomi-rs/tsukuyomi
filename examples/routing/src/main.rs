@@ -9,18 +9,15 @@ fn main() {
                 .reply(|| "Hello, world\n"),
         ) //
         .mount(
-            scope()
-                .prefix("/api/v1/")
+            scope!("/api/v1/")
                 .mount(
-                    scope()
-                        .prefix("/posts")
+                    scope!("/posts")
                         .route(route!().reply(|| "list_posts"))
                         .route(route!("/:id").reply(|id: i32| format!("get_post(id = {})", id)))
                         .route(route!("/", method = POST).reply(|| "add_post")),
                 ) //
                 .mount(
-                    scope()
-                        .prefix("/user") //
+                    scope!("/user") //
                         .route(route!("/auth").reply(|| "Authentication")),
                 ),
         ) //

@@ -20,9 +20,9 @@ use http::Method;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::error::handler::ErrorHandler;
-use crate::internal::recognizer::Recognizer;
-use crate::internal::scoped_map::{ScopeId, ScopedContainer};
-use crate::internal::uri::Uri;
+use crate::recognizer::Recognizer;
+use crate::scoped_map::{ScopeId, ScopedContainer};
+use crate::uri::Uri;
 
 pub use self::error::{Error, Result};
 pub use self::global::Global;
@@ -31,7 +31,7 @@ pub use self::imp::RecognizeError;
 pub use self::route::Route;
 pub use self::scope::Scope;
 
-pub use crate::route;
+pub use crate::{route, scope};
 
 pub fn route() -> self::route::Builder<()> {
     self::route::Builder::<()>::default()
@@ -275,13 +275,13 @@ where
         }
     }
 
-    pub fn prefix(self, prefix: impl AsRef<str>) -> Builder<impl Scope<Error = Error>, G> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, G> {
         let Self { global, scope } = self;
         Builder {
             global,
             scope: self::scope::raw(move |cx| {
-                scope.configure(cx).map_err(Into::into)?;
-                cx.set_prefix(prefix.as_ref())?;
+                scope.configure(cx)?;
+                cx.set_prefix(prefix);
                 Ok(())
             }),
         }

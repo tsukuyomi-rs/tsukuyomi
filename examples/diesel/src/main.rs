@@ -100,8 +100,7 @@ fn main() {
             })
         });
 
-    let app = tsukuyomi::app()
-        .prefix("/api/v1/posts")
+    let app = tsukuyomi::app!("/api/v1/posts")
         .route(get_posts)
         .route(create_post)
         .route(get_post)

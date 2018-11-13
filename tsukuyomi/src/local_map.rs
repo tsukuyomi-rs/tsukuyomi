@@ -6,8 +6,6 @@ use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
-pub use crate::local_key;
-
 /// A macro to create a `LocalKey<T>`.
 #[macro_export]
 macro_rules! local_key {
@@ -16,12 +14,12 @@ macro_rules! local_key {
         $vis:vis static $NAME:ident : $t:ty;
     )*) => {$(
         $(#[$m])*
-        $vis static $NAME: $crate::local_map::LocalKey<$t> = {
+        $vis static $NAME: $crate::input::local_map::LocalKey<$t> = {
             fn __type_id() -> ::std::any::TypeId {
                 struct __A;
                 ::std::any::TypeId::of::<__A>()
             }
-            $crate::local_map::LocalKey {
+            $crate::input::local_map::LocalKey {
                 __type_id,
                 __marker: ::std::marker::PhantomData,
             }
@@ -42,12 +40,12 @@ macro_rules! local_key {
         $vis:vis const $NAME:ident : $t:ty;
     )*) => {$(
         $(#[$m])*
-        $vis const $NAME: $crate::local_map::LocalKey<$t> = {
+        $vis const $NAME: $crate::input::local_map::LocalKey<$t> = {
             fn __type_id() -> ::std::any::TypeId {
                 struct __A;
                 ::std::any::TypeId::of::<__A>()
             }
-            $crate::local_map::LocalKey {
+            $crate::input::local_map::LocalKey {
                 __type_id,
                 __marker: ::std::marker::PhantomData,
             }

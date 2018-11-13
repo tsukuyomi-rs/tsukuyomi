@@ -12,7 +12,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 
-extern crate tsukuyomi_internal as internal;
+extern crate tsukuyomi_internal;
 extern crate tsukuyomi_macros;
 extern crate tsukuyomi_server;
 
@@ -41,12 +41,23 @@ pub mod extractor;
 pub mod fs;
 pub mod output;
 
+mod local_map;
+mod recognizer;
+mod scoped_map;
+use tsukuyomi_internal::uri;
+
 pub mod input {
     pub use crate::app::imp::input::*;
+
+    pub mod local_map {
+        pub use crate::local_key;
+        #[doc(inline)]
+        pub use crate::local_map::*;
+    }
 }
 
 #[doc(hidden)]
-pub use tsukuyomi_macros::route_expr_impl;
+pub use tsukuyomi_macros::{route_expr_impl, validate_prefix};
 pub use tsukuyomi_server::server::server;
 pub use tsukuyomi_server::test;
 
@@ -97,4 +108,18 @@ pub mod server {
 
 pub fn app() -> crate::app::Builder<(), ()> {
     crate::app::Builder::default()
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! app {
+    () => {
+        $crate::app()
+    };
+    ($prefix:expr) => {{
+        enum __Dummy {}
+        impl __Dummy {
+            validate_prefix!($prefix);
+        }
+        $crate::app().prefix($prefix.parse().expect("this is a bug"))
+    }};
 }

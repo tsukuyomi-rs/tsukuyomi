@@ -8,7 +8,6 @@ mod param;
 pub use self::body::RequestBody;
 pub use self::global::{is_set_current, with_get_current};
 pub use self::param::Params;
-pub use crate::internal::local_map;
 
 pub(crate) use self::global::with_set_current;
 
@@ -25,8 +24,7 @@ use mime::Mime;
 use crate::app::imp::AppContext;
 use crate::app::App;
 use crate::error::Error;
-
-use self::local_map::LocalMap;
+use crate::local_map::LocalMap;
 
 /// Contextual information used by processes during an incoming HTTP request.
 #[derive(Debug)]
@@ -123,7 +121,8 @@ impl<'task> Input<'task> {
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
     pub fn content_type(&mut self) -> Result<Option<&Mime>, Error> {
-        use self::local_map::{local_key, Entry};
+        use crate::local_key;
+        use crate::local_map::Entry;
 
         local_key!(static KEY: Option<Mime>);
 

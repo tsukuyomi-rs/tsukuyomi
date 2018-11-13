@@ -1,4 +1,5 @@
-use crate::internal::scoped_map::ScopeId;
+use crate::scoped_map::ScopeId;
+use crate::uri::Uri;
 
 use super::builder::AppContext;
 use super::error::{Error, Result};
@@ -114,11 +115,11 @@ where
         }
     }
 
-    pub fn prefix(self, prefix: impl AsRef<str>) -> Builder<impl Scope<Error = Error>> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
         Builder {
             scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
-                cx.set_prefix(prefix.as_ref())?;
+                self.scope.configure(cx)?;
+                cx.set_prefix(prefix);
                 Ok(())
             }),
         }
@@ -179,7 +180,22 @@ impl<'a> Context<'a> {
         self.cx.add_modifier(self.id, modifier)
     }
 
-    pub fn set_prefix(&mut self, prefix: &str) -> Result<()> {
+    pub fn set_prefix(&mut self, prefix: Uri) {
         self.cx.set_prefix(self.id, prefix)
     }
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! scope {
+    () => {
+        $crate::scope()
+    };
+
+    ($prefix:expr) => {{
+        enum __Dummy {}
+        impl __Dummy {
+            validate_prefix!($prefix);
+        }
+        $crate::app::scope().prefix($prefix.parse().expect("this is a bug"))
+    }};
 }

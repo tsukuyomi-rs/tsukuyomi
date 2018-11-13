@@ -17,9 +17,12 @@ extern crate proc_macro;
 extern crate proc_macro2;
 extern crate quote;
 extern crate syn;
+extern crate tsukuyomi_internal;
 
 mod derive_responder;
 mod route_expr_impl;
+mod validate_prefix;
+use tsukuyomi_internal::uri;
 
 use proc_macro::TokenStream;
 
@@ -36,6 +39,14 @@ pub fn route_expr_impl(input: TokenStream) -> TokenStream {
 #[cfg_attr(tarpaulin, skip)]
 pub fn Responder(input: TokenStream) -> TokenStream {
     crate::derive_responder::derive_responder(input.into())
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+}
+
+#[proc_macro]
+pub fn validate_prefix(input: TokenStream) -> TokenStream {
+    validate_prefix::validate(input.into())
+        .map(|_| quote::quote!(const _DUMMY: () = ();))
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

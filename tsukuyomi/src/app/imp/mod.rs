@@ -11,9 +11,9 @@ use tower_service::{NewService, Service};
 
 use crate::error::{Error, HttpError};
 use crate::input::{Input, RequestBody};
-use crate::internal::local_map::LocalMap;
-use crate::internal::recognizer::Captures;
+use crate::local_map::LocalMap;
 use crate::output::{Output, ResponseBody};
+use crate::recognizer::Captures;
 use crate::server::service::http::Payload;
 use crate::server::CritError;
 

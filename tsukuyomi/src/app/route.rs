@@ -7,8 +7,8 @@ use indexmap::IndexSet;
 use crate::error::Error;
 use crate::extractor::{And, Combine, Extractor, ExtractorExt, Func};
 use crate::fs::NamedFile;
-use crate::internal::uri::Uri;
 use crate::output::Responder;
+use crate::uri::Uri;
 
 use super::handler::{AsyncResult, Handler};
 
