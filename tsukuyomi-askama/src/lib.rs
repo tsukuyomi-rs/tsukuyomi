@@ -6,7 +6,6 @@
 //! extern crate tsukuyomi_askama;
 //!
 //! use askama::Template;
-//! use tsukuyomi::app::App;
 //!
 //! #[derive(
 //!     askama::Template,
