@@ -4,29 +4,29 @@ use juniper::InputValue;
 use percent_encoding::percent_decode;
 
 use tsukuyomi::error::Error;
-use tsukuyomi::extractor::Extractor;
+use tsukuyomi::extractor::{ExtractStatus, Extractor};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 
 pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
-    #[allow(missing_debug_implementations)]
-    enum RequestKind {
-        Query(Option<GraphQLRequest>),
-        Json,
-        GraphQL,
-    }
+    tsukuyomi::extractor::raw(|input| {
+        if input.method() == Method::GET {
+            let query_str = input
+                .uri()
+                .query()
+                .ok_or_else(|| tsukuyomi::error::bad_request("missing query string"))?;
+            let request = parse_query_str(query_str)?;
+            return Ok(ExtractStatus::Ready((request,)));
+        }
 
-    tsukuyomi::extractor::lazy(|input| {
-        let mut kind = match *input.method() {
-            Method::GET => {
-                let query_str = input
-                    .uri()
-                    .query()
-                    .ok_or_else(|| tsukuyomi::error::bad_request("missing query string"))?;
-                let request = parse_query_str(query_str)?;
-                RequestKind::Query(Some(request))
+        if input.method() == Method::POST {
+            #[allow(missing_debug_implementations)]
+            enum RequestKind {
+                Json,
+                GraphQL,
             }
-            Method::POST => match input.content_type()? {
+
+            let kind = match input.content_type()? {
                 Some(mime) if *mime == mime::APPLICATION_JSON => RequestKind::Json,
                 Some(mime) if *mime == "application/graphql" => RequestKind::GraphQL,
                 Some(mime) => {
@@ -36,34 +36,31 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
                     )))
                 }
                 None => return Err(tsukuyomi::error::bad_request("missing content-type")),
-            },
-            _ => return Err(tsukuyomi::error::bad_request("invalid method")),
-        };
+            };
 
-        let mut read_all = match kind {
-            RequestKind::Json | RequestKind::GraphQL => Some(input.read_all()),
-            _ => None,
-        };
+            let mut read_all = input.read_all();
+            let future = futures::future::poll_fn(move || match kind {
+                RequestKind::Json => {
+                    let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
+                    let request =
+                        serde_json::from_slice(&*data).unwrap_or_else(GraphQLRequest::error);
+                    Ok(Async::Ready((request,)))
+                }
+                RequestKind::GraphQL => {
+                    let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
+                    String::from_utf8(data.to_vec())
+                        .map(|query| Async::Ready((GraphQLRequest::single(query, None, None),)))
+                        .map_err(tsukuyomi::error::bad_request)
+                }
+            });
 
-        Ok(futures::future::poll_fn(move || match kind {
-            RequestKind::Query(ref mut request) => {
-                let request = request.take().expect("This future has already polled.");
-                Ok(Async::Ready(request))
-            }
-            RequestKind::Json => {
-                let data =
-                    futures::try_ready!(read_all.as_mut().unwrap().poll().map_err(Error::critical));
-                let request = serde_json::from_slice(&*data).unwrap_or_else(GraphQLRequest::error);
-                Ok(Async::Ready(request))
-            }
-            RequestKind::GraphQL => {
-                let data =
-                    futures::try_ready!(read_all.as_mut().unwrap().poll().map_err(Error::critical));
-                String::from_utf8(data.to_vec())
-                    .map(|query| Async::Ready(GraphQLRequest::single(query, None, None)))
-                    .map_err(tsukuyomi::error::bad_request)
-            }
-        }))
+            return Ok(ExtractStatus::Pending(future));
+        }
+
+        Err(tsukuyomi::error::bad_request(format!(
+            "the method `{}' is not allowed as a GraphQL request",
+            input.method()
+        )))
     })
 }
 

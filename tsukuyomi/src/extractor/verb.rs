@@ -6,7 +6,7 @@ use futures::Future;
 use http::Method;
 
 use crate::error::Error;
-use crate::extractor::Extractor;
+use crate::extractor::{Extract, Extractor};
 use crate::input::Input;
 
 pub fn verb<E>(extractor: E, method: Method) -> impl Extractor<Output = E::Output, Error = Error>
@@ -26,14 +26,15 @@ where
         type Future = futures::future::MapErr<E::Future, fn(E::Error) -> Error>;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-            if input.method() == self.1 {
-                match self.0.extract(input).map_err(Into::into)? {
-                    fut => Ok(fut.map_err(Into::into as fn(E::Error) -> Error)),
-                }
-            } else {
-                Err(crate::error::method_not_allowed("rejected by extractor"))
+        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+            if input.method() != self.1 {
+                return Err(crate::error::method_not_allowed("rejected by extractor"));
             }
+            self.0
+                .extract(input)
+                .map(|status| {
+                    status.map_pending(|future| future.map_err(Into::into as fn(E::Error) -> Error))
+                }).map_err(Into::into)
         }
     }
 

@@ -1,3 +1,5 @@
+//! Extractors for accessing the scope-local data.
+
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
@@ -21,17 +23,14 @@ impl<T> State<T>
 where
     T: Send + Sync + 'static,
 {
-    pub(crate) fn new() -> Self {
+    fn new() -> Self {
         Self {
             _marker: PhantomData,
         }
     }
 
     #[allow(missing_docs)]
-    pub fn with<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
+    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
         crate::input::with_get_current(|input| {
             let state = input.state::<T>().expect("should be exist");
             f(state)
@@ -39,7 +38,7 @@ where
     }
 }
 
-pub fn state<T>() -> impl Extractor<Output = (State<T>,), Error = Error>
+pub fn by_ref<T>() -> impl Extractor<Output = (State<T>,), Error = Error>
 where
     T: Send + Sync + 'static,
 {
@@ -52,7 +51,7 @@ where
     })
 }
 
-pub fn cloned<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn clone<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
     T: Clone + Send + Sync + 'static,
 {

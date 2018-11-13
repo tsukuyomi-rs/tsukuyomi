@@ -241,7 +241,7 @@ fn local_data() {
             .modifier(MyModifier)
             .route(
                 route!()
-                    .with(extractor::local::local(&MyData::KEY))
+                    .with(extractor::local::remove(&MyData::KEY))
                     .reply(|x: MyData| x.0),
             ) //
             .finish()
@@ -267,7 +267,7 @@ fn missing_local_data() {
         tsukuyomi::app()
             .route(
                 route!()
-                    .with(extractor::local::local(&MyData::KEY))
+                    .with(extractor::local::remove(&MyData::KEY))
                     .reply(|x: MyData| x.0),
             ) //
             .finish()

@@ -38,8 +38,8 @@ pub fn exact<T>(name: HeaderName, value: T) -> impl Extractor<Output = (), Error
 where
     T: PartialEq<HeaderValue> + Send + Sync + 'static,
 {
-    super::validate(move |input| match input.headers().get(&name) {
-        Some(h) if value.eq(h) => Ok(()),
+    super::guard(move |input| match input.headers().get(&name) {
+        Some(h) if value.eq(h) => Ok(None),
         Some(..) => Err(crate::error::bad_request(format!(
             "mismatched header field: {}",
             name

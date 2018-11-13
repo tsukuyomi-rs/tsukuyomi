@@ -5,7 +5,7 @@ use futures::{Async, Future, IntoFuture};
 use indexmap::IndexSet;
 
 use crate::error::Error;
-use crate::extractor::{And, Combine, Extractor, ExtractorExt, Func};
+use crate::extractor::{And, Combine, ExtractStatus, Extractor, ExtractorExt, Func};
 use crate::fs::NamedFile;
 use crate::output::Responder;
 use crate::uri::Uri;
@@ -108,15 +108,20 @@ where
         self.finish(move |extractor| {
             super::handler::raw(move |input| match extractor.extract(input) {
                 Err(e) => AsyncResult::ready(Err(e.into())),
-                Ok(future) => {
+                Ok(ExtractStatus::Canceled(output)) => AsyncResult::ready(Ok(output)),
+                Ok(ExtractStatus::Ready(arg)) => {
+                    let result = crate::output::internal::respond_to(handler.call(arg), input);
+                    AsyncResult::ready(result)
+                }
+                Ok(ExtractStatus::Pending(future)) => {
                     let handler = handler.clone();
                     let mut future = future.map(move |arg| handler.call(arg));
                     AsyncResult::polling(move |input| {
-                        futures::try_ready!(crate::input::with_set_current(input, || future
-                            .poll()
-                            .map_err(Into::into))).respond_to(input)
-                        .map(|response| Async::Ready(response.map(Into::into)))
-                        .map_err(Into::into)
+                        let x =
+                            futures::try_ready!(crate::input::with_set_current(input, || future
+                                .poll()
+                                .map_err(Into::into)));
+                        crate::output::internal::respond_to(x, input).map(Async::Ready)
                     })
                 }
             })
@@ -136,16 +141,28 @@ where
         self.finish(move |extractor| {
             super::handler::raw(move |input| match extractor.extract(input) {
                 Err(e) => AsyncResult::ready(Err(e.into())),
-                Ok(future) => {
+                Ok(ExtractStatus::Canceled(output)) => AsyncResult::ready(Ok(output)),
+                Ok(ExtractStatus::Ready(arg)) => {
+                    let mut future = handler.call(arg).into_future();
+                    AsyncResult::polling(move |input| {
+                        let x =
+                            futures::try_ready!(
+                                crate::input::with_set_current(input, || future.poll())
+                            );
+                        crate::output::internal::respond_to(x, input).map(Async::Ready)
+                    })
+                }
+                Ok(ExtractStatus::Pending(future)) => {
                     let handler = handler.clone();
                     let mut future = future
                         .map_err(Into::into)
                         .and_then(move |arg| handler.call(arg).into_future());
                     AsyncResult::polling(move |input| {
-                        futures::try_ready!(crate::input::with_set_current(input, || future.poll()))
-                            .respond_to(input)
-                            .map(|response| Async::Ready(response.map(Into::into)))
-                            .map_err(Into::into)
+                        let x =
+                            futures::try_ready!(
+                                crate::input::with_set_current(input, || future.poll())
+                            );
+                        crate::output::internal::respond_to(x, input).map(Async::Ready)
                     })
                 }
             })

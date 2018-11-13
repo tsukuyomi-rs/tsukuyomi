@@ -16,13 +16,16 @@ where
     type Future = MapFuture<E::Future, F>;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-        match self.extractor.extract(input)? {
-            future => Ok(MapFuture {
-                future,
-                f: self.f.clone(),
-            }),
-        }
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+        self.extractor.extract(input).map(|status| {
+            status.map(
+                |args| (self.f.call(args),),
+                |future| MapFuture {
+                    future,
+                    f: self.f.clone(),
+                },
+            )
+        })
     }
 }
 

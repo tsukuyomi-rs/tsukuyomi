@@ -2,7 +2,7 @@ use tsukuyomi::app::route;
 use tsukuyomi::extractor;
 use tsukuyomi::test::test_server;
 
-use http::{header, Request, StatusCode};
+use http::{header, Method, Request, Response, StatusCode};
 
 #[test]
 fn empty_routes() {
@@ -91,22 +91,23 @@ fn cookies() {
         tsukuyomi::app()
             .route(
                 route!("/login")
-                    .with(extractor::validate(move |input| {
-                        let cookie = Cookie::build("session", "dummy_session_id")
-                            .domain("www.example.com")
-                            .expires(expires_in)
-                            .finish();
-                        input.cookies().map(|mut cookies| {
-                            cookies.add(cookie);
-                        })
+                    .with(extractor::guard(move |input| {
+                        let mut cookies = input.cookies()?;
+                        cookies.add(
+                            Cookie::build("session", "dummy_session_id")
+                                .domain("www.example.com")
+                                .expires(expires_in)
+                                .finish(),
+                        );
+                        Ok::<_, tsukuyomi::error::Error>(None)
                     })).reply(|| "Logged in"),
             ) //
             .route(
                 route!("/logout")
-                    .with(extractor::validate(|input| {
-                        input.cookies().map(|mut cookies| {
-                            cookies.remove(Cookie::named("session"));
-                        })
+                    .with(extractor::guard(|input| {
+                        let mut cookies = input.cookies()?;
+                        cookies.remove(Cookie::named("session"));
+                        Ok::<_, tsukuyomi::error::Error>(None)
                     })).reply(|| "Logged out"),
             ) //
             .finish()
@@ -190,4 +191,30 @@ fn test_case_5_disable_default_options() {
 
     let response = server.perform(Request::options("/path")).unwrap();
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[test]
+fn test_canceled() {
+    let mut server = test_server(
+        tsukuyomi::app()
+            .route(
+                route!("/", methods = [GET, POST])
+                    .with(tsukuyomi::extractor::guard(
+                        |input| -> tsukuyomi::error::Result<_> {
+                            if input.method() == Method::GET {
+                                Ok(None)
+                            } else {
+                                Ok(Some(Response::new("canceled".into())))
+                            }
+                        },
+                    )).reply(|| "passed"),
+            ).finish()
+            .unwrap(),
+    );
+
+    let response = server.perform(Request::get("/")).unwrap();
+    assert_eq!(response.body().to_utf8().unwrap(), "passed");
+
+    let response = server.perform(Request::post("/")).unwrap();
+    assert_eq!(response.body().to_utf8().unwrap(), "canceled");
 }

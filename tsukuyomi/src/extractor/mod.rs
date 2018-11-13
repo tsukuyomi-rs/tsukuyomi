@@ -27,18 +27,87 @@ pub use self::or::Or;
 
 // ==== impl ====
 
+use std::marker::PhantomData;
+
 use futures::future;
 use futures::{Async, Future, IntoFuture, Poll};
 
 use crate::error::{Error, Never};
 use crate::input::Input;
+use crate::output::Output;
 
+/// A type that represents the value of a `Future` never constructed.
+#[derive(Debug)]
+pub struct Placeholder<T, E> {
+    never: crate::error::Never,
+    _marker: PhantomData<fn() -> (T, E)>,
+}
+
+impl<T, E> Future for Placeholder<T, E> {
+    type Item = T;
+    type Error = E;
+
+    #[inline]
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self.never {}
+    }
+}
+
+/// An enum representing the result of `Extractor`.
+#[derive(Debug)]
+pub enum ExtractStatus<T, Fut> {
+    /// The value of `T` is immediately available.
+    Ready(T),
+
+    /// The value has not been available yet.
+    Pending(Fut),
+
+    /// Cancel the subsequent extraction and return the specified output to the client.
+    Canceled(Output),
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+impl<T, Fut> ExtractStatus<T, Fut> {
+    pub fn map<U, V>(
+        self,
+        f: impl FnOnce(T) -> U,
+        g: impl FnOnce(Fut) -> V,
+    ) -> ExtractStatus<U, V> {
+        match self {
+            ExtractStatus::Ready(t) => ExtractStatus::Ready(f(t)),
+            ExtractStatus::Pending(fut) => ExtractStatus::Pending(g(fut)),
+            ExtractStatus::Canceled(out) => ExtractStatus::Canceled(out),
+        }
+    }
+
+    pub fn map_ready<U>(self, f: impl FnOnce(T) -> U) -> ExtractStatus<U, Fut> {
+        self.map(f, |fut| fut)
+    }
+
+    pub fn map_pending<U>(self, f: impl FnOnce(Fut) -> U) -> ExtractStatus<T, U> {
+        self.map(|t| t, f)
+    }
+}
+
+/// A type alias representing the return type of `Extractor::extract`.
+pub type Extract<E> = Result<
+    ExtractStatus<<E as Extractor>::Output, <E as Extractor>::Future>,
+    <E as Extractor>::Error,
+>;
+
+/// A trait abstracting the extraction of values from `Input`.
 pub trait Extractor: Send + Sync + 'static {
+    /// The type of output value from this extractor.
     type Output: Tuple;
+
+    /// The error type which will be returned from this extractor.
     type Error: Into<Error>;
+
+    /// The type representing asyncrhonous computations performed during extraction.
     type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error>;
+    /// Performs extraction from the specified `Input`.
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self>;
 }
 
 impl<E> Extractor for Box<E>
@@ -50,7 +119,7 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
         (**self).extract(input)
     }
 }
@@ -64,7 +133,7 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
         (**self).extract(input)
     }
 }
@@ -72,48 +141,11 @@ where
 impl Extractor for () {
     type Output = ();
     type Error = Never;
-    type Future = Matched;
+    type Future = Placeholder<Self::Output, Self::Error>;
 
     #[inline]
-    fn extract(&self, _: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-        Ok(Matched(()))
-    }
-}
-
-#[derive(Debug, Default)]
-#[must_use = "futures do nothing unless polled"]
-pub struct Matched(());
-
-impl Future for Matched {
-    type Item = ();
-    type Error = Never;
-
-    #[inline]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        Ok(Async::Ready(()))
-    }
-}
-
-#[derive(Debug)]
-#[must_use = "futures do nothing unless polled"]
-pub struct Extracted<T>(Option<T>);
-
-impl<T> From<T> for Extracted<T> {
-    fn from(value: T) -> Self {
-        Extracted(Some(value))
-    }
-}
-
-impl<T> Future for Extracted<T> {
-    type Item = (T,);
-    type Error = Never;
-
-    #[inline]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        Ok(Async::Ready((self
-            .0
-            .take()
-            .expect("This future has already polled."),)))
+    fn extract(&self, _: &mut Input<'_>) -> Extract<Self> {
+        Ok(ExtractStatus::Ready(()))
     }
 }
 
@@ -184,49 +216,73 @@ pub fn unit() -> impl Extractor<Output = (), Error = Never> {
     ()
 }
 
-pub fn validate<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
+pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Item, Error = R::Error>
 where
-    F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> Result<ExtractStatus<R::Item, R>, R::Error> + Send + Sync + 'static,
+    R: Future + Send + 'static,
+    R::Item: Tuple + 'static,
+    R::Error: Into<Error> + 'static,
+{
+    #[allow(missing_debug_implementations)]
+    struct Raw<F>(F);
+
+    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+    impl<F, R> Extractor for Raw<F>
+    where
+        F: Fn(&mut Input<'_>) -> Result<ExtractStatus<R::Item, R>, R::Error>
+            + Send
+            + Sync
+            + 'static,
+        R: Future + Send + 'static,
+        R::Item: Tuple + 'static,
+        R::Error: Into<Error> + 'static,
+    {
+        type Output = R::Item;
+        type Error = R::Error;
+        type Future = R;
+
+        #[inline]
+        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+            (self.0)(input)
+        }
+    }
+
+    Raw(f)
+}
+
+pub fn guard<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
+where
+    F: Fn(&mut Input<'_>) -> Result<Option<Output>, E> + Send + Sync + 'static,
     E: Into<Error> + 'static,
 {
     #[allow(missing_debug_implementations)]
-    struct Validate<F>(F);
+    struct Guard<F>(F);
 
-    impl<F, E> Extractor for Validate<F>
+    impl<F, E> Extractor for Guard<F>
     where
-        F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
+        F: Fn(&mut Input<'_>) -> Result<Option<Output>, E> + Send + Sync + 'static,
         E: Into<Error> + 'static,
     {
         type Output = ();
         type Error = E;
-        type Future = ValidateFuture<E>;
+        type Future = Placeholder<Self::Output, Self::Error>;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-            (self.0)(input).map(|()| ValidateFuture(std::marker::PhantomData))
+        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+            match (self.0)(input)? {
+                Some(output) => Ok(ExtractStatus::Canceled(output)),
+                None => Ok(ExtractStatus::Ready(())),
+            }
         }
     }
 
-    #[allow(missing_debug_implementations)]
-    struct ValidateFuture<E>(std::marker::PhantomData<fn() -> E>);
-
-    impl<E> Future for ValidateFuture<E> {
-        type Item = ();
-        type Error = E;
-
-        #[inline]
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            Ok(Async::Ready(()))
-        }
-    }
-
-    Validate(f)
+    Guard(f)
 }
 
 pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,), Error = E>
 where
     F: Fn(&mut Input<'_>) -> Result<T, E> + Send + Sync + 'static,
-    T: Send + 'static,
+    T: 'static,
     E: Into<Error> + 'static,
 {
     #[allow(missing_debug_implementations)]
@@ -235,33 +291,16 @@ where
     impl<F, T, E> Extractor for Ready<F>
     where
         F: Fn(&mut Input<'_>) -> Result<T, E> + Send + Sync + 'static,
-        T: Send + 'static,
+        T: 'static,
         E: Into<Error> + 'static,
     {
         type Output = (T,);
         type Error = E;
-        type Future = ReadyFuture<T, E>;
+        type Future = Placeholder<Self::Output, Self::Error>;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-            (self.0)(input).map(|x| ReadyFuture(Some(x), std::marker::PhantomData))
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-    struct ReadyFuture<T, E>(Option<T>, std::marker::PhantomData<fn() -> E>);
-
-    impl<T, E> Future for ReadyFuture<T, E> {
-        type Item = (T,);
-        type Error = E;
-
-        #[inline]
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            Ok(Async::Ready((self
-                .0
-                .take()
-                .expect("This future has already polled"),)))
+        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+            (self.0)(input).map(|x| ExtractStatus::Ready((x,)))
         }
     }
 
@@ -293,11 +332,13 @@ where
         type Future = futures::future::Map<R::Future, fn(R::Item) -> (R::Item,)>;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
+        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
             (self.0)(input).map(|future| {
-                future
-                    .into_future()
-                    .map((|output| (output,)) as fn(R::Item) -> (R::Item,))
+                ExtractStatus::Pending(
+                    future
+                        .into_future()
+                        .map((|output| (output,)) as fn(R::Item) -> (R::Item,)),
+                )
             })
         }
     }
@@ -318,11 +359,11 @@ where
     {
         type Output = (T,);
         type Error = Never;
-        type Future = Extracted<T>;
+        type Future = Placeholder<Self::Output, Self::Error>;
 
         #[inline]
-        fn extract(&self, _: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-            Ok(Extracted::from(self.0.clone()))
+        fn extract(&self, _: &mut Input<'_>) -> Extract<Self> {
+            Ok(ExtractStatus::Ready((self.0.clone(),)))
         }
     }
 

@@ -19,12 +19,19 @@ where
     type Future = AndThenFuture<E::Future, R, F>;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-        let future = self.extractor.extract(input).map_err(Into::into)?;
-        Ok(AndThenFuture {
-            state: AndThenState::First(future),
-            f: self.f.clone(),
-        })
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+        match self.extractor.extract(input).map_err(Into::into)? {
+            ExtractStatus::Canceled(output) => Ok(ExtractStatus::Canceled(output)),
+            ExtractStatus::Ready(arg) => {
+                let future = self.f.call(arg).into_future();
+                Ok(ExtractStatus::Pending(AndThenFuture {
+                    state: AndThenState::Second(future),
+                }))
+            }
+            ExtractStatus::Pending(future) => Ok(ExtractStatus::Pending(AndThenFuture {
+                state: AndThenState::First(future, self.f.clone()),
+            })),
+        }
     }
 }
 
@@ -39,13 +46,12 @@ where
     F2::Error: Into<Error>,
     F: Func<F1::Item, Out = F2>,
 {
-    state: AndThenState<F1, F2::Future>,
-    f: F,
+    state: AndThenState<F1, F2::Future, F>,
 }
 
 #[allow(missing_debug_implementations)]
-enum AndThenState<F1, F2> {
-    First(F1),
+enum AndThenState<F1, F2, F> {
+    First(F1, F),
     Second(F2),
     Empty,
 }
@@ -65,10 +71,10 @@ where
     #[inline]
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
-            let out = match self.state {
-                AndThenState::First(ref mut f1) => match f1.poll() {
+            let next_future = match self.state {
+                AndThenState::First(ref mut f1, ref f) => match f1.poll() {
                     Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    Ok(Async::Ready(ok)) => Ok(ok),
+                    Ok(Async::Ready(ok)) => Ok(f.call(ok)),
                     Err(err) => Err(err),
                 },
                 AndThenState::Second(ref mut f2) => {
@@ -77,9 +83,9 @@ where
                 AndThenState::Empty => panic!("This future has already polled."),
             };
 
-            match out {
-                Ok(arg) => {
-                    self.state = AndThenState::Second(self.f.call(arg).into_future());
+            match next_future {
+                Ok(future) => {
+                    self.state = AndThenState::Second(future.into_future());
                     continue;
                 }
                 Err(err) => {

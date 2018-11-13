@@ -98,7 +98,7 @@ impl Responder for ProxyResponse {
 pub fn proxy_client(
     client: reqwest::async::Client,
 ) -> impl Extractor<Output = (Client,), Error = Error> {
-    extractor::extension::cloned()
+    extractor::extension::clone()
         .and(extractor::ready(|input| {
             Ok::<_, Never>(input.headers().clone())
         })).map(move |peer_addr, headers| Client {

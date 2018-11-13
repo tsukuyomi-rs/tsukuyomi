@@ -12,10 +12,10 @@ where
     type Future = OptionalFuture<E::Future>;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
         match self.0.extract(input) {
-            Ok(future) => Ok(OptionalFuture::Polling(future)),
-            Err(..) => Ok(OptionalFuture::Failed),
+            Ok(status) => Ok(status.map(|(out,)| (Some(out),), OptionalFuture::Polling)),
+            Err(..) => Ok(ExtractStatus::Pending(OptionalFuture::Failed)),
         }
     }
 }

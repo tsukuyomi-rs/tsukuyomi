@@ -15,18 +15,33 @@ where
     type Error = Error;
     type Future = OrFuture<L::Future, R::Future>;
 
-    fn extract(&self, input: &mut Input<'_>) -> Result<Self::Future, Self::Error> {
-        match self.left.extract(input) {
-            Ok(left) => match self.right.extract(input) {
-                Ok(right) => Ok(OrFuture::Both(
+    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+        let left_status = match self.left.extract(input) {
+            Ok(status) => status,
+            Err(..) => {
+                return self
+                    .right
+                    .extract(input)
+                    .map(|status| status.map_pending(OrFuture::Right))
+                    .map_err(Into::into)
+            }
+        };
+
+        let left = match left_status {
+            status @ ExtractStatus::Ready(..) | status @ ExtractStatus::Canceled(..) => {
+                return Ok(status.map_pending(|_| unreachable!()));
+            }
+            ExtractStatus::Pending(left) => left,
+        };
+
+        match self.right.extract(input) {
+            Ok(status) => Ok(status.map_pending(|right| {
+                OrFuture::Both(
                     left.map_err(Into::into as fn(L::Error) -> Error)
                         .select(right.map_err(Into::into as fn(R::Error) -> Error)),
-                )),
-                Err(..) => Ok(OrFuture::Left(left)),
-            },
-            Err(..) => match self.right.extract(input).map_err(Into::into)? {
-                right => Ok(OrFuture::Right(right)),
-            },
+                )
+            })),
+            Err(..) => Ok(ExtractStatus::Pending(OrFuture::Left(left))),
         }
     }
 }

@@ -92,13 +92,24 @@ where
     let schema = Arc::new(schema);
     let request = crate::request::request();
 
-    tsukuyomi::extractor::lazy(move |input| {
-        let mut request = request.extract(input)?;
-        let mut schema = Some(schema.clone());
-        Ok(futures::future::poll_fn(move || {
-            let (request,) = futures::try_ready!(request.poll());
-            let schema = schema.take().expect("The future has already polled.");
-            Ok(Async::Ready(Executor { schema, request }))
-        }))
+    tsukuyomi::extractor::raw(move |input| {
+        request.extract(input).map(|status| {
+            status.map(
+                |(request,)| {
+                    (Executor {
+                        schema: schema.clone(),
+                        request,
+                    },)
+                },
+                |mut future| {
+                    let mut schema = Some(schema.clone());
+                    futures::future::poll_fn(move || {
+                        let (request,) = futures::try_ready!(future.poll());
+                        let schema = schema.take().expect("The future has already polled.");
+                        Ok(Async::Ready((Executor { schema, request },)))
+                    })
+                },
+            )
+        })
     })
 }
