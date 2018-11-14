@@ -17,7 +17,9 @@ pub enum SessionInner {
 }
 
 impl SessionInner {
-    local_key!(pub(crate) const KEY: Self);
+    local_key! {
+        pub(crate) const KEY: Self;
+    }
 }
 
 /// An interface of session values.

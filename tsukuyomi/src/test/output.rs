@@ -26,9 +26,9 @@ enum ReceiveState<Bd: Payload> {
 }
 
 impl<Bd: Payload> Receive<Bd> {
-    pub(super) fn new(body: Bd) -> Receive<Bd> {
+    pub(super) fn new(body: Bd) -> Self {
         let content_length = body.content_length();
-        Receive {
+        Self {
             state: ReceiveState::Init(body),
             content_length,
         }
@@ -43,14 +43,14 @@ impl<Bd: Payload> Receive<Bd> {
                     ref mut chunks,
                     ref mut end_of_chunks,
                 } => {
-                    if !*end_of_chunks {
+                    if *end_of_chunks {
+                        futures::try_ready!(body.poll_trailers())
+                    } else {
                         while let Some(chunk) = futures::try_ready!(body.poll_data()) {
                             chunks.push(chunk.collect());
                         }
                         *end_of_chunks = true;
                         continue;
-                    } else {
-                        futures::try_ready!(body.poll_trailers())
                     }
                 }
                 ReceiveState::Done(..) => return Ok(Async::Ready(())),
@@ -96,6 +96,7 @@ impl<Bd: Payload> Receive<Bd> {
 ///
 /// This type is usually used by the testing framework.
 #[derive(Debug)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct TestOutput {
     chunks: Vec<Bytes>,
     trailers: Option<HeaderMap>,

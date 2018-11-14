@@ -154,11 +154,11 @@ impl App {
         Builder::default()
     }
 
-    fn uri(&self, id: RouteId) -> &Uri {
+    pub(crate) fn uri(&self, id: RouteId) -> &Uri {
         &self.data.routes[id.1].uri
     }
 
-    fn get_state<T>(&self, id: RouteId) -> Option<&T>
+    pub(crate) fn get_state<T>(&self, id: RouteId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {

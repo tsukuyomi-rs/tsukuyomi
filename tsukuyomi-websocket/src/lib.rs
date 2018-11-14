@@ -35,9 +35,9 @@ pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 use tsukuyomi::error::Error;
 use tsukuyomi::extractor::Extractor;
+use tsukuyomi::input::body::UpgradedIo;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
-use tsukuyomi::server::service::http::UpgradedIo;
 
 /// A transport for exchanging data frames with the peer.
 pub type Transport = WebSocketStream<UpgradedIo>;

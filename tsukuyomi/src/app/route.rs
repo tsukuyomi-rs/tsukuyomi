@@ -298,35 +298,6 @@ impl Context {
     }
 }
 
-#[macro_export(local_inner_macros)]
-macro_rules! route {
-    (
-        $uri:expr
-            $(
-                , method = $METHOD:ident
-            )*
-            $(
-                , methods = [$($METHODS:ident),*]
-            )*
-    ) => {{
-        use $crate::app::route::Method;
-        enum __Dummy {}
-        impl __Dummy {
-            route_expr_impl!($uri);
-        }
-        __Dummy::route()
-            $( .method(Method::$METHOD) )*
-            $( .methods(__tsukuyomi_vec![$(Method::$METHODS),*]) )*
-    }};
-    () => ( $crate::app::route::Builder::default() );
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __tsukuyomi_vec {
-    ($($t:tt)*) => (vec![$($t)*]);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

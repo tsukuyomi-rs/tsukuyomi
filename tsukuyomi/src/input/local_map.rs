@@ -6,61 +6,7 @@ use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
-/// A macro to create a `LocalKey<T>`.
-#[macro_export]
-macro_rules! local_key {
-    ($(
-        $(#[$m:meta])*
-        $vis:vis static $NAME:ident : $t:ty;
-    )*) => {$(
-        $(#[$m])*
-        $vis static $NAME: $crate::input::local_map::LocalKey<$t> = {
-            fn __type_id() -> ::std::any::TypeId {
-                struct __A;
-                ::std::any::TypeId::of::<__A>()
-            }
-            $crate::input::local_map::LocalKey {
-                __type_id,
-                __marker: ::std::marker::PhantomData,
-            }
-        };
-    )*};
-    ($(
-        $(#[$m:meta])*
-        $vis:vis static $NAME:ident : $t:ty
-    );+) => {
-        local_key!($(
-            $(#[$m])*
-            $vis static $NAME: $t;
-        )*);
-    };
-
-    ($(
-        $(#[$m:meta])*
-        $vis:vis const $NAME:ident : $t:ty;
-    )*) => {$(
-        $(#[$m])*
-        $vis const $NAME: $crate::input::local_map::LocalKey<$t> = {
-            fn __type_id() -> ::std::any::TypeId {
-                struct __A;
-                ::std::any::TypeId::of::<__A>()
-            }
-            $crate::input::local_map::LocalKey {
-                __type_id,
-                __marker: ::std::marker::PhantomData,
-            }
-        };
-    )*};
-    ($(
-        $(#[$m:meta])*
-        $vis:vis const $NAME:ident : $t:ty
-    );+) => {
-        local_key!($(
-            $(#[$m])*
-            $vis const $NAME: $t;
-        )*);
-    };
-}
+pub use crate::local_key;
 
 /// A type representing a key for request-local data stored in a `LocalMap`.
 ///
@@ -329,7 +275,9 @@ mod tests {
     fn smoke_test() {
         let mut map = LocalMap::default();
 
-        local_key!(static KEY: String);
+        local_key! {
+            static KEY: String;
+        }
 
         assert!(!map.contains_key(&KEY));
 
@@ -351,7 +299,9 @@ mod tests {
     fn entry_or_insert() {
         let mut map = LocalMap::default();
 
-        local_key!(static KEY: String);
+        local_key! {
+            static KEY: String;
+        }
 
         map.entry(&KEY).or_insert("foo".into());
         assert_eq!(map.get(&KEY).map(String::as_str), Some("foo"));
@@ -364,7 +314,9 @@ mod tests {
     fn entry_and_modify() {
         let mut map = LocalMap::default();
 
-        local_key!(static KEY: String);
+        local_key! {
+            static KEY: String;
+        }
 
         map.entry(&KEY).and_modify(|s| {
             *s += "foo";
@@ -388,7 +340,9 @@ mod tests {
     fn occupied_entry() {
         let mut map = LocalMap::default();
 
-        local_key!(static KEY: String);
+        local_key! {
+            static KEY: String;
+        }
 
         map.insert(&KEY, "foo".into());
 
@@ -404,8 +358,11 @@ mod tests {
 
     #[test]
     fn local_key_const() {
+        local_key! {
+            const KEY: String;
+        }
+
         let mut map = LocalMap::default();
-        local_key!(const KEY: String);
         map.insert(&KEY, "foo".into());
         assert!(map.contains_key(&KEY));
     }

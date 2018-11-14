@@ -223,7 +223,9 @@ fn local_data() {
     struct MyData(String);
 
     impl MyData {
-        local_key!(const KEY: Self);
+        local_key! {
+            const KEY: Self;
+        }
     }
 
     struct MyModifier;
@@ -260,7 +262,9 @@ fn missing_local_data() {
     struct MyData(String);
 
     impl MyData {
-        local_key!(const KEY: Self);
+        local_key! {
+            const KEY: Self;
+        }
     }
 
     let mut server = test_server({

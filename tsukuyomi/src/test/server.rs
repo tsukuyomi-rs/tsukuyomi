@@ -4,24 +4,26 @@ use std::mem;
 use futures::{Future, Poll};
 use http;
 use http::Response;
-use hyper::body::Payload;
+use hyper::body::{Body, Payload};
 use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
 use tokio::runtime;
 use tokio::runtime::Runtime;
 use tower_service::{NewService, Service};
 
 use crate::server::CritError;
-use service::http::imp::{HttpRequestImpl, HttpResponseImpl};
-use service::http::{HttpRequest, HttpResponse};
+use crate::server::{HttpRequest, HttpResponse};
 
 use super::input::TestInput;
 use super::output::{Receive, TestOutput};
 
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub fn test_server<S>(new_service: S) -> TestServer<S>
 where
     S: NewService + Send + 'static,
     S::Request: HttpRequest,
     S::Response: HttpResponse,
+    <S::Request as HttpRequest>::Body: From<Body>,
+    <S::Response as HttpResponse>::Body: Payload,
     S::Error: Into<CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
@@ -37,6 +39,7 @@ where
 /// The value of this struct conttains an instance of `NewHttpService`
 /// and a Tokio runtime.
 #[derive(Debug)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct TestServer<S> {
     new_service: S,
     runtime: Runtime,
@@ -47,6 +50,8 @@ where
     S: NewService + Send + 'static,
     S::Request: HttpRequest,
     S::Response: HttpResponse,
+    <S::Request as HttpRequest>::Body: From<Body>,
+    <S::Response as HttpResponse>::Body: Payload,
     S::Error: Into<CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
@@ -103,6 +108,8 @@ where
     S: Service + Send + 'static,
     S::Request: HttpRequest,
     S::Response: HttpResponse,
+    <S::Request as HttpRequest>::Body: From<Body>,
+    <S::Response as HttpResponse>::Body: Payload,
     S::Error: Into<CritError>,
     S::Future: Send + 'static,
 {
@@ -111,8 +118,9 @@ where
     where
         T: TestInput,
     {
-        let input = input.build_request()?;
-        let request = S::Request::from_request(input);
+        let request = input.build_request()?;
+        let request =
+            S::Request::from_request(request.map(<S::Request as HttpRequest>::Body::from));
         let future = TestResponseFuture::Initial(self.service.call(request));
         self.runtime.block_on(future)
     }

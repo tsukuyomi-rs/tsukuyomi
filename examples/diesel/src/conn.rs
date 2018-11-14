@@ -3,7 +3,8 @@ use diesel::sqlite::SqliteConnection;
 use failure::Fallible;
 
 use tsukuyomi::error::Error;
-use tsukuyomi::extractor::{Extractor, ExtractorExt};
+use tsukuyomi::extractor::Extractor;
+use tsukuyomi::rt::Future;
 
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
 
@@ -14,10 +15,15 @@ where
     let manager = ConnectionManager::<SqliteConnection>::new(url);
     let pool = Pool::builder().max_size(15).build(manager)?;
 
-    Ok(tsukuyomi::extractor::unit().and_then(move || {
+    Ok(tsukuyomi::extractor::lazy(move |_| {
         let pool = pool.clone();
-        tsukuyomi::rt::blocking_section(move || {
-            pool.get().map_err(tsukuyomi::error::internal_server_error)
-        })
+        Ok(tsukuyomi::rt::blocking(move || pool.get()) //
+            .then(|result| {
+                result
+                    .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
+                    .and_then(|result| {
+                        result.map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
+                    })
+            }))
     }))
 }

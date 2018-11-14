@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 
 use crate::error::Error;
 use crate::extractor::Extractor;
-use crate::server::service::http::RequestBody;
+use crate::input::body::RequestBody;
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]

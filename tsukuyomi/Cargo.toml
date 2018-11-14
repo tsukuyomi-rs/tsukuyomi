@@ -43,6 +43,7 @@ failure = "0.1.2"
 filetime = "0.2"
 futures = "0.1"
 http = "0.1"
+hyper = "0.12"
 indexmap = "1"
 log = "0.4"
 mime = "0.3"
@@ -51,9 +52,14 @@ serde_json = "1"
 serde_plain = "0.3"
 serde_urlencoded = "0.5"
 time = "0.1"
+tokio = "0.1"
+tokio-threadpool = "0.1"
 tower-service = "0.1"
 url = "1.7.1"
 uuid = "0.7.1"
+
+rustls = { version = "0.14", optional = true }
+tokio-rustls = { version = "0.8", optional = true }
 
 [dependencies.tsukuyomi-internal]
 version = "0.4.0-dev" # <cargo-version-sync>
@@ -62,10 +68,6 @@ path = "./internal"
 [dependencies.tsukuyomi-macros]
 version = "0.4.0-dev" # <cargo-version-sync>
 path = "./macros"
-
-[dependencies.tsukuyomi-server]
-version = "0.4.0-dev" # <cargo-version-sync>
-path = "./server"
 
 [dev-dependencies]
 cookie = "0.11"
@@ -78,8 +80,7 @@ cargo-version-sync = { version = "0.0.5", default-features = false }
 [features]
 default = []
 secure = ["cookie/secure"]
-tls = ["tsukuyomi-server/tls"]
-
+tls = ["rustls", "tokio-rustls"]
 
 # ==== START cargo-version-sync ====
 
@@ -97,12 +98,6 @@ replacers = [
 
 [[package.metadata.version-sync.replacements]]
 file = "macros/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "server/Cargo.toml"
 replacers = [
   { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
 ]

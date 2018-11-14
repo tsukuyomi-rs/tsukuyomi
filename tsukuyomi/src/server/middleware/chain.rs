@@ -6,25 +6,25 @@ use tower_service::NewService;
 use super::Middleware;
 
 #[derive(Debug)]
-pub struct MiddlewareChain<S, M> {
+pub struct Chain<S, M> {
     new_service: S,
     middleware: Arc<M>,
 }
 
-impl<S, M> MiddlewareChain<S, M>
+impl<S, M> Chain<S, M>
 where
     S: NewService,
     M: Middleware<S::Service>,
 {
     pub(crate) fn new(new_service: S, middleware: M) -> Self {
-        MiddlewareChain {
+        Self {
             new_service,
             middleware: Arc::new(middleware),
         }
     }
 }
 
-impl<S, M> NewService for MiddlewareChain<S, M>
+impl<S, M> NewService for Chain<S, M>
 where
     S: NewService,
     M: Middleware<S::Service>,
@@ -34,10 +34,10 @@ where
     type Error = M::Error;
     type Service = M::Service;
     type InitError = S::InitError;
-    type Future = MiddlewareChainFuture<S::Future, M>;
+    type Future = ChainFuture<S::Future, M>;
 
     fn new_service(&self) -> Self::Future {
-        MiddlewareChainFuture {
+        ChainFuture {
             future: self.new_service.new_service(),
             middleware: self.middleware.clone(),
         }
@@ -45,12 +45,13 @@ where
 }
 
 #[allow(missing_debug_implementations)]
-pub struct MiddlewareChainFuture<F, M> {
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct ChainFuture<F, M> {
     future: F,
     middleware: Arc<M>,
 }
 
-impl<F, M> Future for MiddlewareChainFuture<F, M>
+impl<F, M> Future for ChainFuture<F, M>
 where
     F: Future,
     M: Middleware<F::Item>,

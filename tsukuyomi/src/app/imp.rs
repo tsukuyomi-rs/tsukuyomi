@@ -1,20 +1,18 @@
-//! The definition of components for serving an HTTP application by using `App`.
-
-pub(crate) mod input;
+use std::mem;
 
 use cookie::{Cookie, CookieJar};
-use futures::{Async, Future, Poll};
+use futures::{Async, Future, IntoFuture, Poll};
 use http::header::{HeaderMap, HeaderValue};
 use http::{header, Method, Request, Response, StatusCode};
-use std::mem;
+use hyper::body::Payload;
+use mime::Mime;
 use tower_service::{NewService, Service};
 
 use crate::error::{Error, HttpError};
+use crate::input::local_map::LocalMap;
 use crate::input::{Input, RequestBody};
-use crate::local_map::LocalMap;
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::Captures;
-use crate::server::service::http::Payload;
 use crate::server::CritError;
 
 use super::handler::AsyncResult;
@@ -343,7 +341,7 @@ impl Future for AppFuture {
 }
 
 #[derive(Debug)]
-struct AppContext {
+pub(crate) struct AppContext {
     body: Option<RequestBody>,
     is_upgraded: bool,
     route: RouteId,
@@ -354,7 +352,64 @@ struct AppContext {
 }
 
 impl AppContext {
-    fn route_id(&self) -> RouteId {
+    pub(crate) fn take_body(&mut self) -> Option<RequestBody> {
+        self.body.take()
+    }
+
+    pub(crate) fn is_upgraded(&self) -> bool {
+        self.is_upgraded
+    }
+
+    pub(crate) fn upgrade<F, R>(&mut self, on_upgrade: F) -> Result<(), F>
+    where
+        F: FnOnce(crate::input::body::UpgradedIo) -> R + Send + 'static,
+        R: IntoFuture<Item = (), Error = ()>,
+        R::Future: Send + 'static,
+    {
+        if self.is_upgraded() {
+            return Err(on_upgrade);
+        }
+        self.is_upgraded = true;
+
+        let body = self.take_body().expect("The body has already gone");
+        crate::rt::spawn(
+            body.on_upgrade()
+                .map_err(|_| ())
+                .and_then(move |upgraded| on_upgrade(upgraded).into_future()),
+        );
+
+        Ok(())
+    }
+
+    pub(crate) fn parse_content_type(
+        &mut self,
+        headers: &HeaderMap,
+    ) -> Result<Option<&Mime>, Error> {
+        use crate::input::local_map::local_key;
+        use crate::input::local_map::Entry;
+
+        local_key! {
+            static KEY: Option<Mime>;
+        }
+
+        match self.locals.entry(&KEY) {
+            Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
+            Entry::Vacant(entry) => {
+                let mime = match headers.get(http::header::CONTENT_TYPE) {
+                    Some(h) => h
+                        .to_str()
+                        .map_err(crate::error::bad_request)?
+                        .parse()
+                        .map(Some)
+                        .map_err(crate::error::bad_request)?,
+                    None => None,
+                };
+                Ok(entry.insert(mime).as_ref())
+            }
+        }
+    }
+
+    pub(crate) fn route_id(&self) -> RouteId {
         self.route
     }
 
@@ -363,7 +418,19 @@ impl AppContext {
             .expect("the route ID should be valid")
     }
 
-    fn init_cookie_jar(&mut self, h: &HeaderMap) -> Result<&mut CookieJar, Error> {
+    pub(crate) fn captures(&self) -> Option<&Captures> {
+        self.captures.as_ref()
+    }
+
+    pub(crate) fn locals(&self) -> &LocalMap {
+        &self.locals
+    }
+
+    pub(crate) fn locals_mut(&mut self) -> &mut LocalMap {
+        &mut self.locals
+    }
+
+    pub(crate) fn init_cookie_jar(&mut self, h: &HeaderMap) -> Result<&mut CookieJar, Error> {
         if let Some(ref mut jar) = self.cookies {
             return Ok(jar);
         }

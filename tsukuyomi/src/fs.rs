@@ -20,7 +20,7 @@ use time::Timespec;
 use crate::error::Error;
 use crate::input::Input;
 use crate::output::{Responder, ResponseBody};
-use crate::rt::blocking;
+use crate::rt::poll_blocking;
 
 // ==== headers ====
 
@@ -343,7 +343,7 @@ impl Stream for ReadStream {
 const DEFAULT_BUF_SIZE: u64 = 8192;
 
 fn blocking_io<T>(f: impl FnOnce() -> io::Result<T>) -> Poll<T, io::Error> {
-    match blocking(f) {
+    match poll_blocking(f) {
         Ok(Async::Ready(ready)) => ready.map(Async::Ready),
         Ok(Async::NotReady) => Ok(Async::NotReady),
         Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),

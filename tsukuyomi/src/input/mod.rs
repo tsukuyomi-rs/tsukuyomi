@@ -2,6 +2,7 @@
 
 pub mod body;
 mod global;
+pub mod local_map;
 mod param;
 
 // re-exports
@@ -17,14 +18,15 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use cookie::{Cookie, CookieJar};
-use futures::{Future, IntoFuture};
+use futures::IntoFuture;
 use http::Request;
 use mime::Mime;
 
 use crate::app::imp::AppContext;
 use crate::app::App;
 use crate::error::Error;
-use crate::local_map::LocalMap;
+
+use self::local_map::LocalMap;
 
 /// Contextual information used by processes during an incoming HTTP request.
 #[derive(Debug)]
@@ -84,7 +86,7 @@ impl<'task> Input<'task> {
 
     /// Creates an instance of "Payload" from the raw message body.
     pub fn take_body(&mut self) -> Option<self::body::RequestBody> {
-        self.context.body.take()
+        self.context.take_body()
     }
 
     /// Creates an instance of "ReadAll" from the raw message body.
@@ -94,61 +96,31 @@ impl<'task> Input<'task> {
 
     /// Returns 'true' if the upgrade function is set.
     pub fn is_upgraded(&self) -> bool {
-        self.context.is_upgraded
+        self.context.is_upgraded()
     }
 
     /// Registers the upgrade function to this request.
+    #[inline]
     pub fn upgrade<F, R>(&mut self, on_upgrade: F) -> Result<(), F>
     where
         F: FnOnce(self::body::UpgradedIo) -> R + Send + 'static,
         R: IntoFuture<Item = (), Error = ()>,
         R::Future: Send + 'static,
     {
-        if self.is_upgraded() {
-            return Err(on_upgrade);
-        }
-        self.context.is_upgraded = true;
-
-        let body = self.take_body().expect("The body has already gone");
-        crate::rt::spawn(
-            body.on_upgrade()
-                .map_err(|_| ())
-                .and_then(move |upgraded| on_upgrade(upgraded).into_future()),
-        );
-
-        Ok(())
+        self.context.upgrade(on_upgrade)
     }
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
     pub fn content_type(&mut self) -> Result<Option<&Mime>, Error> {
-        use crate::local_key;
-        use crate::local_map::Entry;
-
-        local_key!(static KEY: Option<Mime>);
-
-        match self.context.locals.entry(&KEY) {
-            Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
-            Entry::Vacant(entry) => {
-                let mime = match self.request.headers().get(http::header::CONTENT_TYPE) {
-                    Some(h) => h
-                        .to_str()
-                        .map_err(crate::error::bad_request)?
-                        .parse()
-                        .map(Some)
-                        .map_err(crate::error::bad_request)?,
-                    None => None,
-                };
-                Ok(entry.insert(mime).as_ref())
-            }
-        }
+        self.context.parse_content_type(self.request.headers())
     }
 
     /// Returns a proxy object for accessing parameters extracted by the router.
-    pub fn params(&self) -> self::param::Params<'_> {
-        self::param::Params::new(
+    pub fn params(&self) -> Params<'_> {
+        Params::new(
             self.request.uri().path(),
             self.app.uri(self.context.route_id()).capture_names(),
-            self.context.captures.as_ref(),
+            self.context.captures(),
         )
     }
 
@@ -178,14 +150,16 @@ impl<'task> Input<'task> {
 
     /// Returns a reference to `LocalMap` for managing request-local data.
     #[cfg_attr(tarpaulin, skip)]
+    #[inline]
     pub fn locals(&self) -> &LocalMap {
-        &self.context.locals
+        self.context.locals()
     }
 
     /// Returns a mutable reference to `LocalMap` for managing request-local data.
     #[cfg_attr(tarpaulin, skip)]
+    #[inline]
     pub fn locals_mut(&mut self) -> &mut LocalMap {
-        &mut self.context.locals
+        self.context.locals_mut()
     }
 }
 

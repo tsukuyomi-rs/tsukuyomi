@@ -1,43 +1,44 @@
 use std::io;
 use std::net::SocketAddr;
 
-use http::Extensions;
 use tokio::net::tcp::Incoming;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::reactor::Handle;
 
-use super::imp::{ConnectionInfo, HasConnectionInfo, Transport, TransportImpl};
+use super::{ConnectionInfo, HasConnectionInfo, Peer, Transport};
 
 impl HasConnectionInfo for TcpStream {
-    type ConnectionInfo = TcpConnectionInfo;
+    type Data = Peer<SocketAddr>;
+    type Info = TcpConnectionInfo;
 
     #[inline]
-    fn connection_info(&self) -> Self::ConnectionInfo {
-        TcpConnectionInfo {
-            peer_addr: self.peer_addr(),
-        }
+    fn fetch_info(&self) -> io::Result<Self::Info> {
+        Ok(TcpConnectionInfo {
+            peer_addr: self.peer_addr()?,
+        })
     }
 }
 
 #[allow(missing_debug_implementations)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct TcpConnectionInfo {
-    peer_addr: io::Result<SocketAddr>,
+    peer_addr: SocketAddr,
 }
 
 impl ConnectionInfo for TcpConnectionInfo {
-    fn insert_info(&self, ext: &mut Extensions) {
-        if let Ok(addr) = self.peer_addr {
-            ext.insert(addr);
-        }
+    type Data = Peer<SocketAddr>;
+
+    fn data(&self) -> Self::Data {
+        Peer(self.peer_addr)
     }
 }
 
-impl Transport for SocketAddr {}
-impl TransportImpl for SocketAddr {
-    type Info = TcpConnectionInfo;
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+impl Transport for SocketAddr {
     type Io = TcpStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {
@@ -45,12 +46,11 @@ impl TransportImpl for SocketAddr {
     }
 }
 
-impl<'a> Transport for &'a SocketAddr {}
-impl<'a> TransportImpl for &'a SocketAddr {
-    type Info = TcpConnectionInfo;
+impl<'a> Transport for &'a SocketAddr {
     type Io = TcpStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {
@@ -58,26 +58,24 @@ impl<'a> TransportImpl for &'a SocketAddr {
     }
 }
 
-impl Transport for std::net::TcpListener {}
-impl TransportImpl for std::net::TcpListener {
-    type Info = TcpConnectionInfo;
+impl Transport for std::net::TcpListener {
     type Io = TcpStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {
         let listener = TcpListener::from_std(self, &Handle::current())?;
-        TransportImpl::incoming(listener)
+        Transport::incoming(listener)
     }
 }
 
-impl Transport for TcpListener {}
-impl TransportImpl for TcpListener {
-    type Info = TcpConnectionInfo;
+impl Transport for TcpListener {
     type Io = TcpStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {

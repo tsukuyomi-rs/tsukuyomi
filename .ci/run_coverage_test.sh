@@ -18,5 +18,5 @@ tarpaulin() {
 }
 
 tarpaulin --all && codecov -n "all"
-tarpaulin -p tsukuyomi-server --all-features && codecov -n "tsukuyomi-server (with all features)"
+tarpaulin -p tsukuyomi --all-features && codecov -n "tsukuyomi (with all features)"
 tarpaulin -p tsukuyomi-session --all-features && codecov -n "tsukuyomi-session (with all features)"

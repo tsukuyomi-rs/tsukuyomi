@@ -184,18 +184,3 @@ impl<'a> Context<'a> {
         self.cx.set_prefix(self.id, prefix)
     }
 }
-
-#[macro_export(local_inner_macros)]
-macro_rules! scope {
-    () => {
-        $crate::scope()
-    };
-
-    ($prefix:expr) => {{
-        enum __Dummy {}
-        impl __Dummy {
-            validate_prefix!($prefix);
-        }
-        $crate::app::scope().prefix($prefix.parse().expect("this is a bug"))
-    }};
-}

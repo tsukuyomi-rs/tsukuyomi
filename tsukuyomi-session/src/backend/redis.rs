@@ -158,7 +158,9 @@ struct RedisSessionContext {
 }
 
 impl RedisSessionContext {
-    local_key!(const KEY: Self);
+    local_key! {
+        const KEY: Self;
+    }
 }
 
 #[allow(missing_debug_implementations)]

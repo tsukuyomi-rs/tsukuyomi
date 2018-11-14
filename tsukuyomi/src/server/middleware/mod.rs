@@ -2,7 +2,7 @@ mod chain;
 
 use tower_service::Service;
 
-pub use self::chain::MiddlewareChain;
+pub use self::chain::Chain;
 
 pub trait Middleware<S> {
     type Request;

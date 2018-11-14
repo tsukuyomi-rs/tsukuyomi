@@ -78,9 +78,8 @@ where
     where
         CtxT: AsRef<S::Context> + Send + 'static,
     {
-        tsukuyomi::rt::blocking_section(move || {
-            Ok::<_, tsukuyomi::error::Never>(self.request.execute(&*self.schema, context.as_ref()))
-        })
+        tsukuyomi::rt::blocking(move || self.request.execute(&*self.schema, context.as_ref()))
+            .then(|result| result.map_err(tsukuyomi::error::internal_server_error))
     }
 }
 

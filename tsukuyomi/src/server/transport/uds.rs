@@ -4,44 +4,44 @@ use std::io;
 use std::os::unix::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use http::Extensions;
 use tokio;
 use tokio::net::unix::Incoming;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::reactor::Handle;
 
-use super::imp::{ConnectionInfo, HasConnectionInfo, Transport, TransportImpl};
+use super::{ConnectionInfo, HasConnectionInfo, Peer, Transport};
 
 impl HasConnectionInfo for UnixStream {
-    type ConnectionInfo = UdsConnectionInfo;
+    type Data = Peer<SocketAddr>;
+    type Info = UdsConnectionInfo;
 
     #[inline]
-    fn connection_info(&self) -> Self::ConnectionInfo {
-        UdsConnectionInfo {
-            peer_addr: self.peer_addr(),
-        }
+    fn fetch_info(&self) -> io::Result<Self::Info> {
+        Ok(UdsConnectionInfo {
+            peer_addr: self.peer_addr()?,
+        })
     }
 }
 
 #[allow(missing_debug_implementations)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct UdsConnectionInfo {
-    peer_addr: io::Result<SocketAddr>,
+    peer_addr: SocketAddr,
 }
 
 impl ConnectionInfo for UdsConnectionInfo {
-    fn insert_info(&self, ext: &mut Extensions) {
-        if let Ok(ref addr) = self.peer_addr {
-            ext.insert(addr.clone());
-        }
+    type Data = Peer<SocketAddr>;
+
+    fn data(&self) -> Self::Data {
+        Peer(self.peer_addr.clone())
     }
 }
 
-impl Transport for PathBuf {}
-impl TransportImpl for PathBuf {
-    type Info = UdsConnectionInfo;
+impl Transport for PathBuf {
     type Io = UnixStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {
@@ -49,12 +49,11 @@ impl TransportImpl for PathBuf {
     }
 }
 
-impl<'a> Transport for &'a PathBuf {}
-impl<'a> TransportImpl for &'a PathBuf {
-    type Info = UdsConnectionInfo;
+impl<'a> Transport for &'a PathBuf {
     type Io = UnixStream;
     type Error = io::Error;
     type Incoming = tokio::net::unix::Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> std::io::Result<Self::Incoming> {
@@ -62,12 +61,11 @@ impl<'a> TransportImpl for &'a PathBuf {
     }
 }
 
-impl<'a> Transport for &'a Path {}
-impl<'a> TransportImpl for &'a Path {
-    type Info = UdsConnectionInfo;
+impl<'a> Transport for &'a Path {
     type Io = UnixStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {
@@ -75,12 +73,11 @@ impl<'a> TransportImpl for &'a Path {
     }
 }
 
-impl Transport for UnixListener {}
-impl TransportImpl for UnixListener {
-    type Info = UdsConnectionInfo;
+impl Transport for UnixListener {
     type Io = UnixStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {
@@ -88,12 +85,11 @@ impl TransportImpl for UnixListener {
     }
 }
 
-impl Transport for std::os::unix::net::UnixListener {}
-impl TransportImpl for std::os::unix::net::UnixListener {
-    type Info = UdsConnectionInfo;
+impl Transport for std::os::unix::net::UnixListener {
     type Io = UnixStream;
     type Error = io::Error;
     type Incoming = Incoming;
+    type Data = Peer<SocketAddr>;
 
     #[inline]
     fn incoming(self) -> io::Result<Self::Incoming> {

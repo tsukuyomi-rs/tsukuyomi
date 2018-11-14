@@ -6,19 +6,22 @@ use futures::{Future, Stream};
 use rustls::ServerSession;
 use tokio_rustls::{TlsAcceptor, TlsStream};
 
-use super::imp::{HasConnectionInfo, Transport, TransportImpl};
+use super::{HasConnectionInfo, Transport};
 use crate::server::CritError;
 
 pub fn tls<T, A>(raw_transport: T, acceptor: A) -> TlsConfig<T>
 where
     T: Transport,
-    T::Error: 'static,
+    T::Io: Send + 'static,
+    T::Error: Into<CritError> + 'static,
+    T::Incoming: Send + 'static,
     A: Into<TlsAcceptor>,
 {
     TlsConfig::new(raw_transport, acceptor)
 }
 
 #[allow(missing_debug_implementations)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct TlsConfig<T> {
     raw_transport: T,
     acceptor: TlsAcceptor,
@@ -27,13 +30,15 @@ pub struct TlsConfig<T> {
 impl<T> TlsConfig<T>
 where
     T: Transport,
-    T::Error: 'static,
+    T::Io: Send + 'static,
+    T::Error: Into<CritError> + 'static,
+    T::Incoming: Send + 'static,
 {
-    pub fn new<A>(raw_transport: T, acceptor: A) -> TlsConfig<T>
+    pub fn new<A>(raw_transport: T, acceptor: A) -> Self
     where
         A: Into<TlsAcceptor>,
     {
-        TlsConfig {
+        Self {
             raw_transport,
             acceptor: acceptor.into(),
         }
@@ -43,19 +48,14 @@ where
 impl<T> Transport for TlsConfig<T>
 where
     T: Transport,
-    T::Error: 'static,
+    T::Io: Send + 'static,
+    T::Error: Into<CritError> + 'static,
+    T::Incoming: Send + 'static,
 {
-}
-
-impl<T> TransportImpl for TlsConfig<T>
-where
-    T: Transport,
-    T::Error: 'static,
-{
-    type Info = T::Info;
     type Io = TlsStream<T::Io, ServerSession>;
     type Error = CritError;
     type Incoming = Box<dyn Stream<Item = Self::Io, Error = Self::Error> + Send + 'static>;
+    type Data = T::Data;
 
     fn incoming(self) -> io::Result<Self::Incoming> {
         let Self {
@@ -79,9 +79,10 @@ impl<Io, S> HasConnectionInfo for TlsStream<Io, S>
 where
     Io: HasConnectionInfo,
 {
-    type ConnectionInfo = Io::ConnectionInfo;
+    type Data = Io::Data;
+    type Info = Io::Info;
 
-    fn connection_info(&self) -> Self::ConnectionInfo {
-        self.get_ref().0.connection_info()
+    fn fetch_info(&self) -> io::Result<Self::Info> {
+        self.get_ref().0.fetch_info()
     }
 }

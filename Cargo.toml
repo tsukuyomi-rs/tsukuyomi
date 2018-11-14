@@ -23,7 +23,6 @@ members = [
   "tsukuyomi",
   "tsukuyomi/internal",
   "tsukuyomi/macros",
-  "tsukuyomi/server",
 
   "tsukuyomi-askama",
   "tsukuyomi-fs",

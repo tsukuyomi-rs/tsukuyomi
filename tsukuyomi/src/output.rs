@@ -5,11 +5,12 @@ use either::Either;
 use futures::{Poll, Stream};
 use http::header::HeaderMap;
 use http::{Response, StatusCode};
+use hyper::body::{Body, Payload};
 use serde::Serialize;
 
 use crate::error::{Error, Never};
+use crate::input::body::RequestBody;
 use crate::input::Input;
-use crate::server::service::http::{Body, Payload};
 use crate::server::CritError;
 
 pub use tsukuyomi_macros::Responder;
@@ -64,6 +65,12 @@ impl From<()> for ResponseBody {
     }
 }
 
+impl From<RequestBody> for ResponseBody {
+    fn from(body: RequestBody) -> Self {
+        ResponseBody(body.into_inner())
+    }
+}
+
 macro_rules! impl_response_body {
     ($($t:ty,)*) => {$(
         impl From<$t> for ResponseBody {
@@ -82,7 +89,7 @@ impl_response_body! {
     bytes::Bytes,
     std::borrow::Cow<'static, str>,
     std::borrow::Cow<'static, [u8]>,
-    crate::server::service::http::Body,
+    hyper::Body,
 }
 
 impl Payload for ResponseBody {
