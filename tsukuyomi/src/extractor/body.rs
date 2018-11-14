@@ -139,13 +139,17 @@ where
                 .map_err(crate::error::bad_request)?;
         }
 
-        let mut read_all = input.read_all();
-        Ok(futures::future::poll_fn(move || {
-            let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
-            D::decode(&data)
-                .map(Async::Ready)
-                .map_err(crate::error::bad_request)
-        }))
+        input
+            .read_all()
+            .ok_or_else(stolen_payload)
+            .map(|mut read_all| {
+                futures::future::poll_fn(move || {
+                    let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
+                    D::decode(&data)
+                        .map(Async::Ready)
+                        .map_err(crate::error::bad_request)
+                })
+            })
     })
 }
 
@@ -174,15 +178,18 @@ where
 }
 
 pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
-    super::lazy(|input| Ok(input.read_all().map_err(Error::critical)))
+    super::lazy(|input| {
+        input
+            .read_all()
+            .map(|future| future.map_err(Error::critical))
+            .ok_or_else(stolen_payload)
+    })
 }
 
 pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
-    super::ready(|input| {
-        input.take_body().ok_or_else(|| {
-            crate::error::internal_server_error(
-                "The instance of raw RequestBody has already stolen.",
-            )
-        })
-    })
+    super::ready(|input| input.take_body().ok_or_else(stolen_payload))
+}
+
+fn stolen_payload() -> crate::error::Error {
+    crate::error::internal_server_error("The instance of raw RequestBody has already stolen.")
 }

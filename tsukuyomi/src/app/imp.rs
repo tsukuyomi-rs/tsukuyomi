@@ -8,12 +8,11 @@ use hyper::body::Payload;
 use mime::Mime;
 use tower_service::{NewService, Service};
 
-use crate::error::{Error, HttpError};
+use crate::error::{Critical, Error, HttpError};
 use crate::input::local_map::LocalMap;
 use crate::input::{Input, RequestBody};
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::Captures;
-use crate::server::CritError;
 
 use super::handler::AsyncResult;
 use super::{App, RouteData, RouteId};
@@ -82,9 +81,9 @@ impl App {
 impl NewService for App {
     type Request = Request<RequestBody>;
     type Response = Response<ResponseBody>;
-    type Error = CritError;
+    type Error = Critical;
     type Service = AppService;
-    type InitError = CritError;
+    type InitError = Critical;
     type Future = futures::future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
@@ -101,7 +100,7 @@ pub struct AppService {
 impl Service for AppService {
     type Request = Request<RequestBody>;
     type Response = Response<ResponseBody>;
-    type Error = CritError;
+    type Error = Critical;
     type Future = AppFuture;
 
     #[inline]
@@ -298,7 +297,7 @@ impl AppFuture {
         &mut self,
         mut output: Output,
         context: &AppContext,
-    ) -> Result<Response<ResponseBody>, CritError> {
+    ) -> Result<Response<ResponseBody>, Critical> {
         // append Cookie entries.
         context.append_cookies(output.headers_mut());
 
@@ -306,7 +305,8 @@ impl AppFuture {
         if let Some(len) = output.body().content_length() {
             output
                 .headers_mut()
-                .entry(header::CONTENT_LENGTH)?
+                .entry(header::CONTENT_LENGTH)
+                .expect("never fails")
                 .or_insert_with(|| {
                     // safety: '0'-'9' is ascci.
                     // TODO: more efficient
@@ -320,7 +320,7 @@ impl AppFuture {
 
 impl Future for AppFuture {
     type Item = Response<ResponseBody>;
-    type Error = CritError;
+    type Error = Critical;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self.poll_in_flight() {

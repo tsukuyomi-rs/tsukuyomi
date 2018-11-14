@@ -36,7 +36,27 @@ use std::fmt;
 use std::io;
 
 use crate::output::ResponseBody;
-use crate::server::CritError;
+
+#[derive(Debug)]
+pub struct Critical(failure::Error);
+
+impl Critical {
+    pub(crate) fn new(cause: impl Into<failure::Error>) -> Self {
+        Critical(cause.into())
+    }
+}
+
+impl fmt::Display for Critical {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for Critical {
+    fn description(&self) -> &str {
+        "critical error"
+    }
+}
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -301,7 +321,7 @@ define_errors! {
 
 /// A type which holds all kinds of errors occurring in handlers.
 #[derive(Debug)]
-pub struct Error(::std::result::Result<Box<dyn HttpError>, CritError>);
+pub struct Error(::std::result::Result<Box<dyn HttpError>, Critical>);
 
 impl<E> From<E> for Error
 where
@@ -328,11 +348,8 @@ impl Error {
     ///
     /// [hyper-service-error]:
     /// https://docs.rs/hyper/0.12.*/hyper/service/trait.Service.html#associatedtype.Error
-    pub fn critical<E>(err: E) -> Self
-    where
-        E: Into<CritError>,
-    {
-        Error(Err(err.into()))
+    pub fn critical(err: Critical) -> Self {
+        Error(Err(err))
     }
 
     /// Returns `true` if this error is a *critical* error.
@@ -350,14 +367,9 @@ impl Error {
         }
     }
 
-    /// Consumes `self` and converts its value into a boxed `HttpError`.
-    ///
-    /// If the value is a criticial error, it returns `self` wrapped in `Err`.
-    pub fn into_http_error(self) -> std::result::Result<Box<dyn HttpError>, Self> {
-        match self.0 {
-            Ok(e) => Ok(e),
-            Err(e) => Err(Error(Err(e))),
-        }
+    /// Deconstructs `self` into inner error representation.
+    pub fn into_http_error(self) -> std::result::Result<Box<dyn HttpError>, Critical> {
+        self.0
     }
 
     /// Attempts to downcast this error value into the specified concrete type.

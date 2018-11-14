@@ -8,7 +8,7 @@ use futures::{Async, Future, Poll, Stream};
 use http::header::HeaderMap;
 use hyper::body::{Body, Payload};
 
-use crate::server::CritError;
+use crate::error::Critical;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -33,19 +33,19 @@ impl From<Body> for RequestBody {
 
 impl Payload for RequestBody {
     type Data = io::Cursor<Bytes>;
-    type Error = CritError;
+    type Error = Critical;
 
     #[inline]
     fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
         self.0
             .poll_data()
             .map(|x| x.map(|data_opt| data_opt.map(|data| io::Cursor::new(data.into_bytes()))))
-            .map_err(Into::into)
+            .map_err(Critical::new)
     }
 
     #[inline]
     fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
-        self.0.poll_trailers().map_err(Into::into)
+        self.0.poll_trailers().map_err(Critical::new)
     }
 
     #[inline]
@@ -61,7 +61,7 @@ impl Payload for RequestBody {
 
 impl Stream for RequestBody {
     type Item = io::Cursor<Bytes>;
-    type Error = CritError;
+    type Error = Critical;
 
     #[inline]
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -123,10 +123,13 @@ pub struct OnUpgrade(hyper::upgrade::OnUpgrade);
 
 impl Future for OnUpgrade {
     type Item = UpgradedIo;
-    type Error = CritError;
+    type Error = Critical;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.0.poll().map(|x| x.map(UpgradedIo)).map_err(Into::into)
+        self.0
+            .poll()
+            .map(|x| x.map(UpgradedIo))
+            .map_err(Critical::new)
     }
 }
 
@@ -141,30 +144,29 @@ pub struct ReadAll {
 
 #[derive(Debug)]
 enum ReadAllState {
-    Init(Option<Body>),
-    Receiving(Body, BytesMut),
+    Receiving(RequestBody, BytesMut),
     Done,
 }
 
 impl ReadAll {
-    pub(super) fn init(body: Option<RequestBody>) -> Self {
+    pub(super) fn new(body: RequestBody) -> Self {
         Self {
-            state: ReadAllState::Init(body.map(|body| body.0)),
+            state: ReadAllState::Receiving(body, BytesMut::new()),
         }
     }
 }
 
 impl Future for ReadAll {
     type Item = Bytes;
-    type Error = CritError;
+    type Error = Critical;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         use self::ReadAllState::*;
         loop {
             match self.state {
-                Init(..) => {}
                 Receiving(ref mut body, ref mut buf) => {
                     while let Some(chunk) = futures::try_ready!(body.poll_data()) {
+                        let chunk = chunk.into_inner();
                         buf.extend_from_slice(&*chunk);
                     }
                 }
@@ -172,11 +174,6 @@ impl Future for ReadAll {
             }
 
             match mem::replace(&mut self.state, Done) {
-                Init(Some(body)) => {
-                    self.state = Receiving(body, BytesMut::new());
-                    continue;
-                }
-                Init(None) => return Err(failure::format_err!("").compat().into()),
                 Receiving(_body, buf) => {
                     // debug_assert!(body.is_end_stream());
                     return Ok(Async::Ready(buf.freeze()));

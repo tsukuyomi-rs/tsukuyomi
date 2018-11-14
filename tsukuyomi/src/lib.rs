@@ -67,17 +67,4 @@ pub fn app() -> crate::app::Builder<(), ()> {
     crate::app::Builder::default()
 }
 
-/// Create a new `Server` from the specified `NewService`.
-///
-/// This function is a shortcut of `Server::new(new_service)`.
-#[inline]
-pub fn server<S>(new_service: S) -> crate::server::Server<S, std::net::SocketAddr>
-where
-    S: tower_service::NewService,
-    S::Request: crate::server::HttpRequest,
-    S::Response: crate::server::HttpResponse,
-    S::Error: Into<crate::server::CritError>,
-    S::InitError: Into<crate::server::CritError>,
-{
-    crate::server::Server::new(new_service)
-}
+pub use self::server::imp::server;

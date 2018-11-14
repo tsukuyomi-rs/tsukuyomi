@@ -38,7 +38,11 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
                 None => return Err(tsukuyomi::error::bad_request("missing content-type")),
             };
 
-            let mut read_all = input.read_all();
+            let mut read_all = input.read_all().ok_or_else(|| {
+                tsukuyomi::error::internal_server_error(
+                    "The payload has already used by another extractor.",
+                )
+            })?;
             let future = futures::future::poll_fn(move || match kind {
                 RequestKind::Json => {
                     let data = futures::try_ready!(read_all.poll().map_err(Error::critical));

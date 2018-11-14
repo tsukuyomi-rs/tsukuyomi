@@ -90,8 +90,8 @@ impl<'task> Input<'task> {
     }
 
     /// Creates an instance of "ReadAll" from the raw message body.
-    pub fn read_all(&mut self) -> self::body::ReadAll {
-        self::body::ReadAll::init(self.take_body())
+    pub fn read_all(&mut self) -> Option<self::body::ReadAll> {
+        self.take_body().map(self::body::ReadAll::new)
     }
 
     /// Returns 'true' if the upgrade function is set.

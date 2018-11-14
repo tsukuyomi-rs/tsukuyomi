@@ -10,7 +10,7 @@ use tokio::runtime;
 use tokio::runtime::Runtime;
 use tower_service::{NewService, Service};
 
-use crate::server::CritError;
+use crate::server::imp::CritError;
 use crate::server::{HttpRequest, HttpResponse};
 
 use super::input::TestInput;

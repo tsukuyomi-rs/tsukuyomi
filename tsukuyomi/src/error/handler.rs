@@ -1,11 +1,8 @@
 //! The definition of error handlers.
 
-use http::{Request, Response};
-
-use super::Error;
-
+use super::{Critical, Error};
 use crate::output::ResponseBody;
-use crate::server::CritError;
+use http::{Request, Response};
 
 /// A trait representing a global error handlers.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
@@ -15,19 +12,19 @@ pub trait ErrorHandler {
         &self,
         err: Error,
         request: &Request<()>,
-    ) -> Result<Response<ResponseBody>, CritError>;
+    ) -> Result<Response<ResponseBody>, Critical>;
 }
 
 impl<F, Bd> ErrorHandler for F
 where
-    F: Fn(Error, &Request<()>) -> Result<Response<Bd>, CritError>,
+    F: Fn(Error, &Request<()>) -> Result<Response<Bd>, Critical>,
     Bd: Into<ResponseBody>,
 {
     fn handle_error(
         &self,
         err: Error,
         request: &Request<()>,
-    ) -> Result<Response<ResponseBody>, CritError> {
+    ) -> Result<Response<ResponseBody>, Critical> {
         (*self)(err, request).map(|response| response.map(Into::into))
     }
 }
@@ -43,7 +40,7 @@ impl ErrorHandler for DefaultErrorHandler {
         &self,
         err: Error,
         request: &Request<()>,
-    ) -> Result<Response<ResponseBody>, CritError> {
+    ) -> Result<Response<ResponseBody>, Critical> {
         let mut err = err.0?;
         let status = err.status_code();
         let mut response = err.to_response(request);

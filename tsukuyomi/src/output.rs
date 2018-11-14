@@ -11,7 +11,6 @@ use serde::Serialize;
 use crate::error::{Error, Never};
 use crate::input::body::RequestBody;
 use crate::input::Input;
-use crate::server::CritError;
 
 pub use tsukuyomi_macros::Responder;
 
@@ -50,7 +49,7 @@ impl ResponseBody {
     pub fn wrap_stream<S>(stream: S) -> Self
     where
         S: Stream + Send + 'static,
-        S::Error: Into<CritError>,
+        S::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
         S::Item: IntoBuf,
     {
         ResponseBody(Body::wrap_stream(

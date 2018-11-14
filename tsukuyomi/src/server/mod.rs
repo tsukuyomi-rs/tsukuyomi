@@ -13,11 +13,30 @@ use hyper::body::{Body, Payload};
 use hyper::server::conn::Http;
 use tower_service::{NewService, Service};
 
+use self::imp::CritError;
 use self::middleware::{Chain, Middleware};
 use self::transport::{ConnectionInfo, HasConnectionInfo, Transport};
 
-/// A type alias representing a critical error.
-pub type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub(crate) mod imp {
+    use super::*;
+
+    pub type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+    /// Create a new `Server` from the specified `NewService`.
+    ///
+    /// This function is a shortcut of `Server::new(new_service)`.
+    #[inline]
+    pub fn server<S>(new_service: S) -> Server<S, SocketAddr>
+    where
+        S: NewService,
+        S::Request: HttpRequest,
+        S::Response: HttpResponse,
+        S::Error: Into<CritError>,
+        S::InitError: Into<CritError>,
+    {
+        Server::new(new_service)
+    }
+}
 
 pub trait HttpRequest {
     type Body;
