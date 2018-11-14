@@ -61,6 +61,8 @@ uuid = "0.7.1"
 rustls = { version = "0.14", optional = true }
 tokio-rustls = { version = "0.8", optional = true }
 
+tower-web = { version = "0.3", default-features = false, optional = true }
+
 [dependencies.tsukuyomi-internal]
 version = "0.4.0-dev" # <cargo-version-sync>
 path = "./internal"
@@ -81,6 +83,7 @@ cargo-version-sync = { version = "0.0.5", default-features = false }
 default = []
 secure = ["cookie/secure"]
 tls = ["rustls", "tokio-rustls"]
+tower-middleware = ["tower-web"]
 
 # ==== START cargo-version-sync ====
 

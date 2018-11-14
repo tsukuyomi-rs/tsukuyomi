@@ -42,6 +42,9 @@ extern crate rustls;
 #[cfg(feature = "tls")]
 extern crate tokio_rustls;
 
+#[cfg(feature = "tower-middleware")]
+extern crate tower_web;
+
 #[cfg(test)]
 extern crate matches;
 

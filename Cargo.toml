@@ -42,6 +42,7 @@ members = [
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
+  "examples/tower-middleware",
   "examples/tls",
   "examples/unix-socket",
   "examples/websocket",
