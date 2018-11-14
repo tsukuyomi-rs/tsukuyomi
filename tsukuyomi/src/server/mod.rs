@@ -14,7 +14,7 @@ use hyper::server::conn::Http;
 use tower_service::{NewService, Service};
 
 use self::imp::CritError;
-use self::middleware::{Chain, Middleware};
+use self::middleware::{Identity, Middleware};
 use self::transport::{ConnectionInfo, HasConnectionInfo, Transport};
 
 pub(crate) mod imp {
@@ -26,7 +26,7 @@ pub(crate) mod imp {
     ///
     /// This function is a shortcut of `Server::new(new_service)`.
     #[inline]
-    pub fn server<S>(new_service: S) -> Server<S, SocketAddr>
+    pub fn server<S>(new_service: S) -> Server<S>
     where
         S: NewService,
         S::Request: HttpRequest,
@@ -71,8 +71,9 @@ impl<T> HttpResponse for Response<T> {
 // ==== Server ====
 
 #[allow(missing_debug_implementations)]
-pub struct Server<S, Tr = SocketAddr> {
+pub struct Server<S, M = Identity, Tr = SocketAddr> {
     new_service: S,
+    middleware: M,
     transport: Tr,
     protocol: Http,
 }
@@ -84,6 +85,7 @@ where
     pub fn new(new_service: S) -> Self {
         Self {
             new_service,
+            middleware: Identity::default(),
             transport: ([127, 0, 0, 1], 4000).into(),
             protocol: Http::new(),
         }
@@ -91,19 +93,21 @@ where
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, T> Server<S, T>
+impl<S, M, T> Server<S, M, T>
 where
     S: NewService,
+    M: Middleware<S::Service>,
 {
     /// Sets the transport used by the server.
     ///
     /// By default, a TCP transport with the listener address `"127.0.0.1:4000"` is set.
-    pub fn bind<U>(self, transport: U) -> Server<S, U>
+    pub fn bind<U>(self, transport: U) -> Server<S, M, U>
     where
         U: Transport,
     {
         Server {
             new_service: self.new_service,
+            middleware: self.middleware,
             transport,
             protocol: self.protocol,
         }
@@ -114,41 +118,39 @@ where
         Self { protocol, ..self }
     }
 
-    pub fn with<M>(self, middleware: M) -> Server<Chain<S, M>, T>
+    pub fn with_middleware<N>(self, middleware: N) -> Server<S, N, T>
     where
-        M: Middleware<S::Service>,
+        N: Middleware<S::Service>,
     {
         Server {
-            new_service: Chain::new(self.new_service, middleware),
+            new_service: self.new_service,
+            middleware,
             transport: self.transport,
             protocol: self.protocol,
         }
     }
 
-    /// Starts a new `TestServer` using the contained value of `NewService`.
-    ///
-    /// Currently, the information about transport and protocol will be dropped.
-    pub fn into_test_server(self) -> io::Result<crate::test::TestServer<S>>
+    #[cfg(feature = "tower-middleware")]
+    pub fn with_tower_middleware<N>(
+        self,
+        middleware: N,
+    ) -> Server<S, self::middleware::Compat<N>, T>
     where
-        S: Send + 'static,
-        S::Request: HttpRequest,
-        S::Response: HttpResponse,
-        <S::Request as HttpRequest>::Body: From<Body>,
-        <S::Response as HttpResponse>::Body: Payload,
-        S::Error: Into<CritError>,
-        S::Future: Send + 'static,
-        S::Service: Send + 'static,
-        <S::Service as Service>::Future: Send + 'static,
-        S::InitError: Into<CritError> + Send + 'static,
+        N: tower_web::middleware::Middleware<S::Service>,
     {
-        crate::test::TestServer::new(self.new_service)
+        self.with_middleware(self::middleware::Compat(middleware))
+    }
+
+    pub fn into_test_server(self) -> io::Result<crate::test::TestServer<S, M>> {
+        crate::test::TestServer::with_middleware(self.new_service, self.middleware)
     }
 }
 
 macro_rules! serve {
-    ($transport:expr, $new_service:expr, $protocol:expr, $spawn:expr) => {{
+    ($transport:expr, $new_service:expr, $middleware:expr, $protocol:expr, $spawn:expr) => {{
         let incoming = $transport.incoming()?;
         let new_service = $new_service;
+        let middleware = $middleware;
         let protocol = $protocol;
         let spawn = $spawn;
         incoming
@@ -156,11 +158,13 @@ macro_rules! serve {
             .for_each(move |io| match io.fetch_info() {
                 Ok(info) => {
                     let protocol = protocol.clone();
+                    let middleware = middleware.clone();
                     let future = new_service
                         .new_service()
                         .map_err(|_e| log::error!("new_service error"))
+                        .map(move |service| middleware.wrap(service))
+                        .map(move |service| LiftedHttpService { service, info })
                         .and_then(move |service| {
-                            let service = LiftedHttpService { service, info };
                             let conn = protocol
                                 .serve_connection(io, service)
                                 .with_upgrades()
@@ -176,44 +180,49 @@ macro_rules! serve {
                 }
             })
     }};
-    ($transport:expr, $new_service:expr, $protocol:expr, $spawn:expr, $signal:expr) => {
-        serve!($transport, $new_service, $protocol, $spawn).select($signal.map_err(|_| ()))
+    ($transport:expr, $new_service:expr, $middleware:expr, $protocol:expr, $spawn:expr, $signal:expr) => {
+        serve!($transport, $new_service, $middleware, $protocol, $spawn)
+            .select($signal.map_err(|_| ()))
     };
 }
 
-impl<S, T> Server<S, T>
+impl<S, M, T> Server<S, M, T>
 where
     S: NewService,
-    S::Request: HttpRequest,
-    S::Response: HttpResponse,
-    <S::Request as HttpRequest>::Body: From<Body>,
-    <S::Response as HttpResponse>::Body: Payload,
-    S::Error: Into<CritError>,
     S::InitError: Into<CritError>,
+    M: Middleware<S::Service>,
+    M::Request: HttpRequest,
+    M::Response: HttpResponse,
+    <M::Request as HttpRequest>::Body: From<Body>,
+    <M::Response as HttpResponse>::Body: Payload,
+    M::Error: Into<CritError>,
     T: Transport,
     T::Data: Send + Sync + 'static,
 {
     pub fn run_forever(self) -> io::Result<()>
     where
         S: Send + 'static,
-        <S::Service as Service>::Future: Send + 'static,
-        S::Service: Send + 'static,
         S::Future: Send + 'static,
+        M: Send + Sync + 'static,
+        M::Service: Send + 'static,
+        <M::Service as Service>::Future: Send + 'static,
         T::Io: Send + 'static,
         T::Error: Into<CritError>,
         T::Incoming: Send + 'static,
     {
         let Self {
             new_service,
+            middleware,
             transport,
             protocol,
         } = self;
+        let middleware = std::sync::Arc::new(middleware);
         let protocol = std::sync::Arc::new(
             protocol.with_executor(tokio::executor::DefaultExecutor::current()),
         );
-        let serve = serve!(transport, new_service, protocol, |fut| crate::rt::spawn(
-            fut
-        ));
+        let serve = serve!(transport, new_service, middleware, protocol, |fut| {
+            crate::rt::spawn(fut)
+        });
         let runtime = tokio::runtime::Runtime::new()?;
         let _ = runtime.block_on_all(serve);
         Ok(())
@@ -222,9 +231,10 @@ where
     pub fn run_until<F>(self, signal: F) -> io::Result<()>
     where
         S: Send + 'static,
-        <S::Service as Service>::Future: Send + 'static,
-        S::Service: Send + 'static,
         S::Future: Send + 'static,
+        M: Send + Sync + 'static,
+        M::Service: Send + 'static,
+        <M::Service as Service>::Future: Send + 'static,
         T::Io: Send + 'static,
         T::Error: Into<CritError>,
         T::Incoming: Send + 'static,
@@ -232,15 +242,18 @@ where
     {
         let Self {
             new_service,
+            middleware,
             transport,
             protocol,
         } = self;
+        let middleware = std::sync::Arc::new(middleware);
         let protocol = std::sync::Arc::new(
             protocol.with_executor(tokio::executor::DefaultExecutor::current()),
         );
         let serve = serve!(
             transport,
             new_service,
+            middleware,
             protocol,
             |fut| crate::rt::spawn(fut),
             signal
@@ -253,9 +266,10 @@ where
     pub fn run_single_threaded<F>(self, signal: F) -> io::Result<()>
     where
         S: 'static,
-        <S::Service as Service>::Future: 'static,
-        S::Service: 'static,
         S::Future: 'static,
+        M: 'static,
+        M::Service: 'static,
+        <M::Service as Service>::Future: 'static,
         T::Io: Send + 'static,
         T::Error: Into<CritError>,
         T::Incoming: 'static,
@@ -266,13 +280,16 @@ where
 
         let Self {
             new_service,
+            middleware,
             transport,
             protocol,
         } = self;
+        let middleware = Rc::new(middleware);
         let protocol = Rc::new(protocol.with_executor(rt::TaskExecutor::current()));
         let serve = serve!(
             transport,
             new_service,
+            middleware,
             protocol,
             |fut| rt::spawn(fut),
             signal

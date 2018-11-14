@@ -13,7 +13,7 @@ fn compiletest() {
                     .with(tsukuyomi_websocket::extractor())
                     .handle(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
             ) //
-            .finish()
+            .build()
             .unwrap(),
     );
 }

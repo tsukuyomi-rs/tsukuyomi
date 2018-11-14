@@ -2,7 +2,6 @@ use tsukuyomi::app::{route, scope, AsyncResult, Modifier};
 use tsukuyomi::error::{internal_server_error, Error};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Output, ResponseBody};
-use tsukuyomi::test::test_server;
 
 use http::{Request, Response};
 use std::sync::{Arc, Mutex};
@@ -35,32 +34,32 @@ where
 fn global_modifier() {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = test_server(
-        tsukuyomi::app!()
-            .route(
-                route!() //
-                    .reply({
-                        let marker = marker.clone();
-                        move || {
-                            marker.lock().unwrap().push("H");
-                            ""
-                        }
-                    }),
-            ) //
-            .modifier(MarkModifier {
-                marker: marker.clone(),
-                before: |m| {
-                    m.push("B");
-                    Ok(None)
-                },
-                after: |m| {
-                    m.push("A");
-                    Ok(Response::new(ResponseBody::empty()))
-                },
-            }) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app!()
+        .route(
+            route!() //
+                .reply({
+                    let marker = marker.clone();
+                    move || {
+                        marker.lock().unwrap().push("H");
+                        ""
+                    }
+                }),
+        ) //
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B");
+                Ok(None)
+            },
+            after: |m| {
+                m.push("A");
+                Ok(Response::new(ResponseBody::empty()))
+            },
+        }) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let _ = server.perform(Request::get("/")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B", "H", "A"]);
@@ -70,29 +69,29 @@ fn global_modifier() {
 fn global_modifier_error_on_before() {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(route!().reply({
-                let marker = marker.clone();
-                move || {
-                    marker.lock().unwrap().push("H");
-                    ""
-                }
-            })) //
-            .modifier(MarkModifier {
-                marker: marker.clone(),
-                before: |m| {
-                    m.push("B");
-                    Err(internal_server_error(""))
-                },
-                after: |m| {
-                    m.push("A");
-                    Ok(Response::new(ResponseBody::empty()))
-                },
-            }) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(route!().reply({
+            let marker = marker.clone();
+            move || {
+                marker.lock().unwrap().push("H");
+                ""
+            }
+        })) //
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B");
+                Err(internal_server_error(""))
+            },
+            after: |m| {
+                m.push("A");
+                Ok(Response::new(ResponseBody::empty()))
+            },
+        }) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let _ = server.perform(Request::get("/")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B"]);
@@ -102,40 +101,40 @@ fn global_modifier_error_on_before() {
 fn global_modifiers() {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(route!().reply({
-                let marker = marker.clone();
-                move || {
-                    marker.lock().unwrap().push("H");
-                    ""
-                }
-            })) //
-            .modifier(MarkModifier {
-                marker: marker.clone(),
-                before: |m| {
-                    m.push("B1");
-                    Ok(None)
-                },
-                after: |m| {
-                    m.push("A1");
-                    Ok(Response::new(ResponseBody::empty()))
-                },
-            }) //
-            .modifier(MarkModifier {
-                marker: marker.clone(),
-                before: |m| {
-                    m.push("B2");
-                    Ok(None)
-                },
-                after: |m| {
-                    m.push("A2");
-                    Ok(Response::new(ResponseBody::empty()))
-                },
-            }) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(route!().reply({
+            let marker = marker.clone();
+            move || {
+                marker.lock().unwrap().push("H");
+                ""
+            }
+        })) //
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B1");
+                Ok(None)
+            },
+            after: |m| {
+                m.push("A1");
+                Ok(Response::new(ResponseBody::empty()))
+            },
+        }) //
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B2");
+                Ok(None)
+            },
+            after: |m| {
+                m.push("A2");
+                Ok(Response::new(ResponseBody::empty()))
+            },
+        }) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let _ = server.perform(Request::get("/")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
@@ -145,50 +144,50 @@ fn global_modifiers() {
 fn scoped_modifier() {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = test_server(
-        tsukuyomi::app()
-            .modifier(MarkModifier {
-                marker: marker.clone(),
-                before: |m| {
-                    m.push("B1");
-                    Ok(None)
-                },
-                after: |m| {
-                    m.push("A1");
-                    Ok(Response::new(ResponseBody::empty()))
-                },
-            }) //
-            .mount(
-                scope!("/path1")
-                    .modifier(MarkModifier {
-                        marker: marker.clone(),
-                        before: |m| {
-                            m.push("B2");
-                            Ok(None)
-                        },
-                        after: |m| {
-                            m.push("A2");
-                            Ok(Response::new(ResponseBody::empty()))
-                        },
-                    }) //
-                    .route(route!().reply({
-                        let marker = marker.clone();
-                        move || {
-                            marker.lock().unwrap().push("H1");
-                            ""
-                        }
-                    })), //
-            ) //
-            .route(route!("/path2").reply({
-                let marker = marker.clone();
-                move || {
-                    marker.lock().unwrap().push("H2");
-                    ""
-                }
-            })) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .modifier(MarkModifier {
+            marker: marker.clone(),
+            before: |m| {
+                m.push("B1");
+                Ok(None)
+            },
+            after: |m| {
+                m.push("A1");
+                Ok(Response::new(ResponseBody::empty()))
+            },
+        }) //
+        .mount(
+            scope!("/path1")
+                .modifier(MarkModifier {
+                    marker: marker.clone(),
+                    before: |m| {
+                        m.push("B2");
+                        Ok(None)
+                    },
+                    after: |m| {
+                        m.push("A2");
+                        Ok(Response::new(ResponseBody::empty()))
+                    },
+                }) //
+                .route(route!().reply({
+                    let marker = marker.clone();
+                    move || {
+                        marker.lock().unwrap().push("H1");
+                        ""
+                    }
+                })), //
+        ) //
+        .route(route!("/path2").reply({
+            let marker = marker.clone();
+            move || {
+                marker.lock().unwrap().push("H2");
+                ""
+            }
+        })) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let _ = server.perform(Request::get("/path1")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
@@ -202,67 +201,67 @@ fn scoped_modifier() {
 fn nested_modifiers() {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = test_server(
-        tsukuyomi::app()
-            .mount(
-                scope!("/path")
-                    .modifier(MarkModifier {
-                        marker: marker.clone(),
-                        before: |m| {
-                            m.push("B1");
-                            Ok(None)
-                        },
-                        after: |m| {
-                            m.push("A1");
-                            Ok(Response::new(ResponseBody::empty()))
-                        },
-                    }) //
-                    .mount(
-                        scope!("/to")
-                            .modifier(MarkModifier {
-                                marker: marker.clone(),
-                                before: |m| {
-                                    m.push("B2");
-                                    Ok(None)
-                                },
-                                after: |m| {
-                                    m.push("A2");
-                                    Ok(Response::new(ResponseBody::empty()))
-                                },
-                            }) //
-                            .route(route!().reply({
-                                let marker = marker.clone();
-                                move || {
-                                    marker.lock().unwrap().push("H1");
-                                    ""
-                                }
-                            })) //
-                            .mount(
-                                scope!("/a")
-                                    .modifier(MarkModifier {
-                                        marker: marker.clone(),
-                                        before: |m| {
-                                            m.push("B3");
-                                            Ok(Some(Response::new(ResponseBody::empty())))
-                                        },
-                                        after: |m| {
-                                            m.push("A3");
-                                            Ok(Response::new(ResponseBody::empty()))
-                                        },
-                                    }) //
-                                    .route(route!().reply({
-                                        let marker = marker.clone();
-                                        move || {
-                                            marker.lock().unwrap().push("H2");
-                                            ""
-                                        }
-                                    })),
-                            ),
-                    ),
-            ) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .mount(
+            scope!("/path")
+                .modifier(MarkModifier {
+                    marker: marker.clone(),
+                    before: |m| {
+                        m.push("B1");
+                        Ok(None)
+                    },
+                    after: |m| {
+                        m.push("A1");
+                        Ok(Response::new(ResponseBody::empty()))
+                    },
+                }) //
+                .mount(
+                    scope!("/to")
+                        .modifier(MarkModifier {
+                            marker: marker.clone(),
+                            before: |m| {
+                                m.push("B2");
+                                Ok(None)
+                            },
+                            after: |m| {
+                                m.push("A2");
+                                Ok(Response::new(ResponseBody::empty()))
+                            },
+                        }) //
+                        .route(route!().reply({
+                            let marker = marker.clone();
+                            move || {
+                                marker.lock().unwrap().push("H1");
+                                ""
+                            }
+                        })) //
+                        .mount(
+                            scope!("/a")
+                                .modifier(MarkModifier {
+                                    marker: marker.clone(),
+                                    before: |m| {
+                                        m.push("B3");
+                                        Ok(Some(Response::new(ResponseBody::empty())))
+                                    },
+                                    after: |m| {
+                                        m.push("A3");
+                                        Ok(Response::new(ResponseBody::empty()))
+                                    },
+                                }) //
+                                .route(route!().reply({
+                                    let marker = marker.clone();
+                                    move || {
+                                        marker.lock().unwrap().push("H2");
+                                        ""
+                                    }
+                                })),
+                        ),
+                ),
+        ) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let _ = server.perform(Request::get("/path/to")).unwrap();
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);

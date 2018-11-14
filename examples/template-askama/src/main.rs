@@ -13,15 +13,13 @@ struct Index {
 }
 
 fn main() {
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),
         ) //
-        .finish()
-        .unwrap();
-
-    tsukuyomi::server(app) //
+        .build_server()
+        .unwrap()
         .run_forever()
         .unwrap();
 }

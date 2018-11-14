@@ -1,16 +1,15 @@
 use tsukuyomi::app::route;
 use tsukuyomi::extractor;
-use tsukuyomi::test::test_server;
 
 use http::{header, Method, Request, Response, StatusCode};
 
 #[test]
 fn empty_routes() {
-    let mut server = test_server(
-        tsukuyomi::app() //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app() //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -18,12 +17,12 @@ fn empty_routes() {
 
 #[test]
 fn single_route() {
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(route!("/hello").reply(|| "Tsukuyomi"))
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(route!("/hello").reply(|| "Tsukuyomi"))
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server.perform(Request::get("/hello")).unwrap();
 
@@ -47,16 +46,16 @@ fn single_route() {
 
 #[test]
 fn post_body() {
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(
-                route!("/hello", method = POST)
-                    .with(tsukuyomi::extractor::body::plain())
-                    .reply(|body: String| body),
-            ) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(
+            route!("/hello", method = POST)
+                .with(tsukuyomi::extractor::body::plain())
+                .reply(|body: String| body),
+        ) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server
         .perform(Request::post("/hello").body("Hello, Tsukuyomi."))
@@ -87,32 +86,32 @@ fn cookies() {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(
-                route!("/login")
-                    .with(extractor::guard(move |input| {
-                        let mut cookies = input.cookies()?;
-                        cookies.add(
-                            Cookie::build("session", "dummy_session_id")
-                                .domain("www.example.com")
-                                .expires(expires_in)
-                                .finish(),
-                        );
-                        Ok::<_, tsukuyomi::error::Error>(None)
-                    })).reply(|| "Logged in"),
-            ) //
-            .route(
-                route!("/logout")
-                    .with(extractor::guard(|input| {
-                        let mut cookies = input.cookies()?;
-                        cookies.remove(Cookie::named("session"));
-                        Ok::<_, tsukuyomi::error::Error>(None)
-                    })).reply(|| "Logged out"),
-            ) //
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(
+            route!("/login")
+                .with(extractor::guard(move |input| {
+                    let mut cookies = input.cookies()?;
+                    cookies.add(
+                        Cookie::build("session", "dummy_session_id")
+                            .domain("www.example.com")
+                            .expires(expires_in)
+                            .finish(),
+                    );
+                    Ok::<_, tsukuyomi::error::Error>(None)
+                })).reply(|| "Logged in"),
+        ) //
+        .route(
+            route!("/logout")
+                .with(extractor::guard(|input| {
+                    let mut cookies = input.cookies()?;
+                    cookies.remove(Cookie::named("session"));
+                    Ok::<_, tsukuyomi::error::Error>(None)
+                })).reply(|| "Logged out"),
+        ) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server.perform(Request::get("/login")).unwrap();
     assert!(response.headers().contains_key(header::SET_COOKIE));
@@ -154,13 +153,13 @@ fn cookies() {
 
 #[test]
 fn default_options() {
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(route!("/path").reply(|| "get"))
-            .route(route!("/path", method = POST).reply(|| "post"))
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(route!("/path").reply(|| "get"))
+        .route(route!("/path", method = POST).reply(|| "post"))
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server.perform(Request::options("/path")).unwrap();
 
@@ -180,14 +179,14 @@ fn default_options() {
 
 #[test]
 fn test_case_5_disable_default_options() {
-    let mut server = test_server(
-        tsukuyomi::app()
-            .global(tsukuyomi::app::global().fallback_options(false)) //
-            .route(route!("/path").reply(|| "get"))
-            .route(route!("/path", method = POST).reply(|| "post"))
-            .finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .global(tsukuyomi::app::global().fallback_options(false)) //
+        .route(route!("/path").reply(|| "get"))
+        .route(route!("/path", method = POST).reply(|| "post"))
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server.perform(Request::options("/path")).unwrap();
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
@@ -195,22 +194,23 @@ fn test_case_5_disable_default_options() {
 
 #[test]
 fn test_canceled() {
-    let mut server = test_server(
-        tsukuyomi::app()
-            .route(
-                route!("/", methods = [GET, POST])
-                    .with(tsukuyomi::extractor::guard(
-                        |input| -> tsukuyomi::error::Result<_> {
-                            if input.method() == Method::GET {
-                                Ok(None)
-                            } else {
-                                Ok(Some(Response::new("canceled".into())))
-                            }
-                        },
-                    )).reply(|| "passed"),
-            ).finish()
-            .unwrap(),
-    );
+    let mut server = tsukuyomi::app()
+        .route(
+            route!("/", methods = [GET, POST])
+                .with(tsukuyomi::extractor::guard(
+                    |input| -> tsukuyomi::error::Result<_> {
+                        if input.method() == Method::GET {
+                            Ok(None)
+                        } else {
+                            Ok(Some(Response::new("canceled".into())))
+                        }
+                    },
+                )).reply(|| "passed"),
+        ) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
+        .unwrap();
 
     let response = server.perform(Request::get("/")).unwrap();
     assert_eq!(response.body().to_utf8().unwrap(), "passed");

@@ -9,14 +9,13 @@ const CERTS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/cert.pem"
 const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pem");
 
 fn main() {
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .route(
             tsukuyomi::app::route!() //
                 .reply(|| "Hello, Tsukuyomi.\n"),
-        ).finish()
-        .unwrap();
-
-    tsukuyomi::server(app)
+        ) //
+        .build_server()
+        .unwrap()
         .bind(tls_transport("127.0.0.1:4000"))
         .run_forever()
         .unwrap();

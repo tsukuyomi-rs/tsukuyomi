@@ -12,12 +12,12 @@ fn main() {
         .map(Into::into)
         .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
-    let app = tsukuyomi::app()
+    let server = tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/") //
                 .reply(|| "Hello, Tsukuyomi!\n"),
         ) //
-        .finish()
+        .build_server()
         .unwrap();
 
     println!("Serving on {}...", sock_path.display());
@@ -29,8 +29,6 @@ fn main() {
         sock_path.display()
     );
     println!();
-    tsukuyomi::server(app)
-        .bind(sock_path)
-        .run_forever()
-        .unwrap();
+
+    server.bind(sock_path).run_forever().unwrap();
 }

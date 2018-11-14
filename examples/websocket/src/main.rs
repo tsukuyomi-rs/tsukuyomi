@@ -6,7 +6,7 @@ use futures::prelude::*;
 use tsukuyomi_websocket::{Message, Ws};
 
 fn main() {
-    let app = tsukuyomi::app()
+    let server = tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/ws")
                 .with(tsukuyomi_websocket::extractor())
@@ -25,10 +25,10 @@ fn main() {
                     })
                 }),
         ) //
-        .finish()
+        .build_server()
         .unwrap();
 
-    tsukuyomi::server(app) //
+    server //
         .run_forever()
         .unwrap();
 }

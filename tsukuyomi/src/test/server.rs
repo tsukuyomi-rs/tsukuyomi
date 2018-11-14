@@ -1,5 +1,6 @@
 use std::io;
 use std::mem;
+use std::sync::Arc;
 
 use futures::{Future, Poll};
 use http;
@@ -11,27 +12,11 @@ use tokio::runtime::Runtime;
 use tower_service::{NewService, Service};
 
 use crate::server::imp::CritError;
+use crate::server::middleware::{Identity, Middleware};
 use crate::server::{HttpRequest, HttpResponse};
 
 use super::input::TestInput;
 use super::output::{Receive, TestOutput};
-
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub fn test_server<S>(new_service: S) -> TestServer<S>
-where
-    S: NewService + Send + 'static,
-    S::Request: HttpRequest,
-    S::Response: HttpResponse,
-    <S::Request as HttpRequest>::Body: From<Body>,
-    <S::Response as HttpResponse>::Body: Payload,
-    S::Error: Into<CritError>,
-    S::Future: Send + 'static,
-    S::Service: Send + 'static,
-    <S::Service as Service>::Future: Send + 'static,
-    S::InitError: Into<CritError> + Send + 'static,
-{
-    TestServer::new(new_service).expect("failed to initialize the runtime")
-}
 
 /// A local server which emulates an HTTP service without using
 /// the low-level transport.
@@ -40,28 +25,30 @@ where
 /// and a Tokio runtime.
 #[derive(Debug)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct TestServer<S> {
+pub struct TestServer<S, M = Identity> {
     new_service: S,
+    middleware: Arc<M>,
     runtime: Runtime,
 }
 
 impl<S> TestServer<S>
 where
-    S: NewService + Send + 'static,
-    S::Request: HttpRequest,
-    S::Response: HttpResponse,
-    <S::Request as HttpRequest>::Body: From<Body>,
-    <S::Response as HttpResponse>::Body: Payload,
-    S::Error: Into<CritError>,
-    S::Future: Send + 'static,
-    S::Service: Send + 'static,
-    <S::Service as Service>::Future: Send + 'static,
-    S::InitError: Into<CritError> + Send + 'static,
+    S: NewService,
 {
     /// Creates a new instance of `LocalServer` from a `NewHttpService`.
     ///
     /// This function will return an error if the construction of the runtime is failed.
     pub fn new(new_service: S) -> io::Result<Self> {
+        Self::with_middleware(new_service, Identity::default())
+    }
+}
+
+impl<S, M> TestServer<S, M>
+where
+    S: NewService,
+    M: Middleware<S::Service>,
+{
+    pub fn with_middleware(new_service: S, middleware: M) -> io::Result<Self> {
         let mut pool = ThreadPoolBuilder::new();
         pool.pool_size(1);
 
@@ -72,13 +59,34 @@ where
 
         Ok(Self {
             new_service,
+            middleware: Arc::new(middleware),
             runtime,
         })
     }
+}
 
+impl<S, M> TestServer<S, M>
+where
+    S: NewService + Send + 'static,
+    S::Future: Send + 'static,
+    S::InitError: Into<CritError> + Send + 'static,
+    M: Middleware<S::Service> + Send + Sync + 'static,
+    M::Request: HttpRequest,
+    M::Response: HttpResponse,
+    <M::Request as HttpRequest>::Body: From<Body>,
+    <M::Response as HttpResponse>::Body: Payload,
+    M::Error: Into<CritError>,
+    M::Service: Send + 'static,
+    <M::Service as Service>::Future: Send + 'static,
+{
     /// Create a `Client` associated with this server.
-    pub fn client(&mut self) -> Result<Client<'_, S::Service>, S::InitError> {
-        let service = self.runtime.block_on(self.new_service.new_service())?;
+    pub fn client(&mut self) -> Result<Client<'_, M::Service>, S::InitError> {
+        let middleware = self.middleware.clone();
+        let service = self.runtime.block_on(
+            self.new_service
+                .new_service()
+                .map(move |service| middleware.wrap(service)),
+        )?;
         Ok(Client {
             service,
             runtime: &mut self.runtime,
@@ -88,8 +96,6 @@ where
     pub fn perform<T>(&mut self, input: T) -> Result<Response<TestOutput>, CritError>
     where
         T: TestInput,
-        <S::Service as Service>::Future: Send + 'static,
-        S::InitError: Into<CritError>,
     {
         let mut client = self.client().map_err(Into::into)?;
         client.perform(input).map_err(Into::into)

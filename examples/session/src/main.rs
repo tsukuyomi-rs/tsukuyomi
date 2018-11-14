@@ -13,7 +13,7 @@ use either::Either;
 fn main() {
     let backend = CookieSessionBackend::plain();
 
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .modifier(tsukuyomi_session::storage(backend))
         .route(
             route!("/") //
@@ -75,8 +75,8 @@ fn main() {
                     redirect::to("/")
                 }),
         ) //
-        .finish()
+        .build_server()
+        .unwrap()
+        .run_forever()
         .unwrap();
-
-    tsukuyomi::server(app).run_forever().unwrap();
 }

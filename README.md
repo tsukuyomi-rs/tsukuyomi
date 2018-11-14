@@ -31,15 +31,15 @@ tsukuyomi = "0.4.0-dev"
 extern crate tsukuyomi;
 
 fn main() {
-    let app = tsukuyomi::app()
+    let server = tsukuyomi::app()
         .route(
             tsukuyomi::app::route!()
                 .reply(|| "Hello, world.\n")
         )
-        .finish()
+        .build_server()
         .expect("failed to construct App");
 
-    tsukuyomi::server(app)
+    server
         .run_forever()
         .expect("failed to start the server");
 }

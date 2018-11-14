@@ -3,7 +3,7 @@ extern crate tsukuyomi;
 use tsukuyomi::app::{route, scope};
 
 fn main() {
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .route(
             route!() //
                 .reply(|| "Hello, world\n"),
@@ -12,7 +12,7 @@ fn main() {
             scope!("/api/v1/")
                 .mount(
                     scope!("/posts")
-                        .route(route!().reply(|| "list_posts"))
+                        .route(route!("/").reply(|| "list_posts"))
                         .route(route!("/:id").reply(|id: i32| format!("get_post(id = {})", id)))
                         .route(route!("/", method = POST).reply(|| "add_post")),
                 ) //
@@ -25,8 +25,8 @@ fn main() {
             route!("/static/*path")
                 .reply(|path: std::path::PathBuf| format!("path = {}\n", path.display())),
         ) //
-        .finish()
+        .build_server()
+        .unwrap()
+        .run_forever()
         .unwrap();
-
-    tsukuyomi::server(app).run_forever().unwrap();
 }

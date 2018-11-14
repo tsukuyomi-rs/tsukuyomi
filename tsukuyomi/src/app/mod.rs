@@ -302,8 +302,13 @@ where
         }
     }
 
-    /// Creates a configured `App` using the current settings.
-    pub fn finish(self) -> Result<App> {
+    /// Creates an `App` using the current configuration.
+    pub fn build(self) -> Result<App> {
         self::builder::build(self.scope, self.global)
+    }
+
+    /// Creates a builder of HTTP server using the current configuration.
+    pub fn build_server(self) -> Result<crate::server::Server<App>> {
+        self.build().map(crate::server::Server::new)
     }
 }

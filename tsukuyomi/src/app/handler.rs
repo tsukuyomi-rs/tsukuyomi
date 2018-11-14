@@ -101,7 +101,7 @@ where
 /// tsukuyomi::app()
 ///     .route(route!().reply(|| "Hello"))
 ///     .modifier(RequestCounter::default())
-///     .finish()
+///     .build()
 /// #   .map(drop)
 /// # }
 /// ```

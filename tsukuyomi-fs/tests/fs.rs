@@ -9,7 +9,7 @@ fn compiletest_staticfiles() {
     drop(
         tsukuyomi::app()
             .with(Staticfiles::new("./public")) //
-            .finish()
+            .build()
             .unwrap(),
     );
 }

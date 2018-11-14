@@ -1,6 +1,5 @@
 mod responder {
     use std::fmt;
-    use tsukuyomi::test::test_server;
 
     fn assert_impl_responder<T: tsukuyomi::output::Responder>() {}
 
@@ -92,14 +91,16 @@ mod responder {
             }
         }
 
-        let mut server = test_server({
-            tsukuyomi::app()
-                .route(
-                    tsukuyomi::app::route() //
-                        .reply(|| Foo("Foo".into())),
-                ).finish()
-                .unwrap()
-        });
+        let mut server = tsukuyomi::app()
+            .route(
+                tsukuyomi::app::route() //
+                    .reply(|| Foo("Foo".into())),
+            ) //
+            .build_server()
+            .unwrap()
+            .into_test_server()
+            .unwrap();
+
         let response = server.perform(http::Request::get("/")).unwrap();
         assert_eq!(response.status(), 200);
         assert_eq!(

@@ -11,7 +11,7 @@ use juniper::{EmptyMutation, RootNode};
 use percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET};
 use std::cell::RefCell;
 
-use tsukuyomi::test::{test_server, TestOutput, TestServer};
+use tsukuyomi::test::{TestOutput, TestServer};
 use tsukuyomi_juniper::executor::Executor;
 
 #[test]
@@ -21,7 +21,7 @@ fn integration_test() {
     let executor = tsukuyomi_juniper::executor(schema);
     let executor = std::sync::Arc::new(executor);
 
-    let app = tsukuyomi::app()
+    let test_server = tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/", methods = [GET, POST])
                 .with(executor.clone())
@@ -29,11 +29,14 @@ fn integration_test() {
                     let database = database.clone();
                     move |exec: Executor<_>| exec.execute(database.clone())
                 }),
-        ).finish()
+        ) //
+        .build_server()
+        .unwrap()
+        .into_test_server()
         .unwrap();
 
     let integration = TestTsukuyomiIntegration {
-        local_server: RefCell::new(test_server(app)),
+        local_server: RefCell::new(test_server),
     };
 
     http_tests::run_http_test_suite(&integration);

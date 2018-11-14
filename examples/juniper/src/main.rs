@@ -24,7 +24,7 @@ fn main() {
         tsukuyomi::extractor::value(context)
     };
 
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/") //
                 .reply(tsukuyomi_juniper::graphiql("/graphql")),
@@ -35,8 +35,8 @@ fn main() {
                 .with(fetch_graphql_context)
                 .handle(move |exec: Executor<_>, context| exec.execute(context)),
         ) //
-        .finish()
+        .build_server()
+        .unwrap()
+        .run_forever()
         .unwrap();
-
-    tsukuyomi::server(app).run_forever().unwrap();
 }

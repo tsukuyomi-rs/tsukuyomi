@@ -99,14 +99,12 @@ fn main() {
             }).map(|post_opt| post_opt.map(tsukuyomi::output::json))
         });
 
-    let app = tsukuyomi::app!("/api/v1/posts")
+    tsukuyomi::app!("/api/v1/posts")
         .route(get_posts)
         .route(create_post)
         .route(get_post)
-        .finish()
-        .unwrap();
-
-    tsukuyomi::server(app) //
+        .build_server()
+        .unwrap()
         .run_forever()
         .unwrap();
 }

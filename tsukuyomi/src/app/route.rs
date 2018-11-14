@@ -321,7 +321,7 @@ mod tests {
                             "dummy"
                         }),
                 ) //
-                .finish()
+                .build()
                 .expect("failed to construct App"),
         );
     }
@@ -339,7 +339,7 @@ mod tests {
                             "dummy"
                         }),
                 ) //
-                .finish()
+                .build()
                 .expect("failed to construct App"),
         );
     }

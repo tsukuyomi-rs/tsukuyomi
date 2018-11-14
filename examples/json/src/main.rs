@@ -12,7 +12,7 @@ struct User {
 }
 
 fn main() {
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .route(
             route!("/") //
                 .reply(|| {
@@ -27,10 +27,8 @@ fn main() {
                 .with(extractor::body::json())
                 .reply(|user: User| user),
         ) //
-        .finish()
-        .expect("failed to construct App");
-
-    tsukuyomi::server(app)
+        .build_server()
+        .expect("failed to construct App")
         .run_forever()
         .expect("failed to start HTTP server");
 }

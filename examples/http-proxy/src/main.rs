@@ -16,7 +16,7 @@ fn main() {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::async::Client::new()));
 
-    let app = tsukuyomi::app()
+    tsukuyomi::app()
         .route(
             route!("/")
                 .with(proxy_client.clone())
@@ -33,8 +33,8 @@ fn main() {
                     client.send_forwarded_request("https://www.rust-lang.org/en-US/")
                 }),
         ) //
-        .finish()
+        .build_server()
+        .unwrap()
+        .run_forever()
         .unwrap();
-
-    tsukuyomi::server(app).run_forever().unwrap();
 }

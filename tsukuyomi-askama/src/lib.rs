@@ -23,7 +23,7 @@
 //!         tsukuyomi::app::route!("/:name")
 //!             .reply(|name| Index { name })
 //!     )
-//!     .finish()
+//!     .build()
 //! #   .map(drop)
 //! # }
 //! ```

@@ -6,7 +6,7 @@ use matches::assert_matches;
 
 #[test]
 fn empty() {
-    let app = crate::app().finish().unwrap();
+    let app = crate::app().build().unwrap();
     assert_matches!(
         app.recognize("/", &Method::GET),
         Err(RecognizeError::NotFound)
@@ -15,7 +15,10 @@ fn empty() {
 
 #[test]
 fn route_single_method() {
-    let app = crate::app().route(route().reply(|| "")).finish().unwrap();
+    let app = crate::app() //
+        .route(route().reply(|| ""))
+        .build()
+        .unwrap();
 
     assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
 
@@ -34,7 +37,7 @@ fn route_multiple_method() {
     let app = crate::app()
         .route(route().reply(|| ""))
         .route(route().method(Method::POST).reply(|| ""))
-        .finish()
+        .build()
         .unwrap();
 
     assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
@@ -48,17 +51,20 @@ fn route_multiple_method() {
 
 #[test]
 fn route_fallback_head_enabled() {
-    let app = crate::app().route(route().reply(|| "")).finish().unwrap();
+    let app = crate::app() //
+        .route(route().reply(|| ""))
+        .build()
+        .unwrap();
 
     assert_matches!(app.recognize("/", &Method::HEAD), Ok((0, ..)));
 }
 
 #[test]
 fn route_fallback_head_disabled() {
-    let app = crate::app()
+    let app = crate::app() //
         .route(route().reply(|| ""))
-        .global(global().fallback_head(false)) //
-        .finish()
+        .global(global().fallback_head(false))
+        .build()
         .unwrap();
 
     assert_matches!(
@@ -69,7 +75,7 @@ fn route_fallback_head_disabled() {
 
 #[test]
 fn route_fallback_options_enabled() {
-    let app = crate::app()
+    let app = crate::app() //
         .route(route().reply(|| "")) // 0
         .route(route().method(Method::POST).reply(|| "")) // 1
         .route(
@@ -78,7 +84,7 @@ fn route_fallback_options_enabled() {
                 .method(Method::OPTIONS)
                 .reply(|| ""),
         ) // 2
-        .finish()
+        .build()
         .unwrap();
 
     assert_matches!(app.recognize("/", &Method::OPTIONS), Ok((3, ..)));
@@ -87,11 +93,11 @@ fn route_fallback_options_enabled() {
 
 #[test]
 fn route_fallback_options_disabled() {
-    let app = crate::app()
+    let app = crate::app() //
         .route(route().reply(|| ""))
         .route(route().method(Method::POST).reply(|| ""))
-        .global(global().fallback_options(false)) //
-        .finish()
+        .global(global().fallback_options(false))
+        .build()
         .unwrap();
 
     assert_matches!(
@@ -102,7 +108,7 @@ fn route_fallback_options_disabled() {
 
 #[test]
 fn scope_simple() {
-    let app = crate::app()
+    let app = crate::app() //
         .mount(
             scope()
                 .route(route().uri("/a".parse().unwrap()).reply(|| ""))
@@ -115,7 +121,7 @@ fn scope_simple() {
                 .route(route().uri("/d".parse().unwrap()).reply(|| ""))
                 .route(route().uri("/e".parse().unwrap()).reply(|| "")),
         ) //
-        .finish()
+        .build()
         .unwrap();
 
     assert_matches!(app.recognize("/a", &Method::GET), Ok((0, ..)));
@@ -146,7 +152,7 @@ fn scope_nested() {
                 ), //
         ) //
         .route(route().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
-        .finish()
+        .build()
         .unwrap();
 
     assert_matches!(app.recognize("/foo", &Method::GET), Ok((0, ..)));
@@ -204,7 +210,7 @@ fn scope_variable() {
                         ),
                 ), //
         ) //
-        .finish()
+        .build()
         .unwrap();
 
     assert_eq!(
@@ -254,7 +260,7 @@ fn failcase_duplicate_uri_and_method() {
     let app = crate::app()
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
-        .finish();
+        .build();
     assert!(app.is_err());
 }
 
@@ -263,6 +269,6 @@ fn failcase_different_scope_at_the_same_uri() {
     let app = crate::app()
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .mount(scope().route(route().uri("/path".parse().unwrap()).reply(|| ""))) //
-        .finish();
+        .build();
     assert!(app.is_err());
 }
