@@ -11,7 +11,7 @@ struct User {
     age: u32,
 }
 
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app()
         .route(
             route!("/") //
@@ -27,8 +27,6 @@ fn main() {
                 .with(extractor::body::json())
                 .reply(|user: User| user),
         ) //
-        .build_server()
-        .expect("failed to construct App")
+        .build_server()?
         .run_forever()
-        .expect("failed to start HTTP server");
 }

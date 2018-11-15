@@ -12,14 +12,12 @@ struct Index {
     name: String,
 }
 
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),
         ) //
-        .build_server()
-        .unwrap()
+        .build_server()?
         .run_forever()
-        .unwrap();
 }

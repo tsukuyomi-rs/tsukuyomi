@@ -1,9 +1,9 @@
 //! The implementation of low level HTTP server.
 
+mod error;
 pub mod middleware;
 pub mod transport;
 
-use std::io;
 use std::net::SocketAddr;
 
 use futures::{Future, Poll, Stream};
@@ -16,6 +16,8 @@ use tower_service::{NewService, Service};
 use self::imp::CritError;
 use self::middleware::{Identity, Middleware};
 use self::transport::{ConnectionInfo, HasConnectionInfo, Transport};
+
+pub use self::error::{Error, Result};
 
 pub(crate) mod imp {
     use super::*;
@@ -141,8 +143,8 @@ where
         self.with_middleware(self::middleware::Compat(middleware))
     }
 
-    pub fn into_test_server(self) -> io::Result<crate::test::TestServer<S, M>> {
-        crate::test::TestServer::with_middleware(self.new_service, self.middleware)
+    pub fn into_test_server(self) -> crate::test::Result<crate::test::TestServer<S, M>> {
+        Ok(crate::test::TestServer::new(self.new_service)?.with_middleware(self.middleware))
     }
 }
 
@@ -199,7 +201,7 @@ where
     T: Transport,
     T::Data: Send + Sync + 'static,
 {
-    pub fn run_forever(self) -> io::Result<()>
+    pub fn run_forever(self) -> Result<()>
     where
         S: Send + 'static,
         S::Future: Send + 'static,
@@ -228,7 +230,7 @@ where
         Ok(())
     }
 
-    pub fn run_until<F>(self, signal: F) -> io::Result<()>
+    pub fn run_until<F>(self, signal: F) -> Result<()>
     where
         S: Send + 'static,
         S::Future: Send + 'static,
@@ -263,7 +265,7 @@ where
         Ok(())
     }
 
-    pub fn run_single_threaded<F>(self, signal: F) -> io::Result<()>
+    pub fn run_single_threaded<F>(self, signal: F) -> Result<()>
     where
         S: 'static,
         S::Future: 'static,

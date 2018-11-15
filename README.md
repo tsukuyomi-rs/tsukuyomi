@@ -30,18 +30,17 @@ tsukuyomi = "0.4.0-dev"
 ```rust,no_run
 extern crate tsukuyomi;
 
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     let server = tsukuyomi::app()
         .route(
             tsukuyomi::app::route!()
                 .reply(|| "Hello, world.\n")
         )
-        .build_server()
-        .expect("failed to construct App");
+        .build_server()?;
 
     server
+        .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
         .run_forever()
-        .expect("failed to start the server");
 }
 ```
 

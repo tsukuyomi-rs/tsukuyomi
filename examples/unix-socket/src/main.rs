@@ -6,7 +6,7 @@ fn main() {
 }
 
 #[cfg(unix)]
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     let sock_path: std::path::PathBuf = std::env::args()
         .nth(1)
         .map(Into::into)
@@ -17,8 +17,7 @@ fn main() {
             tsukuyomi::app::route!("/") //
                 .reply(|| "Hello, Tsukuyomi!\n"),
         ) //
-        .build_server()
-        .unwrap();
+        .build_server()?;
 
     println!("Serving on {}...", sock_path.display());
     println!();
@@ -30,5 +29,5 @@ fn main() {
     );
     println!();
 
-    server.bind(sock_path).run_forever().unwrap();
+    server.bind(sock_path).run_forever()
 }

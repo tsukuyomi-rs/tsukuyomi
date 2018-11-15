@@ -1,12 +1,11 @@
 extern crate askama;
 extern crate cargo_version_sync;
-extern crate http;
 extern crate tsukuyomi;
 extern crate tsukuyomi_askama;
 
 use askama::Template;
-use http::Request;
 use tsukuyomi::output::Responder;
+use tsukuyomi::test::ResponseExt;
 
 #[test]
 fn version_sync() {
@@ -19,7 +18,7 @@ fn assert_impl<T: Responder>(x: T) -> T {
 }
 
 #[test]
-fn test_template() {
+fn test_template() -> tsukuyomi::test::Result<()> {
     #[derive(Template, Responder)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     #[responder(respond_to = "tsukuyomi_askama::respond_to")]
@@ -32,13 +31,13 @@ fn test_template() {
             tsukuyomi::app::route!("/") //
                 .reply(|| assert_impl(Index { name: "Alice" })),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/")).unwrap();
+    let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
-    assert_eq!(response.headers().get("content-type").unwrap(), "text/html");
-    assert_eq!(response.body().to_utf8().unwrap(), "Hello, Alice.");
+    assert_eq!(response.header("content-type")?, "text/html");
+    assert_eq!(response.body().to_utf8()?, "Hello, Alice.");
+
+    Ok(())
 }

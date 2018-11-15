@@ -1,5 +1,6 @@
 mod responder {
     use std::fmt;
+    use tsukuyomi::test::ResponseExt;
 
     fn assert_impl_responder<T: tsukuyomi::output::Responder>() {}
 
@@ -80,7 +81,7 @@ mod responder {
     }
 
     #[test]
-    fn test_responder() {
+    fn test_responder() -> tsukuyomi::test::Result<()> {
         #[derive(tsukuyomi::output::Responder)]
         #[responder(respond_to = "self::sub::respond_to")]
         struct Foo(String);
@@ -96,17 +97,17 @@ mod responder {
                 tsukuyomi::app::route() //
                     .reply(|| Foo("Foo".into())),
             ) //
-            .build_server()
-            .unwrap()
-            .into_test_server()
-            .unwrap();
+            .build_server()?
+            .into_test_server()?;
 
-        let response = server.perform(http::Request::get("/")).unwrap();
+        let response = server.perform("/")?;
         assert_eq!(response.status(), 200);
         assert_eq!(
-            response.headers().get("content-type").unwrap(),
+            response.header("content-type")?,
             "text/plain; charset=utf-8"
         );
-        assert_eq!(response.body().to_utf8().unwrap(), "Foo");
+        assert_eq!(response.body().to_utf8()?, "Foo");
+
+        Ok(())
     }
 }

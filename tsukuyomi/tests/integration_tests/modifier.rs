@@ -3,7 +3,7 @@ use tsukuyomi::error::{internal_server_error, Error};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Output, ResponseBody};
 
-use http::{Request, Response};
+use http::Response;
 use std::sync::{Arc, Mutex};
 
 struct MarkModifier<T1, T2>
@@ -31,7 +31,7 @@ where
 }
 
 #[test]
-fn global_modifier() {
+fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app!()
@@ -56,17 +56,17 @@ fn global_modifier() {
                 Ok(Response::new(ResponseBody::empty()))
             },
         }) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let _ = server.perform(Request::get("/")).unwrap();
+    let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B", "H", "A"]);
+
+    Ok(())
 }
 
 #[test]
-fn global_modifier_error_on_before() {
+fn global_modifier_error_on_before() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app()
@@ -88,17 +88,17 @@ fn global_modifier_error_on_before() {
                 Ok(Response::new(ResponseBody::empty()))
             },
         }) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let _ = server.perform(Request::get("/")).unwrap();
+    let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B"]);
+
+    Ok(())
 }
 
 #[test]
-fn global_modifiers() {
+fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app()
@@ -131,17 +131,17 @@ fn global_modifiers() {
                 Ok(Response::new(ResponseBody::empty()))
             },
         }) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let _ = server.perform(Request::get("/")).unwrap();
+    let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H", "A2", "A1"]);
+
+    Ok(())
 }
 
 #[test]
-fn scoped_modifier() {
+fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app()
@@ -184,21 +184,21 @@ fn scoped_modifier() {
                 ""
             }
         })) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let _ = server.perform(Request::get("/path1")).unwrap();
+    let _ = server.perform("/path1")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.perform(Request::get("/path2")).unwrap();
+    let _ = server.perform("/path2")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "H2", "A1"]);
+
+    Ok(())
 }
 
 #[test]
-fn nested_modifiers() {
+fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app()
@@ -258,15 +258,15 @@ fn nested_modifiers() {
                         ),
                 ),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let _ = server.perform(Request::get("/path/to")).unwrap();
+    let _ = server.perform("/path/to")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "H1", "A2", "A1"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.perform(Request::get("/path/to/a")).unwrap();
+    let _ = server.perform("/path/to/a")?;
     assert_eq!(*marker.lock().unwrap(), vec!["B1", "B2", "B3", "A2", "A1"]);
+
+    Ok(())
 }

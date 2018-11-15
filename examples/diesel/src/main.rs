@@ -26,12 +26,12 @@ use tsukuyomi::rt::Future;
 use crate::conn::Conn;
 use crate::model::{NewPost, Post};
 
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     pretty_env_logger::init();
-    dotenv().unwrap();
+    dotenv()?;
 
-    let database_url = env::var("DATABASE_URL").unwrap();
-    let db_conn = crate::conn::extractor(database_url).map(Arc::new).unwrap();
+    let database_url = env::var("DATABASE_URL")?;
+    let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
     let get_posts = {
         #[derive(Debug, serde::Deserialize)]
@@ -99,14 +99,13 @@ fn main() {
             }).map(|post_opt| post_opt.map(tsukuyomi::output::json))
         });
 
-    tsukuyomi::app!("/api/v1/posts")
+    let server = tsukuyomi::app!("/api/v1/posts")
         .route(get_posts)
         .route(create_post)
         .route(get_post)
-        .build_server()
-        .unwrap()
-        .run_forever()
-        .unwrap();
+        .build_server()?;
+
+    server.run_forever()
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>

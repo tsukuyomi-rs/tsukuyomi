@@ -2,7 +2,7 @@ extern crate tsukuyomi;
 
 use tsukuyomi::app::{route, scope};
 
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app()
         .route(
             route!() //
@@ -25,8 +25,6 @@ fn main() {
             route!("/static/*path")
                 .reply(|path: std::path::PathBuf| format!("path = {}\n", path.display())),
         ) //
-        .build_server()
-        .unwrap()
+        .build_server()?
         .run_forever()
-        .unwrap();
 }

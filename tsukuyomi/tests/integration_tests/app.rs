@@ -1,86 +1,70 @@
 use tsukuyomi::app::route;
 use tsukuyomi::extractor;
+use tsukuyomi::test::ResponseExt;
 
 use http::{header, Method, Request, Response, StatusCode};
 
 #[test]
-fn empty_routes() {
+fn empty_routes() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app() //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/")).unwrap();
+    let response = server.perform("/")?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    Ok(())
 }
 
 #[test]
-fn single_route() {
+fn single_route() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(route!("/hello").reply(|| "Tsukuyomi"))
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/hello")).unwrap();
+    let response = server.perform("/hello")?;
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
-        response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .map(|v| v.as_bytes()),
-        Some(&b"text/plain; charset=utf-8"[..])
+        response.header(header::CONTENT_TYPE)?,
+        "text/plain; charset=utf-8"
     );
-    assert_eq!(
-        response
-            .headers()
-            .get(header::CONTENT_LENGTH)
-            .map(|v| v.as_bytes()),
-        Some(&b"9"[..])
-    );
+    assert_eq!(response.header(header::CONTENT_LENGTH)?, "9");
     assert_eq!(*response.body().to_bytes(), b"Tsukuyomi"[..]);
+
+    Ok(())
 }
 
 #[test]
-fn post_body() {
+fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(
             route!("/hello", method = POST)
                 .with(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server
-        .perform(Request::post("/hello").body("Hello, Tsukuyomi."))
-        .unwrap();
+    let response = server.perform(
+        Request::post("/hello") //
+            .body("Hello, Tsukuyomi."),
+    )?;
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
-        response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .map(|v| v.as_bytes()),
-        Some(&b"text/plain; charset=utf-8"[..])
+        response.header(header::CONTENT_TYPE)?,
+        "text/plain; charset=utf-8"
     );
-    assert_eq!(
-        response
-            .headers()
-            .get(header::CONTENT_LENGTH)
-            .map(|v| v.as_bytes()),
-        Some(&b"17"[..])
-    );
+    assert_eq!(response.header(header::CONTENT_LENGTH)?, "17");
     assert_eq!(*response.body().to_bytes(), b"Hello, Tsukuyomi."[..]);
+
+    Ok(())
 }
 
 #[test]
-fn cookies() {
+fn cookies() -> tsukuyomi::test::Result<()> {
     use cookie::Cookie;
     use time::Duration;
 
@@ -108,21 +92,13 @@ fn cookies() {
                     Ok::<_, tsukuyomi::error::Error>(None)
                 })).reply(|| "Logged out"),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/login")).unwrap();
-    assert!(response.headers().contains_key(header::SET_COOKIE));
+    let response = server.perform("/login")?;
 
-    let cookie_str = response
-        .headers()
-        .get(header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let cookie = Cookie::parse_encoded(cookie_str).unwrap();
+    let cookie_str = response.header(header::SET_COOKIE)?.to_str()?;
+    let cookie = Cookie::parse_encoded(cookie_str)?;
     assert_eq!(cookie.name(), "session");
     assert_eq!(cookie.domain(), Some("www.example.com"));
     assert_eq!(
@@ -130,70 +106,55 @@ fn cookies() {
         Some(expires_in.to_timespec().sec)
     );
 
-    let response = server
-        .perform(Request::get("/logout").header(header::COOKIE, cookie_str))
-        .unwrap();
-    assert!(response.headers().contains_key(header::SET_COOKIE));
+    let response = server.perform(Request::get("/logout").header(header::COOKIE, cookie_str))?;
 
-    let cookie_str = response
-        .headers()
-        .get(header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let cookie = Cookie::parse_encoded(cookie_str).unwrap();
+    let cookie_str = response.header(header::SET_COOKIE)?.to_str()?;
+    let cookie = Cookie::parse_encoded(cookie_str)?;
     assert_eq!(cookie.name(), "session");
     assert_eq!(cookie.value(), "");
     assert_eq!(cookie.max_age(), Some(Duration::zero()));
     assert!(cookie.expires().map_or(false, |tm| tm < time::now()));
 
-    let response = server.perform(Request::get("/logout")).unwrap();
+    let response = server.perform("/logout")?;
     assert!(!response.headers().contains_key(header::SET_COOKIE));
+
+    Ok(())
 }
 
 #[test]
-fn default_options() {
+fn default_options() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(route!("/path").reply(|| "get"))
         .route(route!("/path", method = POST).reply(|| "post"))
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::options("/path")).unwrap();
+    let response = server.perform(Request::options("/path"))?;
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get(header::ALLOW).map(|v| v.as_bytes()),
-        Some(&b"GET, POST, OPTIONS"[..])
-    );
-    assert_eq!(
-        response
-            .headers()
-            .get(header::CONTENT_LENGTH)
-            .map(|v| v.as_bytes()),
-        Some(&b"0"[..])
-    );
+    assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
+    assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
+
+    Ok(())
 }
 
 #[test]
-fn test_case_5_disable_default_options() {
+fn test_case_5_disable_default_options() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .global(tsukuyomi::app::global().fallback_options(false)) //
         .route(route!("/path").reply(|| "get"))
         .route(route!("/path", method = POST).reply(|| "post"))
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::options("/path")).unwrap();
+    let response = server.perform(Request::options("/path"))?;
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    Ok(())
 }
 
 #[test]
-fn test_canceled() {
+fn test_canceled() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(
             route!("/", methods = [GET, POST])
@@ -207,14 +168,14 @@ fn test_canceled() {
                     },
                 )).reply(|| "passed"),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/")).unwrap();
-    assert_eq!(response.body().to_utf8().unwrap(), "passed");
+    let response = server.perform("/")?;
+    assert_eq!(response.body().to_utf8()?, "passed");
 
-    let response = server.perform(Request::post("/")).unwrap();
-    assert_eq!(response.body().to_utf8().unwrap(), "canceled");
+    let response = server.perform(Request::post("/"))?;
+    assert_eq!(response.body().to_utf8()?, "canceled");
+
+    Ok(())
 }

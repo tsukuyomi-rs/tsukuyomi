@@ -5,40 +5,37 @@ use tsukuyomi::extractor::ExtractorExt;
 use http::Request;
 
 #[test]
-fn unit_input() {
+fn unit_input() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(route!().reply(|| "dummy"))
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
-    let response = server.perform(Request::get("/")).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
+        .build_server()?
+        .into_test_server()?;
+    let response = server.perform("/")?;
+    assert_eq!(response.status(), 200);
+    Ok(())
 }
 
 #[test]
-fn params() {
+fn params() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(
             route!("/:id/:name/*path")
                 .reply(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server
-        .perform(Request::get("/23/bob/path/to/file"))
-        .unwrap();
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob,path/to/file");
+    let response = server.perform("/23/bob/path/to/file")?;
+    assert_eq!(response.body().to_utf8()?, "23,bob,path/to/file");
 
-    let response = server.perform(Request::get("/42/alice/")).unwrap();
-    assert_eq!(response.body().to_utf8().unwrap(), "42,alice,");
+    let response = server.perform("/42/alice/")?;
+    assert_eq!(response.body().to_utf8()?, "42,alice,");
+
+    Ok(())
 }
 
 #[test]
-fn route_macros() {
+fn route_macros() -> tsukuyomi::test::Result<()> {
     drop(
         tsukuyomi::app()
             .route(route!("/index").reply(|| "index"))
@@ -57,59 +54,57 @@ fn route_macros() {
             .route(route!("/static/*path").reply(|path: String| {
                 drop(path);
                 "dummy"
-            })).build()
-            .unwrap(),
+            })).build()?,
     );
+
+    Ok(())
 }
 
 #[test]
-fn plain_body() {
+fn plain_body() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
         .route(
             route!("/", method = POST)
                 .with(extractor::body::plain())
                 .reply(|body: String| body),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "text/plain; charset=utf-8")
-                .body(BODY),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "text/plain; charset=utf-8")
+            .body(BODY),
+    )?;
+    assert_eq!(response.status(), 200);
 
     // missing content-type
-    let response = server.perform(Request::post("/").body(BODY)).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
+    let response = server.perform(Request::post("/").body(BODY))?;
+    assert_eq!(response.status(), 200);
 
     // invalid content-type
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/graphql")
-                .body(BODY),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/graphql")
+            .body(BODY),
+    )?;
+    assert_eq!(response.status(), 400);
 
     // invalid charset
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "text/plain; charset=euc-jp")
-                .body(BODY),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "text/plain; charset=euc-jp")
+            .body(BODY),
+    )?;
+    assert_eq!(response.status(), 400);
+
+    Ok(())
 }
 
 #[test]
-fn json_body() {
+fn json_body() -> tsukuyomi::test::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -122,46 +117,41 @@ fn json_body() {
                 .with(extractor::body::json())
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/json")
-                .body(&br#"{"id":23, "name":"bob"}"#[..]),
-        ).unwrap();
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/json")
+            .body(&br#"{"id":23, "name":"bob"}"#[..]),
+    )?;
+    assert_eq!(response.body().to_utf8()?, "23,bob");
 
     // missing content-type
-    let response = server
-        .perform(Request::post("/").body(&br#"{"id":23, "name":"bob"}"#[..]))
-        .unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(Request::post("/").body(&br#"{"id":23, "name":"bob"}"#[..]))?;
+    assert_eq!(response.status(), 400);
 
     // invalid content-type
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/graphql")
-                .body(&br#"{"id":23, "name":"bob"}"#[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/graphql")
+            .body(&br#"{"id":23, "name":"bob"}"#[..]),
+    )?;
+    assert_eq!(response.status(), 400);
 
     // invalid data
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/json")
-                .body(&br#"THIS_IS_INVALID_JSON_DATA"#[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/json")
+            .body(&br#"THIS_IS_INVALID_JSON_DATA"#[..]),
+    )?;
+    assert_eq!(response.status(), 400);
+
+    Ok(())
 }
 
 #[test]
-fn urlencoded_body() {
+fn urlencoded_body() -> tsukuyomi::test::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -174,46 +164,43 @@ fn urlencoded_body() {
                 .with(extractor::body::urlencoded())
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
     const BODY: &[u8] = b"id=23&name=bob";
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(BODY),
-        ).unwrap();
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(BODY),
+    )?;
+    assert_eq!(response.body().to_utf8()?, "23,bob");
 
     // missing content-type
-    let response = server.perform(Request::post("/").body(BODY)).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(Request::post("/").body(BODY))?;
+    assert_eq!(response.status(), 400);
 
     // invalid content-type
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/graphql")
-                .body(BODY),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/graphql")
+            .body(BODY),
+    )?;
+    assert_eq!(response.status(), 400);
 
     // invalid data
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(&br#"THIS_IS_INVALID_FORM_DATA"#[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(&br#"THIS_IS_INVALID_FORM_DATA"#[..]),
+    )?;
+    assert_eq!(response.status(), 400);
+
+    Ok(())
 }
 
 #[test]
-fn local_data() {
+fn local_data() -> tsukuyomi::test::Result<()> {
     use tsukuyomi::app::{AsyncResult, Modifier};
     use tsukuyomi::input::local_map::local_key;
     use tsukuyomi::input::Input;
@@ -245,17 +232,17 @@ fn local_data() {
                 .with(extractor::local::remove(&MyData::KEY))
                 .reply(|x: MyData| x.0),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/")).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
+    let response = server.perform("/")?;
+    assert_eq!(response.status(), 200);
+
+    Ok(())
 }
 
 #[test]
-fn missing_local_data() {
+fn missing_local_data() -> tsukuyomi::test::Result<()> {
     use tsukuyomi::input::local_map::local_key;
 
     #[derive(Clone)]
@@ -273,17 +260,17 @@ fn missing_local_data() {
                 .with(extractor::local::remove(&MyData::KEY))
                 .reply(|x: MyData| x.0),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server.perform(Request::get("/")).unwrap();
-    assert_eq!(response.status().as_u16(), 500);
+    let response = server.perform("/")?;
+    assert_eq!(response.status(), 500);
+
+    Ok(())
 }
 
 #[test]
-fn optional() {
+fn optional() -> tsukuyomi::test::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -302,32 +289,30 @@ fn optional() {
                     }
                 }),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/json")
-                .body(&br#"{"id":23, "name":"bob"}"#[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/json")
+            .body(&br#"{"id":23, "name":"bob"}"#[..]),
+    )?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.body().to_utf8()?, "23,bob");
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(&b"id=23&name=bob"[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 500);
-    assert_eq!(response.body().to_utf8().unwrap(), "####none####");
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(&b"id=23&name=bob"[..]),
+    )?;
+    assert_eq!(response.status(), 500);
+    assert_eq!(response.body().to_utf8()?, "####none####");
+
+    Ok(())
 }
 
 #[test]
-fn either_or() {
+fn either_or() -> tsukuyomi::test::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -344,34 +329,31 @@ fn either_or() {
                 .with(params_extractor)
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/json")
-                .body(&br#"{"id":23, "name":"bob"}"#[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/json")
+            .body(&br#"{"id":23, "name":"bob"}"#[..]),
+    )?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.body().to_utf8()?, "23,bob");
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(&b"id=23&name=bob"[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(response.body().to_utf8().unwrap(), "23,bob");
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(&b"id=23&name=bob"[..]),
+    )?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.body().to_utf8()?, "23,bob");
 
-    let response = server
-        .perform(
-            Request::post("/")
-                .header("content-type", "text/plain; charset=utf-8")
-                .body(&b"///invalid string"[..]),
-        ).unwrap();
-    assert_eq!(response.status().as_u16(), 400);
+    let response = server.perform(
+        Request::post("/")
+            .header("content-type", "text/plain; charset=utf-8")
+            .body(&b"///invalid string"[..]),
+    )?;
+    assert_eq!(response.status(), 400);
+
+    Ok(())
 }

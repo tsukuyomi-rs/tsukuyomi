@@ -25,6 +25,20 @@ pub trait IntoRequestBodyImpl {
 
 // === implementors ===
 
+impl<'a> TestInput for &'a str {}
+impl<'a> TestInputImpl for &'a str {
+    fn build_request(self) -> http::Result<Request<Body>> {
+        Request::get(self).body(Body::default())
+    }
+}
+
+impl TestInput for String {}
+impl TestInputImpl for String {
+    fn build_request(self) -> http::Result<Request<Body>> {
+        self.as_str().build_request()
+    }
+}
+
 impl<T: IntoRequestBody> TestInput for Request<T> {}
 impl<T: IntoRequestBody> TestInputImpl for Request<T> {
     fn build_request(mut self) -> http::Result<Request<Body>> {

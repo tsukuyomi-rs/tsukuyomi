@@ -11,7 +11,7 @@ mod schema;
 use std::sync::Arc;
 use tsukuyomi_juniper::executor::Executor;
 
-fn main() {
+fn main() -> tsukuyomi::server::Result<()> {
     // Extractor for extracting `Executor` for executing a GraphQL request from client.
     let extract_graphql_executor = tsukuyomi_juniper::executor(
         //
@@ -35,8 +35,6 @@ fn main() {
                 .with(fetch_graphql_context)
                 .handle(move |exec: Executor<_>, context| exec.execute(context)),
         ) //
-        .build_server()
-        .unwrap()
+        .build_server()?
         .run_forever()
-        .unwrap();
 }

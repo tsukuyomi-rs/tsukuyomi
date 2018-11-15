@@ -3,8 +3,8 @@ extern crate pretty_env_logger;
 extern crate tower_web;
 extern crate tsukuyomi;
 
-fn main() {
-    let addr: std::net::SocketAddr = "127.0.0.1:4000".parse().unwrap();
+fn main() -> tsukuyomi::server::Result<()> {
+    let addr: std::net::SocketAddr = "127.0.0.1:4000".parse()?;
 
     let log_middleware = tower_web::middleware::log::LogMiddleware::new(module_path!());
 
@@ -14,10 +14,8 @@ fn main() {
 
     tsukuyomi::app!()
         .route(tsukuyomi::route!("/").reply(|| "Hello"))
-        .build_server()
-        .unwrap()
+        .build_server()?
         .bind(addr)
         .with_tower_middleware(log_middleware)
         .run_forever()
-        .unwrap();
 }

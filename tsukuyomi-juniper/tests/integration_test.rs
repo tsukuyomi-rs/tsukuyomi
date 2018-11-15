@@ -15,7 +15,7 @@ use tsukuyomi::test::{TestOutput, TestServer};
 use tsukuyomi_juniper::executor::Executor;
 
 #[test]
-fn integration_test() {
+fn integration_test() -> tsukuyomi::test::Result<()> {
     let database = std::sync::Arc::new(Database::new());
     let schema = RootNode::new(Database::new(), EmptyMutation::<Database>::new());
     let executor = tsukuyomi_juniper::executor(schema);
@@ -30,16 +30,16 @@ fn integration_test() {
                     move |exec: Executor<_>| exec.execute(database.clone())
                 }),
         ) //
-        .build_server()
-        .unwrap()
-        .into_test_server()
-        .unwrap();
+        .build_server()?
+        .into_test_server()?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),
     };
 
     http_tests::run_http_test_suite(&integration);
+
+    Ok(())
 }
 
 struct TestTsukuyomiIntegration {
