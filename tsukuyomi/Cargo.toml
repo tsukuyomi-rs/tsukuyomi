@@ -58,6 +58,9 @@ tower-service = "0.1"
 url = "1.7.1"
 uuid = "0.7.1"
 
+native-tls = { version = "0.2", optional = true }
+tokio-tls = { version = "0.2", optional = true }
+
 rustls = { version = "0.14", optional = true }
 tokio-rustls = { version = "0.8", optional = true }
 
@@ -82,7 +85,8 @@ cargo-version-sync = { version = "0.0.5", default-features = false }
 [features]
 default = []
 secure = ["cookie/secure"]
-tls = ["rustls", "tokio-rustls"]
+use-native-tls = ["native-tls", "tokio-tls"]
+use-rustls = ["rustls", "tokio-rustls"]
 tower-middleware = ["tower-web"]
 
 # ==== START cargo-version-sync ====

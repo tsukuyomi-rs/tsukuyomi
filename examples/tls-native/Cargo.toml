@@ -1,17 +1,16 @@
 [package]
-name = "example-tls"
+name = "example-tls-native"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [[bin]]
-name = "tls"
+name = "example_tls_native"
 path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = { version = "0.4.0-dev", features = ["tls"] }
-rustls = "0.14"
-tokio-rustls = "0.8"
+tsukuyomi = { version = "0.4.0-dev", features = ["use-native-tls"] }
+native-tls = "0.2"
+tokio-tls = "0.2"
 failure = "0.1.3"
-

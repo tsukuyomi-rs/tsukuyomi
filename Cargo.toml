@@ -43,7 +43,8 @@ members = [
   "examples/template-askama",
   "examples/template-tera",
   "examples/tower-middleware",
-  "examples/tls",
+  "examples/tls-rustls",
+  "examples/tls-native",
   "examples/unix-socket",
   "examples/websocket",
 ]

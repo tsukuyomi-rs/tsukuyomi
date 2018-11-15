@@ -37,9 +37,12 @@ extern crate tower_service;
 extern crate url;
 extern crate uuid;
 
-#[cfg(feature = "tls")]
+#[cfg(feature = "use-native-tls")]
+extern crate tokio_tls;
+
+#[cfg(feature = "use-rustls")]
 extern crate rustls;
-#[cfg(feature = "tls")]
+#[cfg(feature = "use-rustls")]
 extern crate tokio_rustls;
 
 #[cfg(feature = "tower-middleware")]

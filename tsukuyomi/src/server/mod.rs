@@ -103,7 +103,7 @@ where
 
     pub fn acceptor<B>(self, acceptor: B) -> Server<S, M, T, B>
     where
-        B: Acceptor<T::Io> + Clone,
+        B: Acceptor<T::Io>,
     {
         Server {
             new_service: self.new_service,

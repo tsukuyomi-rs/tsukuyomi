@@ -26,8 +26,29 @@ where
     }
 }
 
-#[cfg(feature = "tls")]
-mod tls {
+#[cfg(feature = "use-native-tls")]
+mod navite_tls {
+    use super::Acceptor;
+    use tokio::io::{AsyncRead, AsyncWrite};
+    use tokio_tls::{Accept, TlsAcceptor, TlsStream};
+
+    impl<Io> Acceptor<Io> for TlsAcceptor
+    where
+        Io: AsyncRead + AsyncWrite,
+    {
+        type Accepted = TlsStream<Io>;
+        type Error = native_tls::Error;
+        type Future = Accept<Io>;
+
+        #[inline]
+        fn accept(&self, io: Io) -> Self::Future {
+            self.accept(io)
+        }
+    }
+}
+
+#[cfg(feature = "use-rustls")]
+mod rustls {
     use super::Acceptor;
 
     use rustls::ServerSession;
