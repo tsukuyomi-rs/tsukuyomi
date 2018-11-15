@@ -29,6 +29,7 @@ where
 #[cfg(feature = "use-native-tls")]
 mod navite_tls {
     use super::Acceptor;
+
     use tokio::io::{AsyncRead, AsyncWrite};
     use tokio_tls::{Accept, TlsAcceptor, TlsStream};
 
@@ -66,6 +67,29 @@ mod rustls {
         #[inline]
         fn accept(&self, io: Io) -> Self::Future {
             self.accept(io)
+        }
+    }
+}
+
+#[cfg(feature = "use-openssl")]
+mod openssl {
+    use super::Acceptor;
+
+    use openssl::ssl::{HandshakeError, SslAcceptor};
+    use tokio::io::{AsyncRead, AsyncWrite};
+    use tokio_openssl::{AcceptAsync, SslAcceptorExt, SslStream};
+
+    impl<Io> Acceptor<Io> for SslAcceptor
+    where
+        Io: AsyncRead + AsyncWrite,
+    {
+        type Accepted = SslStream<Io>;
+        type Error = HandshakeError<Io>;
+        type Future = AcceptAsync<Io>;
+
+        #[inline]
+        fn accept(&self, io: Io) -> Self::Future {
+            self.accept_async(io)
         }
     }
 }

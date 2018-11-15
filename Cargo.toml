@@ -9,8 +9,9 @@ path = ".empty.rs"
 [dev-dependencies]
 failure = "0.1.3"
 juniper = "0.10"
-tungstenite = "0.6"
+tokio-rustls = "0.8"
 tokio-tungstenite = "0.6"
+tungstenite = "0.6"
 walkdir = "2"
 
 [dev-dependencies.cargo-husky]
@@ -37,14 +38,15 @@ members = [
   "examples/http-proxy",
   "examples/juniper",
   "examples/json",
+  "examples/native-tls",
+  "examples/openssl",
   "examples/routing",
+  "examples/rustls",
   "examples/session",
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
   "examples/tower-middleware",
-  "examples/tls-rustls",
-  "examples/tls-native",
   "examples/unix-socket",
   "examples/websocket",
 ]

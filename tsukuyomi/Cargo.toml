@@ -64,6 +64,9 @@ tokio-tls = { version = "0.2", optional = true }
 rustls = { version = "0.14", optional = true }
 tokio-rustls = { version = "0.8", optional = true }
 
+openssl = { version = "0.10", optional = true }
+tokio-openssl = { version = "0.3", optional = true }
+
 tower-web = { version = "0.3", default-features = false, optional = true }
 
 [dependencies.tsukuyomi-internal]
@@ -87,6 +90,7 @@ default = []
 secure = ["cookie/secure"]
 use-native-tls = ["native-tls", "tokio-tls"]
 use-rustls = ["rustls", "tokio-rustls"]
+use-openssl = ["openssl", "tokio-openssl"]
 tower-middleware = ["tower-web"]
 
 # ==== START cargo-version-sync ====

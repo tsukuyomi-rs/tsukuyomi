@@ -1,11 +1,11 @@
 [package]
-name = "example-tls-rustls"
+name = "example-rustls"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [[bin]]
-name = "example_tls_rustls"
+name = "example_rustls"
 path = "src/main.rs"
 doc = false
 

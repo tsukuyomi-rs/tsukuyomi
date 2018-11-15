@@ -17,4 +17,4 @@ tokio-tungstenite = "0.6"
 tungstenite = "0.6"
 
 [dev-dependencies]
-cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
+cargo-version-sync = { version = "0.0.5", default-features = false }

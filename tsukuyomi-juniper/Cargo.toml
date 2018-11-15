@@ -33,7 +33,7 @@ serde_urlencoded = "0.5"
 
 [dev-dependencies]
 percent-encoding = "1"
-cargo-version-sync = { git = "https://github.com/ubnt-intrepid/cargo-version-sync.git", default-features = false }
+cargo-version-sync = { version = "0.0.5", default-features = false }
 
 [dev-dependencies.juniper]
 version = "0.10"

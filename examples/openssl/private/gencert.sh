@@ -4,6 +4,11 @@ CA_SUBJECT="/C=JP/ST=Tokyo/O=Tsukuyomi CA/CN=Tsukuyomi Root CA"
 SUBJECT="/C=JP/ST=Tokyo/O=Tsukuyomi/CN=localhost"
 ALT="DNS:localhost"
 
+DIR="$(cd $(dirname $BASH_SOURCE); pwd)"
+cd $DIR
+
+set -ex
+
 # generate RSA private key
 openssl genrsa -out ca_key.pem 4096
 

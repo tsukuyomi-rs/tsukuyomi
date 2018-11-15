@@ -4,6 +4,7 @@ set -ex
 
 cargo doc --no-deps -p juniper
 cargo doc --no-deps -p tungstenite -p tokio-tungstenite
+cargo doc --no-deps -p tokio-rustls
 
 cargo doc --no-deps -p tsukuyomi-macros
 cargo doc --no-deps -p tsukuyomi --all-features

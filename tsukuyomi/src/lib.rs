@@ -45,6 +45,11 @@ extern crate rustls;
 #[cfg(feature = "use-rustls")]
 extern crate tokio_rustls;
 
+#[cfg(feature = "use-openssl")]
+extern crate openssl;
+#[cfg(feature = "use-openssl")]
+extern crate tokio_openssl;
+
 #[cfg(feature = "tower-middleware")]
 extern crate tower_web;
 

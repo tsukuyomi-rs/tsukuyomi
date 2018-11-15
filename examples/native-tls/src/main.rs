@@ -4,7 +4,7 @@ extern crate tokio_tls;
 extern crate tsukuyomi;
 
 fn main() -> tsukuyomi::server::Result<()> {
-    let der = std::fs::read("identity.p12")?;
+    let der = std::fs::read("./private/identity.p12")?;
     let cert = native_tls::Identity::from_pkcs12(&der, "mypass")?;
     let tls_acceptor =
         tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);

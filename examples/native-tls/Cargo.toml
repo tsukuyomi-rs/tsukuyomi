@@ -1,11 +1,11 @@
 [package]
-name = "example-tls-native"
+name = "example-native-tls"
 version = "0.0.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [[bin]]
-name = "example_tls_native"
+name = "example_native_tls"
 path = "src/main.rs"
 doc = false
 
