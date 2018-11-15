@@ -1,16 +1,13 @@
 extern crate failure;
 extern crate rustls;
+extern crate tokio_rustls;
 extern crate tsukuyomi;
 
-use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-const CERTS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/cert.pem");
-const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pem");
-
 fn main() -> tsukuyomi::server::Result<()> {
-    let transport = tls_transport("127.0.0.1:4000")?;
+    let tls_acceptor = build_tls_acceptor()?;
 
     tsukuyomi::app()
         .route(
@@ -18,14 +15,13 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .reply(|| "Hello, Tsukuyomi.\n"),
         ) //
         .build_server()?
-        .bind(transport)
+        .acceptor(tls_acceptor)
         .run_forever()
 }
 
-fn tls_transport(
-    addr: &str,
-) -> failure::Fallible<tsukuyomi::server::transport::TlsConfig<SocketAddr>> {
-    let addr: SocketAddr = addr.parse()?;
+fn build_tls_acceptor() -> failure::Fallible<tokio_rustls::TlsAcceptor> {
+    const CERTS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/cert.pem");
+    const PRIV_KEY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/private/key.pem");
 
     let client_auth = rustls::NoClientAuth::new();
 
@@ -38,7 +34,7 @@ fn tls_transport(
 
     config.set_protocols(&["h2".into(), "http/1.1".into()]);
 
-    Ok(tsukuyomi::server::transport::tls(addr, Arc::new(config)))
+    Ok(Arc::new(config).into())
 }
 
 fn load_certs(path: impl AsRef<Path>) -> failure::Fallible<Vec<rustls::Certificate>> {
