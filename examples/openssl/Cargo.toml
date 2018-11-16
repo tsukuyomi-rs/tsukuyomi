@@ -9,6 +9,6 @@ name = "example_openssl"
 path = "src/main.rs"
 doc = false
 
-[dependencies]
+[target.'cfg(not(windows))'.dependencies]
 tsukuyomi = { version = "0.4.0-dev", features = ["use-openssl"] }
 openssl = "0.10"
