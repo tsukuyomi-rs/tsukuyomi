@@ -8,10 +8,19 @@ jobs:
   - job: Windows
     pool:
       vmImage: 'vs2017-win2016'
+    variables:
+      OPENSSL_DIR: C:\OpenSSL
+      OPENSSL_VERSION: 1_1_0i
     steps:
     - script: |
         git submodule update --init --depth=1
       displayName: 'sync local registry'
+    
+    - script: |
+        mkdir %OPENSSL_DIR%
+        curl -sSfO http://slproweb.com/download/Win64OpenSSL-%OPENSSL_VERSION%.exe
+        Win64OpenSSL-%OPENSSL_VERSION%.exe /SILENT /VERYSILENT /SP- /DIR=%OPENSSL_DIR%
+      displayName: 'install OpenSSL'
 
     - script: |
         curl -sSf -o rustup-init.exe https://win.rustup.rs

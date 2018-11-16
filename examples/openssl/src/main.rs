@@ -1,14 +1,6 @@
-#[cfg(not(windows))]
 extern crate openssl;
-#[cfg(not(windows))]
 extern crate tsukuyomi;
 
-#[cfg(windows)]
-fn main() {
-    println!("This example does not work on Windows platform.");
-}
-
-#[cfg(not(windows))]
 fn main() -> tsukuyomi::server::Result<()> {
     use openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod};
 
