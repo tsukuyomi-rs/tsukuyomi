@@ -69,6 +69,27 @@ impl Stream for RequestBody {
     }
 }
 
+#[cfg(feature = "tower-middleware")]
+mod tower {
+    use super::*;
+
+    use tower_web::util::BufStream;
+
+    impl BufStream for RequestBody {
+        type Item = hyper::Chunk;
+        type Error = hyper::Error;
+
+        #[inline]
+        fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+            BufStream::poll(&mut self.0)
+        }
+
+        fn size_hint(&self) -> tower_web::util::buf_stream::SizeHint {
+            self.0.size_hint()
+        }
+    }
+}
+
 /// An asynchronous I/O upgraded from HTTP connection.
 ///
 /// Currenly, this type is implemented as a thin wrapper of `hyper::upgrade::Upgraded`.

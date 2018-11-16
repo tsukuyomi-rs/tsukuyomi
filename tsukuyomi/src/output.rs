@@ -120,6 +120,27 @@ impl Payload for ResponseBody {
     }
 }
 
+#[cfg(feature = "tower-middleware")]
+mod tower {
+    use super::*;
+
+    use tower_web::util::BufStream;
+
+    impl BufStream for ResponseBody {
+        type Item = hyper::Chunk;
+        type Error = hyper::Error;
+
+        #[inline]
+        fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+            BufStream::poll(&mut self.0)
+        }
+
+        fn size_hint(&self) -> tower_web::util::buf_stream::SizeHint {
+            self.0.size_hint()
+        }
+    }
+}
+
 /// The type representing outputs returned from handlers.
 pub type Output = ::http::Response<ResponseBody>;
 
