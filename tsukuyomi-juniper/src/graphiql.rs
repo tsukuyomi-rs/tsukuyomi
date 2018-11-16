@@ -1,25 +1,18 @@
-#![allow(missing_docs)]
-
 use bytes::Bytes;
 use http::Response;
-use juniper::http::graphiql::graphiql_source;
 
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 
 /// Creates a handler function which returns a GraphiQL source.
-pub fn graphiql(
-    url: impl AsRef<str> + 'static,
-) -> impl Fn() -> GraphiQLSource + Clone + Send + Sync + 'static {
-    let source: Bytes = graphiql_source(url.as_ref()).into();
-    move || GraphiQLSource {
-        source: source.clone(),
+pub fn graphiql_source(url: impl AsRef<str> + 'static) -> impl Responder + Clone {
+    GraphiQLSource {
+        source: juniper::http::graphiql::graphiql_source(url.as_ref()).into(),
     }
 }
 
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct GraphiQLSource {
+#[derive(Debug, Clone)]
+struct GraphiQLSource {
     source: Bytes,
 }
 

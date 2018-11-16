@@ -12,7 +12,7 @@ use percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET}
 use std::cell::RefCell;
 
 use tsukuyomi::test::{TestOutput, TestServer};
-use tsukuyomi_juniper::executor::Executor;
+use tsukuyomi_juniper::Executor;
 
 #[test]
 fn integration_test() -> tsukuyomi::test::Result<()> {

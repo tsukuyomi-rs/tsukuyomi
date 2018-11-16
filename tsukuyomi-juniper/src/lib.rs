@@ -20,9 +20,9 @@ extern crate juniper;
 extern crate percent_encoding;
 extern crate tsukuyomi;
 
-pub mod executor;
-pub mod graphiql;
+mod executor;
+mod graphiql;
 mod request;
 
-pub use crate::executor::executor;
-pub use crate::graphiql::graphiql;
+pub use crate::executor::{executor, Executor, Schema};
+pub use crate::graphiql::graphiql_source;
