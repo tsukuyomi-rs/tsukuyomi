@@ -2,12 +2,8 @@
 
 #![allow(missing_docs)]
 
-mod and;
-mod and_then;
+mod builder;
 mod generic;
-mod map;
-mod optional;
-mod or;
 
 pub mod body;
 pub mod extension;
@@ -18,25 +14,21 @@ pub mod query;
 pub mod state;
 pub mod verb;
 
-pub use self::and::And;
-pub use self::and_then::AndThen;
+pub use self::builder::Builder;
 pub(crate) use self::generic::{Combine, Func, Tuple};
-pub use self::map::Map;
-pub use self::optional::Optional;
-pub use self::or::Or;
 
 // ==== impl ====
 
 use std::marker::PhantomData;
 
-use futures::future;
-use futures::{Async, Future, IntoFuture, Poll};
+use futures::{Future, IntoFuture, Poll};
 
 use crate::error::{Error, Never};
 use crate::input::Input;
 use crate::output::Output;
 
 /// A type that represents the value of a `Future` never constructed.
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct Placeholder<T, E> {
     never: crate::error::Never,
@@ -108,6 +100,13 @@ pub trait Extractor: Send + Sync + 'static {
 
     /// Performs extraction from the specified `Input`.
     fn extract(&self, input: &mut Input<'_>) -> Extract<Self>;
+
+    fn into_builder(self) -> Builder<Self>
+    where
+        Self: Sized,
+    {
+        Builder::new(self)
+    }
 }
 
 impl<E> Extractor for Box<E>
@@ -149,67 +148,6 @@ impl Extractor for () {
     }
 }
 
-// ==== ExtractorExt ====
-
-#[inline]
-pub(crate) fn assert_impl_extractor<E>(extractor: E) -> E
-where
-    E: Extractor,
-{
-    extractor
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait ExtractorExt: Extractor + Sized {
-    fn optional<T>(self) -> Optional<Self>
-    where
-        Self: Extractor<Output = (T,)>,
-    {
-        assert_impl_extractor(Optional(self))
-    }
-
-    fn and<E>(self, other: E) -> And<Self, E>
-    where
-        E: Extractor,
-        Self::Output: Combine<E::Output> + Send + 'static,
-        E::Output: Send + 'static,
-    {
-        assert_impl_extractor(And {
-            left: self,
-            right: other,
-        })
-    }
-
-    fn or<E>(self, other: E) -> Or<Self, E>
-    where
-        E: Extractor<Output = Self::Output>,
-    {
-        assert_impl_extractor(Or {
-            left: self,
-            right: other,
-        })
-    }
-
-    fn map<F>(self, f: F) -> Map<Self, F>
-    where
-        F: Func<Self::Output> + Clone + Send + Sync + 'static,
-    {
-        assert_impl_extractor(Map { extractor: self, f })
-    }
-
-    fn and_then<F, R>(self, f: F) -> AndThen<Self, F>
-    where
-        F: Func<Self::Output, Out = R> + Clone + Send + Sync + 'static,
-        R: IntoFuture + 'static,
-        R::Future: Send + 'static,
-        R::Error: Into<Error>,
-    {
-        assert_impl_extractor(AndThen { extractor: self, f })
-    }
-}
-
-impl<E: Extractor> ExtractorExt for E {}
-
 // ==== primitives ====
 
 pub fn unit() -> impl Extractor<Output = (), Error = Never> {
@@ -223,7 +161,7 @@ where
     R::Item: Tuple + 'static,
     R::Error: Into<Error> + 'static,
 {
-    #[allow(missing_debug_implementations)]
+    #[derive(Debug, Copy, Clone)]
     struct Raw<F>(F);
 
     #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
@@ -255,28 +193,14 @@ where
     F: Fn(&mut Input<'_>) -> Result<Option<Output>, E> + Send + Sync + 'static,
     E: Into<Error> + 'static,
 {
-    #[allow(missing_debug_implementations)]
-    struct Guard<F>(F);
-
-    impl<F, E> Extractor for Guard<F>
-    where
-        F: Fn(&mut Input<'_>) -> Result<Option<Output>, E> + Send + Sync + 'static,
-        E: Into<Error> + 'static,
-    {
-        type Output = ();
-        type Error = E;
-        type Future = Placeholder<Self::Output, Self::Error>;
-
-        #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
-            match (self.0)(input)? {
+    self::raw(
+        move |input| -> Result<ExtractStatus<(), self::Placeholder<_, _>>, E> {
+            match f(input)? {
                 Some(output) => Ok(ExtractStatus::Canceled(output)),
                 None => Ok(ExtractStatus::Ready(())),
             }
-        }
-    }
-
-    Guard(f)
+        },
+    )
 }
 
 pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,), Error = E>
@@ -285,89 +209,35 @@ where
     T: 'static,
     E: Into<Error> + 'static,
 {
-    #[allow(missing_debug_implementations)]
-    struct Ready<F>(F);
-
-    impl<F, T, E> Extractor for Ready<F>
-    where
-        F: Fn(&mut Input<'_>) -> Result<T, E> + Send + Sync + 'static,
-        T: 'static,
-        E: Into<Error> + 'static,
-    {
-        type Output = (T,);
-        type Error = E;
-        type Future = Placeholder<Self::Output, Self::Error>;
-
-        #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
-            (self.0)(input).map(|x| ExtractStatus::Ready((x,)))
-        }
-    }
-
-    Ready(f)
+    self::raw(
+        move |input| -> Result<ExtractStatus<_, self::Placeholder<_, _>>, _> {
+            f(input).map(|x| ExtractStatus::Ready((x,)))
+        },
+    )
 }
 
 pub fn lazy<F, R>(f: F) -> impl Extractor<Output = (R::Item,), Error = R::Error>
 where
-    F: Fn(&mut Input<'_>) -> Result<R, R::Error> + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
     R: IntoFuture,
     R::Future: Send + 'static,
     R::Item: 'static,
     R::Error: Into<Error> + 'static,
 {
-    #[allow(missing_debug_implementations)]
-    struct Lazy<F>(F);
-
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
-    impl<F, R> Extractor for Lazy<F>
-    where
-        F: Fn(&mut Input<'_>) -> Result<R, R::Error> + Send + Sync + 'static,
-        R: IntoFuture,
-        R::Future: Send + 'static,
-        R::Item: 'static,
-        R::Error: Into<Error> + 'static,
-    {
-        type Output = (R::Item,);
-        type Error = R::Error;
-        type Future = futures::future::Map<R::Future, fn(R::Item) -> (R::Item,)>;
-
-        #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
-            (self.0)(input).map(|future| {
-                ExtractStatus::Pending(
-                    future
-                        .into_future()
-                        .map((|output| (output,)) as fn(R::Item) -> (R::Item,)),
-                )
-            })
-        }
-    }
-
-    Lazy(f)
+    self::raw(move |input| {
+        Ok(ExtractStatus::Pending(
+            f(input).into_future().map(|output| (output,)),
+        ))
+    })
 }
 
 pub fn value<T>(value: T) -> impl Extractor<Output = (T,), Error = Never>
 where
     T: Clone + Send + Sync + 'static,
 {
-    #[allow(missing_debug_implementations)]
-    struct ValueExtractor<T>(T);
-
-    impl<T> Extractor for ValueExtractor<T>
-    where
-        T: Clone + Send + Sync + 'static,
-    {
-        type Output = (T,);
-        type Error = Never;
-        type Future = Placeholder<Self::Output, Self::Error>;
-
-        #[inline]
-        fn extract(&self, _: &mut Input<'_>) -> Extract<Self> {
-            Ok(ExtractStatus::Ready((self.0.clone(),)))
-        }
-    }
-
-    ValueExtractor(value)
+    self::raw(move |_| -> Result<ExtractStatus<_, Placeholder<_, _>>, _> {
+        Ok(ExtractStatus::Ready((value.clone(),)))
+    })
 }
 
 pub fn method() -> impl Extractor<Output = (http::Method,), Error = Never> {

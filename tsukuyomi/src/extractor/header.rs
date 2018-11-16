@@ -1,9 +1,9 @@
 //! Extractors for accessing HTTP header fields.
 
-use http::header::{HeaderName, HeaderValue};
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 use mime::Mime;
 
-use crate::error::Error;
+use crate::error::{Error, Never};
 use crate::extractor::Extractor;
 
 pub trait FromHeaderValue: Sized + 'static {
@@ -59,4 +59,8 @@ pub fn content_type() -> impl Extractor<Output = (Mime,), Error = Error> {
             .cloned()
             .ok_or_else(|| crate::error::bad_request("missing Content-type"))
     })
+}
+
+pub fn clone_headers() -> impl Extractor<Output = (HeaderMap,), Error = Never> {
+    super::ready(|input| Ok(input.headers().clone()))
 }

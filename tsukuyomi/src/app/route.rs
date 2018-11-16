@@ -5,7 +5,7 @@ use futures::{Async, Future, IntoFuture};
 use indexmap::IndexSet;
 
 use crate::error::Error;
-use crate::extractor::{And, Combine, ExtractStatus, Extractor, ExtractorExt, Func};
+use crate::extractor::{Combine, ExtractStatus, Extractor, Func};
 use crate::fs::NamedFile;
 use crate::output::Responder;
 use crate::uri::Uri;
@@ -71,14 +71,21 @@ where
     }
 
     /// Appends an `Extractor` to this builder.
-    pub fn with<U>(self, other: U) -> Builder<And<E, U>>
+    pub fn with<U>(
+        self,
+        other: U,
+    ) -> Builder<impl Extractor<Output = <E::Output as Combine<U::Output>>::Out, Error = Error>>
     where
         U: Extractor,
         E::Output: Combine<U::Output> + Send + 'static,
         U::Output: Send + 'static,
     {
         Builder {
-            extractor: self.extractor.and(other),
+            extractor: self
+                .extractor
+                .into_builder() //
+                .and(other)
+                .into_inner(),
             methods: self.methods,
             uri: self.uri,
         }

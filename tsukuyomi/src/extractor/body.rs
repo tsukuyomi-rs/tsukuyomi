@@ -8,7 +8,7 @@ use mime::Mime;
 use serde::de::DeserializeOwned;
 
 use crate::error::Error;
-use crate::extractor::Extractor;
+use crate::extractor::{ExtractStatus, Extractor};
 use crate::input::body::RequestBody;
 
 #[doc(hidden)]
@@ -131,7 +131,7 @@ where
     T: 'static,
     D: self::decode::Decoder<T> + Send + Sync + 'static,
 {
-    super::lazy(move |input| {
+    super::raw(move |input| {
         {
             let mime_opt = input.content_type()?;
             decoder
@@ -143,12 +143,12 @@ where
             .read_all()
             .ok_or_else(stolen_payload)
             .map(|mut read_all| {
-                futures::future::poll_fn(move || {
+                ExtractStatus::Pending(futures::future::poll_fn(move || {
                     let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
                     D::decode(&data)
-                        .map(Async::Ready)
+                        .map(|out| Async::Ready((out,)))
                         .map_err(crate::error::bad_request)
-                })
+                }))
             })
     })
 }
@@ -178,10 +178,10 @@ where
 }
 
 pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
-    super::lazy(|input| {
+    super::raw(|input| {
         input
             .read_all()
-            .map(|future| future.map_err(Error::critical))
+            .map(|future| ExtractStatus::Pending(future.map(|out| (out,)).map_err(Error::critical)))
             .ok_or_else(stolen_payload)
     })
 }

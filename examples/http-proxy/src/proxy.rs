@@ -7,7 +7,7 @@ use reqwest::IntoUrl;
 
 use tsukuyomi::error::{Error, Never};
 use tsukuyomi::extractor;
-use tsukuyomi::extractor::{Extractor, ExtractorExt};
+use tsukuyomi::extractor::Extractor;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
 
@@ -99,10 +99,11 @@ pub fn proxy_client(
     client: reqwest::async::Client,
 ) -> impl Extractor<Output = (Client,), Error = Error> {
     extractor::extension::clone()
-        .and(extractor::ready(|input| {
-            Ok::<_, Never>(input.headers().clone())
-        })).map(move |peer_addr, headers| Client {
-            client: client.clone(),
+        .into_builder() // <-- start building
+        .and(extractor::header::clone_headers())
+        .and(extractor::value(client))
+        .map(|peer_addr, headers, client| Client {
+            client,
             headers,
             peer_addr,
         })

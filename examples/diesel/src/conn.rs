@@ -17,13 +17,13 @@ where
 
     Ok(tsukuyomi::extractor::lazy(move |_| {
         let pool = pool.clone();
-        Ok(tsukuyomi::rt::blocking(move || pool.get()) //
+        tsukuyomi::rt::blocking(move || pool.get()) //
             .then(|result| {
                 result
                     .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
                     .and_then(|result| {
                         result.map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
                     })
-            }))
+            })
     }))
 }

@@ -1,6 +1,6 @@
 use tsukuyomi::app::route;
 use tsukuyomi::extractor;
-use tsukuyomi::extractor::ExtractorExt;
+use tsukuyomi::extractor::Extractor;
 
 use http::Request;
 
@@ -277,10 +277,12 @@ fn optional() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
+    let extractor = extractor::Builder::new(extractor::body::json()).optional();
+
     let mut server = tsukuyomi::app()
         .route(
             route!("/", method = POST)
-                .with(extractor::body::json().optional())
+                .with(extractor)
                 .handle(|params: Option<Params>| {
                     if let Some(params) = params {
                         Ok(format!("{},{}", params.id, params.name))
@@ -320,6 +322,7 @@ fn either_or() -> tsukuyomi::test::Result<()> {
     }
 
     let params_extractor = extractor::verb::get(extractor::query::query())
+        .into_builder()
         .or(extractor::verb::post(extractor::body::json()))
         .or(extractor::verb::post(extractor::body::urlencoded()));
 

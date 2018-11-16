@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tsukuyomi::app::route;
 use tsukuyomi::error::Error;
 use tsukuyomi::extractor;
-use tsukuyomi::extractor::ExtractorExt;
+use tsukuyomi::extractor::Extractor;
 use tsukuyomi::rt::Future;
 
 use crate::conn::Conn;
@@ -41,6 +41,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         }
 
         let parse_query = extractor::query::query()
+            .into_builder() // <-- start building
             .optional()
             .map(|param: Option<Param>| param.unwrap_or_else(|| Param { count: 20 }));
 
