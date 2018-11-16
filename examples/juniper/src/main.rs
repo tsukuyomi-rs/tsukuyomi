@@ -9,7 +9,7 @@ mod context;
 mod schema;
 
 use std::sync::Arc;
-use tsukuyomi_juniper::executor::Executor;
+use tsukuyomi_juniper::Executor;
 
 fn main() -> tsukuyomi::server::Result<()> {
     // Extractor for extracting `Executor` for executing a GraphQL request from client.
@@ -27,7 +27,10 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app()
         .route(
             tsukuyomi::app::route!("/") //
-                .reply(tsukuyomi_juniper::graphiql("/graphql")),
+                .reply({
+                    let source = tsukuyomi_juniper::graphiql_source("/graphql");
+                    move || source.clone()
+                }),
         ) //
         .route(
             tsukuyomi::app::route!("/graphql", methods = [GET, POST])
