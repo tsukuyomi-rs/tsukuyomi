@@ -15,10 +15,10 @@
 
 * Type-safe and composable handlers based on `Extractor` system
 * Scoped routing and middlewares
-* Asynchronous HTTP server based on `hyper` 0.12 and `tower-service`
+* Asynchronous HTTP server based on `tokio`, `hyper` and `tower-service`
   - HTTP/1.1 protocol upgrade
-  - TLS transport (using `rustls`)
-  - Unix domain socket
+  - Both of TCP and [Unix domain socket](./examples/unix-socket) support
+  - TLS support (with [`native-tls`](./examples/native-tls), [`rustls`](./examples/rustls) or [`openssl`](./examples/openssl))
 
 ## Usage
 
@@ -44,8 +44,9 @@ fn main() -> tsukuyomi::server::Result<()> {
 }
 ```
 
-## Documentation
+## Resources
 
+* [Examples](./examples)
 * [API documentation (released, 0.3)][docs-rs]
 * [API documentation (master, 0.4)][master-doc]
 
@@ -83,8 +84,8 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [`juniper`]: https://github.com/graphql-rust/juniper
 [`tungstenite`]: https://github.com/snapview/tungstenite-rs
 
-[`tsukuyomi-askama`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-askama
-[`tsukuyomi-juniper`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-juniper
-[`tsukuyomi-fs`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-fs
-[`tsukuyomi-session`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-session
-[`tsukuyomi-websocket`]: https://github.com/tsukuyomi-rs/tsukuyomi/tree/master/tsukuyomi-websocket
+[`tsukuyomi-askama`]: ./tsukuyomi-askama
+[`tsukuyomi-juniper`]: ./tsukuyomi-juniper
+[`tsukuyomi-fs`]: ./tsukuyomi-fs
+[`tsukuyomi-session`]: ./tsukuyomi-session
+[`tsukuyomi-websocket`]: ./tsukuyomi-websocket
