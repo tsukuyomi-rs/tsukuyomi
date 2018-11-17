@@ -10,12 +10,13 @@ use tsukuyomi::extractor;
 use tsukuyomi::extractor::Extractor;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Responder;
+use tsukuyomi::server::Peer;
 
 #[derive(Debug)]
 pub struct Client {
     client: reqwest::async::Client,
     headers: HeaderMap,
-    peer_addr: SocketAddr,
+    peer_addr: Peer<SocketAddr>,
 }
 
 impl Client {

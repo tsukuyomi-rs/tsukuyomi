@@ -1,48 +1,85 @@
-use futures::Future;
-use tokio::io::{AsyncRead, AsyncWrite};
+use futures::{Future, IntoFuture};
 
-pub trait Acceptor<Io: AsyncRead + AsyncWrite> {
-    type Accepted: AsyncRead + AsyncWrite;
+use super::transport::Connection;
+
+pub trait Acceptor<T> {
+    type Conn: Connection;
     type Error;
-    type Future: Future<Item = Self::Accepted, Error = Self::Error>;
+    type Accept: Future<Item = Self::Conn, Error = Self::Error>;
 
-    fn accept(&self, io: Io) -> Self::Future;
+    fn accept(&self, io: T) -> Self::Accept;
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Raw(());
-
-impl<Io> Acceptor<Io> for Raw
+impl<F, T, R> Acceptor<T> for F
 where
-    Io: AsyncRead + AsyncWrite,
+    F: Fn(T) -> R,
+    R: IntoFuture,
+    R::Item: Connection,
 {
-    type Accepted = Io;
-    type Error = std::io::Error;
-    type Future = futures::future::FutureResult<Self::Accepted, Self::Error>;
+    type Conn = R::Item;
+    type Error = R::Error;
+    type Accept = R::Future;
 
     #[inline]
-    fn accept(&self, io: Io) -> Self::Future {
+    fn accept(&self, io: T) -> Self::Accept {
+        (*self)(io).into_future()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Raw(());
+
+impl Raw {
+    pub(crate) fn new() -> Self {
+        Raw(())
+    }
+}
+
+impl<T> Acceptor<T> for Raw
+where
+    T: Connection,
+{
+    type Conn = T;
+    type Error = std::io::Error;
+    type Accept = futures::future::FutureResult<Self::Conn, Self::Error>;
+
+    #[inline]
+    fn accept(&self, io: T) -> Self::Accept {
         futures::future::ok(io)
     }
 }
 
 #[cfg(feature = "use-native-tls")]
 mod navite_tls {
-    use super::Acceptor;
+    use super::{Acceptor, Connection};
 
-    use tokio::io::{AsyncRead, AsyncWrite};
     use tokio_tls::{Accept, TlsAcceptor, TlsStream};
 
-    impl<Io> Acceptor<Io> for TlsAcceptor
+    impl<T> Connection for TlsStream<T>
     where
-        Io: AsyncRead + AsyncWrite,
+        T: Connection,
     {
-        type Accepted = TlsStream<Io>;
-        type Error = native_tls::Error;
-        type Future = Accept<Io>;
+        type Info = T::Info;
+        type Error = T::Error;
 
         #[inline]
-        fn accept(&self, io: Io) -> Self::Future {
+        fn connection_info(&self) -> Result<Self::Info, Self::Error> {
+            self.get_ref() // <-- tokio_tls::TlsStream
+                .get_ref() // <-- native_tls::TlsStream
+                .connection_info()
+        }
+    }
+
+    impl<T> Acceptor<T> for TlsAcceptor
+    where
+        T: Connection,
+    {
+        type Conn = TlsStream<T>;
+        type Error = native_tls::Error;
+        type Accept = Accept<T>;
+
+        #[inline]
+        fn accept(&self, io: T) -> Self::Accept {
             self.accept(io)
         }
     }
@@ -50,22 +87,34 @@ mod navite_tls {
 
 #[cfg(feature = "use-rustls")]
 mod rustls {
-    use super::Acceptor;
+    use super::{Acceptor, Connection};
 
     use rustls::ServerSession;
-    use tokio::io::{AsyncRead, AsyncWrite};
     use tokio_rustls::{Accept, TlsAcceptor, TlsStream};
 
-    impl<Io> Acceptor<Io> for TlsAcceptor
+    impl<T> Connection for TlsStream<T, ServerSession>
     where
-        Io: AsyncRead + AsyncWrite,
+        T: Connection,
     {
-        type Accepted = TlsStream<Io, ServerSession>;
-        type Error = std::io::Error;
-        type Future = Accept<Io>;
+        type Info = T::Info;
+        type Error = T::Error;
 
         #[inline]
-        fn accept(&self, io: Io) -> Self::Future {
+        fn connection_info(&self) -> Result<Self::Info, Self::Error> {
+            self.get_ref().0.connection_info()
+        }
+    }
+
+    impl<T> Acceptor<T> for TlsAcceptor
+    where
+        T: Connection,
+    {
+        type Conn = TlsStream<T, ServerSession>;
+        type Error = std::io::Error;
+        type Accept = Accept<T>;
+
+        #[inline]
+        fn accept(&self, io: T) -> Self::Accept {
             self.accept(io)
         }
     }
@@ -73,22 +122,36 @@ mod rustls {
 
 #[cfg(feature = "use-openssl")]
 mod openssl {
-    use super::Acceptor;
+    use super::{Acceptor, Connection};
 
     use openssl::ssl::{HandshakeError, SslAcceptor};
-    use tokio::io::{AsyncRead, AsyncWrite};
     use tokio_openssl::{AcceptAsync, SslAcceptorExt, SslStream};
 
-    impl<Io> Acceptor<Io> for SslAcceptor
+    impl<T> Connection for SslStream<T>
     where
-        Io: AsyncRead + AsyncWrite,
+        T: Connection,
     {
-        type Accepted = SslStream<Io>;
-        type Error = HandshakeError<Io>;
-        type Future = AcceptAsync<Io>;
+        type Info = T::Info;
+        type Error = T::Error;
 
         #[inline]
-        fn accept(&self, io: Io) -> Self::Future {
+        fn connection_info(&self) -> Result<Self::Info, Self::Error> {
+            self.get_ref() // <-- tokio_openssl::SslStream
+                .get_ref() // <-- openssl::ssl::SslStream
+                .connection_info()
+        }
+    }
+
+    impl<T> Acceptor<T> for SslAcceptor
+    where
+        T: Connection,
+    {
+        type Conn = SslStream<T>;
+        type Error = HandshakeError<T>;
+        type Accept = AcceptAsync<T>;
+
+        #[inline]
+        fn accept(&self, io: T) -> Self::Accept {
             self.accept_async(io)
         }
     }

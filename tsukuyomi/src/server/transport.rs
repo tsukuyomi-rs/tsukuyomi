@@ -1,11 +1,51 @@
 use futures::Stream;
+use http::Extensions;
+use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
+
+use super::imp::CritError;
+
+/// A wrapper type containing a peer address.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Peer<T>(T);
+
+impl<T> fmt::Display for Peer<T>
+where
+    T: fmt::Display,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T> std::ops::Deref for Peer<T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// A trait representing a raw connection to peer.
+pub trait Connection: AsyncRead + AsyncWrite {
+    type Info: ConnectionInfo;
+    type Error: Into<CritError>;
+
+    /// Retrieves the instance of `Self::Info` from this type.
+    fn connection_info(&self) -> Result<Self::Info, Self::Error>;
+}
+
+pub trait ConnectionInfo {
+    fn insert_into(&self, ext: &mut Extensions);
+}
 
 /// A trait representing the low-level I/O used in `Server`.
 pub trait Transport {
-    type Io: AsyncRead + AsyncWrite;
-    type Error;
-    type Incoming: Stream<Item = Self::Io, Error = Self::Error>;
+    type Conn: Connection;
+    type Error: Into<CritError>;
+    type Incoming: Stream<Item = Self::Conn, Error = Self::Error>;
 
     /// Creates a `Stream` of asynchronous I/Os.
     fn incoming(self) -> Result<Self::Incoming, Self::Error>;
@@ -21,9 +61,33 @@ mod tcp {
     use tokio::net::{TcpListener, TcpStream};
     use tokio::reactor::Handle;
 
+    impl Connection for TcpStream {
+        type Info = TcpConnectionInfo;
+        type Error = io::Error;
+
+        #[inline]
+        fn connection_info(&self) -> io::Result<Self::Info> {
+            Ok(TcpConnectionInfo {
+                peer_addr: self.peer_addr()?,
+            })
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+    pub struct TcpConnectionInfo {
+        peer_addr: SocketAddr,
+    }
+
+    impl ConnectionInfo for TcpConnectionInfo {
+        fn insert_into(&self, ext: &mut Extensions) {
+            ext.insert(Peer(self.peer_addr));
+        }
+    }
+
     #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
     impl Transport for SocketAddr {
-        type Io = TcpStream;
+        type Conn = TcpStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -34,7 +98,7 @@ mod tcp {
     }
 
     impl<'a> Transport for &'a SocketAddr {
-        type Io = TcpStream;
+        type Conn = TcpStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -45,7 +109,7 @@ mod tcp {
     }
 
     impl Transport for std::net::TcpListener {
-        type Io = TcpStream;
+        type Conn = TcpStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -57,7 +121,7 @@ mod tcp {
     }
 
     impl Transport for TcpListener {
-        type Io = TcpStream;
+        type Conn = TcpStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -73,14 +137,39 @@ mod uds {
     use super::*;
 
     use std::io;
+    use std::os::unix::net::SocketAddr;
     use std::path::{Path, PathBuf};
 
     use tokio::net::unix::Incoming;
     use tokio::net::{UnixListener, UnixStream};
     use tokio::reactor::Handle;
 
+    impl Connection for UnixStream {
+        type Info = UdsConnectionInfo;
+        type Error = io::Error;
+
+        #[inline]
+        fn connection_info(&self) -> io::Result<Self::Info> {
+            Ok(UdsConnectionInfo {
+                peer_addr: self.peer_addr()?,
+            })
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+    pub struct UdsConnectionInfo {
+        peer_addr: SocketAddr,
+    }
+
+    impl ConnectionInfo for UdsConnectionInfo {
+        fn insert_into(&self, ext: &mut Extensions) {
+            ext.insert(Peer(self.peer_addr.clone()));
+        }
+    }
+
     impl Transport for PathBuf {
-        type Io = UnixStream;
+        type Conn = UnixStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -91,7 +180,7 @@ mod uds {
     }
 
     impl<'a> Transport for &'a PathBuf {
-        type Io = UnixStream;
+        type Conn = UnixStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -102,7 +191,7 @@ mod uds {
     }
 
     impl<'a> Transport for &'a Path {
-        type Io = UnixStream;
+        type Conn = UnixStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -113,7 +202,7 @@ mod uds {
     }
 
     impl Transport for UnixListener {
-        type Io = UnixStream;
+        type Conn = UnixStream;
         type Error = io::Error;
         type Incoming = Incoming;
 
@@ -124,7 +213,7 @@ mod uds {
     }
 
     impl Transport for std::os::unix::net::UnixListener {
-        type Io = UnixStream;
+        type Conn = UnixStream;
         type Error = io::Error;
         type Incoming = Incoming;
 

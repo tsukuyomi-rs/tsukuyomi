@@ -1,26 +1,24 @@
 //! The implementation of low level HTTP server.
 
-pub mod acceptor;
-pub mod connection_info;
+mod acceptor;
 mod error;
 mod http;
-pub mod launcher;
+mod launcher;
 pub mod middleware;
-pub mod transport;
+mod transport;
 
 use std::net::SocketAddr;
 
 use hyper::server::conn::Http;
 use tower_service::NewService;
 
-use self::acceptor::Acceptor;
-use self::connection_info::HasConnectionInfo;
 use self::launcher::Launcher;
 use self::middleware::Middleware;
-use self::transport::Transport;
 
+pub use self::acceptor::Acceptor;
 pub use self::error::{Error, Result};
 pub use self::http::{HttpRequest, HttpResponse};
+pub use self::transport::{Peer, Transport};
 
 pub(crate) mod imp {
     use super::*;
@@ -70,7 +68,7 @@ where
             new_service,
             middleware: self::middleware::Identity::default(),
             transport: ([127, 0, 0, 1], 4000).into(),
-            acceptor: self::acceptor::Raw::default(),
+            acceptor: self::acceptor::Raw::new(),
             protocol: Http::new(),
             launcher: self::launcher::DefaultLauncher::default(),
         }
@@ -83,16 +81,14 @@ where
     S: NewService,
     M: Middleware<S::Service>,
     T: Transport,
-    T::Io: HasConnectionInfo,
-    A: Acceptor<T::Io>,
+    A: Acceptor<T::Conn>,
 {
     /// Sets the transport used by the server.
     ///
     /// By default, a TCP transport with the listener address `"127.0.0.1:4000"` is set.
-    pub fn bind<U>(self, transport: U) -> Server<S, M, U, A, L>
+    pub fn bind<T2>(self, transport: T2) -> Server<S, M, T2, A, L>
     where
-        U: Transport,
-        U::Io: HasConnectionInfo,
+        T2: Transport,
     {
         Server {
             new_service: self.new_service,
@@ -104,9 +100,9 @@ where
         }
     }
 
-    pub fn acceptor<B>(self, acceptor: B) -> Server<S, M, T, B, L>
+    pub fn acceptor<A2>(self, acceptor: A2) -> Server<S, M, T, A2, L>
     where
-        B: Acceptor<T::Io>,
+        A2: Acceptor<T::Conn>,
     {
         Server {
             new_service: self.new_service,
@@ -123,9 +119,9 @@ where
         Self { protocol, ..self }
     }
 
-    pub fn with_middleware<N>(self, middleware: N) -> Server<S, N, T, A, L>
+    pub fn with_middleware<M2>(self, middleware: M2) -> Server<S, M2, T, A, L>
     where
-        N: Middleware<S::Service>,
+        M2: Middleware<S::Service>,
     {
         Server {
             new_service: self.new_service,
@@ -138,17 +134,17 @@ where
     }
 
     #[cfg(feature = "tower-middleware")]
-    pub fn with_tower_middleware<N>(
+    pub fn with_tower_middleware<M2>(
         self,
-        middleware: N,
-    ) -> Server<S, self::middleware::Compat<N>, T, A, L>
+        middleware: M2,
+    ) -> Server<S, self::middleware::Compat<M2>, T, A, L>
     where
-        N: tower_web::middleware::Middleware<S::Service>,
+        M2: tower_web::middleware::Middleware<S::Service>,
     {
         self.with_middleware(self::middleware::Compat(middleware))
     }
 
-    pub fn launcher<Launcher>(self, launcher: Launcher) -> Server<S, M, T, A, Launcher> {
+    pub fn launcher<L2>(self, launcher: L2) -> Server<S, M, T, A, L2> {
         Server {
             new_service: self.new_service,
             middleware: self.middleware,

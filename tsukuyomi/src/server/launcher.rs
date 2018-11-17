@@ -1,16 +1,17 @@
-use super::acceptor::Acceptor;
-use super::connection_info::{ConnectionInfo, HasConnectionInfo};
-use super::http::{HttpRequest, HttpResponse};
-use super::imp::CritError;
-use super::middleware::Middleware;
-use super::transport::Transport;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use futures::{Future, Poll, Stream};
 use http::{Request, Response};
 use hyper::body::{Body, Payload};
 use hyper::server::conn::Http;
-use std::rc::Rc;
-use std::sync::Arc;
 use tower_service::{NewService, Service};
+
+use super::acceptor::Acceptor;
+use super::http::{HttpRequest, HttpResponse};
+use super::imp::CritError;
+use super::middleware::Middleware;
+use super::transport::{Connection, ConnectionInfo, Transport};
 
 macro_rules! serve {
     (
@@ -33,12 +34,6 @@ macro_rules! serve {
             .map_err(|err| failure::Error::from_boxed_compat(err.into()))?
             .map_err(|_e| log::error!("transport error"))
             .for_each(move |io| {
-                let info = io.fetch_info();
-                if let Err(..) = info {
-                    log::error!("failed to fetch the connection information.");
-                }
-                let info = info.ok();
-
                 let accept = acceptor
                     .accept(io)
                     .map_err(|_e| log::error!("acceptor error"));
@@ -51,6 +46,12 @@ macro_rules! serve {
                     .map(move |service| middleware.wrap(service));
 
                 let task = accept.and_then(move |io| {
+                    let info = io.connection_info();
+                    if let Err(..) = info {
+                        log::error!("failed to fetch the connection information.");
+                    }
+                    let info = info.ok();
+
                     service
                         .map(move |service| LiftedHttpService { service, info })
                         .and_then(move |service| {
@@ -81,7 +82,6 @@ where
     <S::Response as HttpResponse>::Body: Payload,
     S::Error: Into<CritError>,
     T: ConnectionInfo,
-    T::Data: Send + Sync + 'static,
 {
     type ReqBody = Body;
     type ResBody = <S::Response as HttpResponse>::Body;
@@ -91,7 +91,7 @@ where
     #[inline]
     fn call(&mut self, mut request: Request<Body>) -> Self::Future {
         if let Some(ref info) = self.info {
-            request.extensions_mut().insert(info.data());
+            info.insert_into(request.extensions_mut());
         }
         let request =
             S::Request::from_request(request.map(<S::Request as HttpRequest>::Body::from));
@@ -148,14 +148,11 @@ where
     M::Service: Send + 'static,
     <M::Service as Service>::Future: Send + 'static,
     T: Transport,
-    T::Io: HasConnectionInfo + Send + 'static,
-    <T::Io as HasConnectionInfo>::Info: Send + 'static,
-    <T::Io as HasConnectionInfo>::Data: Send + Sync + 'static,
-    T::Error: Into<CritError>,
     T::Incoming: Send + 'static,
-    A: Acceptor<T::Io> + Send + 'static,
-    A::Accepted: Send + 'static,
-    A::Future: Send + 'static,
+    A: Acceptor<T::Conn> + Send + 'static,
+    A::Conn: Send + 'static,
+    <A::Conn as Connection>::Info: Send + 'static,
+    A::Accept: Send + 'static,
 {
     fn launch(
         self,
@@ -191,14 +188,11 @@ where
     M::Service: Send + 'static,
     <M::Service as Service>::Future: Send + 'static,
     T: Transport,
-    T::Io: HasConnectionInfo + Send + 'static,
-    <T::Io as HasConnectionInfo>::Info: Send + 'static,
-    <T::Io as HasConnectionInfo>::Data: Send + Sync + 'static,
-    T::Error: Into<CritError>,
     T::Incoming: Send + 'static,
-    A: Acceptor<T::Io> + Send + 'static,
-    A::Accepted: Send + 'static,
-    A::Future: Send + 'static,
+    A: Acceptor<T::Conn> + Send + 'static,
+    A::Conn: Send + 'static,
+    <A::Conn as Connection>::Info: Send + 'static,
+    A::Accept: Send + 'static,
 {
     fn launch(
         self,
@@ -233,14 +227,11 @@ where
     M::Service: Send + 'static,
     <M::Service as Service>::Future: Send + 'static,
     T: Transport,
-    T::Io: HasConnectionInfo + Send + 'static,
-    <T::Io as HasConnectionInfo>::Info: Send + 'static,
-    <T::Io as HasConnectionInfo>::Data: Send + Sync + 'static,
-    T::Error: Into<CritError>,
     T::Incoming: Send + 'static,
-    A: Acceptor<T::Io> + Send + 'static,
-    A::Accepted: Send + 'static,
-    A::Future: Send + 'static,
+    A: Acceptor<T::Conn> + Send + 'static,
+    A::Conn: Send + 'static,
+    <A::Conn as Connection>::Info: Send + 'static,
+    A::Accept: Send + 'static,
 {
     let serve = serve!{
         new_service: new_service,
@@ -274,14 +265,11 @@ where
     <M::Response as HttpResponse>::Body: Payload,
     M::Error: Into<CritError>,
     T: Transport,
-    T::Io: HasConnectionInfo + 'static,
-    <T::Io as HasConnectionInfo>::Data: Send + Sync + 'static,
-    <T::Io as HasConnectionInfo>::Info: 'static,
-    T::Error: Into<CritError>,
     T::Incoming: 'static,
-    A: Acceptor<T::Io> + 'static,
-    A::Accepted: Send + 'static,
-    A::Future: 'static,
+    A: Acceptor<T::Conn> + 'static,
+    A::Conn: Send + 'static,
+    <A::Conn as Connection>::Info: 'static,
+    A::Accept: 'static,
 {
     fn launch(
         self,
