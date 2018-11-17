@@ -1,8 +1,9 @@
 use futures::{try_ready, Async};
 
-use tsukuyomi::app::{AsyncResult, Modifier};
+use tsukuyomi::app::scope::Modifier;
 use tsukuyomi::input::Input;
 use tsukuyomi::output::Output;
+use tsukuyomi::AsyncResult;
 
 use crate::backend::imp::{ReadFuture, WriteFuture};
 use crate::backend::Backend;

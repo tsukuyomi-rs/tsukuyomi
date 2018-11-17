@@ -60,6 +60,7 @@ extern crate matches;
 #[doc(hidden)]
 pub mod macros;
 
+mod async_result;
 mod recognizer;
 mod scoped_map;
 use tsukuyomi_internal::uri;
@@ -78,4 +79,5 @@ pub fn app() -> crate::app::Builder<(), ()> {
     crate::app::Builder::default()
 }
 
-pub use self::server::imp::server;
+pub use crate::async_result::AsyncResult;
+pub use crate::server::imp::server;

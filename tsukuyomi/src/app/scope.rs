@@ -1,10 +1,71 @@
+use crate::async_result::AsyncResult;
+use crate::input::Input;
+use crate::output::Output;
 use crate::scoped_map::ScopeId;
 use crate::uri::Uri;
 
 use super::builder::AppContext;
 use super::error::{Error, Result};
-use super::handler::Modifier;
 use super::route::Route;
+
+/// A trait representing a `Modifier`.
+///
+/// The purpose of this trait is to insert some processes before and after
+/// applying `Handler` in a certain scope.
+///
+/// # Examples
+///
+/// ```
+/// # extern crate tsukuyomi;
+/// use std::sync::atomic::{AtomicUsize, Ordering};
+/// use tsukuyomi::{
+///     AsyncResult,
+///     app::{route, scope::Modifier},
+///     input::Input,
+///     output::Output,
+/// };
+///
+/// #[derive(Default)]
+/// struct RequestCounter(AtomicUsize);
+///
+/// impl Modifier for RequestCounter {
+///     fn before_handle(&self, _: &mut Input) -> AsyncResult<Option<Output>> {
+///        self.0.fetch_add(1, Ordering::SeqCst);
+///        AsyncResult::ready(Ok(None))
+///     }
+/// }
+///
+/// # fn main() -> tsukuyomi::app::Result<()> {
+/// tsukuyomi::app()
+///     .route(route!().reply(|| "Hello"))
+///     .modifier(RequestCounter::default())
+///     .build()
+/// #   .map(drop)
+/// # }
+/// ```
+pub trait Modifier {
+    /// Performs the process before calling the handler.
+    ///
+    /// By default, this method does nothing.
+    #[allow(unused_variables)]
+    #[cfg_attr(tarpaulin, skip)]
+    fn before_handle(&self, input: &mut Input<'_>) -> AsyncResult<Option<Output>> {
+        AsyncResult::ready(Ok(None))
+    }
+
+    /// Modifies the returned value from a handler.
+    ///
+    /// By default, this method does nothing and immediately return the provided `Output`.
+    #[allow(unused_variables)]
+    #[cfg_attr(tarpaulin, skip)]
+    fn after_handle(
+        &self,
+        input: &mut Input<'_>,
+        result: crate::error::Result<Output>,
+    ) -> AsyncResult<Output> {
+        AsyncResult::ready(result)
+    }
+}
 
 pub trait Scope {
     type Error: Into<Error>;

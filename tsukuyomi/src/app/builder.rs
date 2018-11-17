@@ -7,18 +7,16 @@ use http::header::HeaderValue;
 use http::{Method, Response};
 use indexmap::{IndexMap, IndexSet};
 
-use crate::error::handler::DefaultErrorHandler;
-use crate::error::ErrorHandler;
+use crate::async_result::AsyncResult;
 use crate::output::ResponseBody;
 use crate::recognizer::Recognizer;
 use crate::scoped_map::{Builder as ScopedContainerBuilder, ScopeId};
 use crate::uri::Uri;
 
 use super::error::{Error, Result};
-use super::global::{Context as GlobalContext, Global};
-use super::handler::{AsyncResult, Handler, Modifier};
-use super::route::{Context as RouteContext, Route};
-use super::scope::{Context as ScopeContext, Scope};
+use super::global::{Context as GlobalContext, ErrorHandler, Global};
+use super::route::{Context as RouteContext, Handler, Route};
+use super::scope::{Context as ScopeContext, Modifier, Scope};
 use super::{App, AppData, Config, ModifierId, RouteData, RouteId, ScopeData};
 
 pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
@@ -151,9 +149,6 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
 
         (recognizer, route_ids)
     };
-
-    // finalize error handler.
-    let error_handler = error_handler.unwrap_or_else(|| Box::new(DefaultErrorHandler::default()));
 
     // finalize global/scope-local storages.
     let parents: Vec<_> = scopes.iter().map(|scope| scope.parent).collect();
@@ -348,7 +343,7 @@ fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Syn
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
     };
 
-    Box::new(super::handler::raw(move |_| {
+    Box::new(super::route::raw_handler(move |_| {
         let mut response = Response::new(ResponseBody::empty());
         response
             .headers_mut()

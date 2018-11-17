@@ -201,10 +201,11 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::app::{AsyncResult, Modifier};
+    use tsukuyomi::app::Modifier;
     use tsukuyomi::input::local_map::local_key;
     use tsukuyomi::input::Input;
     use tsukuyomi::output::Output;
+    use tsukuyomi::AsyncResult;
 
     #[derive(Clone)]
     struct MyData(String);

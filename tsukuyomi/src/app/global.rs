@@ -1,6 +1,25 @@
-use crate::error::ErrorHandler;
+use http::{Request, Response};
+
+use crate::error::{Critical, Error};
+use crate::output::{Output, ResponseBody};
 
 use super::builder::AppContext;
+
+/// A trait representing a global error handlers.
+pub trait ErrorHandler {
+    /// Converts an error value into an HTTP response.
+    fn handle_error(&self, err: Error, request: &Request<()>) -> Result<Output, Critical>;
+}
+
+impl<F, Bd> ErrorHandler for F
+where
+    F: Fn(Error, &Request<()>) -> Result<Response<Bd>, Critical>,
+    Bd: Into<ResponseBody>,
+{
+    fn handle_error(&self, err: Error, request: &Request<()>) -> Result<Output, Critical> {
+        (*self)(err, request).map(|response| response.map(Into::into))
+    }
+}
 
 #[allow(missing_debug_implementations)]
 pub struct Context<'a> {

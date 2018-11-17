@@ -8,13 +8,13 @@ use hyper::body::Payload;
 use mime::Mime;
 use tower_service::{NewService, Service};
 
+use crate::async_result::AsyncResult;
 use crate::error::{Critical, Error, HttpError};
 use crate::input::local_map::LocalMap;
 use crate::input::{Input, RequestBody};
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::Captures;
 
-use super::handler::AsyncResult;
 use super::{App, RouteData, RouteId};
 
 macro_rules! ready {
@@ -330,11 +330,10 @@ impl Future for AppFuture {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => {
                 self.state = AppFutureState::Done;
-                self.app
-                    .data
-                    .error_handler
-                    .handle_error(err, &self.request)
-                    .map(Async::Ready)
+                (match self.app.data.error_handler {
+                    Some(ref h) => h.handle_error(err, &self.request),
+                    None => err.into_response(&self.request),
+                }).map(Async::Ready)
             }
         }
     }

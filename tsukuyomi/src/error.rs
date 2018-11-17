@@ -23,12 +23,8 @@
 //! * [`ErrorHandler`] - It modifies the all kinds of errors which occurred during handling.
 //! * [`Modifier`] - It modifies errors occurred within a certain scope.
 //!
-//! [`Modifier`]: ../modifier/trait.Modifier.html
-//! [`ErrorHandler`]: ./trait.ErrorHandler.html
-
-pub(crate) mod handler;
-
-pub use self::handler::ErrorHandler;
+//! [`Modifier`]: ../app/scope/trait.Modifier.html
+//! [`ErrorHandler`]: ../app/global/trait.ErrorHandler.html
 
 use http::{Request, Response, StatusCode};
 use std::any::TypeId;
@@ -404,5 +400,16 @@ impl Error {
             },
             _ => None,
         }
+    }
+
+    pub(crate) fn into_response(
+        self,
+        request: &Request<()>,
+    ) -> std::result::Result<Response<ResponseBody>, Critical> {
+        let mut err = self.0?;
+        let status = err.status_code();
+        let mut response = err.to_response(request);
+        *response.status_mut() = status;
+        Ok(response)
     }
 }

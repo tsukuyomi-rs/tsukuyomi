@@ -5,7 +5,6 @@
 mod builder;
 mod error;
 pub mod global;
-mod handler;
 pub(crate) mod imp;
 pub mod route;
 pub mod scope;
@@ -19,17 +18,15 @@ use std::sync::Arc;
 use http::Method;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::error::handler::ErrorHandler;
 use crate::recognizer::Recognizer;
 use crate::scoped_map::{ScopeId, ScopedContainer};
 use crate::uri::Uri;
 
 pub use self::error::{Error, Result};
-pub use self::global::Global;
-pub use self::handler::{AsyncResult, Handler, Modifier};
+pub use self::global::{ErrorHandler, Global};
 pub use self::imp::RecognizeError;
-pub use self::route::Route;
-pub use self::scope::Scope;
+pub use self::route::{Handler, Route};
+pub use self::scope::{Modifier, Scope};
 
 pub use crate::{route, scope};
 
@@ -78,7 +75,7 @@ struct AppData {
     route_ids: Vec<IndexMap<Method, usize>>,
 
     states: ScopedContainer,
-    error_handler: Box<dyn ErrorHandler + Send + Sync + 'static>,
+    error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     config: Config,
 }
 

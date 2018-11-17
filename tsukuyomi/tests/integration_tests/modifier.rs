@@ -1,7 +1,9 @@
-use tsukuyomi::app::{route, scope, AsyncResult, Modifier};
+use tsukuyomi::app::scope::Modifier;
+use tsukuyomi::app::{route, scope};
 use tsukuyomi::error::{internal_server_error, Error};
 use tsukuyomi::input::Input;
 use tsukuyomi::output::{Output, ResponseBody};
+use tsukuyomi::AsyncResult;
 
 use http::Response;
 use std::sync::{Arc, Mutex};

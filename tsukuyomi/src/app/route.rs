@@ -1,19 +1,83 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use either::Either;
 use futures::{Async, Future, IntoFuture};
 use indexmap::IndexSet;
 
+use crate::async_result::AsyncResult;
 use crate::error::Error;
 use crate::extractor::{Combine, ExtractStatus, Extractor, Func};
 use crate::fs::NamedFile;
-use crate::output::Responder;
+use crate::input::Input;
+use crate::output::{Output, Responder};
 use crate::uri::Uri;
-
-use super::handler::{AsyncResult, Handler};
 
 #[doc(hidden)]
 pub use http::Method;
+
+/// A trait representing handler functions.
+pub trait Handler {
+    /// Applies an incoming request to this handler.
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output>;
+}
+
+impl<F, R> Handler for F
+where
+    F: Fn(&mut Input<'_>) -> R,
+    R: Into<AsyncResult<Output>>,
+{
+    #[inline]
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+        (*self)(input).into()
+    }
+}
+
+impl<H> Handler for Arc<H>
+where
+    H: Handler,
+{
+    #[inline]
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+        (**self).handle(input)
+    }
+}
+
+impl<L, R> Handler for Either<L, R>
+where
+    L: Handler,
+    R: Handler,
+{
+    #[inline]
+    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+        match self {
+            Either::Left(ref handler) => handler.handle(input),
+            Either::Right(ref handler) => handler.handle(input),
+        }
+    }
+}
+
+pub(super) fn raw_handler<F, R>(f: F) -> impl Handler
+where
+    F: Fn(&mut Input<'_>) -> R,
+    R: Into<AsyncResult<Output>>,
+{
+    #[allow(missing_debug_implementations)]
+    struct Raw<F>(F);
+
+    impl<F, R> Handler for Raw<F>
+    where
+        F: Fn(&mut Input<'_>) -> R,
+        R: Into<AsyncResult<Output>>,
+    {
+        #[inline]
+        fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+            (self.0)(input).into()
+        }
+    }
+
+    Raw(f)
+}
 
 /// A builder of `Route`.
 #[derive(Debug)]
@@ -113,7 +177,7 @@ where
         F::Out: Responder,
     {
         self.finish(move |extractor| {
-            super::handler::raw(move |input| match extractor.extract(input) {
+            raw_handler(move |input| match extractor.extract(input) {
                 Err(e) => AsyncResult::ready(Err(e.into())),
                 Ok(ExtractStatus::Canceled(output)) => AsyncResult::ready(Ok(output)),
                 Ok(ExtractStatus::Ready(arg)) => {
@@ -146,7 +210,7 @@ where
         R::Item: Responder,
     {
         self.finish(move |extractor| {
-            super::handler::raw(move |input| match extractor.extract(input) {
+            raw_handler(move |input| match extractor.extract(input) {
                 Err(e) => AsyncResult::ready(Err(e.into())),
                 Ok(ExtractStatus::Canceled(output)) => AsyncResult::ready(Ok(output)),
                 Ok(ExtractStatus::Ready(arg)) => {
