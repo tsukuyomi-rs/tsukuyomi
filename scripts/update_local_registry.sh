@@ -6,7 +6,7 @@ MANIFEST_DIR="$(cd $(dirname $BASH_SOURCE)/..; pwd)"
 
 echo "[regenerate Cargo.lock...]"
 cd
-(set -x; cargo generate-lockfile --locked --manifest-path=$MANIFEST_DIR/Cargo.toml)
+(set -x; cargo generate-lockfile --manifest-path=$MANIFEST_DIR/Cargo.toml)
 
 echo "[fetch local registry...]"
 cd $MANIFEST_DIR

@@ -14,8 +14,6 @@ tokio-tungstenite = "0.6"
 tungstenite = "0.6"
 walkdir = "2"
 
-encoding_rs = "=0.8.10"
-
 [dev-dependencies.cargo-husky]
 version = "1"
 default-features = false
