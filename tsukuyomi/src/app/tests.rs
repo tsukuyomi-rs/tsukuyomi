@@ -1,5 +1,5 @@
 use super::imp::{Recognize, RecognizeError};
-use super::{global, route, scope, RouteId, ScopeId};
+use super::{route, scope, RouteId, ScopeId};
 
 use http::Method;
 use matches::assert_matches;
@@ -75,7 +75,7 @@ fn route_fallback_head_enabled() {
 fn route_fallback_head_disabled() {
     let app = crate::app() //
         .route(route().reply(|| ""))
-        .global(global().fallback_head(false))
+        .fallback_head(false)
         .build()
         .unwrap();
 
@@ -111,7 +111,7 @@ fn route_fallback_options_disabled() {
     let app = crate::app() //
         .route(route().reply(|| ""))
         .route(route().method(Method::POST).reply(|| ""))
-        .global(global().fallback_options(false))
+        .fallback_options(false)
         .build()
         .unwrap();
 

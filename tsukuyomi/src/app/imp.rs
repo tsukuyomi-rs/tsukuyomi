@@ -347,10 +347,11 @@ impl Future for AppFuture {
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => {
                 self.state = AppFutureState::Done;
-                (match self.app.data.error_handler {
-                    Some(ref h) => h.handle_error(err, &self.request),
-                    None => err.into_response(&self.request),
-                }).map(Async::Ready)
+                self.app
+                    .data
+                    .callback
+                    .on_error(err, &self.request)
+                    .map(Async::Ready)
             }
         }
     }

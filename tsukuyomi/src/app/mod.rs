@@ -3,8 +3,8 @@
 #![cfg_attr(feature = "cargo-clippy", forbid(stutter))]
 
 mod builder;
+mod callback;
 mod error;
-pub mod global;
 pub(crate) mod imp;
 pub mod route;
 pub mod scope;
@@ -25,12 +25,12 @@ use crate::uri::Uri;
 
 pub use crate::{route, scope};
 
+pub use self::builder::Builder;
+pub use self::callback::Callback;
 pub use self::error::{Error, Result};
-pub use self::global::Global;
 pub use self::route::Route;
 pub use self::scope::Scope;
 
-use self::global::ErrorHandler;
 use self::route::Handler;
 use self::scope::Modifier;
 
@@ -40,10 +40,6 @@ pub fn route() -> self::route::Builder<()> {
 
 pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()
-}
-
-pub fn global() -> self::global::Builder<()> {
-    self::global::Builder::<()>::default()
 }
 
 #[derive(Debug)]
@@ -79,7 +75,7 @@ struct AppData {
     endpoints: Vec<EndpointData>,
 
     states: ScopedContainer,
-    error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
+    callback: Box<dyn Callback + Send + Sync + 'static>,
     config: Config,
 }
 
@@ -192,130 +188,5 @@ impl App {
             .modifier_ids
             .get(pos)
             .and_then(|&id| self.get_scope(id.0)?.modifier(id.1))
-    }
-}
-
-/// A builder object for constructing an instance of `App`.
-#[derive(Debug, Default)]
-pub struct Builder<S: Scope = (), G: Global = ()> {
-    scope: S,
-    global: G,
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, G> Builder<S, G>
-where
-    S: Scope,
-    G: Global,
-{
-    /// Adds a route into the global scope.
-    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, G> {
-        let Self { scope, global } = self;
-        Builder {
-            global,
-            scope: self::scope::raw(move |cx| {
-                scope.configure(cx).map_err(Into::into)?;
-                cx.add_route(route)?;
-                Ok(())
-            }),
-        }
-    }
-
-    /// Creates a new scope onto the global scope using the specified `Scope`.
-    pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>, G> {
-        let Self { global, scope } = self;
-        Builder {
-            global,
-            scope: self::scope::raw(move |cx| {
-                scope.configure(cx).map_err(Into::into)?;
-                cx.add_scope(new_scope)?;
-                Ok(())
-            }),
-        }
-    }
-
-    /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
-    pub fn with(self, next: impl Scope) -> Builder<impl Scope<Error = Error>, G> {
-        let Self {
-            global,
-            scope: current,
-        } = self;
-        Builder {
-            global,
-            scope: self::scope::raw(move |cx| {
-                current.configure(cx).map_err(Into::into)?;
-                next.configure(cx).map_err(Into::into)?;
-                Ok(())
-            }),
-        }
-    }
-
-    /// Adds a *global* variable into the application.
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, G>
-    where
-        T: Send + Sync + 'static,
-    {
-        let Self { scope, global } = self;
-        Builder {
-            global,
-            scope: self::scope::raw(move |cx| {
-                scope.configure(cx)?;
-                cx.set_state(state);
-                Ok(())
-            }),
-        }
-    }
-
-    /// Register a `Modifier` into the global scope.
-    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>, G>
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
-        let Self { global, scope } = self;
-        Builder {
-            global,
-            scope: self::scope::raw(move |cx| {
-                scope.configure(cx)?;
-                cx.add_modifier(modifier);
-                Ok(())
-            }),
-        }
-    }
-
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, G> {
-        let Self { global, scope } = self;
-        Builder {
-            global,
-            scope: self::scope::raw(move |cx| {
-                scope.configure(cx)?;
-                cx.set_prefix(prefix);
-                Ok(())
-            }),
-        }
-    }
-
-    /// Add the global-level configuration to this application.
-    pub fn global(self, global: impl Global) -> Builder<S, impl Global> {
-        let Self {
-            global: current,
-            scope,
-        } = self;
-        Builder {
-            scope,
-            global: self::global::raw(move |cx| {
-                current.configure(cx);
-                global.configure(cx);
-            }),
-        }
-    }
-
-    /// Creates an `App` using the current configuration.
-    pub fn build(self) -> Result<App> {
-        self::builder::build(self.scope, self.global)
-    }
-
-    /// Creates a builder of HTTP server using the current configuration.
-    pub fn build_server(self) -> Result<crate::server::Server<App>> {
-        self.build().map(crate::server::Server::new)
     }
 }

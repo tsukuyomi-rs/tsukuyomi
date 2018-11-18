@@ -141,7 +141,7 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 #[test]
 fn test_case_5_disable_default_options() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app()
-        .global(tsukuyomi::app::global().fallback_options(false)) //
+        .fallback_options(false) //
         .route(route!("/path").reply(|| "get"))
         .route(route!("/path", method = POST).reply(|| "post"))
         .build_server()?

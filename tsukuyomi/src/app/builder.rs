@@ -3,25 +3,176 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use http::header::HeaderValue;
-use http::Method;
+use http::{Method, Request, Response};
 use indexmap::{IndexMap, IndexSet};
 
+use crate::error::Critical;
+use crate::output::{Output, ResponseBody};
 use crate::recognizer::Recognizer;
 use crate::scoped_map::{Builder as ScopedContainerBuilder, ScopeId};
 use crate::uri::Uri;
 
+use super::callback::Callback;
 use super::error::{Error, Result};
-use super::global::{Context as GlobalContext, ErrorHandler, Global};
 use super::route::{Context as RouteContext, Handler, Route};
 use super::scope::{Context as ScopeContext, Modifier, Scope};
 use super::{App, AppData, Config, EndpointData, ModifierId, RouteData, RouteId, ScopeData};
 
-pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
+/// A builder object for constructing an instance of `App`.
+#[derive(Debug, Default)]
+pub struct Builder<S: Scope = (), C: Callback = ()> {
+    scope: super::scope::Builder<S>,
+    callback: C,
+    config: Config,
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+impl<S, C> Builder<S, C>
+where
+    S: Scope,
+    C: Callback,
+{
+    /// Adds a route into the global scope.
+    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, C> {
+        Builder {
+            callback: self.callback,
+            config: self.config,
+            scope: self.scope.route(route),
+        }
+    }
+
+    /// Creates a new scope onto the global scope using the specified `Scope`.
+    pub fn mount(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, C> {
+        Builder {
+            callback: self.callback,
+            config: self.config,
+            scope: self.scope.mount(scope),
+        }
+    }
+
+    /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
+    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, C> {
+        Builder {
+            callback: self.callback,
+            config: self.config,
+            scope: self.scope.with(scope),
+        }
+    }
+
+    /// Adds a *global* variable into the application.
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, C>
+    where
+        T: Send + Sync + 'static,
+    {
+        Builder {
+            callback: self.callback,
+            config: self.config,
+            scope: self.scope.state(state),
+        }
+    }
+
+    /// Register a `Modifier` into the global scope.
+    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>, C>
+    where
+        M: Modifier + Send + Sync + 'static,
+    {
+        Builder {
+            callback: self.callback,
+            config: self.config,
+            scope: self.scope.modifier(modifier),
+        }
+    }
+
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, C> {
+        Builder {
+            callback: self.callback,
+            config: self.config,
+            scope: self.scope.prefix(prefix),
+        }
+    }
+
+    /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
+    ///
+    /// The default value is `true`.
+    pub fn fallback_head(mut self, enabled: bool) -> Builder<S, C> {
+        self.config.fallback_head = enabled;
+        self
+    }
+
+    /// Specifies whether to use the default `OPTIONS` handlers if it is not registered.
+    ///
+    /// The default value is `true`.
+    pub fn fallback_options(mut self, enabled: bool) -> Builder<S, C> {
+        self.config.fallback_options = enabled;
+        self
+    }
+
+    pub fn on_error<F, Bd>(self, on_error: F) -> Builder<S, impl Callback>
+    where
+        F: Fn(crate::error::Error, &Request<()>)
+                -> std::result::Result<Response<Bd>, crate::error::Critical>
+            + Send
+            + Sync
+            + 'static,
+        Bd: Into<ResponseBody>,
+    {
+        Builder {
+            scope: self.scope,
+            config: self.config,
+            callback: {
+                #[allow(missing_debug_implementations)]
+                struct WrapOnError<C, F>(C, F);
+
+                impl<C, F, Bd> Callback for WrapOnError<C, F>
+                where
+                    C: Callback,
+                    F: Fn(crate::error::Error, &Request<()>)
+                            -> std::result::Result<Response<Bd>, Critical>
+                        + Send
+                        + Sync
+                        + 'static,
+                    Bd: Into<ResponseBody>,
+                {
+                    fn on_error(
+                        &self,
+                        err: crate::error::Error,
+                        request: &Request<()>,
+                    ) -> std::result::Result<Output, Critical> {
+                        (self.1)(err, request).map(|response| response.map(Into::into))
+                    }
+                }
+
+                WrapOnError(self.callback, on_error)
+            },
+        }
+    }
+
+    pub fn callback<C2>(self, callback: C2) -> Builder<S, C2>
+    where
+        C2: Callback,
+    {
+        Builder {
+            scope: self.scope,
+            config: self.config,
+            callback,
+        }
+    }
+
+    /// Creates an `App` using the current configuration.
+    pub fn build(self) -> Result<App> {
+        build(self.scope, self.callback, self.config)
+    }
+
+    /// Creates a builder of HTTP server using the current configuration.
+    pub fn build_server(self) -> Result<crate::server::Server<App>> {
+        self.build().map(crate::server::Server::new)
+    }
+}
+
+fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<App> {
     let mut cx = AppContext {
         routes: vec![],
         scopes: vec![],
-        config: Config::default(),
-        error_handler: None,
         modifiers: vec![],
         states: ScopedContainerBuilder::default(),
         prefix: None,
@@ -29,13 +180,10 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
     scope
         .configure(&mut ScopeContext::new(&mut cx, ScopeId::Global))
         .map_err(Into::into)?;
-    global.configure(&mut GlobalContext::new(&mut cx));
 
     let AppContext {
         routes,
         scopes,
-        config,
-        error_handler,
         modifiers,
         states,
         prefix,
@@ -172,7 +320,7 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
             recognizer,
             endpoints,
             config,
-            error_handler,
+            callback: Box::new(callback),
             states,
         }),
     })
@@ -182,8 +330,6 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
 pub struct AppContext {
     routes: Vec<RouteBuilder>,
     scopes: Vec<ScopeBuilder>,
-    config: Config,
-    error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
     states: ScopedContainerBuilder,
     prefix: Option<Uri>,
@@ -195,7 +341,6 @@ impl fmt::Debug for AppContext {
         f.debug_struct("AppContext")
             .field("routes", &self.routes)
             .field("scopes", &self.scopes)
-            .field("config", &self.config)
             .field("states", &self.states)
             .field("prefix", &self.prefix)
             .finish()
@@ -262,22 +407,6 @@ impl AppContext {
         T: Send + Sync + 'static,
     {
         self.states.set(value, id);
-    }
-
-    pub(super) fn fallback_head(&mut self, enabled: bool) {
-        self.config.fallback_head = enabled;
-    }
-
-    pub(super) fn fallback_options(&mut self, enabled: bool) {
-        self.config.fallback_options = enabled;
-    }
-
-    /// Sets the instance to an error handler into this builder.
-    pub(super) fn set_error_handler<E>(&mut self, error_handler: E)
-    where
-        E: ErrorHandler + Send + Sync + 'static,
-    {
-        self.error_handler = Some(Box::new(error_handler));
     }
 
     pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) {
