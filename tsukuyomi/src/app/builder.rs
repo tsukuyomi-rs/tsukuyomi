@@ -2,13 +2,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use http::header;
 use http::header::HeaderValue;
-use http::{Method, Response};
+use http::Method;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::async_result::AsyncResult;
-use crate::output::ResponseBody;
 use crate::recognizer::Recognizer;
 use crate::scoped_map::{Builder as ScopedContainerBuilder, ScopeId};
 use crate::uri::Uri;
@@ -17,7 +14,7 @@ use super::error::{Error, Result};
 use super::global::{Context as GlobalContext, ErrorHandler, Global};
 use super::route::{Context as RouteContext, Handler, Route};
 use super::scope::{Context as ScopeContext, Modifier, Scope};
-use super::{App, AppData, Config, ModifierId, RouteData, RouteId, ScopeData};
+use super::{App, AppData, Config, EndpointData, ModifierId, RouteData, RouteId, ScopeData};
 
 pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
     let mut cx = AppContext {
@@ -45,7 +42,7 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
     } = cx;
 
     // finalize endpoints based on the created scope information.
-    let mut routes: Vec<RouteData> = routes
+    let routes: Vec<RouteData> = routes
         .into_iter()
         .enumerate()
         .map(|(route_id, route)| -> Result<RouteData> {
@@ -93,7 +90,7 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
         }).collect::<std::result::Result<_, _>>()?;
 
     // create a router
-    let (recognizer, route_ids) = {
+    let (recognizer, endpoints) = {
         let mut collected_routes = IndexMap::<Uri, IndexMap<Method, usize>>::new();
         for (i, route) in routes.iter().enumerate() {
             let methods = collected_routes
@@ -120,34 +117,33 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
         }
 
         let mut recognizer = Recognizer::default();
-        let mut route_ids = vec![];
-        for (uri, mut methods) in collected_routes {
-            if config.fallback_options {
-                let m = methods
-                    .keys()
-                    .cloned()
-                    .chain(Some(Method::OPTIONS))
-                    .collect();
-                methods.entry(Method::OPTIONS).or_insert_with(|| {
-                    let id = routes.len();
-                    routes.push(RouteData {
-                        id: RouteId(ScopeId::Global, id),
-                        uri: uri.clone(),
-                        methods: vec![Method::OPTIONS].into_iter().collect(),
-                        handler: default_options_handler(m),
-                        modifier_ids: (0..modifiers.len())
-                            .map(|i| ModifierId(ScopeId::Global, i))
-                            .collect(),
-                    });
-                    id
-                });
-            }
+        let mut endpoints = vec![];
+        for (uri, methods) in collected_routes {
+            let allowed_methods = {
+                let allowed_methods: IndexSet<_> =
+                    methods.keys().chain(Some(&Method::OPTIONS)).collect();
+                let bytes =
+                    allowed_methods
+                        .iter()
+                        .enumerate()
+                        .fold(BytesMut::new(), |mut acc, (i, m)| {
+                            if i > 0 {
+                                acc.extend_from_slice(b", ");
+                            }
+                            acc.extend_from_slice(m.as_str().as_bytes());
+                            acc
+                        });
+                unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+            };
 
             recognizer.add_route(uri)?;
-            route_ids.push(methods);
+            endpoints.push(EndpointData {
+                route_ids: methods,
+                allowed_methods,
+            });
         }
 
-        (recognizer, route_ids)
+        (recognizer, endpoints)
     };
 
     // finalize global/scope-local storages.
@@ -174,7 +170,7 @@ pub fn build(scope: impl Scope, global: impl Global) -> Result<App> {
                 modifiers,
             },
             recognizer,
-            route_ids,
+            endpoints,
             config,
             error_handler,
             states,
@@ -326,28 +322,4 @@ impl fmt::Debug for ScopeBuilder {
             .field("chain", &self.chain)
             .finish()
     }
-}
-
-fn default_options_handler(methods: Vec<Method>) -> Box<dyn Handler + Send + Sync + 'static> {
-    let allowed_methods = {
-        let bytes = methods
-            .into_iter()
-            .enumerate()
-            .fold(BytesMut::new(), |mut acc, (i, m)| {
-                if i > 0 {
-                    acc.extend_from_slice(b", ");
-                }
-                acc.extend_from_slice(m.as_str().as_bytes());
-                acc
-            });
-        unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-    };
-
-    Box::new(super::route::raw_handler(move |_| {
-        let mut response = Response::new(ResponseBody::empty());
-        response
-            .headers_mut()
-            .insert(header::ALLOW, allowed_methods.clone());
-        AsyncResult::ready(Ok(response))
-    }))
 }

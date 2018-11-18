@@ -51,27 +51,33 @@ impl HttpError for RecognizeError {
     }
 }
 
+#[derive(Debug)]
+pub enum Recognize<'a> {
+    Matched(usize, Option<Captures>),
+    FallbackHead(usize, Option<Captures>),
+    FallbackOptions(&'a HeaderValue),
+}
+
 impl App {
     #[doc(hidden)]
-    pub fn recognize(
-        &self,
-        path: &str,
-        method: &Method,
-    ) -> Result<(usize, Option<Captures>), RecognizeError> {
+    pub fn recognize(&self, path: &str, method: &Method) -> Result<Recognize<'_>, RecognizeError> {
         let (i, params) = self
             .data
             .recognizer
             .recognize(path)
             .ok_or_else(|| RecognizeError::NotFound)?;
+        let endpoint = &self.data.endpoints[i];
 
-        let methods = &self.data.route_ids[i];
-        match methods.get(method) {
-            Some(&i) => Ok((i, params)),
+        match endpoint.route_ids.get(method) {
+            Some(&i) => Ok(Recognize::Matched(i, params)),
             None if self.data.config.fallback_head && *method == Method::HEAD => {
-                match methods.get(&Method::GET) {
-                    Some(&i) => Ok((i, params)),
+                match endpoint.route_ids.get(&Method::GET) {
+                    Some(&i) => Ok(Recognize::FallbackHead(i, params)),
                     None => Err(RecognizeError::MethodNotAllowed),
                 }
+            }
+            None if self.data.config.fallback_options && *method == Method::OPTIONS => {
+                Ok(Recognize::FallbackOptions(&endpoint.allowed_methods))
             }
             None => Err(RecognizeError::MethodNotAllowed),
         }
@@ -151,7 +157,7 @@ enum AppFutureState {
 }
 
 impl AppFuture {
-    fn poll_in_flight(&mut self) -> Poll<(Output, AppContext), Error> {
+    fn poll_in_flight(&mut self) -> Poll<(Output, Option<AppContext>), Error> {
         use self::AppFutureState::*;
 
         macro_rules! input {
@@ -202,7 +208,16 @@ impl AppFuture {
                         .app
                         .recognize(self.request.uri().path(), self.request.method())
                     {
-                        Ok(r) => r,
+                        Ok(Recognize::Matched(pos, captures))
+                        | Ok(Recognize::FallbackHead(pos, captures)) => (pos, captures),
+                        Ok(Recognize::FallbackOptions(allowed_methods)) => {
+                            let mut response =
+                                http::Response::new(crate::output::ResponseBody::default());
+                            response
+                                .headers_mut()
+                                .insert(http::header::ALLOW, allowed_methods.clone());
+                            return Ok(Async::Ready((response, None)));
+                        }
                         Err(e) => return Err(e.into()),
                     };
                     let route = &self.app.data.routes[pos];
@@ -290,16 +305,18 @@ impl AppFuture {
             }
         };
 
-        result.map(|output| Async::Ready((output, context)))
+        result.map(|output| Async::Ready((output, Some(context))))
     }
 
     fn handle_response(
         &mut self,
         mut output: Output,
-        context: &AppContext,
+        context: &Option<AppContext>,
     ) -> Result<Response<ResponseBody>, Critical> {
-        // append Cookie entries.
-        context.append_cookies(output.headers_mut());
+        if let Some(context) = context {
+            // append Cookie entries.
+            context.append_cookies(output.headers_mut());
+        }
 
         // append the value of Content-Length to the response header if missing.
         if let Some(len) = output.body().content_length() {

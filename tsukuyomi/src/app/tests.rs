@@ -1,5 +1,5 @@
-use crate::app::{global, route, scope, RecognizeError, RouteId};
-use crate::scoped_map::ScopeId;
+use super::imp::{Recognize, RecognizeError};
+use super::{global, route, scope, RouteId, ScopeId};
 
 use http::Method;
 use matches::assert_matches;
@@ -20,7 +20,10 @@ fn route_single_method() {
         .build()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
+    assert_matches!(
+        app.recognize("/", &Method::GET),
+        Ok(Recognize::Matched(0, ..))
+    );
 
     assert_matches!(
         app.recognize("/path/to", &Method::GET),
@@ -40,8 +43,14 @@ fn route_multiple_method() {
         .build()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::GET), Ok((0, ..)));
-    assert_matches!(app.recognize("/", &Method::POST), Ok((1, ..)));
+    assert_matches!(
+        app.recognize("/", &Method::GET),
+        Ok(Recognize::Matched(0, ..))
+    );
+    assert_matches!(
+        app.recognize("/", &Method::POST),
+        Ok(Recognize::Matched(1, ..))
+    );
 
     assert_matches!(
         app.recognize("/", &Method::PUT),
@@ -56,7 +65,10 @@ fn route_fallback_head_enabled() {
         .build()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::HEAD), Ok((0, ..)));
+    assert_matches!(
+        app.recognize("/", &Method::HEAD),
+        Ok(Recognize::FallbackHead(0, ..))
+    );
 }
 
 #[test]
@@ -87,8 +99,11 @@ fn route_fallback_options_enabled() {
         .build()
         .unwrap();
 
-    assert_matches!(app.recognize("/", &Method::OPTIONS), Ok((3, ..)));
-    assert_matches!(app.recognize("/options", &Method::OPTIONS), Ok((2, ..)));
+    assert_matches!(app.recognize("/", &Method::OPTIONS), Ok(Recognize::FallbackOptions(h)) if h == "GET, POST, OPTIONS");
+    assert_matches!(
+        app.recognize("/options", &Method::OPTIONS),
+        Ok(Recognize::Matched(2, ..))
+    );
 }
 
 #[test]
@@ -124,11 +139,26 @@ fn scope_simple() {
         .build()
         .unwrap();
 
-    assert_matches!(app.recognize("/a", &Method::GET), Ok((0, ..)));
-    assert_matches!(app.recognize("/b", &Method::GET), Ok((1, ..)));
-    assert_matches!(app.recognize("/foo", &Method::GET), Ok((2, ..)));
-    assert_matches!(app.recognize("/c/d", &Method::GET), Ok((3, ..)));
-    assert_matches!(app.recognize("/c/e", &Method::GET), Ok((4, ..)));
+    assert_matches!(
+        app.recognize("/a", &Method::GET),
+        Ok(Recognize::Matched(0, ..))
+    );
+    assert_matches!(
+        app.recognize("/b", &Method::GET),
+        Ok(Recognize::Matched(1, ..))
+    );
+    assert_matches!(
+        app.recognize("/foo", &Method::GET),
+        Ok(Recognize::Matched(2, ..))
+    );
+    assert_matches!(
+        app.recognize("/c/d", &Method::GET),
+        Ok(Recognize::Matched(3, ..))
+    );
+    assert_matches!(
+        app.recognize("/c/e", &Method::GET),
+        Ok(Recognize::Matched(4, ..))
+    );
 }
 
 #[test]
@@ -155,11 +185,26 @@ fn scope_nested() {
         .build()
         .unwrap();
 
-    assert_matches!(app.recognize("/foo", &Method::GET), Ok((0, ..)));
-    assert_matches!(app.recognize("/bar", &Method::GET), Ok((1, ..)));
-    assert_matches!(app.recognize("/baz", &Method::GET), Ok((2, ..)));
-    assert_matches!(app.recognize("/baz/foobar", &Method::GET), Ok((3, ..)));
-    assert_matches!(app.recognize("/hoge", &Method::GET), Ok((4, ..)));
+    assert_matches!(
+        app.recognize("/foo", &Method::GET),
+        Ok(Recognize::Matched(0, ..))
+    );
+    assert_matches!(
+        app.recognize("/bar", &Method::GET),
+        Ok(Recognize::Matched(1, ..))
+    );
+    assert_matches!(
+        app.recognize("/baz", &Method::GET),
+        Ok(Recognize::Matched(2, ..))
+    );
+    assert_matches!(
+        app.recognize("/baz/foobar", &Method::GET),
+        Ok(Recognize::Matched(3, ..))
+    );
+    assert_matches!(
+        app.recognize("/hoge", &Method::GET),
+        Ok(Recognize::Matched(4, ..))
+    );
 
     assert_matches!(
         app.recognize("/baz/", &Method::GET),

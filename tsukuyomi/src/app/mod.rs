@@ -15,6 +15,7 @@ mod tests;
 use std::fmt;
 use std::sync::Arc;
 
+use http::header::HeaderValue;
 use http::Method;
 use indexmap::{IndexMap, IndexSet};
 
@@ -72,7 +73,7 @@ struct AppData {
     global_scope: ScopeData,
 
     recognizer: Recognizer,
-    route_ids: Vec<IndexMap<Method, usize>>,
+    endpoints: Vec<EndpointData>,
 
     states: ScopedContainer,
     error_handler: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
@@ -87,7 +88,7 @@ impl fmt::Debug for AppData {
             .field("scopes", &self.scopes)
             .field("global_scope", &self.global_scope)
             .field("recognizer", &self.recognizer)
-            .field("route_ids", &self.route_ids)
+            .field("endpoints", &self.endpoints)
             .field("states", &self.states)
             .field("config", &self.config)
             .finish()
@@ -136,6 +137,12 @@ impl fmt::Debug for RouteData {
             .field("modifier_ids", &self.modifier_ids)
             .finish()
     }
+}
+
+#[derive(Debug)]
+struct EndpointData {
+    route_ids: IndexMap<Method, usize>,
+    allowed_methods: HeaderValue,
 }
 
 /// The main type which represents an HTTP application.
