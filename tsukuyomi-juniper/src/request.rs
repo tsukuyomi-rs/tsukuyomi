@@ -1,12 +1,15 @@
-use futures::{Async, Future};
-use http::{Method, Response, StatusCode};
-use juniper::InputValue;
-use percent_encoding::percent_decode;
-
-use tsukuyomi::error::Error;
-use tsukuyomi::extractor::{ExtractStatus, Extractor};
-use tsukuyomi::input::Input;
-use tsukuyomi::output::Responder;
+use {
+    futures::{Async, Future},
+    http::{Method, Response, StatusCode},
+    juniper::InputValue,
+    percent_encoding::percent_decode,
+    tsukuyomi::{
+        error::Error,
+        extractor::{ExtractStatus, Extractor},
+        input::Input,
+        output::Responder,
+    },
+};
 
 pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
     tsukuyomi::extractor::raw(|input| {

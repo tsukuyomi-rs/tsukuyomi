@@ -1,10 +1,10 @@
 //! Definition of `Handler` and `Modifier`.
 
-use futures::{Async, Poll};
-use std::fmt;
-
-use crate::error::Error;
-use crate::input::Input;
+use {
+    crate::{error::Error, input::Input},
+    futures::{Async, Poll},
+    std::fmt,
+};
 
 /// A type representing the return value from `Handler::handle`.
 pub struct AsyncResult<T, E = Error>(AsyncResultKind<T, E>);

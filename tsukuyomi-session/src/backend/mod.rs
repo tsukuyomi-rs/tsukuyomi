@@ -3,18 +3,16 @@
 mod cookie;
 mod redis;
 
-pub use self::cookie::CookieSessionBackend;
-pub use self::imp::Backend;
 #[cfg(feature = "redis-backend")]
 pub use self::redis::RedisSessionBackend;
+pub use self::{cookie::CookieSessionBackend, imp::Backend};
 
 pub(crate) mod imp {
-    use futures::{Future, Poll};
-
-    use tsukuyomi::error::Error;
-    use tsukuyomi::input::Input;
-
-    use crate::session::SessionInner;
+    use {
+        crate::session::SessionInner,
+        futures::{Future, Poll},
+        tsukuyomi::{error::Error, input::Input},
+    };
 
     pub trait ReadFuture {
         fn poll_read(&mut self, input: &mut Input<'_>) -> Poll<SessionInner, Error>;

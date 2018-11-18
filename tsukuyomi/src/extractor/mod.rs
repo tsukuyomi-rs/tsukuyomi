@@ -17,15 +17,15 @@ pub mod verb;
 pub use self::builder::Builder;
 pub(crate) use self::generic::{Combine, Func, Tuple};
 
-// ==== impl ====
-
-use std::marker::PhantomData;
-
-use futures::{Future, IntoFuture, Poll};
-
-use crate::error::{Error, Never};
-use crate::input::Input;
-use crate::output::Output;
+use {
+    crate::{
+        error::{Error, Never},
+        input::Input,
+        output::Output,
+    },
+    futures::{Future, IntoFuture, Poll},
+    std::marker::PhantomData,
+};
 
 /// A type that represents the value of a `Future` never constructed.
 #[doc(hidden)]

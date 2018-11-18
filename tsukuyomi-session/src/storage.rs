@@ -1,13 +1,14 @@
-use futures::{try_ready, Async};
-
-use tsukuyomi::app::scope::Modifier;
-use tsukuyomi::input::Input;
-use tsukuyomi::output::Output;
-use tsukuyomi::AsyncResult;
-
-use crate::backend::imp::{ReadFuture, WriteFuture};
-use crate::backend::Backend;
-use crate::session::SessionInner;
+use {
+    crate::{
+        backend::{
+            imp::{ReadFuture, WriteFuture},
+            Backend,
+        },
+        session::SessionInner,
+    },
+    futures::{try_ready, Async},
+    tsukuyomi::{app::scope::Modifier, input::Input, output::Output, AsyncResult},
+};
 
 /// A `Modifier` for managing session values.
 #[derive(Debug)]

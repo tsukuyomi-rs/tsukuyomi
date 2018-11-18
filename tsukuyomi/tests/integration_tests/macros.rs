@@ -1,6 +1,5 @@
 mod responder {
-    use std::fmt;
-    use tsukuyomi::test::ResponseExt;
+    use {std::fmt, tsukuyomi::test::ResponseExt};
 
     fn assert_impl_responder<T: tsukuyomi::output::Responder>() {}
 
@@ -65,9 +64,10 @@ mod responder {
     }
 
     mod sub {
-        use http::Response;
-        use tsukuyomi::error::Never;
-        use tsukuyomi::input::Input;
+        use {
+            http::Response,
+            tsukuyomi::{error::Never, input::Input},
+        };
 
         pub fn respond_to<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>
         where

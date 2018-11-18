@@ -1,11 +1,9 @@
 //! Extractors for accessing the protocol extensions.
 
-use std::cell::UnsafeCell;
-use std::fmt;
-use std::marker::PhantomData;
-
-use crate::error::Error;
-use crate::extractor::Extractor;
+use {
+    crate::{error::Error, extractor::Extractor},
+    std::{cell::UnsafeCell, fmt, marker::PhantomData},
+};
 
 /// A proxy object for accessing the value in the protocol extensions.
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]

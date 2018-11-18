@@ -1,24 +1,30 @@
-use proc_macro2::{Span, TokenStream};
-use quote::*;
-use syn::spanned::Spanned;
-use syn::DeriveInput;
+use {
+    proc_macro2::{Span, TokenStream},
+    quote::*,
+    std::fmt::Display,
+    syn::{
+        parse::{Error as ParseError, Result as ParseResult},
+        spanned::Spanned,
+        DeriveInput,
+    },
+};
 
-fn parse_error<T>(message: T) -> syn::parse::Error
+fn parse_error<T>(message: T) -> ParseError
 where
-    T: std::fmt::Display,
+    T: Display,
 {
-    syn::parse::Error::new(Span::call_site(), message)
+    ParseError::new(Span::call_site(), message)
 }
 
-fn parse_error_at<P, T>(pos: &P, message: T) -> syn::parse::Error
+fn parse_error_at<P, T>(pos: &P, message: T) -> ParseError
 where
-    T: std::fmt::Display,
+    T: Display,
     P: Spanned,
 {
-    syn::parse::Error::new(pos.span(), message)
+    ParseError::new(pos.span(), message)
 }
 
-fn collect_attrs(attrs: &[syn::Attribute]) -> syn::parse::Result<Option<syn::Path>> {
+fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
     let mut meta = None;
     for attr in attrs {
         let m = attr.parse_meta()?;
@@ -54,7 +60,7 @@ fn collect_attrs(attrs: &[syn::Attribute]) -> syn::parse::Result<Option<syn::Pat
     Ok(respond_to)
 }
 
-pub fn parse(input: DeriveInput) -> syn::parse::Result<ResponderInput> {
+pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
     let respond_to = collect_attrs(&input.attrs)?;
     Ok(ResponderInput { respond_to, input })
 }
@@ -75,7 +81,7 @@ impl ResponderInput {
     }
 
     #[allow(nonstandard_style)]
-    fn derive_struct(&self, data: &syn::DataStruct) -> syn::parse::Result<TokenStream> {
+    fn derive_struct(&self, data: &syn::DataStruct) -> ParseResult<TokenStream> {
         let Self_ = &self.input.ident;
         let respond_to = quote!(tsukuyomi::output::internal::respond_to);
         let unit_respond_to = quote!(#respond_to((), input));
@@ -102,7 +108,7 @@ impl ResponderInput {
         }
     }
 
-    fn derive_enum(&self, data: &syn::DataEnum) -> syn::parse::Result<TokenStream> {
+    fn derive_enum(&self, data: &syn::DataEnum) -> ParseResult<TokenStream> {
         let variants: Vec<_> = data
             .variants
             .iter()
@@ -115,7 +121,7 @@ impl ResponderInput {
     }
 
     #[allow(nonstandard_style)]
-    fn derive_enum_variant(&self, variant: &syn::Variant) -> syn::parse::Result<TokenStream> {
+    fn derive_enum_variant(&self, variant: &syn::Variant) -> ParseResult<TokenStream> {
         let Self_ = &self.input.ident;
         let Variant = &variant.ident;
         let respond_to = quote!(tsukuyomi::output::internal::respond_to);
@@ -142,7 +148,7 @@ impl ResponderInput {
     }
 
     #[allow(nonstandard_style)]
-    pub fn derive(&self) -> syn::parse::Result<TokenStream> {
+    pub fn derive(&self) -> ParseResult<TokenStream> {
         let derived = match (&self.respond_to, &self.input.data) {
             (Some(respond_to), _) => self.derive_explicit(respond_to),
             (None, syn::Data::Struct(ref data)) => self.derive_struct(data)?,
@@ -173,7 +179,7 @@ impl ResponderInput {
     }
 }
 
-pub fn derive_responder(input: TokenStream) -> syn::parse::Result<TokenStream> {
+pub fn derive_responder(input: TokenStream) -> ParseResult<TokenStream> {
     syn::parse2(input)
         .and_then(self::parse)
         .and_then(|input| input.derive())

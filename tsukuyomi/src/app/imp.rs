@@ -1,21 +1,23 @@
-use std::mem;
-
-use cookie::CookieJar;
-use futures::{Async, Future, IntoFuture, Poll};
-use http::header::{HeaderMap, HeaderValue};
-use http::{header, Method, Request, Response, StatusCode};
-use hyper::body::Payload;
-use tower_service::{NewService, Service};
-
-use crate::async_result::AsyncResult;
-use crate::error::{Critical, Error, HttpError};
-use crate::input::local_map::LocalMap;
-use crate::input::{Input, RequestBody};
-use crate::output::{Output, ResponseBody};
-use crate::recognizer::Captures;
-
-use super::callback::Context as CallbackContext;
-use super::{App, RouteData, RouteId};
+use {
+    super::{callback::Context as CallbackContext, App, RouteData, RouteId},
+    cookie::CookieJar,
+    crate::{
+        async_result::AsyncResult,
+        error::{Critical, Error, HttpError},
+        input::{local_map::LocalMap, Input, RequestBody},
+        output::{Output, ResponseBody},
+        recognizer::Captures,
+    },
+    futures::{Async, Future, IntoFuture, Poll},
+    http::{
+        header,
+        header::{HeaderMap, HeaderValue},
+        Method, Request, Response, StatusCode,
+    },
+    hyper::body::Payload,
+    std::mem,
+    tower_service::{NewService, Service},
+};
 
 macro_rules! ready {
     ($e:expr) => {
@@ -25,6 +27,10 @@ macro_rules! ready {
             Err(e) => Err(e),
         }
     };
+}
+
+pub fn app() -> super::builder::Builder<(), ()> {
+    super::builder::Builder::default()
 }
 
 /// An instance of `HttpError` which will be thrown from the route recognizer.

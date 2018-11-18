@@ -7,10 +7,7 @@ extern crate tsukuyomi;
 
 mod proxy;
 
-use futures::prelude::*;
-use tsukuyomi::app::route;
-
-use crate::proxy::Client;
+use {crate::proxy::Client, futures::prelude::*, tsukuyomi::app::route};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let proxy_client =

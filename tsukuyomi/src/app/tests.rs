@@ -1,8 +1,11 @@
-use super::imp::{Recognize, RecognizeError};
-use super::{route, scope, RouteId, ScopeId};
-
-use http::Method;
-use matches::assert_matches;
+use {
+    super::{
+        imp::{Recognize, RecognizeError},
+        route, scope, RouteId, ScopeId,
+    },
+    http::Method,
+    matches::assert_matches,
+};
 
 #[test]
 fn empty() {

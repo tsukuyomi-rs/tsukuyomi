@@ -1,12 +1,13 @@
-use crate::async_result::AsyncResult;
-use crate::input::Input;
-use crate::output::Output;
-use crate::scoped_map::ScopeId;
-use crate::uri::Uri;
-
-use super::builder::AppContext;
-use super::error::{Error, Result};
-use super::route::Route;
+use {
+    super::{
+        builder::AppContext,
+        error::{Error, Result},
+        route::Route,
+    },
+    crate::{
+        async_result::AsyncResult, input::Input, output::Output, scoped_map::ScopeId, uri::Uri,
+    },
+};
 
 /// A trait representing a `Modifier`.
 ///

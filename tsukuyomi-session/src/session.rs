@@ -1,12 +1,9 @@
-use std::collections::HashMap;
-
-use serde::de::DeserializeOwned;
-use serde::ser::Serialize;
-use serde_json;
-
-use tsukuyomi::error::Error;
-use tsukuyomi::extractor::Extractor;
-use tsukuyomi::input::local_map::local_key;
+use {
+    serde::{de::DeserializeOwned, ser::Serialize},
+    serde_json,
+    std::collections::HashMap,
+    tsukuyomi::{error::Error, extractor::Extractor, input::local_map::local_key},
+};
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]

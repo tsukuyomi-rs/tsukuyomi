@@ -1,11 +1,10 @@
-use std::borrow::Cow;
-use std::mem;
-use std::str;
-
-use bytes::{Buf, Bytes};
-use futures::{Async, Poll};
-use http::header::HeaderMap;
-use hyper::body::Payload;
+use {
+    bytes::{Buf, Bytes},
+    futures::{Async, Poll},
+    http::header::HeaderMap,
+    hyper::body::Payload,
+    std::{borrow::Cow, mem, str},
+};
 
 #[derive(Debug)]
 pub(super) struct Receive<Bd: Payload> {

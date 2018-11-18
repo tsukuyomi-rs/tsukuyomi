@@ -24,8 +24,7 @@ mod route_expr_impl;
 mod validate_prefix;
 use tsukuyomi_internal::uri;
 
-use proc_macro::TokenStream;
-use quote::quote_spanned;
+use {proc_macro::TokenStream, quote::quote_spanned};
 
 #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 fn to_compile_error(err: syn::parse::Error) -> proc_macro2::TokenStream {

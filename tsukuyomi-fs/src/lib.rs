@@ -15,15 +15,18 @@
 extern crate futures;
 extern crate tsukuyomi;
 
-use futures::Future;
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use tsukuyomi::app;
-use tsukuyomi::app::scope;
-use tsukuyomi::fs::{NamedFile, OpenConfig};
+use {
+    futures::Future,
+    std::{
+        fs, io,
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
+    tsukuyomi::{
+        app::{self, scope},
+        fs::{NamedFile, OpenConfig},
+    },
+};
 
 #[allow(missing_debug_implementations)]
 #[derive(Clone)]

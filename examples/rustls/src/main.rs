@@ -3,8 +3,7 @@ extern crate rustls;
 extern crate tokio_rustls;
 extern crate tsukuyomi;
 
-use std::path::Path;
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;

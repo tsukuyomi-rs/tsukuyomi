@@ -26,12 +26,11 @@
 //! [`Modifier`]: ../app/scope/trait.Modifier.html
 //! [`ErrorHandler`]: ../app/global/trait.ErrorHandler.html
 
-use http::{Request, Response, StatusCode};
-use std::any::TypeId;
-use std::fmt;
-use std::io;
-
-use crate::output::ResponseBody;
+use {
+    crate::output::ResponseBody,
+    http::{Request, Response, StatusCode},
+    std::{any::TypeId, fmt, io},
+};
 
 #[derive(Debug)]
 pub struct Critical(failure::Error);

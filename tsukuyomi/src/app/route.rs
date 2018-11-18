@@ -1,20 +1,23 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use either::Either;
-use futures::{Async, Future, IntoFuture};
-use indexmap::IndexSet;
-
-use crate::async_result::AsyncResult;
-use crate::error::Error;
-use crate::extractor::{Combine, ExtractStatus, Extractor, Func};
-use crate::fs::NamedFile;
-use crate::input::Input;
-use crate::output::{Output, Responder};
-use crate::uri::Uri;
-
 #[doc(hidden)]
 pub use http::Method;
+use {
+    crate::{
+        async_result::AsyncResult,
+        error::Error,
+        extractor::{Combine, ExtractStatus, Extractor, Func},
+        fs::NamedFile,
+        input::Input,
+        output::{Output, Responder},
+        uri::Uri,
+    },
+    either::Either,
+    futures::{Async, Future, IntoFuture},
+    indexmap::IndexSet,
+    std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
+};
 
 /// A trait representing handler functions.
 pub trait Handler {

@@ -1,8 +1,7 @@
 extern crate serde;
 extern crate tsukuyomi;
 
-use tsukuyomi::app::route;
-use tsukuyomi::extractor;
+use tsukuyomi::{app::route, extractor};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, tsukuyomi::output::Responder)]
 #[responder(respond_to = "tsukuyomi::output::responder::json")]

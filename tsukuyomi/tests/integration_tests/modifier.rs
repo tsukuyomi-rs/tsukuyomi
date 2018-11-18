@@ -1,12 +1,14 @@
-use tsukuyomi::app::scope::Modifier;
-use tsukuyomi::app::{route, scope};
-use tsukuyomi::error::{internal_server_error, Error};
-use tsukuyomi::input::Input;
-use tsukuyomi::output::{Output, ResponseBody};
-use tsukuyomi::AsyncResult;
-
-use http::Response;
-use std::sync::{Arc, Mutex};
+use {
+    http::Response,
+    std::sync::{Arc, Mutex},
+    tsukuyomi::{
+        app::{route, scope, scope::Modifier},
+        error::{internal_server_error, Error},
+        input::Input,
+        output::{Output, ResponseBody},
+        AsyncResult,
+    },
+};
 
 struct MarkModifier<T1, T2>
 where

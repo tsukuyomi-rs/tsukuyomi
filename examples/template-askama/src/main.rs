@@ -2,8 +2,7 @@ extern crate askama;
 extern crate tsukuyomi;
 extern crate tsukuyomi_askama;
 
-use askama::Template;
-use tsukuyomi::output::Responder;
+use {askama::Template, tsukuyomi::output::Responder};
 
 #[derive(Template, Responder)]
 #[template(path = "index.html")]

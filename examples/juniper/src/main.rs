@@ -8,8 +8,7 @@ extern crate tsukuyomi_juniper;
 mod context;
 mod schema;
 
-use std::sync::Arc;
-use tsukuyomi_juniper::Executor;
+use {std::sync::Arc, tsukuyomi_juniper::Executor};
 
 fn main() -> tsukuyomi::server::Result<()> {
     // Extractor for extracting `Executor` for executing a GraphQL request from client.

@@ -15,9 +15,6 @@
 extern crate tsukuyomi_internal;
 extern crate tsukuyomi_macros;
 
-#[doc(hidden)]
-pub use tsukuyomi_macros::{route_expr_impl, validate_prefix};
-
 extern crate bytes;
 extern crate cookie;
 extern crate either;
@@ -75,9 +72,6 @@ pub mod rt;
 pub mod server;
 pub mod test;
 
-pub fn app() -> crate::app::Builder<(), ()> {
-    crate::app::Builder::default()
-}
-
-pub use crate::async_result::AsyncResult;
-pub use crate::server::imp::server;
+pub use crate::{app::imp::app, async_result::AsyncResult, server::imp::server};
+#[doc(hidden)]
+pub use tsukuyomi_macros::{route_expr_impl, validate_prefix};

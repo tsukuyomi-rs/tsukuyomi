@@ -1,11 +1,12 @@
-use cookie::CookieJar;
-use http::header::HeaderMap;
-use http::Request;
-
-use crate::error::{Critical, Error};
-use crate::input::local_map::LocalMap;
-use crate::input::Cookies;
-use crate::output::Output;
+use {
+    cookie::CookieJar,
+    crate::{
+        error::{Critical, Error},
+        input::{local_map::LocalMap, Cookies},
+        output::Output,
+    },
+    http::{header::HeaderMap, Request},
+};
 
 #[derive(Debug)]
 pub struct Context<'a> {

@@ -4,9 +4,11 @@
 mod tests;
 mod tree;
 
-use self::tree::Tree;
-use crate::uri::{TryIntoUri, Uri};
-use failure::Error;
+use {
+    self::tree::Tree,
+    crate::uri::{TryIntoUri, Uri},
+    failure::Error,
+};
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Captures {

@@ -1,10 +1,10 @@
 //! Extractors for accessing the request-local data.
 
-use std::fmt;
-
-use crate::error::Error;
-use crate::extractor::Extractor;
-use crate::input::local_map::LocalKey;
+use {
+    super::Extractor,
+    crate::{error::Error, input::local_map::LocalKey},
+    std::fmt,
+};
 
 pub struct Local<T: Send + 'static> {
     key: &'static LocalKey<T>,

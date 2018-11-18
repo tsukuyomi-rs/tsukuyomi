@@ -1,11 +1,10 @@
 //! Extractors for accessing the scope-local data.
 
-use std::cell::UnsafeCell;
-use std::fmt;
-use std::marker::PhantomData;
-
-use crate::error::Error;
-use crate::extractor::Extractor;
+use {
+    super::Extractor,
+    crate::error::Error,
+    std::{cell::UnsafeCell, fmt, marker::PhantomData},
+};
 
 /// A proxy object for accessing the global state.
 #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]

@@ -45,16 +45,23 @@ extern crate http;
 extern crate mime_guess;
 extern crate tsukuyomi;
 
-use askama::Template;
-use http::header::{HeaderValue, CONTENT_TYPE};
-use http::Response;
-use mime_guess::get_mime_type_str;
-use tsukuyomi::input::Input;
+use {
+    askama::Template,
+    http::{
+        header::{HeaderValue, CONTENT_TYPE},
+        Response,
+    },
+    mime_guess::get_mime_type_str,
+    tsukuyomi::{
+        error::{internal_server_error, Result},
+        input::Input,
+    },
+};
 
 /// A helper function to generate an HTTP response from Askama template.
 #[inline]
 #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-pub fn respond_to<T>(t: T, _: &mut Input<'_>) -> tsukuyomi::error::Result<Response<String>>
+pub fn respond_to<T>(t: T, _: &mut Input<'_>) -> Result<Response<String>>
 where
     T: Template,
 {
@@ -65,7 +72,7 @@ where
     let mut response = t
         .render()
         .map(Response::new)
-        .map_err(tsukuyomi::error::internal_server_error)?;
+        .map_err(internal_server_error)?;
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));

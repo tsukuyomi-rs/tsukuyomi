@@ -1,11 +1,14 @@
-use futures::future;
-use futures::{Async, Future, IntoFuture, Poll};
-
-use crate::error::{Error, Never};
-use crate::input::Input;
-
-use super::generic::{Combine, Func, Tuple};
-use super::{Extract, ExtractStatus, Extractor};
+use {
+    super::{
+        generic::{Combine, Func, Tuple},
+        Extract, ExtractStatus, Extractor,
+    },
+    crate::{
+        error::{Error, Never},
+        input::Input,
+    },
+    futures::{future, Async, Future, IntoFuture, Poll},
+};
 
 #[derive(Debug)]
 pub struct Builder<E> {

@@ -2,8 +2,10 @@ extern crate futures;
 extern crate tsukuyomi;
 extern crate tsukuyomi_websocket;
 
-use futures::prelude::*;
-use tsukuyomi_websocket::{Message, Ws};
+use {
+    futures::prelude::*,
+    tsukuyomi_websocket::{Message, Ws},
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let handle_websocket = tsukuyomi::app::route!("/ws")

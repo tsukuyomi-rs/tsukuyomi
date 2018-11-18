@@ -28,8 +28,10 @@ mod session;
 mod storage;
 mod util;
 
-pub use crate::session::{extractor, Session};
-pub use crate::storage::SessionStorage;
+pub use crate::{
+    session::{extractor, Session},
+    storage::SessionStorage,
+};
 
 #[allow(missing_docs)]
 pub fn storage<B>(backend: B) -> SessionStorage<B>

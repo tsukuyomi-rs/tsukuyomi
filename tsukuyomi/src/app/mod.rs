@@ -2,37 +2,37 @@
 
 #![cfg_attr(feature = "cargo-clippy", forbid(stutter))]
 
-mod builder;
 pub mod callback;
-mod error;
-pub(crate) mod imp;
 pub mod route;
 pub mod scope;
 
+mod builder;
+mod error;
+pub(crate) mod imp;
 #[cfg(test)]
 mod tests;
 
-use std::fmt;
-use std::sync::Arc;
-
-use http::header::HeaderValue;
-use http::Method;
-use indexmap::{IndexMap, IndexSet};
-
-use crate::recognizer::Recognizer;
-use crate::scoped_map::{ScopeId, ScopedContainer};
-use crate::uri::Uri;
-
-pub use crate::{route, scope};
-
-pub use self::builder::Builder;
-pub use self::error::{Error, Result};
-pub use self::route::Route;
-pub use self::scope::Scope;
-
-use self::callback::Callback;
-use self::route::Handler;
-use self::scope::Modifier;
+pub(crate) use self::imp::AppContext;
+pub use {
+    self::{
+        builder::Builder,
+        error::{Error, Result},
+        route::Route,
+        scope::Scope,
+    },
+    crate::{route, scope},
+};
+use {
+    self::{callback::Callback, route::Handler, scope::Modifier},
+    crate::{
+        recognizer::Recognizer,
+        scoped_map::{ScopeId, ScopedContainer},
+        uri::Uri,
+    },
+    http::{header::HeaderValue, Method},
+    indexmap::{IndexMap, IndexSet},
+    std::{fmt, sync::Arc},
+};
 
 pub fn route() -> self::route::Builder<()> {
     self::route::Builder::<()>::default()

@@ -4,15 +4,14 @@ extern crate percent_encoding;
 extern crate tsukuyomi;
 extern crate tsukuyomi_juniper;
 
-use http::{Request, Response};
-use juniper::http::tests as http_tests;
-use juniper::tests::model::Database;
-use juniper::{EmptyMutation, RootNode};
-use percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET};
-use std::cell::RefCell;
-
-use tsukuyomi::test::{TestOutput, TestServer};
-use tsukuyomi_juniper::Executor;
+use {
+    http::{Request, Response},
+    juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
+    percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
+    std::cell::RefCell,
+    tsukuyomi::test::{TestOutput, TestServer},
+    tsukuyomi_juniper::Executor,
+};
 
 #[test]
 fn integration_test() -> tsukuyomi::test::Result<()> {

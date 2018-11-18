@@ -1,6 +1,4 @@
-use juniper::FieldResult;
-
-use crate::context::Context;
+use {crate::context::Context, juniper::FieldResult};
 
 #[derive(Debug, Clone, Copy, juniper::GraphQLEnum)]
 pub enum Episode {

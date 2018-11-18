@@ -3,12 +3,14 @@ extern crate serde;
 extern crate tsukuyomi;
 extern crate tsukuyomi_session;
 
-use tsukuyomi::app::route;
-use tsukuyomi::output::{html, redirect};
-use tsukuyomi_session::backend::CookieSessionBackend;
-use tsukuyomi_session::Session;
-
-use either::Either;
+use {
+    either::Either,
+    tsukuyomi::{
+        app::route,
+        output::{html, redirect},
+    },
+    tsukuyomi_session::{backend::CookieSessionBackend, Session},
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let backend = CookieSessionBackend::plain();

@@ -1,17 +1,20 @@
-use std::rc::Rc;
-use std::sync::Arc;
-
-use futures::{Future, Poll, Stream};
-use http::{Request, Response};
-use hyper::body::{Body, Payload};
-use hyper::server::conn::Http;
-use tower_service::{NewService, Service};
-
-use super::acceptor::Acceptor;
-use super::http::{HttpRequest, HttpResponse};
-use super::imp::CritError;
-use super::middleware::Middleware;
-use super::transport::{Connection, ConnectionInfo, Transport};
+use {
+    super::{
+        acceptor::Acceptor,
+        http::{HttpRequest, HttpResponse},
+        imp::CritError,
+        middleware::Middleware,
+        transport::{Connection, ConnectionInfo, Transport},
+    },
+    futures::{Future, Poll, Stream},
+    http::{Request, Response},
+    hyper::{
+        body::{Body, Payload},
+        server::conn::Http,
+    },
+    std::{rc::Rc, sync::Arc},
+    tower_service::{NewService, Service},
+};
 
 macro_rules! serve {
     (

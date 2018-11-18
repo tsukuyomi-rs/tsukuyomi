@@ -1,10 +1,11 @@
 //! Extractors for accessing HTTP header fields.
 
-use http::header::{HeaderMap, HeaderName, HeaderValue};
-use mime::Mime;
-
-use crate::error::{Error, Never};
-use crate::extractor::Extractor;
+use {
+    super::Extractor,
+    crate::error::{Error, Never},
+    http::header::{HeaderMap, HeaderName, HeaderValue},
+    mime::Mime,
+};
 
 pub trait FromHeaderValue: Sized + 'static {
     type Error: Into<Error>;

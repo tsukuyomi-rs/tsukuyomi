@@ -2,14 +2,13 @@
 
 #![allow(missing_docs)]
 
-use std::borrow::Cow;
-use std::path::PathBuf;
-use std::str::Utf8Error;
-use url::percent_encoding::percent_decode;
-use uuid::Uuid;
-
-use crate::error::Error;
-use crate::extractor::Extractor;
+use {
+    super::Extractor,
+    crate::error::Error,
+    std::{borrow::Cow, path::PathBuf, str::Utf8Error},
+    url::percent_encoding::percent_decode,
+    uuid::Uuid,
+};
 
 #[derive(Debug)]
 pub struct EncodedStr<'a>(&'a str);

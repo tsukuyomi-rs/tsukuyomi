@@ -1,5 +1,4 @@
-use failure::Fail;
-use std::fmt;
+use {failure::Fail, std::fmt};
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
 pub type Result<T> = std::result::Result<T, Error>;

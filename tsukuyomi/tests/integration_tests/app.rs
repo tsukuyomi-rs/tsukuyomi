@@ -1,8 +1,7 @@
-use tsukuyomi::app::route;
-use tsukuyomi::extractor;
-use tsukuyomi::test::ResponseExt;
-
-use http::{header, Method, Request, Response, StatusCode};
+use {
+    http::{header, Method, Request, Response, StatusCode},
+    tsukuyomi::{app::route, extractor, test::ResponseExt},
+};
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {

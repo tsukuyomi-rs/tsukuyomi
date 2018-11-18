@@ -1,22 +1,23 @@
-use std::fmt;
-use std::sync::Arc;
-
-use bytes::BytesMut;
-use http::header::HeaderValue;
-use http::{Method, Response};
-use indexmap::{IndexMap, IndexSet};
-
-use crate::error::Critical;
-use crate::output::{Output, ResponseBody};
-use crate::recognizer::Recognizer;
-use crate::scoped_map::{Builder as ScopedContainerBuilder, ScopeId};
-use crate::uri::Uri;
-
-use super::callback::Callback;
-use super::error::{Error, Result};
-use super::route::{Context as RouteContext, Handler, Route};
-use super::scope::{Context as ScopeContext, Modifier, Scope};
-use super::{App, AppData, Config, EndpointData, ModifierId, RouteData, RouteId, ScopeData};
+use {
+    super::{
+        callback::Callback,
+        error::{Error, Result},
+        route::{Context as RouteContext, Handler, Route},
+        scope::{Context as ScopeContext, Modifier, Scope},
+        App, AppData, Config, EndpointData, ModifierId, RouteData, RouteId, ScopeData,
+    },
+    bytes::BytesMut,
+    crate::{
+        error::Critical,
+        output::{Output, ResponseBody},
+        recognizer::Recognizer,
+        scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
+        uri::Uri,
+    },
+    http::{header::HeaderValue, Method, Response},
+    indexmap::{IndexMap, IndexSet},
+    std::{fmt, sync::Arc},
+};
 
 /// A builder object for constructing an instance of `App`.
 #[derive(Debug, Default)]

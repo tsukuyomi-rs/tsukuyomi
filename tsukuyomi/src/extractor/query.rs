@@ -1,9 +1,10 @@
 //! Extractors for parsing query string.
 
-use serde::de::DeserializeOwned;
-
-use crate::error::{Error, Never};
-use crate::extractor::Extractor;
+use {
+    super::Extractor,
+    crate::error::{Error, Never},
+    serde::de::DeserializeOwned,
+};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]

@@ -1,33 +1,24 @@
 //! Components for accessing HTTP requests and global/request-local data.
 
 pub mod body;
-mod global;
 pub mod local_map;
-mod param;
 
-// re-exports
 pub use self::body::RequestBody;
-pub use self::global::{is_set_current, with_get_current};
-pub use self::param::Params;
 
-pub(crate) use self::global::with_set_current;
-
-// ====
-
-use std::marker::PhantomData;
-use std::rc::Rc;
-
-use cookie::{Cookie, CookieJar};
-use futures::IntoFuture;
-use http::header::HeaderMap;
-use http::Request;
-use mime::Mime;
-
-use crate::app::imp::AppContext;
-use crate::app::App;
-use crate::error::Error;
-
-use self::local_map::LocalMap;
+use {
+    self::local_map::LocalMap,
+    cookie::{Cookie, CookieJar},
+    crate::{
+        app::{App, AppContext},
+        error::Error,
+        recognizer::Captures,
+        uri::CaptureNames,
+    },
+    futures::IntoFuture,
+    http::{header::HeaderMap, Request},
+    mime::Mime,
+    std::{cell::Cell, marker::PhantomData, ops::Index, ptr::NonNull, rc::Rc},
+};
 
 /// Contextual information used by processes during an incoming HTTP request.
 #[derive(Debug)]
@@ -260,4 +251,136 @@ fn parse_content_type<'a>(
             Ok(entry.insert(mime).as_ref())
         }
     }
+}
+
+/// A proxy object for accessing extracted parameters.
+#[derive(Debug)]
+pub struct Params<'input> {
+    path: &'input str,
+    names: Option<&'input CaptureNames>,
+    captures: Option<&'input Captures>,
+}
+
+impl<'input> Params<'input> {
+    pub(crate) fn new(
+        path: &'input str,
+        names: Option<&'input CaptureNames>,
+        captures: Option<&'input Captures>,
+    ) -> Params<'input> {
+        debug_assert_eq!(names.is_some(), captures.is_some());
+        Params {
+            path,
+            names,
+            captures,
+        }
+    }
+
+    /// Returns `true` if the extracted paramater exists.
+    pub fn is_empty(&self) -> bool {
+        self.captures.map_or(true, |caps| {
+            caps.params().is_empty() && caps.wildcard().is_none()
+        })
+    }
+
+    /// Returns the value of `i`-th parameter, if exists.
+    pub fn get(&self, i: usize) -> Option<&str> {
+        let &(s, e) = self.captures?.params().get(i)?;
+        self.path.get(s..e)
+    }
+
+    /// Returns the value of wildcard parameter, if exists.
+    pub fn get_wildcard(&self) -> Option<&str> {
+        let (s, e) = self.captures?.wildcard()?;
+        self.path.get(s..e)
+    }
+
+    /// Returns the value of parameter whose name is equal to `name`, if exists.
+    pub fn name(&self, name: &str) -> Option<&str> {
+        match name {
+            "*" => self.get_wildcard(),
+            name => self.get(self.names?.get_position(name)?),
+        }
+    }
+}
+
+impl<'input> Index<usize> for Params<'input> {
+    type Output = str;
+
+    fn index(&self, i: usize) -> &Self::Output {
+        self.get(i).expect("Out of range")
+    }
+}
+
+impl<'input, 'a> Index<&'a str> for Params<'input> {
+    type Output = str;
+
+    fn index(&self, name: &'a str) -> &Self::Output {
+        self.name(name).expect("Out of range")
+    }
+}
+
+thread_local! {
+    static INPUT: Cell<Option<NonNull<Input<'static>>>> = Cell::new(None);
+}
+
+#[allow(missing_debug_implementations)]
+struct ResetOnDrop(Option<NonNull<Input<'static>>>);
+
+impl Drop for ResetOnDrop {
+    fn drop(&mut self) {
+        INPUT.with(|input| {
+            input.set(self.0.take());
+        })
+    }
+}
+
+/// Returns `true` if the reference to `Input` is set to the current task.
+#[inline(always)]
+pub fn is_set_current() -> bool {
+    INPUT.with(|input| input.get().is_some())
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+pub(crate) fn with_set_current<R>(self_: &mut Input<'_>, f: impl FnOnce() -> R) -> R {
+    // safety: The value of `self: &mut Input` is always non-null.
+    let prev = INPUT.with(|input| {
+        let ptr = self_ as *mut Input<'_> as *mut () as *mut Input<'static>;
+        input.replace(Some(unsafe { NonNull::new_unchecked(ptr) }))
+    });
+    let _reset = ResetOnDrop(prev);
+    f()
+}
+
+/// Acquires a mutable borrow of `Input` from the current task context and executes the provided
+/// closure with its reference.
+///
+/// # Panics
+///
+/// This function only work in the management of the framework and causes a panic
+/// if any references to `Input` is not set at the current task.
+/// Do not use this function outside of futures returned by the handler functions.
+/// Such situations often occurs by spawning tasks by the external `Executor`
+/// (typically calling `tokio::spawn()`).
+///
+/// In additional, this function forms a (dynamic) scope to prevent the references to `Input`
+/// violate the borrowing rule in Rust.
+/// Duplicate borrowings such as the following code are reported as a runtime error.
+///
+/// ```ignore
+/// with_get_current(|input| {
+///     some_process()
+/// });
+///
+/// fn some_process() {
+///     // Duplicate borrowing of `Input` occurs at this point.
+///     with_get_current(|input| { ... })
+/// }
+/// ```
+pub fn with_get_current<R>(f: impl FnOnce(&mut Input<'_>) -> R) -> R {
+    let input_ptr = INPUT.with(|input| input.replace(None));
+    let _reset = ResetOnDrop(input_ptr);
+    let mut input_ptr =
+        input_ptr.expect("Any reference to Input are not set at the current task context.");
+    // safety: The lifetime of `input_ptr` is always shorter then the borrowing of `Input` in `with_set_current()`
+    f(unsafe { input_ptr.as_mut() })
 }

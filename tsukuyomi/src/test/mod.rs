@@ -5,10 +5,12 @@ mod input;
 mod output;
 mod server;
 
-pub use self::error::{Error, Result};
-pub use self::input::{IntoRequestBody, TestInput};
-pub use self::output::TestOutput;
-pub use self::server::{Client, TestServer};
+pub use self::{
+    error::{Error, Result},
+    input::{IntoRequestBody, TestInput},
+    output::TestOutput,
+    server::{Client, TestServer},
+};
 
 pub trait ResponseExt {
     fn header<H>(&self, name: H) -> Result<&http::header::HeaderValue>

@@ -1,8 +1,12 @@
-use failure::Error;
-use indexmap::IndexSet;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::str::FromStr;
+use {
+    failure::Error,
+    indexmap::IndexSet,
+    std::{
+        fmt,
+        hash::{Hash, Hasher},
+        str::FromStr,
+    },
+};
 
 /// A helper trait representing the conversion into an `Uri`.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]

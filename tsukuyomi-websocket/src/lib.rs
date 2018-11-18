@@ -22,22 +22,27 @@ extern crate sha1;
 extern crate tokio_tungstenite;
 extern crate tungstenite;
 
-use futures::IntoFuture;
-use http::header::HeaderMap;
-use http::{header, Response, StatusCode};
-use sha1::{Digest, Sha1};
-use tungstenite::protocol::Role;
+use {
+    futures::IntoFuture,
+    http::{
+        header::{self, HeaderMap},
+        Response, StatusCode,
+    },
+    sha1::{Digest, Sha1},
+    tsukuyomi::{
+        error::Error,
+        extractor::Extractor,
+        input::{body::UpgradedIo, Input},
+        output::Responder,
+    },
+    tungstenite::protocol::Role,
+};
 
 #[doc(no_inline)]
-pub use tokio_tungstenite::WebSocketStream;
-#[doc(no_inline)]
-pub use tungstenite::protocol::{Message, WebSocketConfig};
-
-use tsukuyomi::error::Error;
-use tsukuyomi::extractor::Extractor;
-use tsukuyomi::input::body::UpgradedIo;
-use tsukuyomi::input::Input;
-use tsukuyomi::output::Responder;
+pub use {
+    tokio_tungstenite::WebSocketStream,
+    tungstenite::protocol::{Message, WebSocketConfig},
+};
 
 /// A transport for exchanging data frames with the peer.
 pub type Transport = WebSocketStream<UpgradedIo>;

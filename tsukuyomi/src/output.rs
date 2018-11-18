@@ -1,26 +1,27 @@
 //! Components for constructing HTTP responses.
 
-use bytes::{Buf, Bytes, IntoBuf};
-use either::Either;
-use futures::{Poll, Stream};
-use http::header::HeaderMap;
-use http::{Response, StatusCode};
-use hyper::body::{Body, Payload};
-use serde::Serialize;
-
-use crate::error::{Error, Never};
-use crate::input::body::RequestBody;
-use crate::input::Input;
-
 pub use tsukuyomi_macros::Responder;
+use {
+    bytes::{Buf, Bytes, IntoBuf},
+    crate::{
+        error::{Error, Never},
+        input::{body::RequestBody, Input},
+    },
+    either::Either,
+    futures::{Poll, Stream},
+    http::{header::HeaderMap, Response, StatusCode},
+    hyper::body::{Body, Payload},
+    serde::Serialize,
+};
 
 // not a public API.
 #[doc(hidden)]
 pub mod internal {
-    use crate::error::Error;
-    use crate::input::Input;
-    use crate::output::{Responder, ResponseBody};
-
+    use crate::{
+        error::Error,
+        input::Input,
+        output::{Responder, ResponseBody},
+    };
     pub use http::Response;
 
     #[inline]
@@ -122,9 +123,7 @@ impl Payload for ResponseBody {
 
 #[cfg(feature = "tower-middleware")]
 mod tower {
-    use super::*;
-
-    use tower_web::util::BufStream;
+    use {super::*, tower_web::util::BufStream};
 
     impl BufStream for ResponseBody {
         type Item = hyper::Chunk;
@@ -325,10 +324,11 @@ where
 
 #[allow(missing_docs)]
 pub mod redirect {
-    use super::*;
-
-    use http::{Response, StatusCode};
-    use std::borrow::Cow;
+    use {
+        super::*,
+        http::{Response, StatusCode},
+        std::borrow::Cow,
+    };
 
     #[derive(Debug)]
     pub struct Redirect {

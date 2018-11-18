@@ -1,7 +1,7 @@
-use http;
-use http::header::HeaderValue;
-use http::Request;
-use hyper::body::Body;
+use {
+    http::{header::HeaderValue, Request},
+    hyper::body::Body,
+};
 
 // ==== traits ====
 

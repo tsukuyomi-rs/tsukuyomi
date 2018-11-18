@@ -32,9 +32,10 @@ fn main() -> tsukuyomi::server::Result<()> {
 }
 
 mod support_tera {
-    use http::header::HeaderValue;
-    use http::Response;
-    use tera::Tera;
+    use {
+        http::{header::HeaderValue, Response},
+        tera::Tera,
+    };
 
     pub trait TemplateExt {
         fn template_name(&self) -> &str;

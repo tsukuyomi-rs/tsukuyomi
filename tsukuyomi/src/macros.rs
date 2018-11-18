@@ -1,7 +1,8 @@
 pub mod local_key {
-    pub use crate::input::local_map::LocalKey;
-    pub use std::any::TypeId;
-    pub use std::marker::PhantomData;
+    pub use {
+        crate::input::local_map::LocalKey,
+        std::{any::TypeId, marker::PhantomData},
+    };
 }
 
 /// A macro to create a `LocalKey<T>`.
@@ -64,8 +65,7 @@ macro_rules! scope {
 }
 
 pub mod route {
-    pub use crate::app::route;
-    pub use http::Method;
+    pub use {crate::app::route, http::Method};
 }
 
 #[macro_export(local_inner_macros)]

@@ -1,14 +1,12 @@
 //! GraphQL executor.
 
-use std::sync::Arc;
-
-use futures::{Async, Future};
-use juniper::{GraphQLType, RootNode};
-
-use tsukuyomi::error::Error;
-use tsukuyomi::extractor::Extractor;
-
-use crate::request::{GraphQLRequest, GraphQLResponse};
+use {
+    crate::request::{GraphQLRequest, GraphQLResponse},
+    futures::{Async, Future},
+    juniper::{GraphQLType, RootNode},
+    std::sync::Arc,
+    tsukuyomi::{error::Error, extractor::Extractor},
+};
 
 /// A marker trait representing a root node of GraphQL schema.
 pub trait Schema: SchemaImpl {}

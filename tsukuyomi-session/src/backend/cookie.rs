@@ -1,22 +1,20 @@
 #![allow(missing_docs)]
 
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::fmt;
-
-use cookie::Cookie;
 #[cfg(feature = "secure")]
 use cookie::Key;
-use futures::{future, IntoFuture};
-use serde_json;
-use time::Duration;
-
-use tsukuyomi::error::{Error, Result};
-use tsukuyomi::input::{Cookies, Input};
-
-use super::imp::{Backend, BackendImpl};
-use crate::session::SessionInner;
-use crate::util::BuilderExt;
+use {
+    super::imp::{Backend, BackendImpl},
+    cookie::Cookie,
+    crate::{session::SessionInner, util::BuilderExt},
+    futures::{future, IntoFuture},
+    serde_json,
+    std::{borrow::Cow, collections::HashMap, fmt},
+    time::Duration,
+    tsukuyomi::{
+        error::{Error, Result},
+        input::{Cookies, Input},
+    },
+};
 
 #[cfg(feature = "secure")]
 enum Security {

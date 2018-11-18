@@ -1,8 +1,8 @@
-use bytes::Bytes;
-use http::Response;
-
-use tsukuyomi::input::Input;
-use tsukuyomi::output::Responder;
+use {
+    bytes::Bytes,
+    http::Response,
+    tsukuyomi::{input::Input, output::Responder},
+};
 
 /// Creates a handler function which returns a GraphiQL source.
 pub fn graphiql_source(url: impl AsRef<str> + 'static) -> impl Responder + Clone {

@@ -1,15 +1,17 @@
 //! Extractors for parsing message body.
 
-use std::str;
-
-use bytes::Bytes;
-use futures::{Async, Future};
-use mime::Mime;
-use serde::de::DeserializeOwned;
-
-use crate::error::Error;
-use crate::extractor::{ExtractStatus, Extractor};
-use crate::input::body::RequestBody;
+use {
+    bytes::Bytes,
+    crate::{
+        error::Error,
+        extractor::{ExtractStatus, Extractor},
+        input::body::RequestBody,
+    },
+    futures::{Async, Future},
+    mime::Mime,
+    serde::de::DeserializeOwned,
+    std::str,
+};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]

@@ -1,24 +1,12 @@
 //! The implementation of low level HTTP server.
 
+pub mod middleware;
+
 mod acceptor;
 mod error;
 mod http;
 mod launcher;
-pub mod middleware;
 mod transport;
-
-use std::net::SocketAddr;
-
-use hyper::server::conn::Http;
-use tower_service::NewService;
-
-use self::launcher::Launcher;
-use self::middleware::Middleware;
-
-pub use self::acceptor::Acceptor;
-pub use self::error::{Error, Result};
-pub use self::http::{HttpRequest, HttpResponse};
-pub use self::transport::{Peer, Transport};
 
 pub(crate) mod imp {
     use super::*;
@@ -40,6 +28,19 @@ pub(crate) mod imp {
         Server::new(new_service)
     }
 }
+
+pub use self::{
+    acceptor::Acceptor,
+    error::{Error, Result},
+    http::{HttpRequest, HttpResponse},
+    transport::{Peer, Transport},
+};
+use {
+    self::{launcher::Launcher, middleware::Middleware},
+    hyper::server::conn::Http,
+    std::net::SocketAddr,
+    tower_service::NewService,
+};
 
 // ==== Server ====
 

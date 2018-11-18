@@ -1,9 +1,11 @@
-use proc_macro2::{Span, TokenStream};
-use quote::*;
+use {
+    crate::uri::Uri,
+    proc_macro2::{Span, TokenStream},
+    quote::*,
+    syn::parse::{Error as ParseError, Result as ParseResult},
+};
 
-use crate::uri::Uri;
-
-pub fn route_expr_impl(input: impl Into<TokenStream>) -> syn::parse::Result<TokenStream> {
+pub fn route_expr_impl(input: impl Into<TokenStream>) -> ParseResult<TokenStream> {
     parse(input.into()).map(|input| derive(&input))
 }
 
@@ -17,11 +19,11 @@ struct RouteExprImplInput {
     params: Vec<(syn::Ident, ParamKind)>,
 }
 
-fn parse(input: TokenStream) -> syn::parse::Result<RouteExprImplInput> {
+fn parse(input: TokenStream) -> ParseResult<RouteExprImplInput> {
     let uri: syn::LitStr = syn::parse2(input)?;
 
     if let Err(err) = uri.value().parse::<Uri>() {
-        return Err(syn::parse::Error::new(
+        return Err(ParseError::new(
             uri.span(),
             format!("URI parse error: {}", err),
         ));

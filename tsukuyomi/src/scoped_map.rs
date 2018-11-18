@@ -1,7 +1,9 @@
-use std::any::TypeId;
-use std::collections::hash_map::{Entry, HashMap};
-use std::fmt;
-use std::hash::{BuildHasherDefault, Hasher};
+use std::{
+    any::TypeId,
+    collections::{hash_map::Entry, HashMap},
+    fmt,
+    hash::{BuildHasherDefault, Hasher},
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ScopeId {

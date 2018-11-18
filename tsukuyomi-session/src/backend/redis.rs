@@ -1,23 +1,20 @@
 #![allow(missing_docs)]
 #![cfg(feature = "redis-backend")]
 
-use std::borrow::Cow;
-use std::mem;
-
-use cookie::Cookie;
-use futures::{try_ready, Async, Future, Poll};
-use redis::r#async::Connection;
-use redis::Client;
-use redis::RedisFuture;
-use time::Duration;
-use uuid::Uuid;
-
-use tsukuyomi::error::{Error, Result};
-use tsukuyomi::input::local_map::local_key;
-use tsukuyomi::input::Input;
-
-use super::imp::{Backend, BackendImpl};
-use crate::session::SessionInner;
+use {
+    super::imp::{Backend, BackendImpl},
+    cookie::Cookie,
+    crate::session::SessionInner,
+    futures::{try_ready, Async, Future, Poll},
+    redis::{r#async::Connection, Client, RedisFuture},
+    std::{borrow::Cow, mem},
+    time::Duration,
+    tsukuyomi::{
+        error::{Error, Result},
+        input::{local_map::local_key, Input},
+    },
+    uuid::Uuid,
+};
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 #[derive(Debug)]

@@ -1,8 +1,8 @@
-use juniper::{self, FieldResult};
-use std::collections::HashMap;
-use std::sync::RwLock;
-
-use schema::{Human, NewHuman};
+use {
+    crate::schema::{Human, NewHuman},
+    juniper::FieldResult,
+    std::{collections::HashMap, sync::RwLock},
+};
 
 /// Arbitrary context data.
 #[derive(Debug, Default)]

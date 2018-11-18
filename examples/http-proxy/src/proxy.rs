@@ -1,16 +1,16 @@
-use std::mem;
-use std::net::SocketAddr;
-
-use futures::prelude::*;
-use http::header::{Entry, HeaderMap};
-use reqwest::IntoUrl;
-
-use tsukuyomi::error::{Error, Never};
-use tsukuyomi::extractor;
-use tsukuyomi::extractor::Extractor;
-use tsukuyomi::input::Input;
-use tsukuyomi::output::Responder;
-use tsukuyomi::server::Peer;
+use {
+    futures::prelude::*,
+    http::header::{Entry, HeaderMap},
+    reqwest::IntoUrl,
+    std::{mem, net::SocketAddr},
+    tsukuyomi::{
+        error::{Error, Never},
+        extractor::{self, Extractor},
+        input::Input,
+        output::Responder,
+        server::Peer,
+    },
+};
 
 #[derive(Debug)]
 pub struct Client {

@@ -1,10 +1,11 @@
 #[path = "tests_tree.rs"]
 mod tests;
 
-use failure::Error;
-use std::{cmp, fmt, mem};
-
-use super::Captures;
+use {
+    super::Captures,
+    failure::Error,
+    std::{cmp, fmt, mem},
+};
 
 #[derive(Clone, PartialEq)]
 enum PathKind {

@@ -1,9 +1,10 @@
-use futures::Stream;
-use http::Extensions;
-use std::fmt;
-use tokio::io::{AsyncRead, AsyncWrite};
-
-use super::imp::CritError;
+use {
+    super::imp::CritError,
+    futures::Stream,
+    http::Extensions,
+    std::fmt,
+    tokio::io::{AsyncRead, AsyncWrite},
+};
 
 /// A wrapper type containing a peer address.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,14 +53,15 @@ pub trait Transport {
 }
 
 mod tcp {
-    use super::*;
-
-    use std::io;
-    use std::net::SocketAddr;
-
-    use tokio::net::tcp::Incoming;
-    use tokio::net::{TcpListener, TcpStream};
-    use tokio::reactor::Handle;
+    use {
+        super::{Connection, ConnectionInfo, Peer, Transport},
+        http::Extensions,
+        std::{io, net::SocketAddr},
+        tokio::{
+            net::{tcp::Incoming, TcpListener, TcpStream},
+            reactor::Handle,
+        },
+    };
 
     impl Connection for TcpStream {
         type Info = TcpConnectionInfo;
@@ -134,15 +136,19 @@ mod tcp {
 
 #[cfg(unix)]
 mod uds {
-    use super::*;
-
-    use std::io;
-    use std::os::unix::net::SocketAddr;
-    use std::path::{Path, PathBuf};
-
-    use tokio::net::unix::Incoming;
-    use tokio::net::{UnixListener, UnixStream};
-    use tokio::reactor::Handle;
+    use {
+        super::{Connection, ConnectionInfo, Peer, Transport},
+        http::Extensions,
+        std::{
+            io,
+            os::unix::net::SocketAddr,
+            path::{Path, PathBuf},
+        },
+        tokio::{
+            net::{unix::Incoming, UnixListener, UnixStream},
+            reactor::Handle,
+        },
+    };
 
     impl Connection for UnixStream {
         type Info = UdsConnectionInfo;

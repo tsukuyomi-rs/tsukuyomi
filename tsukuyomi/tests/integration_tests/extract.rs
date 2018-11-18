@@ -1,8 +1,10 @@
-use tsukuyomi::app::route;
-use tsukuyomi::extractor;
-use tsukuyomi::extractor::Extractor;
-
-use http::Request;
+use {
+    http::Request,
+    tsukuyomi::{
+        app::route,
+        extractor::{self, Extractor},
+    },
+};
 
 #[test]
 fn unit_input() -> tsukuyomi::test::Result<()> {

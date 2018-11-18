@@ -24,5 +24,7 @@ mod executor;
 mod graphiql;
 mod request;
 
-pub use crate::executor::{executor, Executor, Schema};
-pub use crate::graphiql::graphiql_source;
+pub use crate::{
+    executor::{executor, Executor, Schema},
+    graphiql::graphiql_source,
+};

@@ -1,6 +1,7 @@
-use futures::{Future, IntoFuture};
-
-use super::transport::Connection;
+use {
+    super::transport::Connection,
+    futures::{Future, IntoFuture},
+};
 
 pub trait Acceptor<T> {
     type Conn: Connection;
@@ -51,9 +52,10 @@ where
 
 #[cfg(feature = "use-native-tls")]
 mod navite_tls {
-    use super::{Acceptor, Connection};
-
-    use tokio_tls::{Accept, TlsAcceptor, TlsStream};
+    use {
+        super::{Acceptor, Connection},
+        tokio_tls::{Accept, TlsAcceptor, TlsStream},
+    };
 
     impl<T> Connection for TlsStream<T>
     where
@@ -87,10 +89,11 @@ mod navite_tls {
 
 #[cfg(feature = "use-rustls")]
 mod rustls {
-    use super::{Acceptor, Connection};
-
-    use rustls::ServerSession;
-    use tokio_rustls::{Accept, TlsAcceptor, TlsStream};
+    use {
+        super::{Acceptor, Connection},
+        rustls::ServerSession,
+        tokio_rustls::{Accept, TlsAcceptor, TlsStream},
+    };
 
     impl<T> Connection for TlsStream<T, ServerSession>
     where
@@ -122,10 +125,11 @@ mod rustls {
 
 #[cfg(feature = "use-openssl")]
 mod openssl {
-    use super::{Acceptor, Connection};
-
-    use openssl::ssl::{HandshakeError, SslAcceptor};
-    use tokio_openssl::{AcceptAsync, SslAcceptorExt, SslStream};
+    use {
+        super::{Acceptor, Connection},
+        openssl::ssl::{HandshakeError, SslAcceptor},
+        tokio_openssl::{AcceptAsync, SslAcceptorExt, SslStream},
+    };
 
     impl<T> Connection for SslStream<T>
     where

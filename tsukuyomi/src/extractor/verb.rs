@@ -2,12 +2,12 @@
 
 #![allow(missing_docs)]
 
-use futures::Future;
-use http::Method;
-
-use crate::error::Error;
-use crate::extractor::{Extract, Extractor};
-use crate::input::Input;
+use {
+    super::{Extract, Extractor},
+    crate::{error::Error, input::Input},
+    futures::Future,
+    http::Method,
+};
 
 pub fn verb<E>(extractor: E, method: Method) -> impl Extractor<Output = E::Output, Error = Error>
 where

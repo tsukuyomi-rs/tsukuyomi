@@ -1,14 +1,13 @@
 //! Components for receiving incoming request bodies.
 
-use std::io;
-use std::mem;
-
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{Async, Future, Poll, Stream};
-use http::header::HeaderMap;
-use hyper::body::{Body, Payload};
-
-use crate::error::Critical;
+use {
+    bytes::{Buf, BufMut, Bytes, BytesMut},
+    crate::error::Critical,
+    futures::{Async, Future, Poll, Stream},
+    http::header::HeaderMap,
+    hyper::body::{Body, Payload},
+    std::{io, mem},
+};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]

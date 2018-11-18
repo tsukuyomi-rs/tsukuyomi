@@ -1,13 +1,11 @@
 //! Primitives and re-exports for handling asynchronous tasks.
 
 #[doc(no_inline)]
-pub use futures::sync::oneshot::SpawnHandle;
-#[doc(no_inline)]
-pub use futures::{Async, Future, Poll};
-#[doc(no_inline)]
-pub use tokio::executor::{spawn, DefaultExecutor, Executor, Spawn, SpawnError};
-#[doc(no_inline)]
-pub use tokio_threadpool::{blocking as poll_blocking, BlockingError};
+pub use {
+    futures::{sync::oneshot::SpawnHandle, Async, Future, Poll},
+    tokio::executor::{spawn, DefaultExecutor, Executor, Spawn, SpawnError},
+    tokio_threadpool::{blocking as poll_blocking, BlockingError},
+};
 
 /// Spawns the specified `Future` onto the default task executor, and returns its handle.
 #[inline]

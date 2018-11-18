@@ -1,10 +1,12 @@
 //! Components for managing request-local data.
 
-use std::any::TypeId;
-use std::collections::hash_map::{self, HashMap};
-use std::fmt;
-use std::hash::{BuildHasherDefault, Hasher};
-use std::marker::PhantomData;
+use std::{
+    any::TypeId,
+    collections::{hash_map, HashMap},
+    fmt,
+    hash::{BuildHasherDefault, Hasher},
+    marker::PhantomData,
+};
 
 pub use crate::local_key;
 

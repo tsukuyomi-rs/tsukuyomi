@@ -1,26 +1,32 @@
 //! The basic components for serving static files.
 
-use std::borrow::Cow;
-use std::fs::{File, Metadata};
-use std::io;
-use std::io::Read as _Read;
-use std::path::Path;
-use std::str::FromStr;
-use std::time::Duration;
-use std::{cmp, fmt, mem};
-
-use bytes::{BufMut, Bytes, BytesMut};
-use filetime::FileTime;
-use futures::{Async, Future, Poll, Stream};
-use http::header::HeaderMap;
-use http::{header, Response, StatusCode};
-use log::trace;
-use time::Timespec;
-
-use crate::error::Error;
-use crate::input::Input;
-use crate::output::{Responder, ResponseBody};
-use crate::rt::poll_blocking;
+use {
+    bytes::{BufMut, Bytes, BytesMut},
+    crate::{
+        error::Error,
+        input::Input,
+        output::{Responder, ResponseBody},
+        rt::poll_blocking,
+    },
+    filetime::FileTime,
+    futures::{Async, Future, Poll, Stream},
+    http::{
+        header::{self, HeaderMap},
+        Response, StatusCode,
+    },
+    log::trace,
+    std::{
+        borrow::Cow,
+        cmp, fmt,
+        fs::{File, Metadata},
+        io::{self, Read as _Read},
+        mem,
+        path::Path,
+        str::FromStr,
+        time::Duration,
+    },
+    time::Timespec,
+};
 
 // ==== headers ====
 

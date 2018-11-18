@@ -1,9 +1,9 @@
 extern crate openssl;
 extern crate tsukuyomi;
 
-fn main() -> tsukuyomi::server::Result<()> {
-    use openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod};
+use openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod};
 
+fn main() -> tsukuyomi::server::Result<()> {
     let mut builder = SslAcceptor::mozilla_modern(SslMethod::tls())?;
     builder.set_certificate_file("./private/cert.pem", SslFiletype::PEM)?;
     builder.set_private_key_file("./private/key.pem", SslFiletype::PEM)?;

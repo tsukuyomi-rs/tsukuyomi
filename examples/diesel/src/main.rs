@@ -13,18 +13,20 @@ mod conn;
 mod model;
 mod schema;
 
-use dotenv::dotenv;
-use std::env;
-use std::sync::Arc;
-
-use tsukuyomi::app::route;
-use tsukuyomi::error::Error;
-use tsukuyomi::extractor;
-use tsukuyomi::extractor::Extractor;
-use tsukuyomi::rt::Future;
-
-use crate::conn::Conn;
-use crate::model::{NewPost, Post};
+use {
+    crate::{
+        conn::Conn,
+        model::{NewPost, Post},
+    },
+    dotenv::dotenv,
+    std::{env, sync::Arc},
+    tsukuyomi::{
+        app::route,
+        error::Error,
+        extractor::{self, Extractor},
+        rt::Future,
+    },
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
     pretty_env_logger::init();

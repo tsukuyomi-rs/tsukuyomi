@@ -1,10 +1,11 @@
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
-use diesel::sqlite::SqliteConnection;
-use failure::Fallible;
-
-use tsukuyomi::error::Error;
-use tsukuyomi::extractor::Extractor;
-use tsukuyomi::rt::Future;
+use {
+    diesel::{
+        r2d2::{ConnectionManager, Pool, PooledConnection},
+        sqlite::SqliteConnection,
+    },
+    failure::Fallible,
+    tsukuyomi::{error::Error, extractor::Extractor, rt::Future},
+};
 
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
 

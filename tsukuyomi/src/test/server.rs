@@ -1,22 +1,27 @@
-use std::mem;
-use std::panic::{resume_unwind, AssertUnwindSafe};
-use std::sync::Arc;
-
-use futures::{Future, Poll};
-use http;
-use http::Response;
-use hyper::body::{Body, Payload};
-use tokio::executor::thread_pool::Builder as ThreadPoolBuilder;
-use tokio::runtime;
-use tokio::runtime::Runtime;
-use tower_service::{NewService, Service};
-
-use crate::server::imp::CritError;
-use crate::server::middleware::{Identity, Middleware};
-use crate::server::{HttpRequest, HttpResponse};
-
-use super::input::TestInput;
-use super::output::{Receive, TestOutput};
+use {
+    super::{
+        input::TestInput,
+        output::{Receive, TestOutput},
+    },
+    crate::server::{
+        imp::CritError,
+        middleware::{Identity, Middleware},
+        HttpRequest, HttpResponse,
+    },
+    futures::{Future, Poll},
+    http::Response,
+    hyper::body::{Body, Payload},
+    std::{
+        mem,
+        panic::{resume_unwind, AssertUnwindSafe},
+        sync::Arc,
+    },
+    tokio::{
+        executor::thread_pool::Builder as ThreadPoolBuilder,
+        runtime::{self, Runtime},
+    },
+    tower_service::{NewService, Service},
+};
 
 /// A local server which emulates an HTTP service without using
 /// the low-level transport.

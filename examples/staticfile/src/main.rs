@@ -1,8 +1,7 @@
 extern crate tsukuyomi;
 extern crate tsukuyomi_fs;
 
-use tsukuyomi::app::route;
-use tsukuyomi_fs::Staticfiles;
+use {tsukuyomi::app::route, tsukuyomi_fs::Staticfiles};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
