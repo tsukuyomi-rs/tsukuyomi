@@ -94,22 +94,16 @@ impl NewService for App {
     type Request = Request<RequestBody>;
     type Response = Response<ResponseBody>;
     type Error = Critical;
-    type Service = AppService;
+    type Service = Self;
     type InitError = Critical;
     type Future = futures::future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {
-        futures::future::ok(AppService { app: self.clone() })
+        futures::future::ok(self.clone())
     }
 }
 
-/// A `Service` representation of the application, created by `App`.
-#[derive(Debug)]
-pub struct AppService {
-    app: App,
-}
-
-impl Service for AppService {
+impl Service for App {
     type Request = Request<RequestBody>;
     type Response = Response<ResponseBody>;
     type Error = Critical;
@@ -125,7 +119,7 @@ impl Service for AppService {
         let (parts, body) = request.into_parts();
         AppFuture {
             state: AppFutureState::Init(body),
-            app: self.app.clone(),
+            app: self.clone(),
             request: Request::from_parts(parts, ()),
             locals: LocalMap::default(),
             response_headers: None,
