@@ -3,7 +3,7 @@
 #![cfg_attr(feature = "cargo-clippy", forbid(stutter))]
 
 mod builder;
-mod callback;
+pub mod callback;
 mod error;
 pub(crate) mod imp;
 pub mod route;
@@ -26,11 +26,11 @@ use crate::uri::Uri;
 pub use crate::{route, scope};
 
 pub use self::builder::Builder;
-pub use self::callback::Callback;
 pub use self::error::{Error, Result};
 pub use self::route::Route;
 pub use self::scope::Scope;
 
+use self::callback::Callback;
 use self::route::Handler;
 use self::scope::Modifier;
 

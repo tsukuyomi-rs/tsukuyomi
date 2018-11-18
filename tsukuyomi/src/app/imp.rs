@@ -1,11 +1,10 @@
 use std::mem;
 
-use cookie::{Cookie, CookieJar};
+use cookie::CookieJar;
 use futures::{Async, Future, IntoFuture, Poll};
 use http::header::{HeaderMap, HeaderValue};
 use http::{header, Method, Request, Response, StatusCode};
 use hyper::body::Payload;
-use mime::Mime;
 use tower_service::{NewService, Service};
 
 use crate::async_result::AsyncResult;
@@ -15,6 +14,7 @@ use crate::input::{Input, RequestBody};
 use crate::output::{Output, ResponseBody};
 use crate::recognizer::Captures;
 
+use super::callback::Context as CallbackContext;
 use super::{App, RouteData, RouteId};
 
 macro_rules! ready {
@@ -121,6 +121,9 @@ impl Service for AppService {
             state: AppFutureState::Init(body),
             app: self.app.clone(),
             request: Request::from_parts(parts, ()),
+            locals: LocalMap::default(),
+            response_headers: None,
+            cookies: None,
         }
     }
 }
@@ -132,6 +135,9 @@ pub struct AppFuture {
     state: AppFutureState,
     app: App,
     request: Request<()>,
+    locals: LocalMap,
+    response_headers: Option<HeaderMap>,
+    cookies: Option<CookieJar>,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
@@ -156,15 +162,33 @@ enum AppFutureState {
     Done,
 }
 
-impl AppFuture {
-    fn poll_in_flight(&mut self) -> Poll<(Output, Option<AppContext>), Error> {
-        use self::AppFutureState::*;
-
-        macro_rules! input {
-            ($context:expr) => {
-                &mut Input::new(&self.request, &self.app, $context)
-            };
+macro_rules! callback_context {
+    ($self:expr) => {
+        &mut CallbackContext {
+            request: &$self.request,
+            locals: &mut $self.locals,
+            response_headers: &mut $self.response_headers,
+            cookies: &mut $self.cookies,
         }
+    };
+}
+
+macro_rules! input {
+    ($self:expr, $context:expr) => {
+        &mut Input {
+            app: &$self.app,
+            request: &$self.request,
+            locals: &mut $self.locals,
+            response_headers: &mut $self.response_headers,
+            cookies: &mut $self.cookies,
+            context: $context,
+        }
+    };
+}
+
+impl AppFuture {
+    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
+        use self::AppFutureState::*;
 
         #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
         enum Polled {
@@ -174,7 +198,7 @@ impl AppFuture {
             Empty,
         }
 
-        let (result, context) = loop {
+        let result = loop {
             let polled = match self.state {
                 Init(..) => Polled::Empty,
                 BeforeHandle {
@@ -183,27 +207,33 @@ impl AppFuture {
                     ..
                 } => {
                     // FIXME: use result.transpose()
-                    Polled::BeforeHandle(match ready!(in_flight.poll_ready(input!(context))) {
-                        Ok(Some(x)) => Some(Ok(x)),
-                        Ok(None) => None,
-                        Err(e) => Some(Err(e)),
-                    })
+                    Polled::BeforeHandle(
+                        match ready!(in_flight.poll_ready(input!(self, context))) {
+                            Ok(Some(x)) => Some(Ok(x)),
+                            Ok(None) => None,
+                            Err(e) => Some(Err(e)),
+                        },
+                    )
                 }
                 Handle {
                     ref mut in_flight,
                     ref mut context,
                     ..
-                } => Polled::Handle(ready!(in_flight.poll_ready(input!(context)))),
+                } => Polled::Handle(ready!(in_flight.poll_ready(input!(self, context)))),
                 AfterHandle {
                     ref mut in_flight,
                     ref mut context,
                     ..
-                } => Polled::AfterHandle(ready!(in_flight.poll_ready(input!(context)))),
+                } => Polled::AfterHandle(ready!(in_flight.poll_ready(input!(self, context)))),
                 Done => panic!("unexpected state"),
             };
 
             self.state = match (mem::replace(&mut self.state, Done), polled) {
                 (Init(body), Polled::Empty) => {
+                    if let Some(output) = self.app.data.callback.on_init(callback_context!(self))? {
+                        return Ok(Async::Ready(output));
+                    }
+
                     let (pos, params) = match self
                         .app
                         .recognize(self.request.uri().path(), self.request.method())
@@ -216,7 +246,7 @@ impl AppFuture {
                             response
                                 .headers_mut()
                                 .insert(http::header::ALLOW, allowed_methods.clone());
-                            return Ok(Async::Ready((response, None)));
+                            return Ok(Async::Ready(response));
                         }
                         Err(e) => return Err(e.into()),
                     };
@@ -228,20 +258,18 @@ impl AppFuture {
                         is_upgraded: false,
                         route: route.id,
                         captures: params,
-                        cookies: None,
-                        locals: LocalMap::default(),
                         _priv: (),
                     };
 
                     if let Some(modifier) = self.app.find_modifier_by_pos(route.id, 0) {
                         BeforeHandle {
-                            in_flight: modifier.before_handle(input!(&mut context)),
+                            in_flight: modifier.before_handle(input!(self, &mut context)),
                             context,
                             pos: 0,
                         }
                     } else {
                         Handle {
-                            in_flight: route.handler.handle(input!(&mut context)),
+                            in_flight: route.handler.handle(input!(self, &mut context)),
                             context,
                             pos: 0,
                         }
@@ -268,13 +296,13 @@ impl AppFuture {
                 ) => match pos.checked_sub(1) {
                     Some(pos) => match self.app.find_modifier_by_pos(context.route_id(), pos) {
                         Some(modifier) => AfterHandle {
-                            in_flight: modifier.after_handle(input!(&mut context), result),
+                            in_flight: modifier.after_handle(input!(self, &mut context), result),
                             context,
                             pos,
                         },
-                        None => break (result, context),
+                        None => break result,
                     },
-                    None => break (result, context),
+                    None => break result,
                 },
 
                 (
@@ -286,7 +314,7 @@ impl AppFuture {
                     self.app.find_modifier_by_pos(context.route_id(), pos + 1)
                 {
                     BeforeHandle {
-                        in_flight: modifier.before_handle(input!(&mut context)),
+                        in_flight: modifier.before_handle(input!(self, &mut context)),
                         context,
                         pos: pos + 1,
                     }
@@ -295,7 +323,7 @@ impl AppFuture {
                         in_flight: context
                             .route(&self.app)
                             .handler
-                            .handle(input!(&mut context)),
+                            .handle(input!(self, &mut context)),
                         context,
                         pos: pos + 1,
                     }
@@ -305,17 +333,22 @@ impl AppFuture {
             }
         };
 
-        result.map(|output| Async::Ready((output, Some(context))))
+        result.map(Async::Ready)
     }
 
-    fn handle_response(
-        &mut self,
-        mut output: Output,
-        context: &Option<AppContext>,
-    ) -> Result<Response<ResponseBody>, Critical> {
-        if let Some(context) = context {
+    fn handle_response(&mut self, mut output: Output) -> Result<Output, Critical> {
+        if let Some(ref jar) = self.cookies {
             // append Cookie entries.
-            context.append_cookies(output.headers_mut());
+            for cookie in jar.delta() {
+                output.headers_mut().append(
+                    header::SET_COOKIE,
+                    cookie.encoded().to_string().parse().unwrap(),
+                );
+            }
+        }
+
+        if let Some(hdrs) = self.response_headers.take() {
+            output.headers_mut().extend(hdrs);
         }
 
         // append the value of Content-Length to the response header if missing.
@@ -333,6 +366,13 @@ impl AppFuture {
 
         Ok(output)
     }
+
+    fn handle_error(&mut self, err: Error) -> Result<Output, Critical> {
+        self.app
+            .data
+            .callback
+            .on_error(err, callback_context!(self))
+    }
 }
 
 impl Future for AppFuture {
@@ -340,20 +380,15 @@ impl Future for AppFuture {
     type Error = Critical;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.poll_in_flight() {
-            Ok(Async::Ready((output, context))) => {
-                self.handle_response(output, &context).map(Async::Ready)
-            }
-            Ok(Async::NotReady) => Ok(Async::NotReady),
+        let output = match self.poll_in_flight() {
+            Ok(Async::Ready(output)) => output,
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(err) => {
                 self.state = AppFutureState::Done;
-                self.app
-                    .data
-                    .callback
-                    .on_error(err, &self.request)
-                    .map(Async::Ready)
+                self.handle_error(err)?
             }
-        }
+        };
+        self.handle_response(output).map(Async::Ready)
     }
 }
 
@@ -363,8 +398,6 @@ pub(crate) struct AppContext {
     is_upgraded: bool,
     route: RouteId,
     captures: Option<Captures>,
-    locals: LocalMap,
-    cookies: Option<CookieJar>,
     _priv: (),
 }
 
@@ -398,34 +431,6 @@ impl AppContext {
         Ok(())
     }
 
-    pub(crate) fn parse_content_type(
-        &mut self,
-        headers: &HeaderMap,
-    ) -> Result<Option<&Mime>, Error> {
-        use crate::input::local_map::local_key;
-        use crate::input::local_map::Entry;
-
-        local_key! {
-            static KEY: Option<Mime>;
-        }
-
-        match self.locals.entry(&KEY) {
-            Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
-            Entry::Vacant(entry) => {
-                let mime = match headers.get(http::header::CONTENT_TYPE) {
-                    Some(h) => h
-                        .to_str()
-                        .map_err(crate::error::bad_request)?
-                        .parse()
-                        .map(Some)
-                        .map_err(crate::error::bad_request)?,
-                    None => None,
-                };
-                Ok(entry.insert(mime).as_ref())
-            }
-        }
-    }
-
     pub(crate) fn route_id(&self) -> RouteId {
         self.route
     }
@@ -437,44 +442,5 @@ impl AppContext {
 
     pub(crate) fn captures(&self) -> Option<&Captures> {
         self.captures.as_ref()
-    }
-
-    pub(crate) fn locals(&self) -> &LocalMap {
-        &self.locals
-    }
-
-    pub(crate) fn locals_mut(&mut self) -> &mut LocalMap {
-        &mut self.locals
-    }
-
-    pub(crate) fn init_cookie_jar(&mut self, h: &HeaderMap) -> Result<&mut CookieJar, Error> {
-        if let Some(ref mut jar) = self.cookies {
-            return Ok(jar);
-        }
-
-        let mut jar = CookieJar::new();
-
-        for raw in h.get_all(header::COOKIE) {
-            let raw_s = raw.to_str().map_err(crate::error::bad_request)?;
-            for s in raw_s.split(';').map(|s| s.trim()) {
-                let cookie = Cookie::parse_encoded(s)
-                    .map_err(crate::error::bad_request)?
-                    .into_owned();
-                jar.add_original(cookie);
-            }
-        }
-
-        Ok(self.cookies.get_or_insert(jar))
-    }
-
-    fn append_cookies(&self, h: &mut HeaderMap) {
-        if let Some(ref jar) = self.cookies {
-            for cookie in jar.delta() {
-                h.insert(
-                    header::SET_COOKIE,
-                    cookie.encoded().to_string().parse().unwrap(),
-                );
-            }
-        }
     }
 }

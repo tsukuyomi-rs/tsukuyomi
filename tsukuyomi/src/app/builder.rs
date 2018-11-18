@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use http::header::HeaderValue;
-use http::{Method, Request, Response};
+use http::{Method, Response};
 use indexmap::{IndexMap, IndexSet};
 
 use crate::error::Critical;
@@ -107,9 +107,60 @@ where
         self
     }
 
+    pub fn on_init<F, Bd>(self, on_init: F) -> Builder<S, impl Callback>
+    where
+        F: Fn(&mut super::callback::Context<'_>) -> crate::error::Result<Option<Response<Bd>>>
+            + Send
+            + Sync
+            + 'static,
+        Bd: Into<ResponseBody>,
+    {
+        Builder {
+            scope: self.scope,
+            config: self.config,
+            callback: {
+                #[allow(missing_debug_implementations)]
+                struct WrapOnInit<C, F>(C, F);
+
+                impl<C, F, Bd> Callback for WrapOnInit<C, F>
+                where
+                    C: Callback,
+                    F: Fn(&mut super::callback::Context<'_>)
+                            -> crate::error::Result<Option<Response<Bd>>>
+                        + Send
+                        + Sync
+                        + 'static,
+                    Bd: Into<ResponseBody>,
+                {
+                    fn on_init(
+                        &self,
+                        cx: &mut super::callback::Context<'_>,
+                    ) -> crate::error::Result<Option<Output>> {
+                        match self.0.on_init(cx)? {
+                            Some(output) => Ok(Some(output)),
+                            None => {
+                                (self.1)(cx).map(|x| x.map(|response| response.map(Into::into)))
+                            }
+                        }
+                    }
+
+                    fn on_error(
+                        &self,
+                        err: crate::error::Error,
+                        cx: &mut super::callback::Context<'_>,
+                    ) -> std::result::Result<Output, Critical> {
+                        self.0.on_error(err, cx)
+                    }
+                }
+
+                WrapOnInit(self.callback, on_init)
+            },
+        }
+    }
+
     pub fn on_error<F, Bd>(self, on_error: F) -> Builder<S, impl Callback>
     where
-        F: Fn(crate::error::Error, &Request<()>)
+        F: Fn(crate::error::Error, &mut super::callback::Context<'_>)
                 -> std::result::Result<Response<Bd>, crate::error::Critical>
             + Send
             + Sync
@@ -126,19 +177,26 @@ where
                 impl<C, F, Bd> Callback for WrapOnError<C, F>
                 where
                     C: Callback,
-                    F: Fn(crate::error::Error, &Request<()>)
+                    F: Fn(crate::error::Error, &mut super::callback::Context<'_>)
                             -> std::result::Result<Response<Bd>, Critical>
                         + Send
                         + Sync
                         + 'static,
                     Bd: Into<ResponseBody>,
                 {
+                    fn on_init(
+                        &self,
+                        cx: &mut super::callback::Context<'_>,
+                    ) -> crate::error::Result<Option<Output>> {
+                        self.0.on_init(cx)
+                    }
+
                     fn on_error(
                         &self,
                         err: crate::error::Error,
-                        request: &Request<()>,
+                        cx: &mut super::callback::Context<'_>,
                     ) -> std::result::Result<Output, Critical> {
-                        (self.1)(err, request).map(|response| response.map(Into::into))
+                        (self.1)(err, cx).map(|response| response.map(Into::into))
                     }
                 }
 
