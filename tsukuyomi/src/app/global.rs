@@ -5,6 +5,8 @@ use crate::output::{Output, ResponseBody};
 
 use super::builder::AppContext;
 
+pub use super::imp::RecognizeError;
+
 /// A trait representing a global error handlers.
 pub trait ErrorHandler {
     /// Converts an error value into an HTTP response.

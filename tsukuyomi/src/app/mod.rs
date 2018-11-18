@@ -23,13 +23,16 @@ use crate::recognizer::Recognizer;
 use crate::scoped_map::{ScopeId, ScopedContainer};
 use crate::uri::Uri;
 
-pub use self::error::{Error, Result};
-pub use self::global::{ErrorHandler, Global};
-pub use self::imp::RecognizeError;
-pub use self::route::{Handler, Route};
-pub use self::scope::{Modifier, Scope};
-
 pub use crate::{route, scope};
+
+pub use self::error::{Error, Result};
+pub use self::global::Global;
+pub use self::route::Route;
+pub use self::scope::Scope;
+
+use self::global::ErrorHandler;
+use self::route::Handler;
+use self::scope::Modifier;
 
 pub fn route() -> self::route::Builder<()> {
     self::route::Builder::<()>::default()
