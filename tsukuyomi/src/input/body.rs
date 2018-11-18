@@ -169,7 +169,7 @@ enum ReadAllState {
 }
 
 impl ReadAll {
-    pub(super) fn new(body: RequestBody) -> Self {
+    pub(crate) fn new(body: RequestBody) -> Self {
         Self {
             state: ReadAllState::Receiving(body, BytesMut::new()),
         }

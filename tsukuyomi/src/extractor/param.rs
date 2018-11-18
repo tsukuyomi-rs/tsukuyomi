@@ -76,7 +76,7 @@ where
     T: FromParam,
 {
     super::ready(move |input| {
-        let params = input.params();
+        let params = input.params().ok_or_else(invalid_param)?;
         let s = params
             .get(pos)
             .ok_or_else(|| crate::error::internal_server_error("the cursor is out of range"))?;
@@ -90,7 +90,7 @@ where
 {
     let name = name.into();
     super::ready(move |input| {
-        let params = input.params();
+        let params = input.params().ok_or_else(invalid_param)?;
         let s = params
             .name(&name)
             .ok_or_else(|| crate::error::internal_server_error("the cursor is out of range"))?;
@@ -103,10 +103,14 @@ where
     T: FromParam,
 {
     super::ready(move |input| {
-        let params = input.params();
+        let params = input.params().ok_or_else(invalid_param)?;
         let s = params.get_wildcard().ok_or_else(|| {
             crate::error::internal_server_error("the wildcard parameter is not set")
         })?;
         T::from_param(EncodedStr(s)).map_err(Into::into)
     })
+}
+
+fn invalid_param() -> Error {
+    crate::error::internal_server_error("The parameters is not available.")
 }

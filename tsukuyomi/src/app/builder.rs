@@ -9,6 +9,7 @@ use {
     bytes::BytesMut,
     crate::{
         error::Critical,
+        input::Input,
         output::{Output, ResponseBody},
         recognizer::Recognizer,
         scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
@@ -110,10 +111,7 @@ where
 
     pub fn on_init<F, Bd>(self, on_init: F) -> Builder<S, impl Callback>
     where
-        F: Fn(&mut super::callback::Context<'_>) -> crate::error::Result<Option<Response<Bd>>>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn(&mut Input<'_>) -> crate::error::Result<Option<Response<Bd>>> + Send + Sync + 'static,
         Bd: Into<ResponseBody>,
     {
         Builder {
@@ -126,8 +124,7 @@ where
                 impl<C, F, Bd> Callback for WrapOnInit<C, F>
                 where
                     C: Callback,
-                    F: Fn(&mut super::callback::Context<'_>)
-                            -> crate::error::Result<Option<Response<Bd>>>
+                    F: Fn(&mut Input<'_>) -> crate::error::Result<Option<Response<Bd>>>
                         + Send
                         + Sync
                         + 'static,
@@ -135,12 +132,12 @@ where
                 {
                     fn on_init(
                         &self,
-                        cx: &mut super::callback::Context<'_>,
+                        input: &mut Input<'_>,
                     ) -> crate::error::Result<Option<Output>> {
-                        match self.0.on_init(cx)? {
+                        match self.0.on_init(input)? {
                             Some(output) => Ok(Some(output)),
                             None => {
-                                (self.1)(cx).map(|x| x.map(|response| response.map(Into::into)))
+                                (self.1)(input).map(|x| x.map(|response| response.map(Into::into)))
                             }
                         }
                     }
@@ -148,9 +145,9 @@ where
                     fn on_error(
                         &self,
                         err: crate::error::Error,
-                        cx: &mut super::callback::Context<'_>,
+                        input: &mut Input<'_>,
                     ) -> std::result::Result<Output, Critical> {
-                        self.0.on_error(err, cx)
+                        self.0.on_error(err, input)
                     }
                 }
 
@@ -161,7 +158,7 @@ where
 
     pub fn on_error<F, Bd>(self, on_error: F) -> Builder<S, impl Callback>
     where
-        F: Fn(crate::error::Error, &mut super::callback::Context<'_>)
+        F: Fn(crate::error::Error, &mut Input<'_>)
                 -> std::result::Result<Response<Bd>, crate::error::Critical>
             + Send
             + Sync
@@ -178,7 +175,7 @@ where
                 impl<C, F, Bd> Callback for WrapOnError<C, F>
                 where
                     C: Callback,
-                    F: Fn(crate::error::Error, &mut super::callback::Context<'_>)
+                    F: Fn(crate::error::Error, &mut Input<'_>)
                             -> std::result::Result<Response<Bd>, Critical>
                         + Send
                         + Sync
@@ -187,17 +184,17 @@ where
                 {
                     fn on_init(
                         &self,
-                        cx: &mut super::callback::Context<'_>,
+                        input: &mut Input<'_>,
                     ) -> crate::error::Result<Option<Output>> {
-                        self.0.on_init(cx)
+                        self.0.on_init(input)
                     }
 
                     fn on_error(
                         &self,
                         err: crate::error::Error,
-                        cx: &mut super::callback::Context<'_>,
+                        input: &mut Input<'_>,
                     ) -> std::result::Result<Output, Critical> {
-                        (self.1)(err, cx).map(|response| response.map(Into::into))
+                        (self.1)(err, input).map(|response| response.map(Into::into))
                     }
                 }
 

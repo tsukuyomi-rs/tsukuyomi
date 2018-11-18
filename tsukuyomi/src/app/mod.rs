@@ -2,20 +2,20 @@
 
 #![cfg_attr(feature = "cargo-clippy", forbid(stutter))]
 
-pub mod callback;
 pub mod route;
 pub mod scope;
 
 mod builder;
+mod callback;
 mod error;
 pub(crate) mod imp;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use self::imp::AppContext;
 pub use {
     self::{
         builder::Builder,
+        callback::Callback,
         error::{Error, Result},
         route::Route,
         scope::Scope,
@@ -23,7 +23,7 @@ pub use {
     crate::{route, scope},
 };
 use {
-    self::{callback::Callback, route::Handler, scope::Modifier},
+    self::{route::Handler, scope::Modifier},
     crate::{
         recognizer::Recognizer,
         scoped_map::{ScopeId, ScopedContainer},

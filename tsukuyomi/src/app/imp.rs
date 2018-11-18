@@ -1,12 +1,13 @@
 use {
-    super::{callback::Context as CallbackContext, App, RouteData, RouteId},
-    cookie::CookieJar,
+    super::{App, RouteId},
+    cookie::{Cookie, CookieJar},
     crate::{
         async_result::AsyncResult,
         error::{Critical, Error, HttpError},
-        input::{local_map::LocalMap, Input, RequestBody},
+        input::{local_map::LocalMap, RequestBody},
         output::{Output, ResponseBody},
         recognizer::Captures,
+        uri::CaptureNames,
     },
     futures::{Async, Future, IntoFuture, Poll},
     http::{
@@ -15,7 +16,8 @@ use {
         Method, Request, Response, StatusCode,
     },
     hyper::body::Payload,
-    std::mem,
+    mime::Mime,
+    std::{marker::PhantomData, mem, ops::Index, rc::Rc},
     tower_service::{NewService, Service},
 };
 
@@ -118,12 +120,17 @@ impl Service for App {
     fn call(&mut self, request: Self::Request) -> Self::Future {
         let (parts, body) = request.into_parts();
         AppFuture {
-            state: AppFutureState::Init(body),
+            state: AppFutureState::Init,
             app: self.clone(),
             request: Request::from_parts(parts, ()),
-            locals: LocalMap::default(),
-            response_headers: None,
-            cookies: None,
+            context: AppContext {
+                body: Some(body),
+                is_upgraded: false,
+                locals: LocalMap::default(),
+                response_headers: None,
+                cookies: None,
+                route: None,
+            },
         }
     }
 }
@@ -133,55 +140,40 @@ impl Service for App {
 #[derive(Debug)]
 pub struct AppFuture {
     state: AppFutureState,
-    app: App,
+    context: AppContext,
     request: Request<()>,
-    locals: LocalMap,
-    response_headers: Option<HeaderMap>,
-    cookies: Option<CookieJar>,
+    app: App,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 #[derive(Debug)]
 enum AppFutureState {
-    Init(RequestBody),
+    Init,
     BeforeHandle {
-        context: AppContext,
         in_flight: AsyncResult<Option<Output>>,
+        route_id: RouteId,
         pos: usize,
     },
     Handle {
-        context: AppContext,
         in_flight: AsyncResult<Output>,
+        route_id: RouteId,
         pos: usize,
     },
     AfterHandle {
-        context: AppContext,
         in_flight: AsyncResult<Output>,
+        route_id: RouteId,
         pos: usize,
     },
     Done,
 }
 
-macro_rules! callback_context {
-    ($self:expr) => {
-        &mut CallbackContext {
-            request: &$self.request,
-            locals: &mut $self.locals,
-            response_headers: &mut $self.response_headers,
-            cookies: &mut $self.cookies,
-        }
-    };
-}
-
 macro_rules! input {
-    ($self:expr, $context:expr) => {
+    ($self:expr) => {
         &mut Input {
-            app: &$self.app,
+            context: &mut $self.context,
             request: &$self.request,
-            locals: &mut $self.locals,
-            response_headers: &mut $self.response_headers,
-            cookies: &mut $self.cookies,
-            context: $context,
+            app: &$self.app,
+            _marker: PhantomData,
         }
     };
 }
@@ -200,37 +192,29 @@ impl AppFuture {
 
         let result = loop {
             let polled = match self.state {
-                Init(..) => Polled::Empty,
+                Init => Polled::Empty,
                 BeforeHandle {
-                    ref mut in_flight,
-                    ref mut context,
-                    ..
+                    ref mut in_flight, ..
                 } => {
                     // FIXME: use result.transpose()
-                    Polled::BeforeHandle(
-                        match ready!(in_flight.poll_ready(input!(self, context))) {
-                            Ok(Some(x)) => Some(Ok(x)),
-                            Ok(None) => None,
-                            Err(e) => Some(Err(e)),
-                        },
-                    )
+                    Polled::BeforeHandle(match ready!(in_flight.poll_ready(input!(self))) {
+                        Ok(Some(x)) => Some(Ok(x)),
+                        Ok(None) => None,
+                        Err(e) => Some(Err(e)),
+                    })
                 }
                 Handle {
-                    ref mut in_flight,
-                    ref mut context,
-                    ..
-                } => Polled::Handle(ready!(in_flight.poll_ready(input!(self, context)))),
+                    ref mut in_flight, ..
+                } => Polled::Handle(ready!(in_flight.poll_ready(input!(self)))),
                 AfterHandle {
-                    ref mut in_flight,
-                    ref mut context,
-                    ..
-                } => Polled::AfterHandle(ready!(in_flight.poll_ready(input!(self, context)))),
+                    ref mut in_flight, ..
+                } => Polled::AfterHandle(ready!(in_flight.poll_ready(input!(self)))),
                 Done => panic!("unexpected state"),
             };
 
             self.state = match (mem::replace(&mut self.state, Done), polled) {
-                (Init(body), Polled::Empty) => {
-                    if let Some(output) = self.app.data.callback.on_init(callback_context!(self))? {
+                (Init, Polled::Empty) => {
+                    if let Some(output) = self.app.data.callback.on_init(input!(self))? {
                         return Ok(Async::Ready(output));
                     }
 
@@ -253,81 +237,58 @@ impl AppFuture {
                     let route = &self.app.data.routes[pos];
                     debug_assert_eq!(route.id.1, pos);
 
-                    let mut context = AppContext {
-                        body: Some(body),
-                        is_upgraded: false,
-                        route: route.id,
-                        captures: params,
-                        _priv: (),
-                    };
+                    self.context.route = Some((route.id, params));
 
                     if let Some(modifier) = self.app.find_modifier_by_pos(route.id, 0) {
                         BeforeHandle {
-                            in_flight: modifier.before_handle(input!(self, &mut context)),
-                            context,
+                            in_flight: modifier.before_handle(input!(self)),
+                            route_id: route.id,
                             pos: 0,
                         }
                     } else {
                         Handle {
-                            in_flight: route.handler.handle(input!(self, &mut context)),
-                            context,
+                            in_flight: route.handler.handle(input!(self)),
+                            route_id: route.id,
                             pos: 0,
                         }
                     }
                 }
 
-                (
-                    BeforeHandle {
-                        pos, mut context, ..
-                    },
-                    Polled::BeforeHandle(Some(result)),
-                )
-                | (
-                    Handle {
-                        pos, mut context, ..
-                    },
-                    Polled::Handle(result),
-                )
-                | (
-                    AfterHandle {
-                        pos, mut context, ..
-                    },
-                    Polled::AfterHandle(result),
-                ) => match pos.checked_sub(1) {
-                    Some(pos) => match self.app.find_modifier_by_pos(context.route_id(), pos) {
-                        Some(modifier) => AfterHandle {
-                            in_flight: modifier.after_handle(input!(self, &mut context), result),
-                            context,
-                            pos,
+                (BeforeHandle { pos, route_id, .. }, Polled::BeforeHandle(Some(result)))
+                | (Handle { pos, route_id, .. }, Polled::Handle(result))
+                | (AfterHandle { pos, route_id, .. }, Polled::AfterHandle(result)) => {
+                    match pos.checked_sub(1) {
+                        Some(pos) => match self.app.find_modifier_by_pos(route_id, pos) {
+                            Some(modifier) => AfterHandle {
+                                in_flight: modifier.after_handle(input!(self), result),
+                                route_id,
+                                pos,
+                            },
+                            None => break result,
                         },
                         None => break result,
-                    },
-                    None => break result,
-                },
+                    }
+                }
 
-                (
-                    BeforeHandle {
-                        pos, mut context, ..
-                    },
-                    Polled::BeforeHandle(None),
-                ) => if let Some(modifier) =
-                    self.app.find_modifier_by_pos(context.route_id(), pos + 1)
-                {
-                    BeforeHandle {
-                        in_flight: modifier.before_handle(input!(self, &mut context)),
-                        context,
-                        pos: pos + 1,
+                (BeforeHandle { pos, route_id, .. }, Polled::BeforeHandle(None)) => {
+                    if let Some(modifier) = self.app.find_modifier_by_pos(route_id, pos + 1) {
+                        BeforeHandle {
+                            in_flight: modifier.before_handle(input!(self)),
+                            route_id,
+                            pos: pos + 1,
+                        }
+                    } else {
+                        let route = self
+                            .app
+                            .get_route(route_id)
+                            .expect("the route ID should be valid");
+                        Handle {
+                            in_flight: route.handler.handle(input!(self)),
+                            route_id,
+                            pos: pos + 1,
+                        }
                     }
-                } else {
-                    Handle {
-                        in_flight: context
-                            .route(&self.app)
-                            .handler
-                            .handle(input!(self, &mut context)),
-                        context,
-                        pos: pos + 1,
-                    }
-                },
+                }
 
                 _ => panic!("unexpected state"),
             }
@@ -337,7 +298,7 @@ impl AppFuture {
     }
 
     fn handle_response(&mut self, mut output: Output) -> Result<Output, Critical> {
-        if let Some(ref jar) = self.cookies {
+        if let Some(ref jar) = self.context.cookies {
             // append Cookie entries.
             for cookie in jar.delta() {
                 output.headers_mut().append(
@@ -347,7 +308,7 @@ impl AppFuture {
             }
         }
 
-        if let Some(hdrs) = self.response_headers.take() {
+        if let Some(hdrs) = self.context.response_headers.take() {
             output.headers_mut().extend(hdrs);
         }
 
@@ -368,10 +329,7 @@ impl AppFuture {
     }
 
     fn handle_error(&mut self, err: Error) -> Result<Output, Critical> {
-        self.app
-            .data
-            .callback
-            .on_error(err, callback_context!(self))
+        self.app.data.callback.on_error(err, input!(self))
     }
 }
 
@@ -380,9 +338,8 @@ impl Future for AppFuture {
     type Error = Critical;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let output = match self.poll_in_flight() {
-            Ok(Async::Ready(output)) => output,
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
+        let output = match ready!(self.poll_in_flight()) {
+            Ok(output) => output,
             Err(err) => {
                 self.state = AppFutureState::Done;
                 self.handle_error(err)?
@@ -393,24 +350,79 @@ impl Future for AppFuture {
 }
 
 #[derive(Debug)]
-pub(crate) struct AppContext {
+struct AppContext {
     body: Option<RequestBody>,
     is_upgraded: bool,
-    route: RouteId,
-    captures: Option<Captures>,
-    _priv: (),
+    locals: LocalMap,
+    response_headers: Option<HeaderMap>,
+    cookies: Option<CookieJar>,
+    route: Option<(RouteId, Option<Captures>)>,
 }
 
-impl AppContext {
-    pub(crate) fn take_body(&mut self) -> Option<RequestBody> {
-        self.body.take()
+/// A proxy object for accessing the contextual information about incoming HTTP request
+/// and global/request-local state.
+#[derive(Debug)]
+pub struct Input<'task> {
+    context: &'task mut AppContext,
+    request: &'task Request<()>,
+    app: &'task App,
+    _marker: PhantomData<Rc<()>>,
+}
+
+impl<'task> Input<'task> {
+    /// Returns a reference to the HTTP method of the request.
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    pub fn method(&self) -> &http::Method {
+        self.request.method()
     }
 
-    pub(crate) fn is_upgraded(&self) -> bool {
-        self.is_upgraded
+    /// Returns a reference to the URI of the request.
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    pub fn uri(&self) -> &http::Uri {
+        self.request.uri()
     }
 
-    pub(crate) fn upgrade<F, R>(&mut self, on_upgrade: F) -> Result<(), F>
+    /// Returns a reference to the HTTP version of the request.
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    pub fn version(&self) -> http::Version {
+        self.request.version()
+    }
+
+    /// Returns a reference to the header map in the request.
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    pub fn headers(&self) -> &http::HeaderMap {
+        self.request.headers()
+    }
+
+    /// Returns a reference to the extensions map in the request.
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    pub fn extensions(&self) -> &http::Extensions {
+        self.request.extensions()
+    }
+
+    /// Creates an instance of "Payload" from the raw message body.
+    pub fn take_body(&mut self) -> Option<RequestBody> {
+        self.context.body.take()
+    }
+
+    /// Creates an instance of "ReadAll" from the raw message body.
+    pub fn read_all(&mut self) -> Option<crate::input::body::ReadAll> {
+        self.take_body().map(crate::input::body::ReadAll::new)
+    }
+
+    /// Returns 'true' if the upgrade function is set.
+    pub fn is_upgraded(&self) -> bool {
+        self.context.is_upgraded
+    }
+
+    /// Registers the upgrade function to this request.
+    #[inline]
+    pub fn upgrade<F, R>(&mut self, on_upgrade: F) -> Result<(), F>
     where
         F: FnOnce(crate::input::body::UpgradedIo) -> R + Send + 'static,
         R: IntoFuture<Item = (), Error = ()>,
@@ -419,7 +431,7 @@ impl AppContext {
         if self.is_upgraded() {
             return Err(on_upgrade);
         }
-        self.is_upgraded = true;
+        self.context.is_upgraded = true;
 
         let body = self.take_body().expect("The body has already gone");
         crate::rt::spawn(
@@ -431,16 +443,205 @@ impl AppContext {
         Ok(())
     }
 
-    pub(crate) fn route_id(&self) -> RouteId {
-        self.route
+    /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
+    pub fn content_type(&mut self) -> Result<Option<&Mime>, Error> {
+        use crate::input::local_map::{local_key, Entry};
+
+        local_key! {
+            static KEY: Option<Mime>;
+        }
+
+        match self.context.locals.entry(&KEY) {
+            Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
+            Entry::Vacant(entry) => {
+                let mime = match self.request.headers().get(http::header::CONTENT_TYPE) {
+                    Some(h) => h
+                        .to_str()
+                        .map_err(crate::error::bad_request)?
+                        .parse()
+                        .map(Some)
+                        .map_err(crate::error::bad_request)?,
+                    None => None,
+                };
+                Ok(entry.insert(mime).as_ref())
+            }
+        }
     }
 
-    fn route<'a>(&self, app: &'a App) -> &'a RouteData {
-        app.get_route(self.route)
-            .expect("the route ID should be valid")
+    /// Returns a proxy object for accessing parameters extracted by the router.
+    pub fn params(&self) -> Option<Params<'_>> {
+        let route = self.context.route.as_ref()?;
+        Some(Params {
+            path: self.request.uri().path(),
+            names: self.app.uri(route.0).capture_names()?,
+            captures: route.1.as_ref()?,
+        })
     }
 
-    pub(crate) fn captures(&self) -> Option<&Captures> {
-        self.captures.as_ref()
+    /// Returns the reference to a value of `T` registered in the global storage, if possible.
+    ///
+    /// This method will return a `None` if a value of `T` is not registered in the global storage.
+    #[inline]
+    pub fn state<T>(&self) -> Option<&T>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.app.get_state(self.context.route.as_ref()?.0)
+    }
+
+    /// Returns a proxy object for managing the value of Cookie entries.
+    ///
+    /// This function will perform parsing when called at first, and returns an `Err`
+    /// if the value of header field is invalid.
+    pub fn cookies(&mut self) -> Result<Cookies<'_>, Error> {
+        if let Some(ref mut jar) = self.context.cookies {
+            return Ok(Cookies {
+                jar,
+                _marker: PhantomData,
+            });
+        }
+
+        let jar = self.context.cookies.get_or_insert_with(CookieJar::new);
+
+        for raw in self.request.headers().get_all(http::header::COOKIE) {
+            let raw_s = raw.to_str().map_err(crate::error::bad_request)?;
+            for s in raw_s.split(';').map(|s| s.trim()) {
+                let cookie = Cookie::parse_encoded(s)
+                    .map_err(crate::error::bad_request)?
+                    .into_owned();
+                jar.add_original(cookie);
+            }
+        }
+
+        Ok(Cookies {
+            jar,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Returns a reference to `LocalMap` for managing request-local data.
+    #[cfg_attr(tarpaulin, skip)]
+    #[inline]
+    pub fn locals(&self) -> &LocalMap {
+        &self.context.locals
+    }
+
+    /// Returns a mutable reference to `LocalMap` for managing request-local data.
+    #[cfg_attr(tarpaulin, skip)]
+    #[inline]
+    pub fn locals_mut(&mut self) -> &mut LocalMap {
+        &mut self.context.locals
+    }
+
+    /// Returns a mutable reference to a map that holds the additional header fields inserted into the response.
+    pub fn response_headers(&mut self) -> &mut HeaderMap {
+        self.context
+            .response_headers
+            .get_or_insert_with(Default::default)
+    }
+}
+
+/// A proxy object for accessing Cookie values.
+///
+/// Currently this type is a thin wrapper of `&mut cookie::CookieJar`.
+#[derive(Debug)]
+pub struct Cookies<'a> {
+    jar: &'a mut CookieJar,
+    _marker: PhantomData<Rc<()>>,
+}
+
+impl<'a> Cookies<'a> {
+    /// Returns a reference to a Cookie value with the specified name.
+    #[inline]
+    pub fn get(&self, name: &str) -> Option<&Cookie<'static>> {
+        self.jar.get(name)
+    }
+
+    /// Adds a Cookie entry into jar.
+    #[inline]
+    pub fn add(&mut self, cookie: Cookie<'static>) {
+        self.jar.add(cookie);
+    }
+
+    /// Removes a Cookie entry from jar.
+    #[inline]
+    pub fn remove(&mut self, cookie: Cookie<'static>) {
+        self.jar.remove(cookie);
+    }
+
+    /// Removes a Cookie entry *completely*.
+    #[inline]
+    pub fn force_remove(&mut self, cookie: Cookie<'static>) {
+        self.jar.force_remove(cookie);
+    }
+}
+
+#[cfg(feature = "secure")]
+mod secure {
+    use cookie::{Key, PrivateJar, SignedJar};
+
+    impl<'a> super::Cookies<'a> {
+        /// Creates a `SignedJar` with the specified secret key.
+        #[inline]
+        pub fn signed(&mut self, key: &Key) -> SignedJar<'_> {
+            self.jar.signed(key)
+        }
+
+        /// Creates a `PrivateJar` with the specified secret key.
+        #[inline]
+        pub fn private(&mut self, key: &Key) -> PrivateJar<'_> {
+            self.jar.private(key)
+        }
+    }
+}
+
+/// A proxy object for accessing extracted parameters.
+#[derive(Debug)]
+pub struct Params<'input> {
+    path: &'input str,
+    names: &'input CaptureNames,
+    captures: &'input Captures,
+}
+
+impl<'input> Params<'input> {
+    /// Returns `true` if the extracted paramater exists.
+    pub fn is_empty(&self) -> bool {
+        self.captures.params().is_empty() && self.captures.wildcard().is_none()
+    }
+
+    /// Returns the value of `i`-th parameter, if exists.
+    pub fn get(&self, i: usize) -> Option<&str> {
+        let &(s, e) = self.captures.params().get(i)?;
+        self.path.get(s..e)
+    }
+
+    /// Returns the value of wildcard parameter, if exists.
+    pub fn get_wildcard(&self) -> Option<&str> {
+        let (s, e) = self.captures.wildcard()?;
+        self.path.get(s..e)
+    }
+
+    /// Returns the value of parameter whose name is equal to `name`, if exists.
+    pub fn name(&self, name: &str) -> Option<&str> {
+        match name {
+            "*" => self.get_wildcard(),
+            name => self.get(self.names.get_position(name)?),
+        }
+    }
+}
+
+impl<'input> Index<usize> for Params<'input> {
+    type Output = str;
+
+    fn index(&self, i: usize) -> &Self::Output {
+        self.get(i).expect("Out of range")
+    }
+}
+
+impl<'input, 'a> Index<&'a str> for Params<'input> {
+    type Output = str;
+
+    fn index(&self, name: &'a str) -> &Self::Output {
+        self.name(name).expect("Out of range")
     }
 }
