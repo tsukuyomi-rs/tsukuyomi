@@ -52,7 +52,7 @@ impl<T, E> AsyncResult<T, E> {
         AsyncResult(AsyncResultKind::Polling(Box::new(f)))
     }
 
-    pub(crate) fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, E> {
+    pub fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, E> {
         match self.0 {
             AsyncResultKind::Ready(ref mut res) => res
                 .take()

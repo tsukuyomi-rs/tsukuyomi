@@ -6,7 +6,6 @@ use {
         error::Error,
         extractor::{Combine, ExtractStatus, Extractor, Func},
         fs::NamedFile,
-        input::Input,
         output::{Output, Responder},
         uri::Uri,
     },
@@ -19,20 +18,20 @@ use {
     },
 };
 
-/// A trait representing handler functions.
+/// A trait representing the handler associated with the specified endpoint.
 pub trait Handler {
-    /// Applies an incoming request to this handler.
-    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output>;
+    /// Creates an `AsyncResult` which handles the incoming request.
+    fn handle(&self) -> AsyncResult<Output>;
 }
 
 impl<F, R> Handler for F
 where
-    F: Fn(&mut Input<'_>) -> R,
+    F: Fn() -> R,
     R: Into<AsyncResult<Output>>,
 {
     #[inline]
-    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
-        (*self)(input).into()
+    fn handle(&self) -> AsyncResult<Output> {
+        (*self)().into()
     }
 }
 
@@ -41,8 +40,8 @@ where
     H: Handler,
 {
     #[inline]
-    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
-        (**self).handle(input)
+    fn handle(&self) -> AsyncResult<Output> {
+        (**self).handle()
     }
 }
 
@@ -52,17 +51,17 @@ where
     R: Handler,
 {
     #[inline]
-    fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
+    fn handle(&self) -> AsyncResult<Output> {
         match self {
-            Either::Left(ref handler) => handler.handle(input),
-            Either::Right(ref handler) => handler.handle(input),
+            Either::Left(ref handler) => handler.handle(),
+            Either::Right(ref handler) => handler.handle(),
         }
     }
 }
 
 pub(super) fn raw_handler<F, R>(f: F) -> impl Handler
 where
-    F: Fn(&mut Input<'_>) -> R,
+    F: Fn() -> R,
     R: Into<AsyncResult<Output>>,
 {
     #[allow(missing_debug_implementations)]
@@ -70,12 +69,12 @@ where
 
     impl<F, R> Handler for Raw<F>
     where
-        F: Fn(&mut Input<'_>) -> R,
+        F: Fn() -> R,
         R: Into<AsyncResult<Output>>,
     {
         #[inline]
-        fn handle(&self, input: &mut Input<'_>) -> AsyncResult<Output> {
-            (self.0)(input).into()
+        fn handle(&self) -> AsyncResult<Output> {
+            (self.0)().into()
         }
     }
 
@@ -180,24 +179,41 @@ where
         F::Out: Responder,
     {
         self.finish(move |extractor| {
-            raw_handler(move |input| match extractor.extract(input) {
-                Err(e) => AsyncResult::ready(Err(e.into())),
-                Ok(ExtractStatus::Canceled(output)) => AsyncResult::ready(Ok(output)),
-                Ok(ExtractStatus::Ready(arg)) => {
-                    let result = crate::output::internal::respond_to(handler.call(arg), input);
-                    AsyncResult::ready(result)
+            let extractor = std::sync::Arc::new(extractor);
+
+            raw_handler(move || {
+                enum Status<F> {
+                    Init,
+                    InFlight(F),
                 }
-                Ok(ExtractStatus::Pending(future)) => {
-                    let handler = handler.clone();
-                    let mut future = future.map(move |arg| handler.call(arg));
-                    AsyncResult::polling(move |input| {
-                        let x =
-                            futures::try_ready!(crate::input::with_set_current(input, || future
-                                .poll()
-                                .map_err(Into::into)));
-                        crate::output::internal::respond_to(x, input).map(Async::Ready)
-                    })
-                }
+
+                let extractor = extractor.clone();
+                let handler = handler.clone();
+                let mut status: Status<E::Future> = Status::Init;
+
+                AsyncResult::polling(move |input| loop {
+                    status = match status {
+                        Status::InFlight(ref mut future) => {
+                            let arg =
+                                futures::try_ready!(crate::input::with_set_current(input, || {
+                                    future.poll().map_err(Into::into)
+                                }));
+                            return crate::output::internal::respond_to(handler.call(arg), input)
+                                .map(Async::Ready);
+                        }
+                        Status::Init => match extractor.extract(input) {
+                            Err(e) => return Err(e.into()),
+                            Ok(ExtractStatus::Canceled(output)) => return Ok(Async::Ready(output)),
+                            Ok(ExtractStatus::Ready(arg)) => {
+                                return crate::output::internal::respond_to(
+                                    handler.call(arg),
+                                    input,
+                                ).map(Async::Ready);
+                            }
+                            Ok(ExtractStatus::Pending(future)) => Status::InFlight(future),
+                        },
+                    }
+                })
             })
         })
     }
@@ -213,32 +229,45 @@ where
         R::Item: Responder,
     {
         self.finish(move |extractor| {
-            raw_handler(move |input| match extractor.extract(input) {
-                Err(e) => AsyncResult::ready(Err(e.into())),
-                Ok(ExtractStatus::Canceled(output)) => AsyncResult::ready(Ok(output)),
-                Ok(ExtractStatus::Ready(arg)) => {
-                    let mut future = handler.call(arg).into_future();
-                    AsyncResult::polling(move |input| {
-                        let x =
-                            futures::try_ready!(
-                                crate::input::with_set_current(input, || future.poll())
-                            );
-                        crate::output::internal::respond_to(x, input).map(Async::Ready)
-                    })
+            let extractor = std::sync::Arc::new(extractor);
+
+            raw_handler(move || {
+                enum Status<F1, F2> {
+                    Init,
+                    First(F1),
+                    Second(F2),
                 }
-                Ok(ExtractStatus::Pending(future)) => {
-                    let handler = handler.clone();
-                    let mut future = future
-                        .map_err(Into::into)
-                        .and_then(move |arg| handler.call(arg).into_future());
-                    AsyncResult::polling(move |input| {
-                        let x =
-                            futures::try_ready!(
-                                crate::input::with_set_current(input, || future.poll())
-                            );
-                        crate::output::internal::respond_to(x, input).map(Async::Ready)
-                    })
-                }
+
+                let extractor = extractor.clone();
+                let handler = handler.clone();
+                let mut status: Status<E::Future, R::Future> = Status::Init;
+
+                AsyncResult::polling(move |input| loop {
+                    status = match status {
+                        Status::First(ref mut future) => {
+                            let arg =
+                                futures::try_ready!(crate::input::with_set_current(input, || {
+                                    future.poll().map_err(Into::into)
+                                }));
+                            Status::Second(handler.call(arg).into_future())
+                        }
+                        Status::Second(ref mut future) => {
+                            let x =
+                                futures::try_ready!(crate::input::with_set_current(input, || {
+                                    future.poll()
+                                }));
+                            return crate::output::internal::respond_to(x, input).map(Async::Ready);
+                        }
+                        Status::Init => match extractor.extract(input) {
+                            Err(e) => return Err(e.into()),
+                            Ok(ExtractStatus::Canceled(output)) => return Ok(Async::Ready(output)),
+                            Ok(ExtractStatus::Ready(arg)) => {
+                                Status::Second(handler.call(arg).into_future())
+                            }
+                            Ok(ExtractStatus::Pending(future)) => Status::First(future),
+                        },
+                    };
+                })
             })
         })
     }

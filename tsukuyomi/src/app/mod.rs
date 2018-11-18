@@ -60,9 +60,6 @@ impl Default for Config {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ModifierId(ScopeId, usize);
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
 
 /// The global and shared variables used throughout the serving an HTTP application.
@@ -98,7 +95,7 @@ struct ScopeData {
     id: ScopeId,
     parent: ScopeId,
     prefix: Option<Uri>,
-    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    modifier: Box<dyn Modifier + Send + Sync + 'static>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -112,18 +109,12 @@ impl fmt::Debug for ScopeData {
     }
 }
 
-impl ScopeData {
-    fn modifier(&self, pos: usize) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
-        self.modifiers.get(pos).map(|m| &**m)
-    }
-}
-
 struct RouteData {
     id: RouteId,
     uri: Uri,
     methods: IndexSet<Method>,
     handler: Box<dyn Handler + Send + Sync + 'static>,
-    modifier_ids: Vec<ModifierId>,
+    modifier_ids: Vec<ScopeId>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -173,20 +164,5 @@ impl App {
             ScopeId::Global => Some(&self.data.global_scope),
             ScopeId::Local(id) => self.data.scopes.get(id),
         }
-    }
-
-    fn get_route(&self, id: RouteId) -> Option<&RouteData> {
-        self.data.routes.get(id.1)
-    }
-
-    fn find_modifier_by_pos(
-        &self,
-        route_id: RouteId,
-        pos: usize,
-    ) -> Option<&(dyn Modifier + Send + Sync + 'static)> {
-        self.get_route(route_id)?
-            .modifier_ids
-            .get(pos)
-            .and_then(|&id| self.get_scope(id.0)?.modifier(id.1))
     }
 }

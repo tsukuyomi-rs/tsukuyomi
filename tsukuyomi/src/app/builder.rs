@@ -4,7 +4,7 @@ use {
         error::{Error, Result},
         route::{Context as RouteContext, Handler, Route},
         scope::{Context as ScopeContext, Modifier, Scope},
-        App, AppData, Config, EndpointData, ModifierId, RouteData, RouteId, ScopeData,
+        App, AppData, Config, EndpointData, RouteData, RouteId, ScopeData,
     },
     bytes::BytesMut,
     crate::{
@@ -22,20 +22,21 @@ use {
 
 /// A builder object for constructing an instance of `App`.
 #[derive(Debug, Default)]
-pub struct Builder<S: Scope = (), C: Callback = ()> {
-    scope: super::scope::Builder<S>,
+pub struct Builder<S: Scope = (), M = (), C: Callback = ()> {
+    scope: super::scope::Builder<S, M>,
     callback: C,
     config: Config,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, C> Builder<S, C>
+impl<S, M, C> Builder<S, M, C>
 where
     S: Scope,
+    M: Modifier + Send + Sync + 'static,
     C: Callback,
 {
     /// Adds a route into the global scope.
-    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, C> {
+    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, M, C> {
         Builder {
             callback: self.callback,
             config: self.config,
@@ -44,7 +45,14 @@ where
     }
 
     /// Creates a new scope onto the global scope using the specified `Scope`.
-    pub fn mount(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, C> {
+    pub fn mount<S2, M2>(
+        self,
+        scope: super::scope::Builder<S2, M2>,
+    ) -> Builder<impl Scope<Error = Error>, M, C>
+    where
+        S2: Scope,
+        M2: Modifier + Send + Sync + 'static,
+    {
         Builder {
             callback: self.callback,
             config: self.config,
@@ -53,7 +61,7 @@ where
     }
 
     /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
-    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, C> {
+    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, M, C> {
         Builder {
             callback: self.callback,
             config: self.config,
@@ -62,7 +70,7 @@ where
     }
 
     /// Adds a *global* variable into the application.
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, C>
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, M, C>
     where
         T: Send + Sync + 'static,
     {
@@ -74,9 +82,10 @@ where
     }
 
     /// Register a `Modifier` into the global scope.
-    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>, C>
+    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, impl Modifier + Send + Sync + 'static, C>
     where
-        M: Modifier + Send + Sync + 'static,
+        S: 'static,
+        M2: Modifier + Send + Sync + 'static,
     {
         Builder {
             callback: self.callback,
@@ -85,7 +94,7 @@ where
         }
     }
 
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, C> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, M, C> {
         Builder {
             callback: self.callback,
             config: self.config,
@@ -96,7 +105,7 @@ where
     /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
     ///
     /// The default value is `true`.
-    pub fn fallback_head(mut self, enabled: bool) -> Builder<S, C> {
+    pub fn fallback_head(mut self, enabled: bool) -> Builder<S, M, C> {
         self.config.fallback_head = enabled;
         self
     }
@@ -104,12 +113,12 @@ where
     /// Specifies whether to use the default `OPTIONS` handlers if it is not registered.
     ///
     /// The default value is `true`.
-    pub fn fallback_options(mut self, enabled: bool) -> Builder<S, C> {
+    pub fn fallback_options(mut self, enabled: bool) -> Builder<S, M, C> {
         self.config.fallback_options = enabled;
         self
     }
 
-    pub fn on_init<F, Bd>(self, on_init: F) -> Builder<S, impl Callback>
+    pub fn on_init<F, Bd>(self, on_init: F) -> Builder<S, M, impl Callback>
     where
         F: Fn(&mut Input<'_>) -> crate::error::Result<Option<Response<Bd>>> + Send + Sync + 'static,
         Bd: Into<ResponseBody>,
@@ -156,7 +165,7 @@ where
         }
     }
 
-    pub fn on_error<F, Bd>(self, on_error: F) -> Builder<S, impl Callback>
+    pub fn on_error<F, Bd>(self, on_error: F) -> Builder<S, M, impl Callback>
     where
         F: Fn(crate::error::Error, &mut Input<'_>)
                 -> std::result::Result<Response<Bd>, crate::error::Critical>
@@ -203,7 +212,7 @@ where
         }
     }
 
-    pub fn callback<C2>(self, callback: C2) -> Builder<S, C2>
+    pub fn callback<C2>(self, callback: C2) -> Builder<S, M, C2>
     where
         C2: Callback,
     {
@@ -216,7 +225,12 @@ where
 
     /// Creates an `App` using the current configuration.
     pub fn build(self) -> Result<App> {
-        build(self.scope, self.callback, self.config)
+        build(
+            self.scope.scope,
+            self.scope.modifier,
+            self.callback,
+            self.config,
+        )
     }
 
     /// Creates a builder of HTTP server using the current configuration.
@@ -225,11 +239,16 @@ where
     }
 }
 
-fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<App> {
+fn build(
+    scope: impl Scope,
+    modifier: impl Modifier + Send + Sync + 'static,
+    callback: impl Callback,
+    config: Config,
+) -> Result<App> {
     let mut cx = AppContext {
         routes: vec![],
         scopes: vec![],
-        modifiers: vec![],
+        modifier: Box::new(modifier),
         states: ScopedContainerBuilder::default(),
         prefix: None,
     };
@@ -240,7 +259,7 @@ fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<A
     let AppContext {
         routes,
         scopes,
-        modifiers,
+        modifier,
         states,
         prefix,
     } = cx;
@@ -263,17 +282,13 @@ fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<A
             let handler = route.handler;
 
             // calculate the modifier identifiers.
-            let mut modifier_ids: Vec<_> = (0..modifiers.len())
-                .map(|i| ModifierId(ScopeId::Global, i))
-                .collect();
+            let mut modifier_ids = vec![ScopeId::Global];
             if let Some(scope) = route.scope_id.local_id().and_then(|id| scopes.get(id)) {
-                for (id, scope) in scope.chain.iter().filter_map(|&id| {
+                for (id, _scope) in scope.chain.iter().filter_map(|&id| {
                     id.local_id()
                         .and_then(|id| scopes.get(id).map(|scope| (id, scope)))
                 }) {
-                    modifier_ids.extend(
-                        (0..scope.modifiers.len()).map(|pos| ModifierId(ScopeId::Local(id), pos)),
-                    );
+                    modifier_ids.push(ScopeId::Local(id));
                 }
             }
 
@@ -360,7 +375,7 @@ fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<A
             id: scope.id,
             parent: scope.parent,
             prefix: scope.prefix,
-            modifiers: scope.modifiers,
+            modifier: scope.modifier,
         }).collect();
 
     Ok(App {
@@ -371,7 +386,7 @@ fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<A
                 id: ScopeId::Global,
                 parent: ScopeId::Global, // dummy
                 prefix,
-                modifiers,
+                modifier,
             },
             recognizer,
             endpoints,
@@ -386,7 +401,7 @@ fn build(scope: impl Scope, callback: impl Callback, config: Config) -> Result<A
 pub struct AppContext {
     routes: Vec<RouteBuilder>,
     scopes: Vec<ScopeBuilder>,
-    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    modifier: Box<dyn Modifier + Send + Sync + 'static>,
     states: ScopedContainerBuilder,
     prefix: Option<Uri>,
 }
@@ -427,7 +442,12 @@ impl AppContext {
         Ok(())
     }
 
-    pub(super) fn new_scope(&mut self, parent: ScopeId, scope: impl Scope) -> Result<()> {
+    pub(super) fn new_scope(
+        &mut self,
+        parent: ScopeId,
+        scope: impl Scope,
+        modifier: impl Modifier + Send + Sync + 'static,
+    ) -> Result<()> {
         let id = ScopeId::Local(self.scopes.len());
         let mut chain = parent
             .local_id()
@@ -437,7 +457,7 @@ impl AppContext {
             id,
             parent,
             prefix: None,
-            modifiers: vec![],
+            modifier: Box::new(modifier),
             chain,
         });
 
@@ -446,16 +466,6 @@ impl AppContext {
             .map_err(Into::into)?;
 
         Ok(())
-    }
-
-    pub(super) fn add_modifier<M>(&mut self, id: ScopeId, modifier: M)
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
-        match id {
-            ScopeId::Global => self.modifiers.push(Box::new(modifier)),
-            ScopeId::Local(id) => self.scopes[id].modifiers.push(Box::new(modifier)),
-        }
     }
 
     pub(super) fn set_state<T>(&mut self, value: T, id: ScopeId)
@@ -493,7 +503,7 @@ impl fmt::Debug for RouteBuilder {
 struct ScopeBuilder {
     id: ScopeId,
     parent: ScopeId,
-    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    modifier: Box<dyn Modifier + Send + Sync + 'static>,
     prefix: Option<Uri>,
     chain: Vec<ScopeId>,
 }

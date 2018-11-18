@@ -17,7 +17,7 @@ use {
     },
     hyper::body::Payload,
     mime::Mime,
-    std::{marker::PhantomData, mem, ops::Index, rc::Rc},
+    std::{marker::PhantomData, ops::Index, rc::Rc},
     tower_service::{NewService, Service},
 };
 
@@ -149,21 +149,7 @@ pub struct AppFuture {
 #[derive(Debug)]
 enum AppFutureState {
     Init,
-    BeforeHandle {
-        in_flight: AsyncResult<Option<Output>>,
-        route_id: RouteId,
-        pos: usize,
-    },
-    Handle {
-        in_flight: AsyncResult<Output>,
-        route_id: RouteId,
-        pos: usize,
-    },
-    AfterHandle {
-        in_flight: AsyncResult<Output>,
-        route_id: RouteId,
-        pos: usize,
-    },
+    InFlight(AsyncResult<Output>),
     Done,
 }
 
@@ -181,39 +167,10 @@ macro_rules! input {
 impl AppFuture {
     fn poll_in_flight(&mut self) -> Poll<Output, Error> {
         use self::AppFutureState::*;
-
-        #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
-        enum Polled {
-            BeforeHandle(Option<Result<Output, Error>>),
-            Handle(Result<Output, Error>),
-            AfterHandle(Result<Output, Error>),
-            Empty,
-        }
-
-        let result = loop {
-            let polled = match self.state {
-                Init => Polled::Empty,
-                BeforeHandle {
-                    ref mut in_flight, ..
-                } => {
-                    // FIXME: use result.transpose()
-                    Polled::BeforeHandle(match ready!(in_flight.poll_ready(input!(self))) {
-                        Ok(Some(x)) => Some(Ok(x)),
-                        Ok(None) => None,
-                        Err(e) => Some(Err(e)),
-                    })
-                }
-                Handle {
-                    ref mut in_flight, ..
-                } => Polled::Handle(ready!(in_flight.poll_ready(input!(self)))),
-                AfterHandle {
-                    ref mut in_flight, ..
-                } => Polled::AfterHandle(ready!(in_flight.poll_ready(input!(self)))),
-                Done => panic!("unexpected state"),
-            };
-
-            self.state = match (mem::replace(&mut self.state, Done), polled) {
-                (Init, Polled::Empty) => {
+        loop {
+            self.state = match self.state {
+                InFlight(ref mut in_flight) => return in_flight.poll_ready(input!(self)),
+                Init => {
                     if let Some(output) = self.app.data.callback.on_init(input!(self))? {
                         return Ok(Async::Ready(output));
                     }
@@ -239,62 +196,17 @@ impl AppFuture {
 
                     self.context.route = Some((route.id, params));
 
-                    if let Some(modifier) = self.app.find_modifier_by_pos(route.id, 0) {
-                        BeforeHandle {
-                            in_flight: modifier.before_handle(input!(self)),
-                            route_id: route.id,
-                            pos: 0,
-                        }
-                    } else {
-                        Handle {
-                            in_flight: route.handler.handle(input!(self)),
-                            route_id: route.id,
-                            pos: 0,
-                        }
+                    let mut in_flight = route.handler.handle();
+                    for &id in route.modifier_ids.iter().rev() {
+                        let scope = self.app.get_scope(id).expect("should be valid ID");
+                        in_flight = scope.modifier.modify(in_flight);
                     }
-                }
 
-                (BeforeHandle { pos, route_id, .. }, Polled::BeforeHandle(Some(result)))
-                | (Handle { pos, route_id, .. }, Polled::Handle(result))
-                | (AfterHandle { pos, route_id, .. }, Polled::AfterHandle(result)) => {
-                    match pos.checked_sub(1) {
-                        Some(pos) => match self.app.find_modifier_by_pos(route_id, pos) {
-                            Some(modifier) => AfterHandle {
-                                in_flight: modifier.after_handle(input!(self), result),
-                                route_id,
-                                pos,
-                            },
-                            None => break result,
-                        },
-                        None => break result,
-                    }
+                    InFlight(in_flight)
                 }
-
-                (BeforeHandle { pos, route_id, .. }, Polled::BeforeHandle(None)) => {
-                    if let Some(modifier) = self.app.find_modifier_by_pos(route_id, pos + 1) {
-                        BeforeHandle {
-                            in_flight: modifier.before_handle(input!(self)),
-                            route_id,
-                            pos: pos + 1,
-                        }
-                    } else {
-                        let route = self
-                            .app
-                            .get_route(route_id)
-                            .expect("the route ID should be valid");
-                        Handle {
-                            in_flight: route.handler.handle(input!(self)),
-                            route_id,
-                            pos: pos + 1,
-                        }
-                    }
-                }
-
-                _ => panic!("unexpected state"),
+                Done => panic!("the future has already polled."),
             }
-        };
-
-        result.map(Async::Ready)
+        }
     }
 
     fn handle_response(&mut self, mut output: Output) -> Result<Output, Critical> {

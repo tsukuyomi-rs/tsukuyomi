@@ -4,9 +4,7 @@ use {
         error::{Error, Result},
         route::Route,
     },
-    crate::{
-        async_result::AsyncResult, input::Input, output::Output, scoped_map::ScopeId, uri::Uri,
-    },
+    crate::{async_result::AsyncResult, output::Output, scoped_map::ScopeId, uri::Uri},
 };
 
 /// A trait representing a `Modifier`.
@@ -22,7 +20,6 @@ use {
 /// use tsukuyomi::{
 ///     AsyncResult,
 ///     app::{route, scope::Modifier},
-///     input::Input,
 ///     output::Output,
 /// };
 ///
@@ -30,9 +27,9 @@ use {
 /// struct RequestCounter(AtomicUsize);
 ///
 /// impl Modifier for RequestCounter {
-///     fn before_handle(&self, _: &mut Input) -> AsyncResult<Option<Output>> {
+///     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
 ///        self.0.fetch_add(1, Ordering::SeqCst);
-///        AsyncResult::ready(Ok(None))
+///        result
 ///     }
 /// }
 ///
@@ -45,26 +42,35 @@ use {
 /// # }
 /// ```
 pub trait Modifier {
-    /// Performs the process before calling the handler.
-    ///
-    /// By default, this method does nothing.
-    #[allow(unused_variables)]
-    #[cfg_attr(tarpaulin, skip)]
-    fn before_handle(&self, input: &mut Input<'_>) -> AsyncResult<Option<Output>> {
-        AsyncResult::ready(Ok(None))
-    }
+    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output>;
+}
 
-    /// Modifies the returned value from a handler.
-    ///
-    /// By default, this method does nothing and immediately return the provided `Output`.
-    #[allow(unused_variables)]
-    #[cfg_attr(tarpaulin, skip)]
-    fn after_handle(
-        &self,
-        input: &mut Input<'_>,
-        result: crate::error::Result<Output>,
-    ) -> AsyncResult<Output> {
-        AsyncResult::ready(result)
+impl Modifier for () {
+    #[inline]
+    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
+        result
+    }
+}
+
+#[derive(Debug)]
+pub struct Chain<M1, M2> {
+    m1: M1,
+    m2: M2,
+}
+
+impl<M1, M2> Chain<M1, M2> {
+    pub(super) fn new(m1: M1, m2: M2) -> Self {
+        Self { m1, m2 }
+    }
+}
+
+impl<M1, M2> Modifier for Chain<M1, M2>
+where
+    M1: Modifier,
+    M2: Modifier,
+{
+    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
+        self.m1.modify(self.m2.modify(result))
     }
 }
 
@@ -106,20 +112,24 @@ where
 }
 
 #[derive(Debug, Default)]
-pub struct Builder<S: Scope = ()> {
-    scope: S,
+pub struct Builder<S: Scope = (), M = ()> {
+    pub(super) scope: S,
+    pub(super) modifier: M,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S> Builder<S>
+impl<S, M> Builder<S, M>
 where
     S: Scope,
+    M: Modifier + Send + Sync + 'static,
 {
     /// Adds a route into the current scope.
-    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
+    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, M> {
+        let Self { scope, modifier } = self;
         Builder {
+            modifier,
             scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
+                scope.configure(cx).map_err(Into::into)?;
                 cx.add_route(route)?;
                 Ok(())
             }),
@@ -128,35 +138,45 @@ where
 
     /// Create a new scope mounted to the certain URI.
     #[inline]
-    pub fn mount(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
+    pub fn mount<S2, M2>(self, new_scope: Builder<S2, M2>) -> Builder<impl Scope<Error = Error>, M>
+    where
+        S2: Scope,
+        M2: Modifier + Send + Sync + 'static,
+    {
+        let Self { scope, modifier } = self;
         Builder {
+            modifier,
             scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
-                cx.add_scope(scope)?;
+                scope.configure(cx).map_err(Into::into)?;
+                cx.add_scope(new_scope)?;
                 Ok(())
             }),
         }
     }
 
     /// Merges the specified `Scope` into the current scope, *without* creating a new scope.
-    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
+    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>, M> {
+        let Self { scope, modifier } = self;
         Builder {
+            modifier,
             scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
                 scope.configure(cx).map_err(Into::into)?;
+                next_scope.configure(cx).map_err(Into::into)?;
                 Ok(())
             }),
         }
     }
 
     /// Adds a *scope-local* variable into the application.
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, M>
     where
         T: Send + Sync + 'static,
     {
+        let Self { scope, modifier } = self;
         Builder {
+            modifier,
             scope: raw(move |cx| {
-                self.scope.configure(cx)?;
+                scope.configure(cx)?;
                 cx.set_state(state);
                 Ok(())
             }),
@@ -164,39 +184,26 @@ where
     }
 
     /// Register a `Modifier` into the current scope.
-    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>>
+    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, impl Modifier + Send + Sync + 'static>
     where
-        M: Modifier + Send + Sync + 'static,
+        M2: Modifier + Send + Sync + 'static,
     {
         Builder {
-            scope: raw(move |cx| {
-                self.scope.configure(cx)?;
-                cx.add_modifier(modifier);
-                Ok(())
-            }),
+            scope: self.scope,
+            modifier: self::Chain::new(self.modifier, modifier),
         }
     }
 
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, M> {
+        let Self { scope, modifier } = self;
         Builder {
+            modifier,
             scope: raw(move |cx| {
-                self.scope.configure(cx)?;
+                scope.configure(cx)?;
                 cx.set_prefix(prefix);
                 Ok(())
             }),
         }
-    }
-}
-
-impl<S> Scope for Builder<S>
-where
-    S: Scope,
-{
-    type Error = S::Error;
-
-    #[inline]
-    fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
-        self.scope.configure(cx)
     }
 }
 
@@ -222,8 +229,11 @@ impl<'a> Context<'a> {
 
     /// Create a new scope mounted to the certain URI.
     #[inline]
-    pub fn add_scope(&mut self, scope: impl Scope) -> Result<()> {
-        self.cx.new_scope(self.id, scope)
+    fn add_scope(
+        &mut self,
+        scope: Builder<impl Scope, impl Modifier + Send + Sync + 'static>,
+    ) -> Result<()> {
+        self.cx.new_scope(self.id, scope.scope, scope.modifier)
     }
 
     /// Adds a *scope-local* variable into the application.
@@ -232,14 +242,6 @@ impl<'a> Context<'a> {
         T: Send + Sync + 'static,
     {
         self.cx.set_state(value, self.id)
-    }
-
-    /// Register a `Modifier` into the current scope.
-    pub fn add_modifier<M>(&mut self, modifier: M)
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
-        self.cx.add_modifier(self.id, modifier)
     }
 
     pub fn set_prefix(&mut self, prefix: Uri) {

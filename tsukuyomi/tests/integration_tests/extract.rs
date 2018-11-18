@@ -204,10 +204,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
     use tsukuyomi::{
-        app::scope::Modifier,
-        input::{local_map::local_key, Input},
-        output::Output,
-        AsyncResult,
+        app::scope::Modifier, input::local_map::local_key, output::Output, AsyncResult,
     };
 
     #[derive(Clone)]
@@ -221,11 +218,17 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
     struct MyModifier;
     impl Modifier for MyModifier {
-        fn before_handle(&self, input: &mut Input<'_>) -> AsyncResult<Option<Output>> {
-            input
-                .locals_mut()
-                .insert(&MyData::KEY, MyData("dummy".into()));
-            AsyncResult::ready(Ok(None))
+        fn modify(&self, mut result: AsyncResult<Output>) -> AsyncResult<Output> {
+            let mut inserted = false;
+            AsyncResult::polling(move |input| {
+                if !inserted {
+                    input
+                        .locals_mut()
+                        .insert(&MyData::KEY, MyData("dummy".into()));
+                    inserted = true;
+                }
+                result.poll_ready(input)
+            })
         }
     }
 
