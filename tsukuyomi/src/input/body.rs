@@ -16,7 +16,7 @@ pub struct RequestBody(Body);
 
 impl RequestBody {
     #[inline]
-    pub fn on_upgrade(self) -> OnUpgrade {
+    pub(crate) fn on_upgrade(self) -> OnUpgrade {
         OnUpgrade(self.0.on_upgrade())
     }
 
@@ -140,7 +140,7 @@ impl tokio::io::AsyncWrite for UpgradedIo {
 }
 
 #[derive(Debug)]
-pub struct OnUpgrade(hyper::upgrade::OnUpgrade);
+pub(crate) struct OnUpgrade(hyper::upgrade::OnUpgrade);
 
 impl Future for OnUpgrade {
     type Item = UpgradedIo;

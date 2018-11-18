@@ -148,6 +148,10 @@ impl<'task> Input<'task> {
     pub fn locals_mut(&mut self) -> &mut LocalMap {
         &mut *self.locals
     }
+
+    pub fn response_headers(&mut self) -> &mut HeaderMap {
+        self.response_headers.get_or_insert_with(Default::default)
+    }
 }
 
 /// A proxy object for accessing Cookie values.
