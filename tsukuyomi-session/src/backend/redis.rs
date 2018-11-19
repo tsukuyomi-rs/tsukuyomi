@@ -12,6 +12,7 @@ use {
     tsukuyomi::{
         error::{Error, Result},
         input::{local_map::local_key, Input},
+        AsyncResult,
     },
     uuid::Uuid,
 };
@@ -77,73 +78,94 @@ impl RedisSessionBackend {
 
 impl Backend for RedisSessionBackend {}
 impl BackendImpl for RedisSessionBackend {
-    type ReadFuture = ReadFuture;
-    type WriteFuture = WriteFuture;
+    fn read(&self) -> AsyncResult<SessionInner> {
+        let mut read_future: Option<ReadFuture> = None;
+        AsyncResult::polling(move |input| {
+            let this = input
+                .state_detached::<Self>()
+                .expect("the backend is not set");
+            let this = this.get(input);
 
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadFuture {
-        match self.get_session_id(input) {
-            Ok(session_id) => {
+            loop {
+                if let Some(ref mut read_future) = read_future {
+                    return read_future.poll_ready(input);
+                }
+
+                let session_id = this.get_session_id(input)?;
                 let key_name = session_id
                     .as_ref()
-                    .map(|session_id| self.generate_redis_key(session_id));
-
-                ReadFuture::connecting(self.client.get_async_connection(), key_name, session_id)
+                    .map(|session_id| this.generate_redis_key(session_id));
+                read_future = Some(ReadFuture::connecting(
+                    this.client.get_async_connection(),
+                    key_name,
+                    session_id,
+                ));
             }
-            Err(err) => ReadFuture::err(err),
-        }
+        })
     }
 
-    fn write(&self, input: &mut Input<'_>, state: SessionInner) -> Self::WriteFuture {
-        let RedisSessionContext { conn, session_id } = input
-            .locals_mut()
-            .remove(&RedisSessionContext::KEY)
-            .expect("should be Some");
+    fn write(&self, inner: SessionInner) -> AsyncResult<()> {
+        let mut inner = Some(inner);
+        let mut future: Option<RedisFuture<(_, ())>> = None;
 
-        match state {
-            SessionInner::Empty => WriteFuture::no_op(),
+        AsyncResult::polling(move |input| {
+            let this = input.state_detached::<Self>().expect("backend is not set");
+            let this = this.get(input);
 
-            SessionInner::Some(value) => {
-                let session_id = session_id.unwrap_or_else(Uuid::new_v4);
-                match input.cookies() {
-                    Ok(mut cookies) => cookies.add(Cookie::new(
-                        self.cookie_name.clone(),
-                        session_id.to_string(),
-                    )),
-                    Err(err) => return WriteFuture::err(err),
+            loop {
+                if let Some(ref mut future) = future {
+                    return future
+                        .poll()
+                        .map(|x| x.map(|_| ()))
+                        .map_err(tsukuyomi::error::internal_server_error);
                 }
-                let redis_key = self.generate_redis_key(&session_id);
 
-                let value = serde_json::to_string(&value).expect("should be successed");
-                match self.timeout {
-                    Some(timeout) => WriteFuture::op(
-                        redis::cmd("SETEX")
-                            .arg(redis_key)
-                            .arg(timeout.num_seconds())
-                            .arg(value)
-                            .query_async(conn),
-                    ),
-                    None => WriteFuture::op(
-                        redis::cmd("SET")
-                            .arg(redis_key)
-                            .arg(value)
-                            .query_async(conn),
-                    ),
-                }
-            }
+                let RedisSessionContext { conn, session_id } = input
+                    .locals_mut()
+                    .remove(&RedisSessionContext::KEY)
+                    .expect("should be Some");
 
-            SessionInner::Clear => {
-                if let Some(session_id) = session_id {
-                    match input.cookies() {
-                        Ok(mut cookies) => cookies.remove(Cookie::named(self.cookie_name.clone())),
-                        Err(err) => return WriteFuture::err(err),
+                let op = match inner.take().expect("should be available") {
+                    SessionInner::Empty => return Ok(Async::Ready(())),
+
+                    SessionInner::Some(value) => {
+                        let session_id = session_id.unwrap_or_else(Uuid::new_v4);
+                        let mut cookies = input.cookies()?;
+                        cookies.add(Cookie::new(
+                            this.cookie_name.clone(),
+                            session_id.to_string(),
+                        ));
+                        let redis_key = this.generate_redis_key(&session_id);
+
+                        let value = serde_json::to_string(&value).expect("should be successed");
+                        match this.timeout {
+                            Some(timeout) => redis::cmd("SETEX")
+                                .arg(redis_key)
+                                .arg(timeout.num_seconds())
+                                .arg(value)
+                                .query_async(conn),
+                            None => redis::cmd("SET")
+                                .arg(redis_key)
+                                .arg(value)
+                                .query_async(conn),
+                        }
                     }
-                    let redis_key = self.generate_redis_key(&session_id);
-                    WriteFuture::op(redis::cmd("DEL").arg(redis_key).query_async(conn))
-                } else {
-                    WriteFuture::no_op()
-                }
+
+                    SessionInner::Clear => {
+                        let session_id = if let Some(session_id) = session_id {
+                            session_id
+                        } else {
+                            return Ok(Async::Ready(()));
+                        };
+                        let mut cookies = input.cookies()?;
+                        cookies.remove(Cookie::named(this.cookie_name.clone()));
+                        let redis_key = this.generate_redis_key(&session_id);
+                        redis::cmd("DEL").arg(redis_key).query_async(conn)
+                    }
+                };
+                future = Some(op);
             }
-        }
+        })
     }
 }
 
@@ -167,7 +189,6 @@ pub struct ReadFuture {
 
 #[allow(missing_debug_implementations)]
 enum ReadFutureState {
-    Failed(Option<Error>),
     Connecting {
         future: RedisFuture<Connection>,
         key_name: Option<String>,
@@ -181,13 +202,7 @@ enum ReadFutureState {
 }
 
 impl ReadFuture {
-    pub(super) fn err(err: Error) -> Self {
-        Self {
-            state: ReadFutureState::Failed(Some(err)),
-        }
-    }
-
-    pub(super) fn connecting(
+    fn connecting(
         future: RedisFuture<Connection>,
         key_name: Option<String>,
         session_id: Option<Uuid>,
@@ -200,14 +215,11 @@ impl ReadFuture {
             },
         }
     }
-}
 
-impl super::imp::ReadFuture for ReadFuture {
-    fn poll_read(&mut self, input: &mut Input<'_>) -> Poll<SessionInner, Error> {
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<SessionInner, Error> {
         use self::ReadFutureState::*;
         loop {
             let (conn, value) = match self.state {
-                Failed(ref mut err) => return Err(err.take().unwrap()),
                 Connecting { ref mut future, .. } => {
                     let conn = try_ready!(
                         future
@@ -279,51 +291,6 @@ impl super::imp::ReadFuture for ReadFuture {
 
                 _ => unreachable!("unexpected condition"),
             }
-        }
-    }
-}
-
-#[allow(missing_debug_implementations)]
-pub struct WriteFuture {
-    state: WriteFutureState,
-}
-
-enum WriteFutureState {
-    NoOp,
-    Failed(Option<Error>),
-    Op(RedisFuture<(Connection, ())>),
-}
-
-impl WriteFuture {
-    pub(super) fn no_op() -> Self {
-        Self {
-            state: WriteFutureState::NoOp,
-        }
-    }
-
-    pub(super) fn err(err: Error) -> Self {
-        Self {
-            state: WriteFutureState::Failed(Some(err)),
-        }
-    }
-
-    pub(super) fn op(future: RedisFuture<(Connection, ())>) -> Self {
-        Self {
-            state: WriteFutureState::Op(future),
-        }
-    }
-}
-
-impl super::imp::WriteFuture for WriteFuture {
-    fn poll_write(&mut self, _: &mut Input<'_>) -> Poll<(), Error> {
-        use self::WriteFutureState::*;
-        match self.state {
-            NoOp => Ok(Async::Ready(())),
-            Failed(ref mut err) => Err(err.take().unwrap()),
-            Op(ref mut future) => future
-                .poll()
-                .map(|x| x.map(|_| ()))
-                .map_err(tsukuyomi::error::internal_server_error),
         }
     }
 }

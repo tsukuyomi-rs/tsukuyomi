@@ -394,16 +394,36 @@ impl<'task> Input<'task> {
     ///
     /// This method will return a `None` if a value of `T` is not registered in the scope.
     #[inline]
-    pub fn state<T>(&self) -> Option<State<T>>
+    pub fn state<T>(&self) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.app
-            .get_state(self.context.route.as_ref()?.0)
-            .map(|state| State {
-                state,
-                _marker: PhantomData,
-            })
+        self.app.get_state(self.context.route.as_ref()?.0)
+    }
+
+    /// Creates a proxy object for accessing a state of `T` registered in the scope.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let state: State<T> = input.state_detached::<T>().expect("the value of T is not registered");
+    /// let state: &T = state.get(input); // <-- The lifetime of `state` is detached to `input`.
+    /// ```
+    ///
+    /// # Safety
+    /// This method assumes that the pointer to the state is valid
+    /// during the lifetime of the returned `State<T>`.
+    /// DO NOT store the value of `State` in the task or send its proxy
+    /// object to another thread of task.
+    #[inline]
+    pub fn state_detached<T>(&self) -> Option<State<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.state().map(|state| State {
+            state,
+            _marker: PhantomData,
+        })
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
@@ -472,26 +492,10 @@ impl<T> State<T>
 where
     T: Send + Sync + 'static,
 {
-    /// Acquires a reference to the associated state.
-    ///
-    /// If the reference to `Input` is not set on the current task context,
-    /// this method will return a `None`.
+    /// Restore a reference to the associated state from a raw pointer.
     #[inline]
-    pub fn get(&self) -> Option<&T> {
-        if crate::input::is_set_current() {
-            Some(unsafe { self.get_unchecked() })
-        } else {
-            None
-        }
-    }
-
-    /// Gets a reference to the associated state without checking the task context.
-    ///
-    /// # Safety
-    /// This method assumes that the reference to `Input` is set on the current task context.
-    #[inline]
-    pub unsafe fn get_unchecked(&self) -> &T {
-        &*self.state
+    pub fn get(&self, _key: &mut Input<'_>) -> &T {
+        unsafe { &*self.state }
     }
 }
 

@@ -241,25 +241,26 @@ where
 
 fn build(
     scope: impl Scope,
-    modifier: impl Modifier + Send + Sync + 'static,
+    mut modifier: impl Modifier + Send + Sync + 'static,
     callback: impl Callback,
     config: Config,
 ) -> Result<App> {
     let mut cx = AppContext {
         routes: vec![],
         scopes: vec![],
-        modifier: Box::new(modifier),
         states: ScopedContainerBuilder::default(),
         prefix: None,
     };
-    scope
-        .configure(&mut ScopeContext::new(&mut cx, ScopeId::Global))
-        .map_err(Into::into)?;
+
+    {
+        let mut cx = ScopeContext::new(&mut cx, ScopeId::Global);
+        scope.configure(&mut cx).map_err(Into::into)?;
+        modifier.setup(&mut cx)?;
+    }
 
     let AppContext {
         routes,
         scopes,
-        modifier,
         states,
         prefix,
     } = cx;
@@ -375,7 +376,7 @@ fn build(
             id: scope.id,
             parent: scope.parent,
             prefix: scope.prefix,
-            modifier: scope.modifier,
+            modifier: scope.modifier.expect("unexpected condition"),
         }).collect();
 
     Ok(App {
@@ -386,7 +387,7 @@ fn build(
                 id: ScopeId::Global,
                 parent: ScopeId::Global, // dummy
                 prefix,
-                modifier,
+                modifier: Box::new(modifier),
             },
             recognizer,
             endpoints,
@@ -401,7 +402,6 @@ fn build(
 pub struct AppContext {
     routes: Vec<RouteBuilder>,
     scopes: Vec<ScopeBuilder>,
-    modifier: Box<dyn Modifier + Send + Sync + 'static>,
     states: ScopedContainerBuilder,
     prefix: Option<Uri>,
 }
@@ -446,9 +446,10 @@ impl AppContext {
         &mut self,
         parent: ScopeId,
         scope: impl Scope,
-        modifier: impl Modifier + Send + Sync + 'static,
+        mut modifier: impl Modifier + Send + Sync + 'static,
     ) -> Result<()> {
-        let id = ScopeId::Local(self.scopes.len());
+        let pos = self.scopes.len();
+        let id = ScopeId::Local(pos);
         let mut chain = parent
             .local_id()
             .map_or_else(Default::default, |id| self.scopes[id].chain.clone());
@@ -457,13 +458,17 @@ impl AppContext {
             id,
             parent,
             prefix: None,
-            modifier: Box::new(modifier),
+            modifier: None,
             chain,
         });
 
-        scope
-            .configure(&mut ScopeContext::new(self, id))
-            .map_err(Into::into)?;
+        {
+            let mut cx = ScopeContext::new(self, id);
+            scope.configure(&mut cx).map_err(Into::into)?;
+            modifier.setup(&mut cx)?;
+        }
+
+        self.scopes[pos].modifier = Some(Box::new(modifier));
 
         Ok(())
     }
@@ -503,7 +508,7 @@ impl fmt::Debug for RouteBuilder {
 struct ScopeBuilder {
     id: ScopeId,
     parent: ScopeId,
-    modifier: Box<dyn Modifier + Send + Sync + 'static>,
+    modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
     prefix: Option<Uri>,
     chain: Vec<ScopeId>,
 }

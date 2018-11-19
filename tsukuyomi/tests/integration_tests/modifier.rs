@@ -1,8 +1,9 @@
 use {
+    http::Response,
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         app::{route, scope, scope::Modifier},
-        output::Output,
+        output::{Output, ResponseBody},
         AsyncResult,
     },
 };
@@ -134,6 +135,61 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     marker.lock().unwrap().clear();
     let _ = server.perform("/path/to/a")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M3", "M2", "M1"]);
+
+    Ok(())
+}
+
+#[test]
+fn setup() -> tsukuyomi::test::Result<()> {
+    use tsukuyomi::app::scope::Context;
+
+    struct SetState(Option<String>);
+    impl Modifier for SetState {
+        fn setup(&mut self, cx: &mut Context<'_>) -> tsukuyomi::app::Result<()> {
+            cx.set_state(self.0.take().unwrap());
+            Ok(())
+        }
+
+        fn modify(&self, handle: AsyncResult<Output>) -> AsyncResult<Output> {
+            handle
+        }
+    }
+
+    let mut server = tsukuyomi::app()
+        .modifier(SetState(Some("foo".into())))
+        .route(
+            tsukuyomi::app::route!("/") //
+                .raw(|| {
+                    AsyncResult::polling(|input| {
+                        assert_eq!(
+                            input.state::<String>().expect("state is not set: foo"),
+                            "foo"
+                        );
+                        Ok(Response::new(ResponseBody::default()).into())
+                    })
+                }),
+        ) //
+        .mount(
+            tsukuyomi::app::scope!("/sub")
+                .modifier(SetState(Some("bar".into())))
+                .route(
+                    tsukuyomi::app::route!("/") //
+                        .raw(|| {
+                            AsyncResult::polling(|input| {
+                                assert_eq!(
+                                    input.state::<String>().expect("state is not set: bar"),
+                                    "bar"
+                                );
+                                Ok(Response::new(ResponseBody::default()).into())
+                            })
+                        }),
+                ),
+        ) //
+        .build_server()?
+        .into_test_server()?;
+
+    let _ = server.perform("/")?;
+    let _ = server.perform("/sub")?;
 
     Ok(())
 }

@@ -11,7 +11,7 @@ where
 {
     super::ready(|input| {
         input
-            .state::<T>()
+            .state_detached::<T>()
             .ok_or_else(|| crate::error::internal_server_error("missing state"))
     })
 }
@@ -21,8 +21,8 @@ where
     T: Clone + Send + Sync + 'static,
 {
     super::ready(|input| {
-        if let Some(state) = input.state::<T>() {
-            Ok(unsafe { state.get_unchecked().clone() })
+        if let Some(state) = input.state::<T>().cloned() {
+            Ok(state)
         } else {
             Err(crate::error::internal_server_error("missing state"))
         }

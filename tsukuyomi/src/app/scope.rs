@@ -42,6 +42,11 @@ use {
 /// # }
 /// ```
 pub trait Modifier {
+    #[allow(unused_variables)]
+    fn setup(&mut self, cx: &mut Context<'_>) -> Result<()> {
+        Ok(())
+    }
+
     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output>;
 }
 
@@ -69,6 +74,12 @@ where
     M1: Modifier,
     M2: Modifier,
 {
+    fn setup(&mut self, cx: &mut Context<'_>) -> Result<()> {
+        self.m1.setup(cx)?;
+        self.m2.setup(cx)?;
+        Ok(())
+    }
+
     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
         self.m1.modify(self.m2.modify(result))
     }

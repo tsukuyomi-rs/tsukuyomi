@@ -6,14 +6,11 @@ use {
     super::imp::{Backend, BackendImpl},
     cookie::Cookie,
     crate::{session::SessionInner, util::BuilderExt},
-    futures::{future, IntoFuture},
+    futures::Async,
     serde_json,
     std::{borrow::Cow, collections::HashMap, fmt},
     time::Duration,
-    tsukuyomi::{
-        error::{Error, Result},
-        input::{Cookies, Input},
-    },
+    tsukuyomi::{error::Result, input::Cookies, AsyncResult},
 };
 
 #[cfg(feature = "secure")]
@@ -114,47 +111,49 @@ impl CookieSessionBackend {
     fn serialize(&self, map: &HashMap<String, String>) -> String {
         serde_json::to_string(&map).expect("should be success")
     }
-
-    fn read(&self, input: &mut Input<'_>) -> Result<SessionInner> {
-        let mut cookies = input.cookies()?;
-        match self.security.get(&*self.cookie_name, &mut cookies) {
-            Some(cookie) => {
-                let map = self.deserialize(cookie.value())?;
-                Ok(SessionInner::Some(map))
-            }
-            None => Ok(SessionInner::Empty),
-        }
-    }
-
-    fn write(&self, input: &mut Input<'_>, state: SessionInner) -> Result<()> {
-        let mut cookies = input.cookies()?;
-        match state {
-            SessionInner::Empty => {}
-            SessionInner::Some(map) => {
-                let value = self.serialize(&map);
-                let cookie = Cookie::build(self.cookie_name.clone(), value)
-                    .if_some(self.max_age, |this, max_age| this.max_age(max_age))
-                    .finish();
-                self.security.add(cookie, &mut cookies);
-            }
-            SessionInner::Clear => {
-                cookies.force_remove(Cookie::named(self.cookie_name.clone()));
-            }
-        }
-        Ok(())
-    }
 }
 
 impl Backend for CookieSessionBackend {}
 impl BackendImpl for CookieSessionBackend {
-    type ReadFuture = future::FutureResult<SessionInner, Error>;
-    type WriteFuture = future::FutureResult<(), Error>;
+    fn read(&self) -> AsyncResult<SessionInner> {
+        AsyncResult::polling(|input| {
+            let this = input.state_detached::<Self>().expect("should be available");
+            let this = this.get(input);
 
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadFuture {
-        self.read(input).into_future()
+            let mut cookies = input.cookies()?;
+            match this.security.get(&*this.cookie_name, &mut cookies) {
+                Some(cookie) => {
+                    let map = this.deserialize(cookie.value())?;
+                    Ok(Async::Ready(SessionInner::Some(map)))
+                }
+                None => Ok(Async::Ready(SessionInner::Empty)),
+            }
+        })
     }
 
-    fn write(&self, input: &mut Input<'_>, state: SessionInner) -> Self::WriteFuture {
-        self.write(input, state).into_future()
+    fn write(&self, inner: SessionInner) -> AsyncResult<()> {
+        let mut inner = Some(inner);
+        AsyncResult::polling(move |input| {
+            let this = input.state_detached::<Self>().expect("should be available");
+            let this = this.get(input);
+
+            let mut cookies = input.cookies()?;
+
+            match inner.take().expect("the future has already polled") {
+                SessionInner::Empty => {}
+                SessionInner::Some(map) => {
+                    let value = this.serialize(&map);
+                    let cookie = Cookie::build(this.cookie_name.clone(), value)
+                        .if_some(this.max_age, |c, max_age| c.max_age(max_age))
+                        .finish();
+                    this.security.add(cookie, &mut cookies);
+                }
+                SessionInner::Clear => {
+                    cookies.force_remove(Cookie::named(this.cookie_name.clone()));
+                }
+            }
+
+            Ok(Async::Ready(()))
+        })
     }
 }
