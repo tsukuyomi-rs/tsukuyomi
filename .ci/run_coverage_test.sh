@@ -17,6 +17,6 @@ tarpaulin() {
     cargo tarpaulin -v --skip-clean --out Xml "$@"
 }
 
-tarpaulin --all && codecov -n "all"
+tarpaulin --all --exclude example-diesel && codecov -n "all" # example-diesel reaches to the type-length limit...
 tarpaulin -p tsukuyomi --all-features && codecov -n "tsukuyomi (with all features)"
 tarpaulin -p tsukuyomi-session --all-features && codecov -n "tsukuyomi-session (with all features)"
