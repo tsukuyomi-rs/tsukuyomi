@@ -17,7 +17,7 @@ use {
     },
     hyper::body::Payload,
     mime::Mime,
-    std::{marker::PhantomData, ops::Index, rc::Rc},
+    std::{cell::UnsafeCell, marker::PhantomData, ops::Index, rc::Rc},
     tower_service::{NewService, Service},
 };
 
@@ -390,15 +390,20 @@ impl<'task> Input<'task> {
         })
     }
 
-    /// Returns the reference to a value of `T` registered in the global storage, if possible.
+    /// Returns the reference to a state of `T` registered in the scope, if possible.
     ///
-    /// This method will return a `None` if a value of `T` is not registered in the global storage.
+    /// This method will return a `None` if a value of `T` is not registered in the scope.
     #[inline]
-    pub fn state<T>(&self) -> Option<&T>
+    pub fn state<T>(&self) -> Option<State<T>>
     where
         T: Send + Sync + 'static,
     {
-        self.app.get_state(self.context.route.as_ref()?.0)
+        self.app
+            .get_state(self.context.route.as_ref()?.0)
+            .map(|state| State {
+                state,
+                _marker: PhantomData,
+            })
     }
 
     /// Returns a proxy object for managing the value of Cookie entries.
@@ -452,6 +457,45 @@ impl<'task> Input<'task> {
             .get_or_insert_with(Default::default)
     }
 }
+
+/// A proxy object for accessing the certain state.
+#[derive(Debug)]
+pub struct State<T>
+where
+    T: Send + Sync + 'static,
+{
+    state: *const T,
+    _marker: PhantomData<UnsafeCell<()>>,
+}
+
+impl<T> State<T>
+where
+    T: Send + Sync + 'static,
+{
+    /// Acquires a reference to the associated state.
+    ///
+    /// If the reference to `Input` is not set on the current task context,
+    /// this method will return a `None`.
+    #[inline]
+    pub fn get(&self) -> Option<&T> {
+        if crate::input::is_set_current() {
+            Some(unsafe { self.get_unchecked() })
+        } else {
+            None
+        }
+    }
+
+    /// Gets a reference to the associated state without checking the task context.
+    ///
+    /// # Safety
+    /// This method assumes that the reference to `Input` is set on the current task context.
+    #[inline]
+    pub unsafe fn get_unchecked(&self) -> &T {
+        &*self.state
+    }
+}
+
+unsafe impl<T> Send for State<T> where T: Send + Sync + 'static {}
 
 /// A proxy object for accessing Cookie values.
 ///

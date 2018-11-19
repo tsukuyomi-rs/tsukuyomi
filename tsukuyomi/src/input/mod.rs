@@ -6,7 +6,7 @@ pub mod local_map;
 use std::{cell::Cell, ptr::NonNull};
 pub use {
     self::body::RequestBody,
-    crate::app::imp::{Cookies, Input, Params},
+    crate::app::imp::{Cookies, Input, Params, State},
 };
 
 thread_local! {
