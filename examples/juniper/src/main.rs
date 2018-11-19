@@ -23,7 +23,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         tsukuyomi::extractor::value(context)
     };
 
-    tsukuyomi::app()
+    tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!("/") //
                 .reply({

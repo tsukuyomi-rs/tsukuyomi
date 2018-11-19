@@ -11,7 +11,7 @@ struct User {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::app()
+    tsukuyomi::app!()
         .route(
             route!("/") //
                 .reply(|| {

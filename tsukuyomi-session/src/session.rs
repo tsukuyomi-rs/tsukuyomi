@@ -2,7 +2,7 @@ use {
     serde::{de::DeserializeOwned, ser::Serialize},
     serde_json,
     std::collections::HashMap,
-    tsukuyomi::{error::Error, extractor::Extractor, input::local_map::local_key},
+    tsukuyomi::{error::Error, extractor::Extractor, localmap::local_key},
 };
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]

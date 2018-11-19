@@ -8,7 +8,7 @@ pub use self::redis::RedisSessionBackend;
 pub use self::{cookie::CookieSessionBackend, imp::Backend};
 
 pub(crate) mod imp {
-    use {crate::session::SessionInner, tsukuyomi::AsyncResult};
+    use {crate::session::SessionInner, tsukuyomi::handler::AsyncResult};
 
     /// A trait representing the session backend.
     ///

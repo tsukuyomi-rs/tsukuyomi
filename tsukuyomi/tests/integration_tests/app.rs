@@ -1,11 +1,11 @@
 use {
     http::{header, Method, Request, Response, StatusCode},
-    tsukuyomi::{app::route, extractor, test::ResponseExt},
+    tsukuyomi::{extractor, route, test::ResponseExt},
 };
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app() //
+    let mut server = tsukuyomi::app!() //
         .build_server()?
         .into_test_server()?;
 
@@ -17,7 +17,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(route!("/hello").reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
@@ -36,8 +36,21 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
+fn with_app_prefix() -> tsukuyomi::test::Result<()> {
+    let mut server = tsukuyomi::app!("/api/v1")
+        .route(route!("/hello").reply(|| "Tsukuyomi"))
+        .build_server()?
+        .into_test_server()?;
+
+    assert_eq!(server.perform("/api/v1/hello")?.status(), 200);
+    assert_eq!(server.perform("/hello")?.status(), 404);
+
+    Ok(())
+}
+
+#[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/hello", method = POST)
                 .with(tsukuyomi::extractor::body::plain())
@@ -69,7 +82,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/login")
                 .with(extractor::guard(move |input| {
@@ -122,7 +135,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(route!("/path").reply(|| "get"))
         .route(route!("/path", method = POST).reply(|| "post"))
         .build_server()?
@@ -139,7 +152,7 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn test_case_5_disable_default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .fallback_options(false) //
         .route(route!("/path").reply(|| "get"))
         .route(route!("/path", method = POST).reply(|| "post"))
@@ -154,7 +167,7 @@ fn test_case_5_disable_default_options() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn test_canceled() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/", methods = [GET, POST])
                 .with(tsukuyomi::extractor::guard(

@@ -3,10 +3,7 @@ use {
         generic::{Combine, Func, Tuple},
         Extract, ExtractStatus, Extractor,
     },
-    crate::{
-        error::{Error, Never},
-        input::Input,
-    },
+    crate::{common::Never, error::Error, input::Input},
     futures::{future, Async, Future, IntoFuture, Poll},
 };
 

@@ -2,84 +2,23 @@
 pub use http::Method;
 use {
     crate::{
-        async_result::AsyncResult,
         error::Error,
         extractor::{Combine, ExtractStatus, Extractor, Func},
         fs::NamedFile,
-        output::{Output, Responder},
+        handler::{raw as raw_handler, AsyncResult, Handler},
+        output::Responder,
         uri::Uri,
     },
-    either::Either,
     futures::{Async, Future, IntoFuture},
     indexmap::IndexSet,
     std::{
-        path::{Path, PathBuf},
+        path::{
+            Path, //
+            PathBuf,
+        },
         sync::Arc,
     },
 };
-
-/// A trait representing the handler associated with the specified endpoint.
-pub trait Handler {
-    /// Creates an `AsyncResult` which handles the incoming request.
-    fn handle(&self) -> AsyncResult<Output>;
-}
-
-impl<F, R> Handler for F
-where
-    F: Fn() -> R,
-    R: Into<AsyncResult<Output>>,
-{
-    #[inline]
-    fn handle(&self) -> AsyncResult<Output> {
-        (*self)().into()
-    }
-}
-
-impl<H> Handler for Arc<H>
-where
-    H: Handler,
-{
-    #[inline]
-    fn handle(&self) -> AsyncResult<Output> {
-        (**self).handle()
-    }
-}
-
-impl<L, R> Handler for Either<L, R>
-where
-    L: Handler,
-    R: Handler,
-{
-    #[inline]
-    fn handle(&self) -> AsyncResult<Output> {
-        match self {
-            Either::Left(ref handler) => handler.handle(),
-            Either::Right(ref handler) => handler.handle(),
-        }
-    }
-}
-
-pub(super) fn raw_handler<F, R>(f: F) -> impl Handler
-where
-    F: Fn() -> R,
-    R: Into<AsyncResult<Output>>,
-{
-    #[allow(missing_debug_implementations)]
-    struct Raw<F>(F);
-
-    impl<F, R> Handler for Raw<F>
-    where
-        F: Fn() -> R,
-        R: Into<AsyncResult<Output>>,
-    {
-        #[inline]
-        fn handle(&self) -> AsyncResult<Output> {
-            (self.0)().into()
-        }
-    }
-
-    Raw(f)
-}
 
 /// A builder of `Route`.
 #[derive(Debug)]
@@ -411,7 +350,7 @@ mod tests {
     #[ignore]
     fn compiletest1() {
         drop(
-            crate::app()
+            crate::app::app()
                 .route(
                     generated() //
                         .reply(|id: u32, name: String| {
@@ -428,7 +367,7 @@ mod tests {
     #[ignore]
     fn compiletest2() {
         drop(
-            crate::app()
+            crate::app::app()
                 .route(
                     generated() //
                         .with(crate::extractor::body::plain())

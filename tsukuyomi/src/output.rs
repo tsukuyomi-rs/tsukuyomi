@@ -4,7 +4,8 @@ pub use tsukuyomi_macros::Responder;
 use {
     bytes::{Buf, Bytes, IntoBuf},
     crate::{
-        error::{Error, Never},
+        common::Never,
+        error::Error,
         input::{body::RequestBody, Input},
     },
     either::Either,
@@ -386,12 +387,12 @@ pub mod redirect {
 
 #[allow(missing_docs)]
 pub mod responder {
-    use http::Response;
-    use serde::Serialize;
-
-    use super::ResponseBody;
-    use crate::error::{Error, Never};
-    use crate::input::Input;
+    use {
+        super::ResponseBody,
+        crate::{common::Never, error::Error, input::Input},
+        http::Response,
+        serde::Serialize,
+    };
 
     #[inline]
     pub fn json<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>

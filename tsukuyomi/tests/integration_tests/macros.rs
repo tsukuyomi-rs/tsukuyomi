@@ -66,7 +66,7 @@ mod responder {
     mod sub {
         use {
             http::Response,
-            tsukuyomi::{error::Never, input::Input},
+            tsukuyomi::{Input, Never},
         };
 
         pub fn respond_to<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>
@@ -92,9 +92,9 @@ mod responder {
             }
         }
 
-        let mut server = tsukuyomi::app()
+        let mut server = tsukuyomi::app!()
             .route(
-                tsukuyomi::app::route() //
+                tsukuyomi::route!() //
                     .reply(|| Foo("Foo".into())),
             ) //
             .build_server()?

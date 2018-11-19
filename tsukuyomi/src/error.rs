@@ -124,37 +124,6 @@ impl HttpError for failure::Error {
     }
 }
 
-/// A helper type emulating the standard `never_type` (`!`).
-#[cfg_attr(feature = "cargo-clippy", allow(stutter, empty_enum))]
-#[derive(Debug)]
-pub enum Never {}
-
-impl fmt::Display for Never {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
-
-impl std::error::Error for Never {
-    fn description(&self) -> &str {
-        match *self {}
-    }
-
-    fn cause(&self) -> Option<&dyn std::error::Error> {
-        match *self {}
-    }
-}
-
-impl HttpError for Never {
-    fn status_code(&self) -> StatusCode {
-        match *self {}
-    }
-
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
-        match *self {}
-    }
-}
-
 /// An error type which wraps a `Display`able value.
 #[derive(Debug)]
 pub struct Custom<D> {

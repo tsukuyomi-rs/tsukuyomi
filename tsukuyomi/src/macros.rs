@@ -1,7 +1,10 @@
 pub mod local_key {
     pub use {
-        crate::input::local_map::LocalKey,
-        std::{any::TypeId, marker::PhantomData},
+        crate::localmap::LocalKey,
+        std::{
+            any::TypeId, //
+            marker::PhantomData,
+        },
     };
 }
 
@@ -35,20 +38,22 @@ macro_rules! local_key {
     };
 }
 
+/// A macro to start building an `App`.
 #[macro_export(local_inner_macros)]
 macro_rules! app {
     () => {
-        $crate::app()
+        $crate::app::app()
     };
     ($prefix:expr) => {{
         enum __Dummy {}
         impl __Dummy {
             validate_prefix!($prefix);
         }
-        $crate::app().prefix($prefix.parse().expect("this is a bug"))
+        $crate::app::app().prefix($prefix.parse().expect("this is a bug"))
     }};
 }
 
+/// A macro to start building a `Scope`.
 #[macro_export(local_inner_macros)]
 macro_rules! scope {
     () => {
@@ -65,9 +70,13 @@ macro_rules! scope {
 }
 
 pub mod route {
-    pub use {crate::app::route, http::Method};
+    pub use {
+        crate::app::route, //
+        http::Method,
+    };
 }
 
+/// A macro to start building a `Route`.
 #[macro_export(local_inner_macros)]
 macro_rules! route {
     () => ( $crate::macros::route::route() );

@@ -3,7 +3,7 @@ extern crate tsukuyomi;
 use tsukuyomi::app::{route, scope};
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::app()
+    tsukuyomi::app!()
         .route(
             route!() //
                 .reply(|| "Hello, world\n"),

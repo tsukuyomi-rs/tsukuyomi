@@ -2,9 +2,9 @@ use {
     http::Response,
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        app::{route, scope, scope::Modifier},
+        handler::AsyncResult,
         output::{Output, ResponseBody},
-        AsyncResult,
+        route, scope, Modifier,
     },
 };
 
@@ -48,7 +48,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(route!().reply(|| ""))
         .modifier(MockModifier {
             marker: marker.clone(),
@@ -71,7 +71,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
@@ -102,7 +102,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .mount(
             scope!("/path")
                 .modifier(MockModifier {
@@ -155,10 +155,10 @@ fn setup() -> tsukuyomi::test::Result<()> {
         }
     }
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .modifier(SetState(Some("foo".into())))
         .route(
-            tsukuyomi::app::route!("/") //
+            route!("/") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
                         assert_eq!(
@@ -170,20 +170,18 @@ fn setup() -> tsukuyomi::test::Result<()> {
                 }),
         ) //
         .mount(
-            tsukuyomi::app::scope!("/sub")
-                .modifier(SetState(Some("bar".into())))
-                .route(
-                    tsukuyomi::app::route!("/") //
-                        .raw(|| {
-                            AsyncResult::ready(|input| {
-                                assert_eq!(
-                                    input.state::<String>().expect("state is not set: bar"),
-                                    "bar"
-                                );
-                                Ok(Response::new(ResponseBody::default()))
-                            })
-                        }),
-                ),
+            scope!("/sub").modifier(SetState(Some("bar".into()))).route(
+                route!("/") //
+                    .raw(|| {
+                        AsyncResult::ready(|input| {
+                            assert_eq!(
+                                input.state::<String>().expect("state is not set: bar"),
+                                "bar"
+                            );
+                            Ok(Response::new(ResponseBody::default()))
+                        })
+                    }),
+            ),
         ) //
         .build_server()?
         .into_test_server()?;

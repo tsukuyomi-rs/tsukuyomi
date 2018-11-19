@@ -9,7 +9,7 @@ use {
 
 #[test]
 fn empty() {
-    let app = crate::app().build().unwrap();
+    let app = crate::app::app().build().unwrap();
     assert_matches!(
         app.recognize("/", &Method::GET),
         Err(RecognizeError::NotFound)
@@ -18,7 +18,7 @@ fn empty() {
 
 #[test]
 fn route_single_method() {
-    let app = crate::app() //
+    let app = crate::app::app() //
         .route(route().reply(|| ""))
         .build()
         .unwrap();
@@ -40,7 +40,7 @@ fn route_single_method() {
 
 #[test]
 fn route_multiple_method() {
-    let app = crate::app()
+    let app = crate::app::app()
         .route(route().reply(|| ""))
         .route(route().method(Method::POST).reply(|| ""))
         .build()
@@ -63,7 +63,7 @@ fn route_multiple_method() {
 
 #[test]
 fn route_fallback_head_enabled() {
-    let app = crate::app() //
+    let app = crate::app::app() //
         .route(route().reply(|| ""))
         .build()
         .unwrap();
@@ -76,7 +76,7 @@ fn route_fallback_head_enabled() {
 
 #[test]
 fn route_fallback_head_disabled() {
-    let app = crate::app() //
+    let app = crate::app::app() //
         .route(route().reply(|| ""))
         .fallback_head(false)
         .build()
@@ -90,7 +90,7 @@ fn route_fallback_head_disabled() {
 
 #[test]
 fn route_fallback_options_enabled() {
-    let app = crate::app() //
+    let app = crate::app::app() //
         .route(route().reply(|| "")) // 0
         .route(route().method(Method::POST).reply(|| "")) // 1
         .route(
@@ -111,7 +111,7 @@ fn route_fallback_options_enabled() {
 
 #[test]
 fn route_fallback_options_disabled() {
-    let app = crate::app() //
+    let app = crate::app::app() //
         .route(route().reply(|| ""))
         .route(route().method(Method::POST).reply(|| ""))
         .fallback_options(false)
@@ -126,7 +126,7 @@ fn route_fallback_options_disabled() {
 
 #[test]
 fn scope_simple() {
-    let app = crate::app() //
+    let app = crate::app::app() //
         .mount(
             scope()
                 .route(route().uri("/a".parse().unwrap()).reply(|| ""))
@@ -166,7 +166,7 @@ fn scope_simple() {
 
 #[test]
 fn scope_nested() {
-    let app = crate::app()
+    let app = crate::app::app()
         .mount(
             scope()
                 .route(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
@@ -217,7 +217,7 @@ fn scope_nested() {
 
 #[test]
 fn scope_variable() {
-    let app = crate::app()
+    let app = crate::app::app()
         .state::<String>("G".into())
         .route(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .mount(
@@ -305,7 +305,7 @@ fn scope_variable() {
 
 #[test]
 fn failcase_duplicate_uri_and_method() {
-    let app = crate::app()
+    let app = crate::app::app()
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .build();
@@ -314,7 +314,7 @@ fn failcase_duplicate_uri_and_method() {
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() {
-    let app = crate::app()
+    let app = crate::app::app()
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .mount(scope().route(route().uri("/path".parse().unwrap()).reply(|| ""))) //
         .build();

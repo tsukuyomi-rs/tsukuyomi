@@ -23,8 +23,9 @@ pub use {
     crate::{route, scope},
 };
 use {
-    self::{route::Handler, scope::Modifier},
     crate::{
+        handler::Handler,
+        modifier::Modifier,
         recognizer::Recognizer,
         scoped_map::{ScopeId, ScopedContainer},
         uri::Uri,
@@ -34,12 +35,16 @@ use {
     std::{fmt, sync::Arc},
 };
 
-pub fn route() -> self::route::Builder<()> {
-    self::route::Builder::<()>::default()
+pub fn app() -> self::builder::Builder<(), ()> {
+    self::builder::Builder::default()
 }
 
 pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()
+}
+
+pub fn route() -> self::route::Builder<()> {
+    self::route::Builder::<()>::default()
 }
 
 #[derive(Debug)]

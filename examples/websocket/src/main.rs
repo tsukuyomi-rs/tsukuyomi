@@ -25,7 +25,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             })
         });
 
-    let server = tsukuyomi::app() //
+    let server = tsukuyomi::app!() //
         .route(handle_websocket)
         .build_server()?;
 

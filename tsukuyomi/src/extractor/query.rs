@@ -2,7 +2,7 @@
 
 use {
     super::Extractor,
-    crate::error::{Error, Never},
+    crate::{common::Never, error::Error},
     serde::de::DeserializeOwned,
 };
 

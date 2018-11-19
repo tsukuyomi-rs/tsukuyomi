@@ -11,8 +11,9 @@ use {
     time::Duration,
     tsukuyomi::{
         error::{Error, Result},
-        input::{local_map::local_key, Input},
-        AsyncResult,
+        handler::AsyncResult,
+        input::Input,
+        localmap::local_key,
     },
     uuid::Uuid,
 };

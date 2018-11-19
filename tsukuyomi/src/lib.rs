@@ -57,21 +57,42 @@ extern crate matches;
 #[doc(hidden)]
 pub mod macros;
 
-mod async_result;
 mod recognizer;
 mod scoped_map;
 use tsukuyomi_internal::uri;
+mod common;
 
 pub mod app;
 pub mod error;
 pub mod extractor;
 pub mod fs;
+pub mod handler;
 pub mod input;
+pub mod localmap;
+pub mod modifier;
 pub mod output;
 pub mod rt;
 pub mod server;
 pub mod test;
 
-pub use crate::{app::imp::app, async_result::AsyncResult, server::imp::server};
+#[doc(inline)]
+pub use crate::{
+    common::Never,
+    error::{
+        Error, //
+        HttpError,
+        Result,
+    },
+    extractor::Extractor,
+    handler::Handler,
+    input::Input,
+    modifier::Modifier,
+    output::{
+        Output, //
+        Responder,
+    },
+    server::imp::server,
+};
+
 #[doc(hidden)]
 pub use tsukuyomi_macros::{route_expr_impl, validate_prefix};

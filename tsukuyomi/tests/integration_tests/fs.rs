@@ -2,9 +2,9 @@
 #[ignore]
 fn compiletest() {
     drop(
-        tsukuyomi::app()
+        tsukuyomi::app!()
             .route(
-                tsukuyomi::app::route!("/index.html") //
+                tsukuyomi::route!("/index.html") //
                     .serve_file("/path/to/index.html"),
             ) //
             .build()

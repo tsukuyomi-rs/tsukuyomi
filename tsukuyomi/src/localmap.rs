@@ -1,4 +1,4 @@
-//! Components for managing request-local data.
+//! A typemap implementation for using management of request-local state.
 
 use std::{
     any::TypeId,

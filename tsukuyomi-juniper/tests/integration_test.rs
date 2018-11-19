@@ -20,7 +20,7 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
     let executor = tsukuyomi_juniper::executor(schema);
     let executor = std::sync::Arc::new(executor);
 
-    let test_server = tsukuyomi::app()
+    let test_server = tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!("/", methods = [GET, POST])
                 .with(executor.clone())

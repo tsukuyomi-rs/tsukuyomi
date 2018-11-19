@@ -7,7 +7,7 @@ use tsukuyomi_websocket::Ws;
 #[ignore]
 fn compiletest() {
     drop(
-        tsukuyomi::app()
+        tsukuyomi::app!()
             .route(
                 tsukuyomi::app::route!("/ws")
                     .with(tsukuyomi_websocket::extractor())

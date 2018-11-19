@@ -9,7 +9,7 @@ use {
     serde_json,
     std::{borrow::Cow, collections::HashMap, fmt},
     time::Duration,
-    tsukuyomi::{error::Result, input::Cookies, AsyncResult},
+    tsukuyomi::{error::Result, handler::AsyncResult, input::Cookies},
 };
 
 #[cfg(feature = "secure")]

@@ -8,7 +8,7 @@ use std::{path::Path, sync::Arc};
 fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
-    tsukuyomi::app()
+    tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!() //
                 .reply(|| "Hello, Tsukuyomi.\n"),

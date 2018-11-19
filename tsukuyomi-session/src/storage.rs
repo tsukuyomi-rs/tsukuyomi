@@ -1,7 +1,7 @@
 use {
     crate::{backend::Backend, session::SessionInner},
     futures::{try_ready, Async},
-    tsukuyomi::{app::scope::Modifier, output::Output, AsyncResult},
+    tsukuyomi::{handler::AsyncResult, modifier::Modifier, output::Output},
 };
 
 /// A `Modifier` for managing session values.

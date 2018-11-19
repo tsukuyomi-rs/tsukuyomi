@@ -2,14 +2,16 @@ use {
     super::{
         callback::Callback,
         error::{Error, Result},
-        route::{Context as RouteContext, Handler, Route},
-        scope::{Context as ScopeContext, Modifier, Scope},
+        route::{Context as RouteContext, Route},
+        scope::{Context as ScopeContext, Scope},
         App, AppData, Config, EndpointData, RouteData, RouteId, ScopeData,
     },
     bytes::BytesMut,
     crate::{
         error::Critical,
+        handler::Handler,
         input::Input,
+        modifier::Modifier,
         output::{Output, ResponseBody},
         recognizer::Recognizer,
         scoped_map::{Builder as ScopedContainerBuilder, ScopeId},

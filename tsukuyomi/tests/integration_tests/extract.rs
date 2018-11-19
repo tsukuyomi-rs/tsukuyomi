@@ -1,14 +1,14 @@
 use {
     http::Request,
     tsukuyomi::{
-        app::route,
         extractor::{self, Extractor},
+        route,
     },
 };
 
 #[test]
 fn unit_input() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(route!().reply(|| "dummy"))
         .build_server()?
         .into_test_server()?;
@@ -19,7 +19,7 @@ fn unit_input() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn params() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/:id/:name/*path")
                 .reply(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)),
@@ -39,7 +39,7 @@ fn params() -> tsukuyomi::test::Result<()> {
 #[test]
 fn route_macros() -> tsukuyomi::test::Result<()> {
     drop(
-        tsukuyomi::app()
+        tsukuyomi::app!()
             .route(route!("/index").reply(|| "index"))
             .route(route!("/params/:id/:name").reply(|id: i32, name: String| {
                 drop((id, name));
@@ -64,7 +64,7 @@ fn route_macros() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn plain_body() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/", method = POST)
                 .with(extractor::body::plain())
@@ -113,7 +113,7 @@ fn json_body() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/", method = POST)
                 .with(extractor::body::json())
@@ -160,7 +160,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/", method = POST)
                 .with(extractor::body::urlencoded())
@@ -203,9 +203,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::{
-        app::scope::Modifier, input::local_map::local_key, output::Output, AsyncResult,
-    };
+    use tsukuyomi::{handler::AsyncResult, localmap::local_key, Modifier, Output};
 
     #[derive(Clone)]
     struct MyData(String);
@@ -232,7 +230,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
         }
     }
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .modifier(MyModifier)
         .route(
             route!()
@@ -250,7 +248,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn missing_local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::input::local_map::local_key;
+    use tsukuyomi::localmap::local_key;
 
     #[derive(Clone)]
     struct MyData(String);
@@ -261,7 +259,7 @@ fn missing_local_data() -> tsukuyomi::test::Result<()> {
         }
     }
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!()
                 .with(extractor::local::remove(&MyData::KEY))
@@ -286,7 +284,7 @@ fn optional() -> tsukuyomi::test::Result<()> {
 
     let extractor = extractor::Builder::new(extractor::body::json()).optional();
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/", method = POST)
                 .with(extractor)
@@ -333,7 +331,7 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         .or(extractor::verb::post(extractor::body::json()))
         .or(extractor::verb::post(extractor::body::urlencoded()));
 
-    let mut server = tsukuyomi::app()
+    let mut server = tsukuyomi::app!()
         .route(
             route!("/", method = POST)
                 .with(params_extractor)

@@ -15,7 +15,7 @@ use {
 fn main() -> tsukuyomi::server::Result<()> {
     let backend = CookieSessionBackend::plain();
 
-    tsukuyomi::app()
+    tsukuyomi::app!()
         .modifier(tsukuyomi_session::storage(backend))
         .route(
             route!("/") //

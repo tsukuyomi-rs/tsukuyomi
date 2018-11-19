@@ -18,11 +18,7 @@ pub use self::builder::Builder;
 pub(crate) use self::generic::{Combine, Func, Tuple};
 
 use {
-    crate::{
-        error::{Error, Never},
-        input::Input,
-        output::Output,
-    },
+    crate::{common::Never, error::Error, input::Input, output::Output},
     futures::{Future, IntoFuture, Poll},
     std::marker::PhantomData,
 };
@@ -31,7 +27,7 @@ use {
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct Placeholder<T, E> {
-    never: crate::error::Never,
+    never: Never,
     _marker: PhantomData<fn() -> (T, E)>,
 }
 

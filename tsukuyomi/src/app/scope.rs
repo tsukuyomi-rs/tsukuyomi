@@ -4,86 +4,13 @@ use {
         error::{Error, Result},
         route::Route,
     },
-    crate::{async_result::AsyncResult, output::Output, scoped_map::ScopeId, uri::Uri},
+    crate::{
+        common::Never,
+        modifier::{Chain, Modifier},
+        scoped_map::ScopeId,
+        uri::Uri,
+    },
 };
-
-/// A trait representing a `Modifier`.
-///
-/// The purpose of this trait is to insert some processes before and after
-/// applying `Handler` in a certain scope.
-///
-/// # Examples
-///
-/// ```
-/// # extern crate tsukuyomi;
-/// use std::sync::atomic::{AtomicUsize, Ordering};
-/// use tsukuyomi::{
-///     AsyncResult,
-///     app::{route, scope::Modifier},
-///     output::Output,
-/// };
-///
-/// #[derive(Default)]
-/// struct RequestCounter(AtomicUsize);
-///
-/// impl Modifier for RequestCounter {
-///     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
-///        self.0.fetch_add(1, Ordering::SeqCst);
-///        result
-///     }
-/// }
-///
-/// # fn main() -> tsukuyomi::app::Result<()> {
-/// tsukuyomi::app()
-///     .route(route!().reply(|| "Hello"))
-///     .modifier(RequestCounter::default())
-///     .build()
-/// #   .map(drop)
-/// # }
-/// ```
-pub trait Modifier {
-    #[allow(unused_variables)]
-    fn setup(&mut self, cx: &mut Context<'_>) -> Result<()> {
-        Ok(())
-    }
-
-    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output>;
-}
-
-impl Modifier for () {
-    #[inline]
-    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
-        result
-    }
-}
-
-#[derive(Debug)]
-pub struct Chain<M1, M2> {
-    m1: M1,
-    m2: M2,
-}
-
-impl<M1, M2> Chain<M1, M2> {
-    pub(super) fn new(m1: M1, m2: M2) -> Self {
-        Self { m1, m2 }
-    }
-}
-
-impl<M1, M2> Modifier for Chain<M1, M2>
-where
-    M1: Modifier,
-    M2: Modifier,
-{
-    fn setup(&mut self, cx: &mut Context<'_>) -> Result<()> {
-        self.m1.setup(cx)?;
-        self.m2.setup(cx)?;
-        Ok(())
-    }
-
-    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
-        self.m1.modify(self.m2.modify(result))
-    }
-}
 
 pub trait Scope {
     type Error: Into<Error>;
@@ -92,7 +19,7 @@ pub trait Scope {
 }
 
 impl Scope for () {
-    type Error = crate::error::Never;
+    type Error = Never;
 
     fn configure(self, _: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
         Ok(())
@@ -195,13 +122,13 @@ where
     }
 
     /// Register a `Modifier` into the current scope.
-    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, impl Modifier + Send + Sync + 'static>
+    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, Chain<M, M2>>
     where
         M2: Modifier + Send + Sync + 'static,
     {
         Builder {
             scope: self.scope,
-            modifier: self::Chain::new(self.modifier, modifier),
+            modifier: Chain::new(self.modifier, modifier),
         }
     }
 

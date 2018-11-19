@@ -7,7 +7,7 @@ use tsukuyomi_fs::Staticfiles;
 #[ignore]
 fn compiletest_staticfiles() {
     drop(
-        tsukuyomi::app()
+        tsukuyomi::app!()
             .with(Staticfiles::new("./public")) //
             .build()
             .unwrap(),

@@ -1,17 +1,19 @@
-//! Definition of `Handler` and `Modifier`.
+//! Definition of `Handler`.
 
 use {
     crate::{
         error::Error, //
         input::Input,
+        output::Output,
     },
+    either::Either,
     futures::{
         Async, //
         Future,
         IntoFuture,
         Poll,
     },
-    std::fmt,
+    std::{fmt, sync::Arc},
 };
 
 /// A type representing asynchronous computation in Tsukuyomi.
@@ -124,4 +126,67 @@ impl<T, E> AsyncResult<T, E> {
             };
         })
     }
+}
+
+/// A trait representing the handler associated with the specified endpoint.
+pub trait Handler {
+    /// Creates an `AsyncResult` which handles the incoming request.
+    fn handle(&self) -> AsyncResult<Output>;
+}
+
+impl<F, R> Handler for F
+where
+    F: Fn() -> R,
+    R: Into<AsyncResult<Output>>,
+{
+    #[inline]
+    fn handle(&self) -> AsyncResult<Output> {
+        (*self)().into()
+    }
+}
+
+impl<H> Handler for Arc<H>
+where
+    H: Handler,
+{
+    #[inline]
+    fn handle(&self) -> AsyncResult<Output> {
+        (**self).handle()
+    }
+}
+
+impl<L, R> Handler for Either<L, R>
+where
+    L: Handler,
+    R: Handler,
+{
+    #[inline]
+    fn handle(&self) -> AsyncResult<Output> {
+        match self {
+            Either::Left(ref handler) => handler.handle(),
+            Either::Right(ref handler) => handler.handle(),
+        }
+    }
+}
+
+pub fn raw<F, R>(f: F) -> impl Handler
+where
+    F: Fn() -> R,
+    R: Into<AsyncResult<Output>>,
+{
+    #[allow(missing_debug_implementations)]
+    struct Raw<F>(F);
+
+    impl<F, R> Handler for Raw<F>
+    where
+        F: Fn() -> R,
+        R: Into<AsyncResult<Output>>,
+    {
+        #[inline]
+        fn handle(&self) -> AsyncResult<Output> {
+            (self.0)().into()
+        }
+    }
+
+    Raw(f)
 }

@@ -2,9 +2,10 @@ use {
     super::{App, RouteId},
     cookie::{Cookie, CookieJar},
     crate::{
-        async_result::AsyncResult,
         error::{Critical, Error, HttpError},
-        input::{local_map::LocalMap, RequestBody},
+        handler::AsyncResult,
+        input::RequestBody,
+        localmap::LocalMap,
         output::{Output, ResponseBody},
         recognizer::Captures,
         uri::CaptureNames,
@@ -34,10 +35,6 @@ macro_rules! ready {
             Err(e) => Err(e),
         }
     };
-}
-
-pub fn app() -> super::builder::Builder<(), ()> {
-    super::builder::Builder::default()
 }
 
 /// An instance of `HttpError` which will be thrown from the route recognizer.
@@ -362,7 +359,7 @@ impl<'task> Input<'task> {
 
     /// Returns a reference to the parsed value of `Content-type` stored in the specified `Input`.
     pub fn content_type(&mut self) -> Result<Option<&Mime>, Error> {
-        use crate::input::local_map::{local_key, Entry};
+        use crate::localmap::{local_key, Entry};
 
         local_key! {
             static KEY: Option<Mime>;

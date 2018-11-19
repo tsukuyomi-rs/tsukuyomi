@@ -18,7 +18,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     });
     let ssl_acceptor = builder.build();
 
-    tsukuyomi::app()
+    tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!() //
                 .reply(|| "Hello, Tsukuyomi.\n"),

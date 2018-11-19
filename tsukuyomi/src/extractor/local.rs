@@ -2,7 +2,7 @@
 
 use {
     super::Extractor,
-    crate::{error::Error, input::local_map::LocalKey},
+    crate::{error::Error, localmap::LocalKey},
     std::fmt,
 };
 
