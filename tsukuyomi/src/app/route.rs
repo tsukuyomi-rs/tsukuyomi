@@ -191,13 +191,12 @@ where
                 let handler = handler.clone();
                 let mut status: Status<E::Future> = Status::Init;
 
-                AsyncResult::polling(move |input| loop {
+                AsyncResult::poll_fn(move |input| loop {
                     status = match status {
                         Status::InFlight(ref mut future) => {
-                            let arg =
-                                futures::try_ready!(crate::input::with_set_current(input, || {
-                                    future.poll().map_err(Into::into)
-                                }));
+                            let arg = futures::try_ready!(
+                                input.with_set_current(|| future.poll().map_err(Into::into))
+                            );
                             return crate::output::internal::respond_to(handler.call(arg), input)
                                 .map(Async::Ready);
                         }
@@ -242,20 +241,16 @@ where
                 let handler = handler.clone();
                 let mut status: Status<E::Future, R::Future> = Status::Init;
 
-                AsyncResult::polling(move |input| loop {
+                AsyncResult::poll_fn(move |input| loop {
                     status = match status {
                         Status::First(ref mut future) => {
-                            let arg =
-                                futures::try_ready!(crate::input::with_set_current(input, || {
-                                    future.poll().map_err(Into::into)
-                                }));
+                            let arg = futures::try_ready!(
+                                input.with_set_current(|| future.poll().map_err(Into::into))
+                            );
                             Status::Second(handler.call(arg).into_future())
                         }
                         Status::Second(ref mut future) => {
-                            let x =
-                                futures::try_ready!(crate::input::with_set_current(input, || {
-                                    future.poll()
-                                }));
+                            let x = futures::try_ready!(input.with_set_current(|| future.poll()));
                             return crate::output::internal::respond_to(x, input).map(Async::Ready);
                         }
                         Status::Init => match extractor.extract(input) {

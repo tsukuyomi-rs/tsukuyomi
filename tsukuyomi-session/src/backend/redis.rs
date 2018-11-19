@@ -80,7 +80,7 @@ impl Backend for RedisSessionBackend {}
 impl BackendImpl for RedisSessionBackend {
     fn read(&self) -> AsyncResult<SessionInner> {
         let mut read_future: Option<ReadFuture> = None;
-        AsyncResult::polling(move |input| {
+        AsyncResult::poll_fn(move |input| {
             let this = input
                 .state_detached::<Self>()
                 .expect("the backend is not set");
@@ -108,7 +108,7 @@ impl BackendImpl for RedisSessionBackend {
         let mut inner = Some(inner);
         let mut future: Option<RedisFuture<(_, ())>> = None;
 
-        AsyncResult::polling(move |input| {
+        AsyncResult::poll_fn(move |input| {
             let this = input.state_detached::<Self>().expect("backend is not set");
             let this = this.get(input);
 

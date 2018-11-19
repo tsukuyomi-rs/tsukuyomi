@@ -220,7 +220,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     impl Modifier for MyModifier {
         fn modify(&self, mut result: AsyncResult<Output>) -> AsyncResult<Output> {
             let mut inserted = false;
-            AsyncResult::polling(move |input| {
+            AsyncResult::poll_fn(move |input| {
                 if !inserted {
                     input
                         .locals_mut()

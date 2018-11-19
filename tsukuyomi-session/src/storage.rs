@@ -48,7 +48,7 @@ where
 
         let mut state = State::Init(Some(handle));
 
-        AsyncResult::polling(move |input| {
+        AsyncResult::poll_fn(move |input| {
             let backend = input.state_detached::<B>().expect("should be available");
             let backend = backend.get(input);
 

@@ -1,13 +1,23 @@
 //! Definition of `Handler` and `Modifier`.
 
 use {
-    crate::{error::Error, input::Input},
-    futures::{Async, Poll},
+    crate::{
+        error::Error, //
+        input::Input,
+    },
+    futures::{
+        Async, //
+        Future,
+        IntoFuture,
+        Poll,
+    },
     std::fmt,
 };
 
-/// A type representing the return value from `Handler::handle`.
-pub struct AsyncResult<T, E = Error>(AsyncResultKind<T, E>);
+/// A type representing asynchronous computation in Tsukuyomi.
+pub struct AsyncResult<T, E = Error> {
+    kind: AsyncResultKind<T, E>,
+}
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum AsyncResultKind<T, E> {
@@ -22,7 +32,7 @@ where
     E: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
+        match self.kind {
             AsyncResultKind::Result(ref res) => f.debug_tuple("Result").field(res).finish(),
             AsyncResultKind::Polling(..) => f.debug_tuple("Polling").finish(),
         }
@@ -39,46 +49,79 @@ where
 }
 
 impl<T, E> AsyncResult<T, E> {
-    /// Creates an `AsyncResult` from an immediately value.
-    pub fn ok(output: T) -> Self {
-        Self::result(Ok(output))
-    }
-
-    /// Creates an `AsyncResult` from an immediately value.
-    pub fn err(err: E) -> Self {
-        Self::result(Err(err))
-    }
-
-    /// Creates an `AsyncResult` from an immediately value.
+    /// Creates an `AsyncResult` from the specified `Result`.
     pub fn result(result: Result<T, E>) -> Self {
-        AsyncResult(AsyncResultKind::Result(Some(result)))
-    }
-
-    pub fn ready<F>(f: F) -> Self
-    where
-        F: FnOnce(&mut Input<'_>) -> Result<T, E> + Send + 'static,
-    {
-        let mut f = Some(f);
-        Self::polling(move |input| {
-            (f.take().expect("the future has already polled"))(input).map(Async::Ready)
-        })
+        Self {
+            kind: AsyncResultKind::Result(Some(result)),
+        }
     }
 
     /// Creates an `AsyncResult` from a closure representing an asynchronous computation.
-    pub fn polling<F>(f: F) -> Self
+    pub fn poll_fn<F>(f: F) -> Self
     where
         F: FnMut(&mut Input<'_>) -> Poll<T, E> + Send + 'static,
     {
-        AsyncResult(AsyncResultKind::Polling(Box::new(f)))
+        Self {
+            kind: AsyncResultKind::Polling(Box::new(f)),
+        }
     }
 
+    /// Progress the inner asynchronous computation with the specified `Input`.
     pub fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, E> {
-        match self.0 {
+        match self.kind {
             AsyncResultKind::Result(ref mut res) => res
                 .take()
                 .expect("this future has already polled")
                 .map(Async::Ready),
             AsyncResultKind::Polling(ref mut f) => (f)(input),
         }
+    }
+}
+
+impl<T, E> AsyncResult<T, E> {
+    /// Creates an `AsyncResult` from an successful value.
+    pub fn ok(output: T) -> Self {
+        Self::result(Ok(output))
+    }
+
+    /// Creates an `AsyncResult` from an error value.
+    pub fn err(err: E) -> Self {
+        Self::result(Err(err))
+    }
+
+    /// Creates an `AsyncResult` from a closure which will returns a `Result` immediately.
+    pub fn ready<F>(f: F) -> Self
+    where
+        F: FnOnce(&mut Input<'_>) -> Result<T, E> + Send + 'static,
+    {
+        let mut f = Some(f);
+        Self::poll_fn(move |input| {
+            (f.take().expect("the future has already polled"))(input).map(Async::Ready)
+        })
+    }
+
+    /// Creates an `AsyncResult` from a closure which will returns a `Future`.
+    pub fn lazy<F, R>(f: F) -> Self
+    where
+        F: FnOnce(&mut Input<'_>) -> R + Send + 'static,
+        R: IntoFuture<Item = T, Error = E>,
+        R::Future: Send + 'static,
+    {
+        #[allow(missing_debug_implementations)]
+        enum State<F, T> {
+            Init(F),
+            Pending(T),
+            Gone,
+        }
+
+        let mut state: State<F, R::Future> = State::Init(f);
+
+        Self::poll_fn(move |input| loop {
+            state = match std::mem::replace(&mut state, State::Gone) {
+                State::Init(f) => State::Pending(f(input).into_future()),
+                State::Pending(ref mut future) => return input.with_set_current(|| future.poll()),
+                State::Gone => panic!("the future has already polled"),
+            };
+        })
     }
 }
