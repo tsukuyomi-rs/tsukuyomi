@@ -6,7 +6,6 @@ use {
     super::imp::{Backend, BackendImpl},
     cookie::Cookie,
     crate::{session::SessionInner, util::BuilderExt},
-    futures::Async,
     serde_json,
     std::{borrow::Cow, collections::HashMap, fmt},
     time::Duration,
@@ -116,7 +115,7 @@ impl CookieSessionBackend {
 impl Backend for CookieSessionBackend {}
 impl BackendImpl for CookieSessionBackend {
     fn read(&self) -> AsyncResult<SessionInner> {
-        AsyncResult::polling(|input| {
+        AsyncResult::ready(|input| {
             let this = input.state_detached::<Self>().expect("should be available");
             let this = this.get(input);
 
@@ -124,22 +123,19 @@ impl BackendImpl for CookieSessionBackend {
             match this.security.get(&*this.cookie_name, &mut cookies) {
                 Some(cookie) => {
                     let map = this.deserialize(cookie.value())?;
-                    Ok(Async::Ready(SessionInner::Some(map)))
+                    Ok(SessionInner::Some(map))
                 }
-                None => Ok(Async::Ready(SessionInner::Empty)),
+                None => Ok(SessionInner::Empty),
             }
         })
     }
 
     fn write(&self, inner: SessionInner) -> AsyncResult<()> {
-        let mut inner = Some(inner);
-        AsyncResult::polling(move |input| {
+        AsyncResult::ready(move |input| {
             let this = input.state_detached::<Self>().expect("should be available");
             let this = this.get(input);
-
             let mut cookies = input.cookies()?;
-
-            match inner.take().expect("the future has already polled") {
+            match inner {
                 SessionInner::Empty => {}
                 SessionInner::Some(map) => {
                     let value = this.serialize(&map);
@@ -153,7 +149,7 @@ impl BackendImpl for CookieSessionBackend {
                 }
             }
 
-            Ok(Async::Ready(()))
+            Ok(())
         })
     }
 }

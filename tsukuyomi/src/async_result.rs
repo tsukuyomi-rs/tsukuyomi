@@ -11,7 +11,7 @@ pub struct AsyncResult<T, E = Error>(AsyncResultKind<T, E>);
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum AsyncResultKind<T, E> {
-    Ready(Option<Result<T, E>>),
+    Result(Option<Result<T, E>>),
     Polling(Box<dyn FnMut(&mut Input<'_>) -> Poll<T, E> + Send + 'static>),
 }
 
@@ -23,7 +23,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
-            AsyncResultKind::Ready(ref res) => f.debug_tuple("Ready").field(res).finish(),
+            AsyncResultKind::Result(ref res) => f.debug_tuple("Result").field(res).finish(),
             AsyncResultKind::Polling(..) => f.debug_tuple("Polling").finish(),
         }
     }
@@ -34,14 +34,34 @@ where
     Error: From<E>,
 {
     fn from(result: Result<T, E>) -> Self {
-        Self::ready(result.map_err(Into::into))
+        Self::result(result.map_err(Into::into))
     }
 }
 
 impl<T, E> AsyncResult<T, E> {
     /// Creates an `AsyncResult` from an immediately value.
-    pub fn ready(result: Result<T, E>) -> Self {
-        AsyncResult(AsyncResultKind::Ready(Some(result)))
+    pub fn ok(output: T) -> Self {
+        Self::result(Ok(output))
+    }
+
+    /// Creates an `AsyncResult` from an immediately value.
+    pub fn err(err: E) -> Self {
+        Self::result(Err(err))
+    }
+
+    /// Creates an `AsyncResult` from an immediately value.
+    pub fn result(result: Result<T, E>) -> Self {
+        AsyncResult(AsyncResultKind::Result(Some(result)))
+    }
+
+    pub fn ready<F>(f: F) -> Self
+    where
+        F: FnOnce(&mut Input<'_>) -> Result<T, E> + Send + 'static,
+    {
+        let mut f = Some(f);
+        Self::polling(move |input| {
+            (f.take().expect("the future has already polled"))(input).map(Async::Ready)
+        })
     }
 
     /// Creates an `AsyncResult` from a closure representing an asynchronous computation.
@@ -54,7 +74,7 @@ impl<T, E> AsyncResult<T, E> {
 
     pub fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<T, E> {
         match self.0 {
-            AsyncResultKind::Ready(ref mut res) => res
+            AsyncResultKind::Result(ref mut res) => res
                 .take()
                 .expect("this future has already polled")
                 .map(Async::Ready),
