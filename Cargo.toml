@@ -23,6 +23,7 @@ features = ["user-hooks"]
 members = [
   "tsukuyomi",
   "tsukuyomi/internal",
+  "tsukuyomi/localmap",
   "tsukuyomi/macros",
 
   "tsukuyomi-askama",

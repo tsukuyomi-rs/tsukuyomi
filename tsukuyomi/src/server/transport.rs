@@ -1,5 +1,5 @@
 use {
-    super::imp::CritError,
+    super::CritError,
     futures::Stream,
     http::Extensions,
     std::fmt,

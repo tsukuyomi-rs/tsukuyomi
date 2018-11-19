@@ -8,26 +8,7 @@ mod http;
 mod launcher;
 mod transport;
 
-pub(crate) mod imp {
-    use super::*;
-
-    pub type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-    /// Create a new `Server` from the specified `NewService`.
-    ///
-    /// This function is a shortcut of `Server::new(new_service)`.
-    #[inline]
-    pub fn server<S>(new_service: S) -> Server<S>
-    where
-        S: NewService,
-        S::Request: HttpRequest,
-        S::Response: HttpResponse,
-        S::Error: Into<CritError>,
-        S::InitError: Into<CritError>,
-    {
-        Server::new(new_service)
-    }
-}
+pub(crate) type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub use self::{
     acceptor::Acceptor,

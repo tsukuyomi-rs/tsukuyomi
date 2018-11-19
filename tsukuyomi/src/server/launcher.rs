@@ -2,9 +2,9 @@ use {
     super::{
         acceptor::Acceptor,
         http::{HttpRequest, HttpResponse},
-        imp::CritError,
         middleware::Middleware,
         transport::{Connection, ConnectionInfo, Transport},
+        CritError,
     },
     futures::{Future, Poll, Stream},
     http::{Request, Response},

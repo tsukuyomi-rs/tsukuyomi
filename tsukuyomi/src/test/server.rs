@@ -4,9 +4,8 @@ use {
         output::{Receive, TestOutput},
     },
     crate::server::{
-        imp::CritError,
         middleware::{Identity, Middleware},
-        HttpRequest, HttpResponse,
+        CritError, HttpRequest, HttpResponse,
     },
     futures::{Future, Poll},
     http::Response,

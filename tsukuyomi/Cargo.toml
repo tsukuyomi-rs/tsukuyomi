@@ -77,6 +77,10 @@ path = "./internal"
 version = "0.4.0-dev" # <cargo-version-sync>
 path = "./macros"
 
+[dependencies.tsukuyomi-localmap]
+version = "0.4.0-dev" # <cargo-version-sync>
+path = "./localmap"
+
 [dev-dependencies]
 cookie = "0.11"
 either = "1"
@@ -109,6 +113,12 @@ replacers = [
 
 [[package.metadata.version-sync.replacements]]
 file = "macros/Cargo.toml"
+replacers = [
+  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
+]
+
+[[package.metadata.version-sync.replacements]]
+file = "localmap/Cargo.toml"
 replacers = [
   { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
 ]

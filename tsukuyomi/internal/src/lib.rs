@@ -8,6 +8,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
+#![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
 
 extern crate failure;
 #[cfg_attr(test, macro_use)]

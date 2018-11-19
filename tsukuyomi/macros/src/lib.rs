@@ -12,6 +12,7 @@
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 #![cfg_attr(feature = "cargo-clippy", allow(result_map_unwrap_or_else))]
+#![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
 
 extern crate proc_macro;
 extern crate proc_macro2;

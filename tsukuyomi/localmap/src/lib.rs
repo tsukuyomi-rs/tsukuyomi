@@ -1,14 +1,55 @@
-//! A typemap implementation for using management of request-local state.
+//! An implementation of typed map for managing request-local data.
+
+#![warn(
+    missing_debug_implementations,
+    nonstandard_style,
+    rust_2018_idioms,
+    rust_2018_compatibility,
+    unused
+)]
+#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
+#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
+#![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
+#![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
 
 use std::{
-    any::TypeId,
     collections::{hash_map, HashMap},
     fmt,
     hash::{BuildHasherDefault, Hasher},
-    marker::PhantomData,
 };
 
-pub use crate::local_key;
+#[doc(hidden)]
+pub use std::{any::TypeId, marker::PhantomData};
+
+/// A macro to create a `LocalKey<T>`.
+#[macro_export]
+macro_rules! local_key {
+    ($(#[$m:meta])* $vis:vis static $NAME:ident : $t:ty; $($tail:tt)*) => {
+        local_key!(@declare ($vis) static $NAME: $t);
+        local_key!($($tail)*);
+    };
+
+    ($(#[$m:meta])* $vis:vis const $NAME:ident : $t:ty; $($tail:tt)*) => {
+        local_key!(@declare ($vis) const $NAME: $t);
+        local_key!($($tail)*);
+    };
+
+    () => ();
+
+    (@declare $(#[$m:meta])* ($($vis:tt)*) $kw:tt $NAME:ident : $t:ty) => {
+        $(#[$m])*
+        $($vis)* $kw $NAME: $crate::LocalKey<$t> = {
+            fn __type_id() -> $crate::TypeId {
+                struct __A;
+                $crate::TypeId::of::<__A>()
+            }
+            $crate::LocalKey {
+                __type_id,
+                __marker: $crate::PhantomData,
+            }
+        };
+    };
+}
 
 /// A type representing a key for request-local data stored in a `LocalMap`.
 ///
