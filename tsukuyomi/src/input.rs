@@ -8,7 +8,7 @@ pub use {
         Cookies,
         Input,
         Params,
-        State,
+        States,
     },
 };
 
@@ -54,6 +54,12 @@ pub mod body {
 
         pub(crate) fn into_inner(self) -> Body {
             self.0
+        }
+
+        /// Convert this instance into a `Future` which polls all chunks in the incoming message body
+        /// and merges them into a `Bytes`.
+        pub fn read_all(self) -> ReadAll {
+            ReadAll::new(self)
         }
     }
 
@@ -202,7 +208,7 @@ pub mod body {
     }
 
     impl ReadAll {
-        pub(crate) fn new(body: RequestBody) -> Self {
+        fn new(body: RequestBody) -> Self {
             Self {
                 state: ReadAllState::Receiving(body, BytesMut::new()),
             }

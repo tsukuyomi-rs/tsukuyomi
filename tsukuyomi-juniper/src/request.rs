@@ -13,8 +13,9 @@ use {
 
 pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
     tsukuyomi::extractor::raw(|input| {
-        if input.method() == Method::GET {
+        if input.request.method() == Method::GET {
             let query_str = input
+                .request
                 .uri()
                 .query()
                 .ok_or_else(|| tsukuyomi::error::bad_request("missing query string"))?;
@@ -22,7 +23,7 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
             return Ok(ExtractStatus::Ready((request,)));
         }
 
-        if input.method() == Method::POST {
+        if input.request.method() == Method::POST {
             #[allow(missing_debug_implementations)]
             enum RequestKind {
                 Json,
@@ -41,11 +42,13 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
                 None => return Err(tsukuyomi::error::bad_request("missing content-type")),
             };
 
-            let mut read_all = input.read_all().ok_or_else(|| {
-                tsukuyomi::error::internal_server_error(
-                    "The payload has already used by another extractor.",
-                )
-            })?;
+            let mut read_all = input
+                .body()
+                .ok_or_else(|| {
+                    tsukuyomi::error::internal_server_error(
+                        "The payload has already used by another extractor.",
+                    )
+                })?.read_all();
             let future = futures::future::poll_fn(move || match kind {
                 RequestKind::Json => {
                     let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
@@ -66,7 +69,7 @@ pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
 
         Err(tsukuyomi::error::bad_request(format!(
             "the method `{}' is not allowed as a GraphQL request",
-            input.method()
+            input.request.method()
         )))
     })
 }

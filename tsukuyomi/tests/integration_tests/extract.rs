@@ -220,9 +220,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
             let mut inserted = false;
             AsyncResult::poll_fn(move |input| {
                 if !inserted {
-                    input
-                        .locals_mut()
-                        .insert(&MyData::KEY, MyData("dummy".into()));
+                    input.locals.insert(&MyData::KEY, MyData("dummy".into()));
                     inserted = true;
                 }
                 result.poll_ready(input)

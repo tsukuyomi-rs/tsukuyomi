@@ -86,8 +86,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
         .route(
             route!("/login")
                 .with(extractor::guard(move |input| {
-                    let mut cookies = input.cookies()?;
-                    cookies.add(
+                    input.cookies.jar()?.add(
                         Cookie::build("session", "dummy_session_id")
                             .domain("www.example.com")
                             .expires(expires_in)
@@ -99,8 +98,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
         .route(
             route!("/logout")
                 .with(extractor::guard(|input| {
-                    let mut cookies = input.cookies()?;
-                    cookies.remove(Cookie::named("session"));
+                    input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(None)
                 })).reply(|| "Logged out"),
         ) //
@@ -172,7 +170,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
             route!("/", methods = [GET, POST])
                 .with(tsukuyomi::extractor::guard(
                     |input| -> tsukuyomi::error::Result<_> {
-                        if input.method() == Method::GET {
+                        if input.request.method() == Method::GET {
                             Ok(None)
                         } else {
                             Ok(Some(Response::new("canceled".into())))

@@ -21,7 +21,7 @@ where
     T: DeserializeOwned + Send + 'static,
 {
     super::ready(|input| {
-        if let Some(query_str) = input.uri().query() {
+        if let Some(query_str) = input.request.uri().query() {
             serde_urlencoded::from_str(query_str).map_err(|cause| {
                 crate::error::bad_request(ExtractQueryError::InvalidQuery {
                     cause: cause.into(),
@@ -38,7 +38,7 @@ where
     T: DeserializeOwned + Send + 'static,
 {
     super::ready(|input| {
-        if let Some(query_str) = input.uri().query() {
+        if let Some(query_str) = input.request.uri().query() {
             serde_urlencoded::from_str(query_str)
                 .map(Some)
                 .map_err(|cause| {
@@ -53,5 +53,5 @@ where
 }
 
 pub fn raw() -> impl Extractor<Output = (Option<String>,), Error = Never> {
-    super::ready(|input| Ok(input.uri().query().map(ToOwned::to_owned)))
+    super::ready(|input| Ok(input.request.uri().query().map(ToOwned::to_owned)))
 }

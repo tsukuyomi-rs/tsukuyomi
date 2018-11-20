@@ -27,7 +27,7 @@ where
 
         #[inline]
         fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
-            if input.method() != self.1 {
+            if input.request.method() != self.1 {
                 return Err(crate::error::method_not_allowed("rejected by extractor"));
             }
             self.0

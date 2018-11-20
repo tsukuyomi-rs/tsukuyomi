@@ -65,24 +65,24 @@ pub enum HandshakeError {
 }
 
 fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
-    match input.headers().get(header::UPGRADE) {
+    match input.request.headers().get(header::UPGRADE) {
         Some(h) if h == "Websocket" || h == "websocket" => (),
         Some(..) => Err(HandshakeError::InvalidHeader { name: "Upgrade" })?,
         None => Err(HandshakeError::MissingHeader { name: "Upgrade" })?,
     }
 
-    match input.headers().get(header::CONNECTION) {
+    match input.request.headers().get(header::CONNECTION) {
         Some(h) if h == "Upgrade" || h == "upgrade" => (),
         Some(..) => Err(HandshakeError::InvalidHeader { name: "Connection" })?,
         None => Err(HandshakeError::MissingHeader { name: "Connection" })?,
     }
 
-    match input.headers().get(header::SEC_WEBSOCKET_VERSION) {
+    match input.request.headers().get(header::SEC_WEBSOCKET_VERSION) {
         Some(h) if h == "13" => {}
         _ => Err(HandshakeError::InvalidSecWebSocketVersion)?,
     }
 
-    let accept_hash = match input.headers().get(header::SEC_WEBSOCKET_KEY) {
+    let accept_hash = match input.request.headers().get(header::SEC_WEBSOCKET_KEY) {
         Some(h) => {
             let decoded = base64::decode(h).map_err(|_| HandshakeError::InvalidSecWebSocketKey)?;
             if decoded.len() != 16 {

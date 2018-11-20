@@ -49,8 +49,9 @@ where
         let mut state = State::Init(Some(handle));
 
         AsyncResult::poll_fn(move |input| {
-            let backend = input.state_detached::<B>().expect("should be available");
-            let backend = backend.get(input);
+            let backend = input.states.try_get::<B>().ok_or_else(|| {
+                tsukuyomi::error::internal_server_error("the session backend is not set")
+            })?;
 
             loop {
                 state = match state {
@@ -63,13 +64,13 @@ where
                         ref mut handle,
                     } => {
                         let session_inner = try_ready!(read_future.poll_ready(input));
-                        input.locals_mut().insert(&SessionInner::KEY, session_inner);
+                        input.locals.insert(&SessionInner::KEY, session_inner);
                         State::InFlight(handle.take().unwrap())
                     }
                     State::InFlight(ref mut handle) => {
                         let output = try_ready!(handle.poll_ready(input));
                         let session_inner = input
-                            .locals_mut()
+                            .locals
                             .remove(&SessionInner::KEY)
                             .expect("should be Some");
                         State::Write {

@@ -161,10 +161,7 @@ fn setup() -> tsukuyomi::test::Result<()> {
             route!("/") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
-                        assert_eq!(
-                            input.state::<String>().expect("state is not set: foo"),
-                            "foo"
-                        );
+                        assert_eq!(input.states.get::<String>(), "foo");
                         Ok(Response::new(ResponseBody::default()))
                     })
                 }),
@@ -174,10 +171,7 @@ fn setup() -> tsukuyomi::test::Result<()> {
                 route!("/") //
                     .raw(|| {
                         AsyncResult::ready(|input| {
-                            assert_eq!(
-                                input.state::<String>().expect("state is not set: bar"),
-                                "bar"
-                            );
+                            assert_eq!(input.states.get::<String>(), "bar");
                             Ok(Response::new(ResponseBody::default()))
                         })
                     }),

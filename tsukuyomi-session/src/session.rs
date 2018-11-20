@@ -29,7 +29,7 @@ impl Session {
     fn with_inner<R>(&self, f: impl FnOnce(&SessionInner) -> R) -> R {
         tsukuyomi::input::with_get_current(|input| {
             let inner = input
-                .locals()
+                .locals
                 .get(&SessionInner::KEY)
                 .expect("should be exist");
             f(inner)
@@ -39,7 +39,7 @@ impl Session {
     fn with_inner_mut<R>(&mut self, f: impl FnOnce(&mut SessionInner) -> R) -> R {
         tsukuyomi::input::with_get_current(|input| {
             let inner = input
-                .locals_mut()
+                .locals
                 .get_mut(&SessionInner::KEY)
                 .expect("should be exist");
             f(inner)
@@ -125,7 +125,7 @@ impl Session {
 #[allow(missing_docs)]
 pub fn extractor() -> impl Extractor<Output = (Session,), Error = Error> {
     tsukuyomi::extractor::ready(|input| {
-        if input.locals_mut().contains_key(&SessionInner::KEY) {
+        if input.locals.contains_key(&SessionInner::KEY) {
             Ok(Session { _priv: () })
         } else {
             Err(tsukuyomi::error::internal_server_error(

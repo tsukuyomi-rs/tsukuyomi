@@ -218,7 +218,7 @@ impl Responder for NamedFile {
     fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         trace!("NamedFile::respond_to");
 
-        if !self.is_modified(input.headers())? {
+        if !self.is_modified(input.request.headers())? {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_MODIFIED)
                 .body(ResponseBody::empty())

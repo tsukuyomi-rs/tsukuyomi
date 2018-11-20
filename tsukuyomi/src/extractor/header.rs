@@ -26,7 +26,7 @@ pub fn header<T>(name: HeaderName) -> impl Extractor<Output = (T,), Error = Erro
 where
     T: FromHeaderValue + Send,
 {
-    super::ready(move |input| match input.headers().get(&name) {
+    super::ready(move |input| match input.request.headers().get(&name) {
         Some(h) => T::from_header_value(h).map_err(Into::into),
         None => Err(crate::error::bad_request(format!(
             "missing header field: {}",
@@ -39,7 +39,7 @@ pub fn exact<T>(name: HeaderName, value: T) -> impl Extractor<Output = (), Error
 where
     T: PartialEq<HeaderValue> + Send + Sync + 'static,
 {
-    super::guard(move |input| match input.headers().get(&name) {
+    super::guard(move |input| match input.request.headers().get(&name) {
         Some(h) if value.eq(h) => Ok(None),
         Some(..) => Err(crate::error::bad_request(format!(
             "mismatched header field: {}",
@@ -63,5 +63,5 @@ pub fn content_type() -> impl Extractor<Output = (Mime,), Error = Error> {
 }
 
 pub fn clone_headers() -> impl Extractor<Output = (HeaderMap,), Error = Never> {
-    super::ready(|input| Ok(input.headers().clone()))
+    super::ready(|input| Ok(input.request.headers().clone()))
 }

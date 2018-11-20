@@ -42,8 +42,7 @@ impl RedisSessionBackend {
     }
 
     fn get_session_id(&self, input: &mut Input<'_>) -> Result<Option<Uuid>> {
-        let cookies = input.cookies()?;
-        match cookies.get(&self.cookie_name) {
+        match input.cookies.jar()?.get(&self.cookie_name) {
             Some(cookie) => {
                 let session_id = cookie
                     .value()
@@ -82,10 +81,9 @@ impl BackendImpl for RedisSessionBackend {
     fn read(&self) -> AsyncResult<SessionInner> {
         let mut read_future: Option<ReadFuture> = None;
         AsyncResult::poll_fn(move |input| {
-            let this = input
-                .state_detached::<Self>()
-                .expect("the backend is not set");
-            let this = this.get(input);
+            let this = input.states.try_get::<Self>().ok_or_else(|| {
+                tsukuyomi::error::internal_server_error("the session backend is not set")
+            })?;
 
             loop {
                 if let Some(ref mut read_future) = read_future {
@@ -110,9 +108,12 @@ impl BackendImpl for RedisSessionBackend {
         let mut future: Option<RedisFuture<(_, ())>> = None;
 
         AsyncResult::poll_fn(move |input| {
-            let this = input.state_detached::<Self>().expect("backend is not set");
-            let this = this.get(input);
-
+            let this = input
+                .states
+                .try_get::<Self>() //
+                .ok_or_else(|| {
+                    tsukuyomi::error::internal_server_error("the session backend is not set")
+                })?;
             loop {
                 if let Some(ref mut future) = future {
                     return future
@@ -122,7 +123,7 @@ impl BackendImpl for RedisSessionBackend {
                 }
 
                 let RedisSessionContext { conn, session_id } = input
-                    .locals_mut()
+                    .locals
                     .remove(&RedisSessionContext::KEY)
                     .expect("should be Some");
 
@@ -131,8 +132,7 @@ impl BackendImpl for RedisSessionBackend {
 
                     SessionInner::Some(value) => {
                         let session_id = session_id.unwrap_or_else(Uuid::new_v4);
-                        let mut cookies = input.cookies()?;
-                        cookies.add(Cookie::new(
+                        input.cookies.jar()?.add(Cookie::new(
                             this.cookie_name.clone(),
                             session_id.to_string(),
                         ));
@@ -158,8 +158,10 @@ impl BackendImpl for RedisSessionBackend {
                         } else {
                             return Ok(Async::Ready(()));
                         };
-                        let mut cookies = input.cookies()?;
-                        cookies.remove(Cookie::named(this.cookie_name.clone()));
+                        input
+                            .cookies
+                            .jar()?
+                            .remove(Cookie::named(this.cookie_name.clone()));
                         let redis_key = this.generate_redis_key(&session_id);
                         redis::cmd("DEL").arg(redis_key).query_async(conn)
                     }
@@ -257,7 +259,7 @@ impl ReadFuture {
                 }
 
                 (Fetch { session_id, .. }, Some(conn), Some(value)) => {
-                    input.locals_mut().insert(
+                    input.locals.insert(
                         &RedisSessionContext::KEY,
                         RedisSessionContext {
                             conn,
@@ -280,7 +282,7 @@ impl ReadFuture {
                     None,
                 )
                 | (Fetch { .. }, Some(conn), None) => {
-                    input.locals_mut().insert(
+                    input.locals.insert(
                         &RedisSessionContext::KEY,
                         RedisSessionContext {
                             conn,

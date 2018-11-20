@@ -37,24 +37,25 @@ impl fmt::Debug for Security {
 }
 
 impl Security {
-    fn get(&self, name: &str, cookies: &mut Cookies<'_>) -> Option<Cookie<'static>> {
+    fn get(&self, name: &str, cookies: &mut Cookies<'_>) -> Result<Option<Cookie<'static>>> {
         match self {
-            Security::Plain => cookies.get(name).cloned(),
+            Security::Plain => Ok(cookies.jar()?.get(name).cloned()),
             #[cfg(feature = "secure")]
-            Security::Signed(ref key) => cookies.signed(key).get(name),
+            Security::Signed(ref key) => Ok(cookies.signed_jar(key)?.get(name)),
             #[cfg(feature = "secure")]
-            Security::Private(ref key) => cookies.private(key).get(name),
+            Security::Private(ref key) => Ok(cookies.private_jar(key)?.get(name)),
         }
     }
 
-    fn add(&self, cookie: Cookie<'static>, cookies: &mut Cookies<'_>) {
+    fn add(&self, cookie: Cookie<'static>, cookies: &mut Cookies<'_>) -> Result<()> {
         match self {
-            Security::Plain => cookies.add(cookie),
+            Security::Plain => cookies.jar()?.add(cookie),
             #[cfg(feature = "secure")]
-            Security::Signed(ref key) => cookies.signed(key).add(cookie),
+            Security::Signed(ref key) => cookies.signed_jar(key)?.add(cookie),
             #[cfg(feature = "secure")]
-            Security::Private(ref key) => cookies.private(key).add(cookie),
+            Security::Private(ref key) => cookies.private_jar(key)?.add(cookie),
         }
+        Ok(())
     }
 }
 
@@ -116,11 +117,10 @@ impl Backend for CookieSessionBackend {}
 impl BackendImpl for CookieSessionBackend {
     fn read(&self) -> AsyncResult<SessionInner> {
         AsyncResult::ready(|input| {
-            let this = input.state_detached::<Self>().expect("should be available");
-            let this = this.get(input);
-
-            let mut cookies = input.cookies()?;
-            match this.security.get(&*this.cookie_name, &mut cookies) {
+            let this = input.states.try_get::<Self>().ok_or_else(|| {
+                tsukuyomi::error::internal_server_error("the session backend is not set")
+            })?;
+            match this.security.get(&*this.cookie_name, input.cookies)? {
                 Some(cookie) => {
                     let map = this.deserialize(cookie.value())?;
                     Ok(SessionInner::Some(map))
@@ -132,9 +132,9 @@ impl BackendImpl for CookieSessionBackend {
 
     fn write(&self, inner: SessionInner) -> AsyncResult<()> {
         AsyncResult::ready(move |input| {
-            let this = input.state_detached::<Self>().expect("should be available");
-            let this = this.get(input);
-            let mut cookies = input.cookies()?;
+            let this = input.states.try_get::<Self>().ok_or_else(|| {
+                tsukuyomi::error::internal_server_error("the session backend is not set")
+            })?;
             match inner {
                 SessionInner::Empty => {}
                 SessionInner::Some(map) => {
@@ -142,10 +142,13 @@ impl BackendImpl for CookieSessionBackend {
                     let cookie = Cookie::build(this.cookie_name.clone(), value)
                         .if_some(this.max_age, |c, max_age| c.max_age(max_age))
                         .finish();
-                    this.security.add(cookie, &mut cookies);
+                    this.security.add(cookie, input.cookies)?;
                 }
                 SessionInner::Clear => {
-                    cookies.force_remove(Cookie::named(this.cookie_name.clone()));
+                    input
+                        .cookies
+                        .jar()?
+                        .force_remove(Cookie::named(this.cookie_name.clone()));
                 }
             }
 

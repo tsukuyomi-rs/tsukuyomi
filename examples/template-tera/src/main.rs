@@ -52,7 +52,7 @@ mod support_tera {
     where
         T: serde::Serialize + TemplateExt,
     {
-        let engine = input.state::<Tera>().ok_or_else(|| {
+        let engine = input.states.try_get::<Tera>().ok_or_else(|| {
             tsukuyomi::error::internal_server_error(
                 "Tera template engine is not available in this scope",
             )

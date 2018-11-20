@@ -237,13 +237,13 @@ where
 }
 
 pub fn method() -> impl Extractor<Output = (http::Method,), Error = Never> {
-    self::ready(|input| Ok(input.method().clone()))
+    self::ready(|input| Ok(input.request.method().clone()))
 }
 
 pub fn uri() -> impl Extractor<Output = (http::Uri,), Error = Never> {
-    self::ready(|input| Ok(input.uri().clone()))
+    self::ready(|input| Ok(input.request.uri().clone()))
 }
 
 pub fn version() -> impl Extractor<Output = (http::Version,), Error = Never> {
-    self::ready(|input| Ok(input.version()))
+    self::ready(|input| Ok(input.request.version()))
 }
