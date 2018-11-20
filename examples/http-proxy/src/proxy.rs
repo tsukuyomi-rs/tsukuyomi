@@ -3,7 +3,7 @@ use {
     http::header::{Entry, HeaderMap},
     reqwest::IntoUrl,
     std::{mem, net::SocketAddr},
-    tsukuyomi::{extractor, server::Peer, Error, Extractor, Input, Never, Responder},
+    tsukuyomi::{extractor, server::io::Peer, Error, Extractor, Input, Never, Responder},
 };
 
 #[derive(Debug)]

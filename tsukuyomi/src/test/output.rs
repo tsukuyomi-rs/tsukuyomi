@@ -15,12 +15,12 @@ pub(super) struct Receive<Bd: Payload> {
 #[derive(Debug)]
 enum ReceiveState<Bd: Payload> {
     Init(Bd),
-    InProgress {
+    InFlight {
         body: Bd,
         chunks: Vec<Bytes>,
         end_of_chunks: bool,
     },
-    Done(TestOutput),
+    Ready(Output),
     Gone,
 }
 
@@ -37,7 +37,7 @@ impl<Bd: Payload> Receive<Bd> {
         loop {
             let trailers = match self.state {
                 ReceiveState::Init(..) => None,
-                ReceiveState::InProgress {
+                ReceiveState::InFlight {
                     ref mut body,
                     ref mut chunks,
                     ref mut end_of_chunks,
@@ -52,58 +52,56 @@ impl<Bd: Payload> Receive<Bd> {
                         continue;
                     }
                 }
-                ReceiveState::Done(..) => return Ok(Async::Ready(())),
+                ReceiveState::Ready(..) => return Ok(Async::Ready(())),
                 ReceiveState::Gone => panic!("The future has already polled"),
             };
 
-            let old_state = mem::replace(&mut self.state, ReceiveState::Gone);
-            match old_state {
+            match mem::replace(&mut self.state, ReceiveState::Gone) {
                 ReceiveState::Init(body) => {
-                    self.state = ReceiveState::InProgress {
+                    self.state = ReceiveState::InFlight {
                         body,
                         chunks: vec![],
                         end_of_chunks: false,
                     };
                 }
-                ReceiveState::InProgress {
+                ReceiveState::InFlight {
                     chunks,
                     end_of_chunks,
                     ..
                 } => {
                     debug_assert!(end_of_chunks);
-                    self.state = ReceiveState::Done(TestOutput {
+                    self.state = ReceiveState::Ready(Output {
                         chunks,
                         trailers,
                         content_length: self.content_length,
                     });
                     return Ok(Async::Ready(()));
                 }
-                ReceiveState::Done(..) | ReceiveState::Gone => unreachable!("unexpected condition"),
+                ReceiveState::Ready(..) | ReceiveState::Gone => {
+                    unreachable!("unexpected condition")
+                }
             }
         }
     }
 
-    pub(super) fn into_data(self) -> Option<TestOutput> {
+    pub(super) fn into_data(self) -> Option<Output> {
         match self.state {
-            ReceiveState::Done(data) => Some(data),
+            ReceiveState::Ready(data) => Some(data),
             _ => None,
         }
     }
 }
 
 /// A type representing a received HTTP message data from the server.
-///
-/// This type is usually used by the testing framework.
 #[derive(Debug)]
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct TestOutput {
+pub struct Output {
     chunks: Vec<Bytes>,
     trailers: Option<HeaderMap>,
     content_length: Option<u64>,
 }
 
 #[allow(missing_docs)]
-impl TestOutput {
+impl Output {
     pub fn chunks(&self) -> &Vec<Bytes> {
         &self.chunks
     }

@@ -108,7 +108,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         .route(get_post)
         .build_server()?;
 
-    server.run_forever()
+    server.run()
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>

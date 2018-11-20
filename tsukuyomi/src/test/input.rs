@@ -5,11 +5,10 @@ use {
 
 // ==== traits ====
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait TestInput: TestInputImpl {}
+pub trait Input: InputImpl {}
 
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait TestInputImpl {
+pub trait InputImpl {
     fn build_request(self) -> http::Result<Request<Body>>;
 }
 
@@ -25,22 +24,22 @@ pub trait IntoRequestBodyImpl {
 
 // === implementors ===
 
-impl<'a> TestInput for &'a str {}
-impl<'a> TestInputImpl for &'a str {
+impl<'a> Input for &'a str {}
+impl<'a> InputImpl for &'a str {
     fn build_request(self) -> http::Result<Request<Body>> {
         Request::get(self).body(Body::default())
     }
 }
 
-impl TestInput for String {}
-impl TestInputImpl for String {
+impl Input for String {}
+impl InputImpl for String {
     fn build_request(self) -> http::Result<Request<Body>> {
         self.as_str().build_request()
     }
 }
 
-impl<T: IntoRequestBody> TestInput for Request<T> {}
-impl<T: IntoRequestBody> TestInputImpl for Request<T> {
+impl<T: IntoRequestBody> Input for Request<T> {}
+impl<T: IntoRequestBody> InputImpl for Request<T> {
     fn build_request(mut self) -> http::Result<Request<Body>> {
         if let Some(content_type) = self.body().content_type() {
             self.headers_mut().append("content-type", content_type);
@@ -49,22 +48,22 @@ impl<T: IntoRequestBody> TestInputImpl for Request<T> {
     }
 }
 
-impl<T: IntoRequestBody, E: Into<http::Error>> TestInput for Result<Request<T>, E> {}
-impl<T: IntoRequestBody, E: Into<http::Error>> TestInputImpl for Result<Request<T>, E> {
+impl<T: IntoRequestBody, E: Into<http::Error>> Input for Result<Request<T>, E> {}
+impl<T: IntoRequestBody, E: Into<http::Error>> InputImpl for Result<Request<T>, E> {
     fn build_request(self) -> http::Result<Request<Body>> {
         self.map_err(Into::into)?.build_request()
     }
 }
 
-impl TestInput for http::request::Builder {}
-impl TestInputImpl for http::request::Builder {
+impl Input for http::request::Builder {}
+impl InputImpl for http::request::Builder {
     fn build_request(mut self) -> http::Result<Request<Body>> {
         (&mut self).build_request()
     }
 }
 
-impl<'a> TestInput for &'a mut http::request::Builder {}
-impl<'a> TestInputImpl for &'a mut http::request::Builder {
+impl<'a> Input for &'a mut http::request::Builder {}
+impl<'a> InputImpl for &'a mut http::request::Builder {
     fn build_request(self) -> http::Result<Request<Body>> {
         self.body(Body::default())
     }

@@ -16,6 +16,6 @@ fn main() -> tsukuyomi::server::Result<()> {
         .route(tsukuyomi::route!("/").reply(|| "Hello"))
         .build_server()?
         .bind(addr)
-        .with_tower_middleware(log_middleware)
-        .run_forever()
+        .tower_middleware(log_middleware)
+        .run()
 }

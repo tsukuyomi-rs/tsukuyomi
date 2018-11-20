@@ -9,7 +9,7 @@ use {
     juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::cell::RefCell,
-    tsukuyomi::test::{TestOutput, TestServer},
+    tsukuyomi::test::{Output as TestOutput, Server as TestServer},
     tsukuyomi_juniper::Executor,
 };
 

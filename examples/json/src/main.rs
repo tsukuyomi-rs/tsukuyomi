@@ -27,5 +27,5 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .reply(|user: User| user),
         ) //
         .build_server()?
-        .run_forever()
+        .run()
 }

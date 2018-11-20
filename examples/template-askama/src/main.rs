@@ -18,5 +18,5 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .reply(|name| Index { name }),
         ) //
         .build_server()?
-        .run_forever()
+        .run()
 }
