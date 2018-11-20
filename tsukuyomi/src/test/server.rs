@@ -1,162 +1,171 @@
+#![allow(unknown_lints)] // explicit_outlives_requirements
+
 use {
     super::{
-        input::TestInput,
-        output::{Receive, TestOutput},
+        input::Input,
+        output::{Output, Receive},
     },
     crate::server::{
-        middleware::{Identity, Middleware},
-        CritError, HttpRequest, HttpResponse,
+        service::{HttpService, Identity, MakeHttpService, ModifyHttpService},
+        CritError,
     },
     futures::{Future, Poll},
     http::Response,
-    hyper::body::{Body, Payload},
-    std::{
-        mem,
-        panic::{resume_unwind, AssertUnwindSafe},
-        sync::Arc,
-    },
-    tokio::{
-        executor::thread_pool::Builder as ThreadPoolBuilder,
-        runtime::{self, Runtime},
-    },
-    tower_service::{NewService, Service},
+    hyper::body::Payload,
+    std::mem,
 };
 
-/// A local server which emulates an HTTP service without using
-/// the low-level transport.
-///
-/// The value of this struct conttains an instance of `NewHttpService`
-/// and a Tokio runtime.
+/// A test server which emulates an HTTP service without using the low-level I/O.
 #[derive(Debug)]
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub struct TestServer<S, M = Identity> {
+pub struct Server<S, M = Identity, Rt = tokio::runtime::Runtime> {
     new_service: S,
-    middleware: Arc<M>,
-    runtime: Runtime,
+    modify_service: M,
+    runtime: Rt,
 }
 
-impl<S> TestServer<S>
+impl<S, M, Rt> Server<S, M, Rt>
 where
-    S: NewService,
+    S: MakeHttpService,
+    M: ModifyHttpService<S::Service>,
 {
-    /// Creates a new instance of `LocalServer` from a `NewHttpService`.
-    ///
-    /// This function will return an error if the construction of the runtime is failed.
-    pub fn new(new_service: S) -> super::Result<Self> {
-        let mut pool = ThreadPoolBuilder::new();
-        pool.pool_size(1);
-
-        let runtime = runtime::Builder::new()
-            .core_threads(1)
-            .blocking_threads(1)
-            .build()?;
-
-        Ok(Self {
+    /// Creates an instance of `TestServer` from the specified components.
+    pub fn new(new_service: S, modify_service: M, runtime: Rt) -> Self {
+        Self {
             new_service,
-            middleware: Arc::new(Identity::default()),
+            modify_service,
             runtime,
-        })
-    }
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, M> TestServer<S, M>
-where
-    S: NewService,
-    M: Middleware<S::Service>,
-{
-    pub fn with_middleware<N>(self, middleware: N) -> TestServer<S, N>
-    where
-        N: Middleware<S::Service>,
-    {
-        TestServer {
-            new_service: self.new_service,
-            middleware: Arc::new(middleware),
-            runtime: self.runtime,
         }
-    }
-}
-
-impl<S, M> TestServer<S, M>
-where
-    S: NewService + Send + 'static,
-    S::Future: Send + 'static,
-    S::InitError: Into<CritError> + Send + 'static,
-    M: Middleware<S::Service> + Send + Sync + 'static,
-    M::Request: HttpRequest,
-    M::Response: HttpResponse,
-    <M::Request as HttpRequest>::Body: From<Body>,
-    <M::Response as HttpResponse>::Body: Payload,
-    M::Error: Into<CritError>,
-    M::Service: Send + 'static,
-    <M::Service as Service>::Future: Send + 'static,
-{
-    /// Create a `Client` associated with this server.
-    pub fn client(&mut self) -> super::Result<Client<'_, M::Service>> {
-        let middleware = self.middleware.clone();
-        let service = match self.runtime.block_on(
-            AssertUnwindSafe(
-                self.new_service
-                    .new_service()
-                    .map(move |service| middleware.wrap(service)),
-            ).catch_unwind(),
-        ) {
-            Ok(result) => result.map_err(|err| failure::Error::from_boxed_compat(err.into()))?,
-            Err(err) => resume_unwind(Box::new(err)),
-        };
-        Ok(Client {
-            service,
-            runtime: &mut self.runtime,
-        })
-    }
-
-    pub fn perform<T>(&mut self, input: T) -> super::Result<Response<TestOutput>>
-    where
-        T: TestInput,
-    {
-        let mut client = self.client()?;
-        client.perform(input)
     }
 }
 
 /// A type which emulates a connection to a peer.
 #[derive(Debug)]
-pub struct Client<'a, S> {
+#[allow(explicit_outlives_requirements)]
+pub struct Client<'a, S, Rt: 'a> {
     service: S,
-    runtime: &'a mut Runtime,
+    runtime: &'a mut Rt,
 }
 
-impl<'a, S> Client<'a, S>
-where
-    S: Service + Send + 'static,
-    S::Request: HttpRequest,
-    S::Response: HttpResponse,
-    <S::Request as HttpRequest>::Body: From<Body>,
-    <S::Response as HttpResponse>::Body: Payload,
-    S::Error: Into<CritError>,
-    S::Future: Send + 'static,
-{
-    /// Applies an HTTP request to this client and get its response.
-    pub fn perform<T>(&mut self, input: T) -> super::Result<Response<TestOutput>>
+impl<'a, S, Rt> Client<'a, S, Rt> {
+    /// Returns the reference to the underlying Tokio runtime.
+    pub fn runtime(&mut self) -> &mut Rt {
+        &mut *self.runtime
+    }
+}
+
+mod threadpool {
+    use {
+        super::*,
+        std::panic::{resume_unwind, AssertUnwindSafe},
+        tokio::runtime::Runtime,
+    };
+
+    fn block_on<F>(runtime: &mut Runtime, future: F) -> Result<F::Item, F::Error>
     where
-        T: TestInput,
+        F: Future + Send + 'static,
+        F::Item: Send + 'static,
+        F::Error: Send + 'static,
     {
-        let request = input.build_request()?;
-        let request =
-            S::Request::from_request(request.map(<S::Request as HttpRequest>::Body::from));
-        let future = TestResponseFuture::Initial(self.service.call(request));
-        match self
-            .runtime
-            .block_on(AssertUnwindSafe(future).catch_unwind())
-        {
-            Ok(result) => result.map_err(|err| failure::Error::from_boxed_compat(err).into()),
+        match runtime.block_on(AssertUnwindSafe(future).catch_unwind()) {
+            Ok(result) => result,
             Err(err) => resume_unwind(Box::new(err)),
         }
     }
 
-    /// Returns the reference to the underlying Tokio runtime.
-    pub fn runtime(&mut self) -> &mut Runtime {
-        &mut *self.runtime
+    impl<S, M> Server<S, M, Runtime>
+    where
+        S: MakeHttpService,
+        S::Future: Send + 'static,
+        S::InitError: Send + 'static,
+        S::Service: Send + 'static,
+        M: ModifyHttpService<S::Service>,
+    {
+        /// Create a `Client` associated with this server.
+        pub fn client(&mut self) -> super::super::Result<Client<'_, M::Service, Runtime>> {
+            let service = block_on(
+                &mut self.runtime,
+                self.new_service.make_http_service().map_err(Into::into),
+            ).map_err(failure::Error::from_boxed_compat)?;
+
+            Ok(Client {
+                service: self.modify_service.modify_http_service(service),
+                runtime: &mut self.runtime,
+            })
+        }
+
+        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        where
+            T: Input,
+            <M::Service as HttpService>::Future: Send + 'static,
+        {
+            let mut client = self.client()?;
+            client.perform(input)
+        }
+    }
+
+    impl<'a, S> Client<'a, S, Runtime>
+    where
+        S: HttpService,
+        S::Future: Send + 'static,
+    {
+        /// Applies an HTTP request to this client and await its response.
+        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        where
+            T: Input,
+        {
+            let request = input.build_request()?.map(S::RequestBody::from);
+            let future = TestResponseFuture::Initial(self.service.call_http(request));
+            block_on(&mut self.runtime, future)
+                .map_err(|err| failure::Error::from_boxed_compat(err).into())
+        }
+    }
+}
+
+mod current_thread {
+    use {super::*, tokio::runtime::current_thread::Runtime};
+
+    impl<S, M> Server<S, M, Runtime>
+    where
+        S: MakeHttpService,
+        M: ModifyHttpService<S::Service>,
+    {
+        /// Create a `Client` associated with this server.
+        pub fn client(&mut self) -> super::super::Result<Client<'_, M::Service, Runtime>> {
+            let service = self
+                .runtime
+                .block_on(self.new_service.make_http_service())
+                .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
+            let service = self.modify_service.modify_http_service(service);
+            Ok(Client {
+                service,
+                runtime: &mut self.runtime,
+            })
+        }
+
+        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        where
+            T: Input,
+        {
+            let mut client = self.client()?;
+            client.perform(input)
+        }
+    }
+
+    impl<'a, S> Client<'a, S, Runtime>
+    where
+        S: HttpService,
+    {
+        /// Applies an HTTP request to this client and await its response.
+        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        where
+            T: Input,
+        {
+            let request = input.build_request()?.map(S::RequestBody::from);
+            let future = TestResponseFuture::Initial(self.service.call_http(request));
+            self.runtime
+                .block_on(future)
+                .map_err(|err| failure::Error::from_boxed_compat(err).into())
+        }
     }
 }
 
@@ -170,12 +179,11 @@ enum TestResponseFuture<F, Bd: Payload> {
 
 impl<F, Bd> Future for TestResponseFuture<F, Bd>
 where
-    F: Future,
-    F::Item: HttpResponse<Body = Bd>,
+    F: Future<Item = Response<Bd>>,
     F::Error: Into<CritError>,
     Bd: Payload,
 {
-    type Item = Response<TestOutput>;
+    type Item = Response<Output>;
     type Error = CritError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -196,7 +204,7 @@ where
             match mem::replace(self, TestResponseFuture::Done) {
                 TestResponseFuture::Initial(..) => {
                     let response = response.expect("unexpected condition");
-                    let (parts, body) = response.into_response().into_parts();
+                    let (parts, body) = response.into_parts();
                     let receive = self::Receive::new(body);
                     *self = TestResponseFuture::Receive(parts, receive);
                 }

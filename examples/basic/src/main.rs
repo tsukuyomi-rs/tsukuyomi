@@ -8,5 +8,5 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .build_server()?;
 
-    server.run_forever()
+    server.run()
 }

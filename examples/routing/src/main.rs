@@ -26,5 +26,5 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .reply(|path: std::path::PathBuf| format!("path = {}\n", path.display())),
         ) //
         .build_server()?
-        .run_forever()
+        .run()
 }

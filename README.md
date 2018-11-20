@@ -38,9 +38,10 @@ fn main() -> tsukuyomi::server::Result<()> {
         )
         .build_server()?;
 
-    server
-        .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
-        .run_forever()
+    let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
+
+    println!("Listening on http://{}", addr);
+    server.bind(addr).run()
 }
 ```
 

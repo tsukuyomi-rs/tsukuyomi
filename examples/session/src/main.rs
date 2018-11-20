@@ -78,5 +78,5 @@ fn main() -> tsukuyomi::server::Result<()> {
                 }),
         ) //
         .build_server()?
-        .run_forever()
+        .run()
 }

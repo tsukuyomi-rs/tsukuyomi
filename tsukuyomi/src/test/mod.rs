@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+//! Utilities for testing HTTP services.
+
 mod error;
 mod input;
 mod output;
@@ -7,9 +9,9 @@ mod server;
 
 pub use self::{
     error::{Error, Result},
-    input::{IntoRequestBody, TestInput},
-    output::TestOutput,
-    server::{Client, TestServer},
+    input::{Input, IntoRequestBody},
+    output::Output,
+    server::{Client, Server},
 };
 
 pub trait ResponseExt {

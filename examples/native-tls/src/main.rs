@@ -16,5 +16,5 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .build_server()?
         .acceptor(tls_acceptor)
-        .run_forever()
+        .run()
 }

@@ -38,5 +38,5 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .handle(move |exec: Executor<_>, context| exec.execute(context)),
         ) //
         .build_server()?
-        .run_forever()
+        .run()
 }

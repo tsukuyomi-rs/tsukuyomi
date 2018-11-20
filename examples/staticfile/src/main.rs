@@ -13,5 +13,5 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .with(Staticfiles::new(manifest_dir.join("static"))) //
         .build_server()?
-        .run_forever()
+        .run()
 }

@@ -15,7 +15,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .build_server()?
         .acceptor(tls_acceptor)
-        .run_forever()
+        .run()
 }
 
 fn build_tls_acceptor() -> failure::Fallible<tokio_rustls::TlsAcceptor> {

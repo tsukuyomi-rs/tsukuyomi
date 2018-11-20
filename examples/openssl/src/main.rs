@@ -25,5 +25,5 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .build_server()?
         .acceptor(ssl_acceptor)
-        .run_forever()
+        .run()
 }
