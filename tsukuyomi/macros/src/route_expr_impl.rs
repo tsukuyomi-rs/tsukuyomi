@@ -190,7 +190,7 @@ t! {
 t! {
     name: empty_str,
     source: (""),
-    error: "URI parse error: invalid URI",
+    error: "URI parse error: the URI must start with '/'",
 }
 
 t! {

@@ -30,6 +30,7 @@ impl Captures {
 #[derive(Debug, Default)]
 pub struct Recognizer {
     tree: Tree,
+    asterisk: Option<usize>,
     uris: Vec<Uri>,
 }
 
@@ -40,13 +41,19 @@ impl Recognizer {
         T: TryIntoUri,
     {
         let uri = uri.try_into_uri().map_err(Into::<Error>::into)?;
-
         if !uri.as_str().is_ascii() {
             failure::bail!("The path must be a sequence of ASCII characters");
         }
 
-        let index = self.uris.len();
-        self.tree.insert(uri.as_str(), index)?;
+        if uri.is_asterisk() {
+            if self.asterisk.is_some() {
+                failure::bail!("the asterisk URI has already set");
+            }
+            self.asterisk = Some(self.uris.len());
+        } else {
+            self.tree.insert(uri.as_str(), self.uris.len())?;
+        }
+
         self.uris.push(uri);
         Ok(())
     }
@@ -56,6 +63,10 @@ impl Recognizer {
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
     pub fn recognize(&self, path: &str) -> Option<(usize, Option<Captures>)> {
-        self.tree.recognize(path)
+        if path == "*" {
+            self.asterisk.map(|pos| (pos, None))
+        } else {
+            self.tree.recognize(path)
+        }
     }
 }

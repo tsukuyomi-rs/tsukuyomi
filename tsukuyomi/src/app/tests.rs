@@ -125,6 +125,49 @@ fn route_fallback_options_disabled() {
 }
 
 #[test]
+fn asterisk_route() {
+    let app = crate::app::app()
+        .route(
+            route()
+                .uri("*".parse().unwrap())
+                .method(Method::OPTIONS)
+                .reply(|| "explciit OPTIONS handler"),
+        ) //
+        .build()
+        .unwrap();
+
+    assert_matches!(
+        app.recognize("*", &Method::OPTIONS),
+        Ok(Recognize::Matched(0, ..))
+    );
+}
+
+#[test]
+fn asterisk_route_with_normal_routes() {
+    let app = crate::app::app()
+        .route(route().uri("/".parse().unwrap()).reply(|| ""))
+        .mount(
+            scope()
+                .prefix("/api".parse().unwrap())
+                .route(route().uri("/posts".parse().unwrap()).reply(|| "")) //
+                .route(route().uri("/events".parse().unwrap()).reply(|| "")),
+        ) //
+        .route(
+            route()
+                .uri("*".parse().unwrap())
+                .method(Method::OPTIONS)
+                .reply(|| "explciit OPTIONS handler"),
+        ) //
+        .build()
+        .unwrap();
+
+    assert_matches!(
+        app.recognize("*", &Method::OPTIONS),
+        Ok(Recognize::Matched(3, ..))
+    );
+}
+
+#[test]
 fn scope_simple() {
     let app = crate::app::app() //
         .mount(
@@ -318,5 +361,34 @@ fn failcase_different_scope_at_the_same_uri() {
         .route(route().uri("/path".parse().unwrap()).reply(|| ""))
         .mount(scope().route(route().uri("/path".parse().unwrap()).reply(|| ""))) //
         .build();
+    assert!(app.is_err());
+}
+
+#[test]
+fn failcase_asterisk_with_prefix() {
+    let app = crate::app::app()
+        .prefix("/api/v1".parse().unwrap())
+        .route(route().uri("*".parse().unwrap()).reply(|| ""))
+        .build();
+    assert!(app.is_err());
+}
+
+#[test]
+fn failcase_asterisk_without_explicit_options() {
+    let app = crate::app::app()
+        .route(route().uri("*".parse().unwrap()).reply(|| ""))
+        .build();
+    assert!(app.is_err());
+}
+
+#[test]
+fn failcase_asterisk_with_explicit_get_handler() {
+    let app = crate::app::app()
+        .route(
+            route() //
+                .uri("*".parse().unwrap())
+                .methods(vec![Method::GET, Method::OPTIONS])
+                .reply(|| ""),
+        ).build();
     assert!(app.is_err());
 }

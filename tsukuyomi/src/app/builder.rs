@@ -302,6 +302,15 @@ fn build(
                 methods.insert(Method::GET);
             }
 
+            if uri.is_asterisk() {
+                if !methods.contains(&Method::OPTIONS) {
+                    return Err(failure::format_err!("the route with asterisk URI must explicitly handles OPTIONS").into());
+                }
+                if methods.iter().any(|method| method != Method::OPTIONS) {
+                    return Err(failure::format_err!("the route with asterisk URI must not accept any methods other than OPTIONS").into());
+                }
+            }
+
             Ok(RouteData {
                 id,
                 uri,
