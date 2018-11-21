@@ -10,12 +10,12 @@ jobs:
       vmImage: 'vs2017-win2016'
     variables:
       OPENSSL_DIR: C:\OpenSSL
-      OPENSSL_VERSION: 1_1_0i
+      OPENSSL_VERSION: 1_1_0j
     steps:
     - script: |
         git submodule update --init --depth=1
       displayName: 'sync local registry'
-    
+
     - script: |
         mkdir %OPENSSL_DIR%
         curl -sSfO http://slproweb.com/download/Win64OpenSSL-%OPENSSL_VERSION%.exe
