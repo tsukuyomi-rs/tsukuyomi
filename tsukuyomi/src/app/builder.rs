@@ -1,6 +1,6 @@
 use {
     super::{
-        callback::Callback,
+        callback::ErrorHandler,
         error::{Error, Result},
         route::{Context as RouteContext, Route},
         scope::{Context as ScopeContext, Scope},
@@ -8,39 +8,36 @@ use {
     },
     bytes::BytesMut,
     crate::{
-        error::Critical,
         handler::Handler,
-        input::Input,
         modifier::Modifier,
-        output::{Output, ResponseBody},
         recognizer::Recognizer,
         scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
         uri::Uri,
     },
-    http::{header::HeaderValue, Method, Response},
+    http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
 };
 
 /// A builder object for constructing an instance of `App`.
 #[derive(Debug, Default)]
-pub struct Builder<S: Scope = (), M = (), C: Callback = ()> {
+pub struct Builder<S: Scope = (), M = (), E: ErrorHandler = ()> {
     scope: super::scope::Builder<S, M>,
-    callback: C,
+    on_error: E,
     config: Config,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, M, C> Builder<S, M, C>
+impl<S, M, E> Builder<S, M, E>
 where
     S: Scope,
     M: Modifier + Send + Sync + 'static,
-    C: Callback,
+    E: ErrorHandler + Send + Sync + 'static,
 {
     /// Adds a route into the global scope.
-    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, M, C> {
+    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, M, E> {
         Builder {
-            callback: self.callback,
+            on_error: self.on_error,
             config: self.config,
             scope: self.scope.route(route),
         }
@@ -50,55 +47,55 @@ where
     pub fn mount<S2, M2>(
         self,
         scope: super::scope::Builder<S2, M2>,
-    ) -> Builder<impl Scope<Error = Error>, M, C>
+    ) -> Builder<impl Scope<Error = Error>, M, E>
     where
         S2: Scope,
         M2: Modifier + Send + Sync + 'static,
     {
         Builder {
-            callback: self.callback,
+            on_error: self.on_error,
             config: self.config,
             scope: self.scope.mount(scope),
         }
     }
 
     /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
-    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, M, C> {
+    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, M, E> {
         Builder {
-            callback: self.callback,
+            on_error: self.on_error,
             config: self.config,
             scope: self.scope.with(scope),
         }
     }
 
     /// Adds a *global* variable into the application.
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, M, C>
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, M, E>
     where
         T: Send + Sync + 'static,
     {
         Builder {
-            callback: self.callback,
+            on_error: self.on_error,
             config: self.config,
             scope: self.scope.state(state),
         }
     }
 
     /// Register a `Modifier` into the global scope.
-    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, impl Modifier + Send + Sync + 'static, C>
+    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, impl Modifier + Send + Sync + 'static, E>
     where
         S: 'static,
         M2: Modifier + Send + Sync + 'static,
     {
         Builder {
-            callback: self.callback,
+            on_error: self.on_error,
             config: self.config,
             scope: self.scope.modifier(modifier),
         }
     }
 
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, M, C> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, M, E> {
         Builder {
-            callback: self.callback,
+            on_error: self.on_error,
             config: self.config,
             scope: self.scope.prefix(prefix),
         }
@@ -107,113 +104,20 @@ where
     /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
     ///
     /// The default value is `true`.
-    pub fn fallback_head(mut self, enabled: bool) -> Builder<S, M, C> {
+    pub fn fallback_head(mut self, enabled: bool) -> Builder<S, M, E> {
         self.config.fallback_head = enabled;
         self
     }
 
-    pub fn on_init<F, Bd>(self, on_init: F) -> Builder<S, M, impl Callback>
+    /// Sets the error handler.
+    pub fn on_error<E2>(self, on_error: E2) -> Builder<S, M, E2>
     where
-        F: Fn(&mut Input<'_>) -> crate::error::Result<Option<Response<Bd>>> + Send + Sync + 'static,
-        Bd: Into<ResponseBody>,
+        E2: ErrorHandler + Send + Sync + 'static,
     {
         Builder {
             scope: self.scope,
             config: self.config,
-            callback: {
-                #[allow(missing_debug_implementations)]
-                struct WrapOnInit<C, F>(C, F);
-
-                impl<C, F, Bd> Callback for WrapOnInit<C, F>
-                where
-                    C: Callback,
-                    F: Fn(&mut Input<'_>) -> crate::error::Result<Option<Response<Bd>>>
-                        + Send
-                        + Sync
-                        + 'static,
-                    Bd: Into<ResponseBody>,
-                {
-                    fn on_init(
-                        &self,
-                        input: &mut Input<'_>,
-                    ) -> crate::error::Result<Option<Output>> {
-                        match self.0.on_init(input)? {
-                            Some(output) => Ok(Some(output)),
-                            None => {
-                                (self.1)(input).map(|x| x.map(|response| response.map(Into::into)))
-                            }
-                        }
-                    }
-
-                    fn on_error(
-                        &self,
-                        err: crate::error::Error,
-                        input: &mut Input<'_>,
-                    ) -> std::result::Result<Output, Critical> {
-                        self.0.on_error(err, input)
-                    }
-                }
-
-                WrapOnInit(self.callback, on_init)
-            },
-        }
-    }
-
-    pub fn on_error<F, Bd>(self, on_error: F) -> Builder<S, M, impl Callback>
-    where
-        F: Fn(crate::error::Error, &mut Input<'_>)
-                -> std::result::Result<Response<Bd>, crate::error::Critical>
-            + Send
-            + Sync
-            + 'static,
-        Bd: Into<ResponseBody>,
-    {
-        Builder {
-            scope: self.scope,
-            config: self.config,
-            callback: {
-                #[allow(missing_debug_implementations)]
-                struct WrapOnError<C, F>(C, F);
-
-                impl<C, F, Bd> Callback for WrapOnError<C, F>
-                where
-                    C: Callback,
-                    F: Fn(crate::error::Error, &mut Input<'_>)
-                            -> std::result::Result<Response<Bd>, Critical>
-                        + Send
-                        + Sync
-                        + 'static,
-                    Bd: Into<ResponseBody>,
-                {
-                    fn on_init(
-                        &self,
-                        input: &mut Input<'_>,
-                    ) -> crate::error::Result<Option<Output>> {
-                        self.0.on_init(input)
-                    }
-
-                    fn on_error(
-                        &self,
-                        err: crate::error::Error,
-                        input: &mut Input<'_>,
-                    ) -> std::result::Result<Output, Critical> {
-                        (self.1)(err, input).map(|response| response.map(Into::into))
-                    }
-                }
-
-                WrapOnError(self.callback, on_error)
-            },
-        }
-    }
-
-    pub fn callback<C2>(self, callback: C2) -> Builder<S, M, C2>
-    where
-        C2: Callback,
-    {
-        Builder {
-            scope: self.scope,
-            config: self.config,
-            callback,
+            on_error,
         }
     }
 
@@ -222,7 +126,7 @@ where
         build(
             self.scope.scope,
             self.scope.modifier,
-            self.callback,
+            self.on_error,
             self.config,
         )
     }
@@ -236,7 +140,7 @@ where
 fn build(
     scope: impl Scope,
     mut modifier: impl Modifier + Send + Sync + 'static,
-    callback: impl Callback,
+    on_error: impl ErrorHandler + Send + Sync + 'static,
     config: Config,
 ) -> Result<App> {
     let mut cx = AppContext {
@@ -397,7 +301,7 @@ fn build(
             recognizer,
             endpoints,
             config,
-            callback: Box::new(callback),
+            on_error: Box::new(on_error),
             states,
         }),
     })

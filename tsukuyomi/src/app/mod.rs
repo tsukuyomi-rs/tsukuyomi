@@ -13,7 +13,7 @@ mod tests;
 pub use {
     self::{
         builder::Builder,
-        callback::Callback,
+        callback::ErrorHandler,
         error::{Error, Result},
         route::Route,
         scope::Scope,
@@ -79,7 +79,7 @@ struct AppData {
     endpoints: Vec<EndpointData>,
 
     states: ScopedContainer,
-    callback: Box<dyn Callback + Send + Sync + 'static>,
+    on_error: Box<dyn ErrorHandler + Send + Sync + 'static>,
     config: Config,
 }
 

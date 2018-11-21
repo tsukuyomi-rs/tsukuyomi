@@ -129,10 +129,6 @@ impl AppFuture {
                     ref captures,
                 } => return in_flight.poll_ready(input!(self, route_id, endpoint_id, captures)),
                 Init => {
-                    if let Some(output) = self.data.callback.on_init(input!(self))? {
-                        return Ok(Async::Ready(output));
-                    }
-
                     let (in_flight, route_id, endpoint_id, captures) = match self
                         .data
                         .recognize(self.request.uri().path(), self.request.method())
@@ -219,7 +215,7 @@ impl AppFuture {
     }
 
     fn handle_error(&mut self, err: Error) -> Result<Output, Critical> {
-        self.data.callback.on_error(err, input!(self))
+        self.data.on_error.call(err, input!(self))
     }
 }
 
