@@ -19,7 +19,14 @@ pub fn validate(input: TokenStream) -> ParseResult<()> {
     if uri.capture_names().is_some() {
         return Err(syn::parse::Error::new(
             uri_span,
-            "parameters in prefix position is forbidden",
+            "parameters canoot be used in the prefix position",
+        ));
+    }
+
+    if uri.is_asterisk() {
+        return Err(syn::parse::Error::new(
+            uri_span,
+            "the asterisk URI cannot be used as the prefix",
         ));
     }
 
