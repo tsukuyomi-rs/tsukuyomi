@@ -149,21 +149,6 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn test_case_5_disable_default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
-        .fallback_options(false) //
-        .route(route!("/path").reply(|| "get"))
-        .route(route!("/path", method = POST).reply(|| "post"))
-        .build_server()?
-        .into_test_server()?;
-
-    let response = server.perform(Request::options("/path"))?;
-    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-
-    Ok(())
-}
-
-#[test]
 fn test_canceled() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
         .route(

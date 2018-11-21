@@ -1,7 +1,5 @@
 //! Components for constructing HTTP applications.
 
-#![cfg_attr(feature = "cargo-clippy", forbid(stutter))]
-
 pub mod route;
 pub mod scope;
 
@@ -24,15 +22,20 @@ pub use {
 };
 use {
     crate::{
+        error::Critical,
         handler::Handler,
+        input::RequestBody,
         modifier::Modifier,
-        recognizer::Recognizer,
+        output::ResponseBody,
+        recognizer::{Captures, Recognizer},
         scoped_map::{ScopeId, ScopedContainer},
         uri::Uri,
     },
-    http::{header::HeaderValue, Method},
+    futures::{Async, Poll},
+    http::{header::HeaderValue, Method, Request, Response},
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
+    tower_service::{NewService, Service},
 };
 
 pub fn app() -> self::builder::Builder<(), ()> {
@@ -50,22 +53,21 @@ pub fn route() -> self::route::Builder<()> {
 #[derive(Debug)]
 struct Config {
     fallback_head: bool,
-    fallback_options: bool,
-    _priv: (),
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             fallback_head: true,
-            fallback_options: true,
-            _priv: (),
         }
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct EndpointId(usize);
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppData {
@@ -93,6 +95,62 @@ impl fmt::Debug for AppData {
             .field("states", &self.states)
             .field("config", &self.config)
             .finish()
+    }
+}
+
+impl AppData {
+    fn uri(&self, id: EndpointId) -> &Uri {
+        &self.endpoints[id.0].uri
+    }
+
+    pub(crate) fn get_state<T>(&self, id: RouteId) -> Option<&T>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.states.get(id.0)
+    }
+
+    fn get_scope(&self, id: ScopeId) -> Option<&ScopeData> {
+        match id {
+            ScopeId::Global => Some(&self.global_scope),
+            ScopeId::Local(id) => self.scopes.get(id),
+        }
+    }
+
+    fn recognize(&self, path: &str, method: &Method) -> Recognize<'_> {
+        let (i, captures) = match self.recognizer.recognize(path) {
+            Some(result) => result,
+            None => return Recognize::NotFound,
+        };
+
+        let endpoint = &self.endpoints[i];
+        debug_assert_eq!(endpoint.id.0, i);
+
+        if let Some(&pos) = endpoint.route_ids.get(method) {
+            let route = &self.routes[pos];
+            debug_assert_eq!(route.id.1, pos);
+            return Recognize::Matched {
+                route,
+                endpoint,
+                captures,
+                fallback_head: false,
+            };
+        }
+
+        if self.config.fallback_head && *method == Method::HEAD {
+            if let Some(&pos) = endpoint.route_ids.get(&Method::GET) {
+                let route = &self.routes[pos];
+                debug_assert_eq!(route.id.1, pos);
+                return Recognize::Matched {
+                    route,
+                    endpoint,
+                    captures,
+                    fallback_head: true,
+                };
+            }
+        }
+
+        Recognize::MethodNotAllowed { endpoint, captures }
     }
 }
 
@@ -136,8 +194,30 @@ impl fmt::Debug for RouteData {
 
 #[derive(Debug)]
 struct EndpointData {
+    id: EndpointId,
+    uri: Uri,
     route_ids: IndexMap<Method, usize>,
     allowed_methods: HeaderValue,
+}
+
+#[derive(Debug)]
+enum Recognize<'a> {
+    /// The URI is matched and a route associated with the specified method is found.
+    Matched {
+        route: &'a RouteData,
+        endpoint: &'a EndpointData,
+        captures: Option<Captures>,
+        fallback_head: bool,
+    },
+
+    /// The URI is not matched to any endpoints.
+    NotFound,
+
+    /// the URI is matched, but
+    MethodNotAllowed {
+        endpoint: &'a EndpointData,
+        captures: Option<Captures>,
+    },
 }
 
 /// The main type which represents an HTTP application.
@@ -152,22 +232,42 @@ impl App {
     pub fn builder() -> Builder {
         Builder::default()
     }
+}
 
-    pub(crate) fn uri(&self, id: RouteId) -> &Uri {
-        &self.data.routes[id.1].uri
+impl NewService for App {
+    type Request = Request<RequestBody>;
+    type Response = Response<ResponseBody>;
+    type Error = Critical;
+    type Service = AppService;
+    type InitError = Critical;
+    type Future = futures::future::FutureResult<Self::Service, Self::InitError>;
+
+    fn new_service(&self) -> Self::Future {
+        futures::future::ok(AppService {
+            data: self.data.clone(),
+        })
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub struct AppService {
+    data: Arc<AppData>,
+}
+
+impl Service for AppService {
+    type Request = Request<RequestBody>;
+    type Response = Response<ResponseBody>;
+    type Error = Critical;
+    type Future = self::imp::AppFuture;
+
+    #[inline]
+    fn poll_ready(&mut self) -> Poll<(), Self::Error> {
+        Ok(Async::Ready(()))
     }
 
-    pub(crate) fn get_state<T>(&self, id: RouteId) -> Option<&T>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.data.states.get(id.0)
-    }
-
-    fn get_scope(&self, id: ScopeId) -> Option<&ScopeData> {
-        match id {
-            ScopeId::Global => Some(&self.data.global_scope),
-            ScopeId::Local(id) => self.data.scopes.get(id),
-        }
+    #[inline]
+    fn call(&mut self, request: Self::Request) -> Self::Future {
+        self::imp::AppFuture::new(request, self.data.clone())
     }
 }

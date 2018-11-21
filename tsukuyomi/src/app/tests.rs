@@ -1,8 +1,5 @@
 use {
-    super::{
-        imp::{Recognize, RecognizeError},
-        route, scope, RouteId, ScopeId,
-    },
+    super::{route, scope, Recognize, RouteId, ScopeId},
     http::Method,
     matches::assert_matches,
 };
@@ -10,10 +7,7 @@ use {
 #[test]
 fn empty() {
     let app = crate::app::app().build().unwrap();
-    assert_matches!(
-        app.recognize("/", &Method::GET),
-        Err(RecognizeError::NotFound)
-    );
+    assert_matches!(app.data.recognize("/", &Method::GET), Recognize::NotFound);
 }
 
 #[test]
@@ -24,17 +18,17 @@ fn route_single_method() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("/", &Method::GET),
-        Ok(Recognize::Matched(0, ..))
+        app.data.recognize("/", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 0
     );
 
     assert_matches!(
-        app.recognize("/path/to", &Method::GET),
-        Err(RecognizeError::NotFound)
+        app.data.recognize("/path/to", &Method::GET),
+        Recognize::NotFound
     );
     assert_matches!(
-        app.recognize("/", &Method::POST),
-        Err(RecognizeError::MethodNotAllowed)
+        app.data.recognize("/", &Method::POST),
+        Recognize::MethodNotAllowed { .. }
     );
 }
 
@@ -47,17 +41,17 @@ fn route_multiple_method() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("/", &Method::GET),
-        Ok(Recognize::Matched(0, ..))
+        app.data.recognize("/", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 0
     );
     assert_matches!(
-        app.recognize("/", &Method::POST),
-        Ok(Recognize::Matched(1, ..))
+        app.data.recognize("/", &Method::POST),
+        Recognize::Matched { route, .. } if route.id.1 == 1
     );
 
     assert_matches!(
-        app.recognize("/", &Method::PUT),
-        Err(RecognizeError::MethodNotAllowed)
+        app.data.recognize("/", &Method::PUT),
+        Recognize::MethodNotAllowed { .. }
     );
 }
 
@@ -69,8 +63,8 @@ fn route_fallback_head_enabled() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("/", &Method::HEAD),
-        Ok(Recognize::FallbackHead(0, ..))
+        app.data.recognize("/", &Method::HEAD),
+        Recognize::Matched { route, fallback_head: true, .. } if route.id.1 == 0
     );
 }
 
@@ -83,44 +77,8 @@ fn route_fallback_head_disabled() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("/", &Method::HEAD),
-        Err(RecognizeError::MethodNotAllowed)
-    );
-}
-
-#[test]
-fn route_fallback_options_enabled() {
-    let app = crate::app::app() //
-        .route(route().reply(|| "")) // 0
-        .route(route().method(Method::POST).reply(|| "")) // 1
-        .route(
-            route()
-                .uri("/options".parse().unwrap())
-                .method(Method::OPTIONS)
-                .reply(|| ""),
-        ) // 2
-        .build()
-        .unwrap();
-
-    assert_matches!(app.recognize("/", &Method::OPTIONS), Ok(Recognize::FallbackOptions(h)) if h == "GET, POST, OPTIONS");
-    assert_matches!(
-        app.recognize("/options", &Method::OPTIONS),
-        Ok(Recognize::Matched(2, ..))
-    );
-}
-
-#[test]
-fn route_fallback_options_disabled() {
-    let app = crate::app::app() //
-        .route(route().reply(|| ""))
-        .route(route().method(Method::POST).reply(|| ""))
-        .fallback_options(false)
-        .build()
-        .unwrap();
-
-    assert_matches!(
-        app.recognize("/", &Method::OPTIONS),
-        Err(RecognizeError::MethodNotAllowed)
+        app.data.recognize("/", &Method::HEAD),
+        Recognize::MethodNotAllowed { .. }
     );
 }
 
@@ -137,8 +95,8 @@ fn asterisk_route() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("*", &Method::OPTIONS),
-        Ok(Recognize::Matched(0, ..))
+        app.data.recognize("*", &Method::OPTIONS),
+        Recognize::Matched { route, .. } if route.id.1 == 0
     );
 }
 
@@ -162,8 +120,8 @@ fn asterisk_route_with_normal_routes() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("*", &Method::OPTIONS),
-        Ok(Recognize::Matched(3, ..))
+        app.data.recognize("*", &Method::OPTIONS),
+        Recognize::Matched { route, .. } if route.id.1 == 3
     );
 }
 
@@ -186,24 +144,24 @@ fn scope_simple() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("/a", &Method::GET),
-        Ok(Recognize::Matched(0, ..))
+        app.data.recognize("/a", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 0
     );
     assert_matches!(
-        app.recognize("/b", &Method::GET),
-        Ok(Recognize::Matched(1, ..))
+        app.data.recognize("/b", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 1
     );
     assert_matches!(
-        app.recognize("/foo", &Method::GET),
-        Ok(Recognize::Matched(2, ..))
+        app.data.recognize("/foo", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 2
     );
     assert_matches!(
-        app.recognize("/c/d", &Method::GET),
-        Ok(Recognize::Matched(3, ..))
+        app.data.recognize("/c/d", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 3
     );
     assert_matches!(
-        app.recognize("/c/e", &Method::GET),
-        Ok(Recognize::Matched(4, ..))
+        app.data.recognize("/c/e", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 4
     );
 }
 
@@ -232,29 +190,29 @@ fn scope_nested() {
         .unwrap();
 
     assert_matches!(
-        app.recognize("/foo", &Method::GET),
-        Ok(Recognize::Matched(0, ..))
+        app.data.recognize("/foo", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 0
     );
     assert_matches!(
-        app.recognize("/bar", &Method::GET),
-        Ok(Recognize::Matched(1, ..))
+        app.data.recognize("/bar", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 1
     );
     assert_matches!(
-        app.recognize("/baz", &Method::GET),
-        Ok(Recognize::Matched(2, ..))
+        app.data.recognize("/baz", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 2
     );
     assert_matches!(
-        app.recognize("/baz/foobar", &Method::GET),
-        Ok(Recognize::Matched(3, ..))
+        app.data.recognize("/baz/foobar", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 3
     );
     assert_matches!(
-        app.recognize("/hoge", &Method::GET),
-        Ok(Recognize::Matched(4, ..))
+        app.data.recognize("/hoge", &Method::GET),
+        Recognize::Matched { route, .. } if route.id.1 == 4
     );
 
     assert_matches!(
-        app.recognize("/baz/", &Method::GET),
-        Err(RecognizeError::NotFound)
+        app.data.recognize("/baz/", &Method::GET),
+        Recognize::NotFound
     );
 }
 
@@ -305,42 +263,50 @@ fn scope_variable() {
         .unwrap();
 
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Global, 0))
+        app.data
+            .get_state(RouteId(ScopeId::Global, 0))
             .map(String::as_str),
         Some("G")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(0), 1))
+        app.data
+            .get_state(RouteId(ScopeId::Local(0), 1))
             .map(String::as_str),
         Some("G")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(1), 2))
+        app.data
+            .get_state(RouteId(ScopeId::Local(1), 2))
             .map(String::as_str),
         Some("A")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(2), 3))
+        app.data
+            .get_state(RouteId(ScopeId::Local(2), 3))
             .map(String::as_str),
         Some("B")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(3), 4))
+        app.data
+            .get_state(RouteId(ScopeId::Local(3), 4))
             .map(String::as_str),
         Some("C")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(4), 5))
+        app.data
+            .get_state(RouteId(ScopeId::Local(4), 5))
             .map(String::as_str),
         Some("C")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(5), 6))
+        app.data
+            .get_state(RouteId(ScopeId::Local(5), 6))
             .map(String::as_str),
         Some("B")
     );
     assert_eq!(
-        app.get_state(RouteId(ScopeId::Local(6), 7))
+        app.data
+            .get_state(RouteId(ScopeId::Local(6), 7))
             .map(String::as_str),
         Some("B")
     );

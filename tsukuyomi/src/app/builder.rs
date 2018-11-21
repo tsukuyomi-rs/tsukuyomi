@@ -4,7 +4,7 @@ use {
         error::{Error, Result},
         route::{Context as RouteContext, Route},
         scope::{Context as ScopeContext, Scope},
-        App, AppData, Config, EndpointData, RouteData, RouteId, ScopeData,
+        App, AppData, Config, EndpointData, EndpointId, RouteData, RouteId, ScopeData,
     },
     bytes::BytesMut,
     crate::{
@@ -109,14 +109,6 @@ where
     /// The default value is `true`.
     pub fn fallback_head(mut self, enabled: bool) -> Builder<S, M, C> {
         self.config.fallback_head = enabled;
-        self
-    }
-
-    /// Specifies whether to use the default `OPTIONS` handlers if it is not registered.
-    ///
-    /// The default value is `true`.
-    pub fn fallback_options(mut self, enabled: bool) -> Builder<S, M, C> {
-        self.config.fallback_options = enabled;
         self
     }
 
@@ -285,7 +277,7 @@ fn build(
             let handler = route.handler;
 
             // calculate the modifier identifiers.
-            let mut modifier_ids = vec![ScopeId::Global];
+            let mut modifier_ids = vec![];
             if let Some(scope) = route.scope_id.local_id().and_then(|id| scopes.get(id)) {
                 for (id, _scope) in scope.chain.iter().filter_map(|&id| {
                     id.local_id()
@@ -349,7 +341,7 @@ fn build(
 
         let mut recognizer = Recognizer::default();
         let mut endpoints = vec![];
-        for (uri, methods) in collected_routes {
+        for (i, (uri, methods)) in collected_routes.into_iter().enumerate() {
             let allowed_methods = {
                 let allowed_methods: IndexSet<_> =
                     methods.keys().chain(Some(&Method::OPTIONS)).collect();
@@ -367,8 +359,10 @@ fn build(
                 unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
             };
 
-            recognizer.add_route(uri)?;
+            recognizer.add_route(uri.clone())?;
             endpoints.push(EndpointData {
+                id: EndpointId(i),
+                uri,
                 route_ids: methods,
                 allowed_methods,
             });
