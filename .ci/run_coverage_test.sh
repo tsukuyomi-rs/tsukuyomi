@@ -14,7 +14,7 @@ codecov() {
 }
 
 tarpaulin() {
-    cargo tarpaulin -v --skip-clean --out Xml "$@"
+    cargo tarpaulin -v --skip-clean --ignore-tests --out Xml "$@"
 }
 
 tarpaulin --all --exclude example-diesel && codecov -n "all" # example-diesel reaches to the type-length limit...
