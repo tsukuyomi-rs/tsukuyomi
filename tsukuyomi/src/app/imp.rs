@@ -1,5 +1,5 @@
 use {
-    super::{AppData, EndpointId, Recognize, RouteId},
+    super::{AppData, EndpointId, Recognize, ScopeId},
     cookie::{Cookie, CookieJar},
     crate::{
         error::{Critical, Error},
@@ -49,7 +49,6 @@ enum AppFutureState {
     Init,
     Handle {
         in_flight: AsyncResult<Output>,
-        route_id: Option<RouteId>,
         endpoint_id: Option<EndpointId>,
         captures: Option<Captures>,
     },
@@ -65,9 +64,9 @@ enum BodyState {
 
 macro_rules! input {
     ($self:expr) => {
-        input!($self, None, None, None)
+        input!($self, None, None)
     };
-    ($self:expr, $route_id:expr, $endpoint_id:expr, $captures:expr) => {
+    ($self:expr, $endpoint_id:expr, $captures:expr) => {
         &mut Input {
             request: &$self.request,
             params: {
@@ -89,7 +88,7 @@ macro_rules! input {
             },
             states: &States {
                 data: &$self.data,
-                route_id: $route_id,
+                scope_id: $endpoint_id.map(|EndpointId(scope, _)| scope),
             },
             cookies: &mut Cookies {
                 jar: &mut $self.cookie_jar,
@@ -124,12 +123,11 @@ impl AppFuture {
             self.state = match self.state {
                 Handle {
                     ref mut in_flight,
-                    route_id,
                     endpoint_id,
                     ref captures,
-                } => return in_flight.poll_ready(input!(self, route_id, endpoint_id, captures)),
+                } => return in_flight.poll_ready(input!(self, endpoint_id, captures)),
                 Init => {
-                    let (in_flight, route_id, endpoint_id, captures) = match self
+                    let (in_flight, endpoint_id, captures) = match self
                         .data
                         .recognize(self.request.uri().path(), self.request.method())
                     {
@@ -140,20 +138,24 @@ impl AppFuture {
                             ..
                         } => {
                             let mut in_flight = route.handler.handle();
-                            for &id in route.modifier_ids.iter().rev() {
-                                let scope = self.data.get_scope(id).expect("should be valid ID");
+                            let scope = self.data.get_scope(endpoint.id.0).expect("wrong scope ID");
+                            in_flight = scope.modifier.modify(in_flight);
+                            for &parent in scope.parents.iter().rev() {
+                                let scope =
+                                    self.data.get_scope(parent).expect("should be valid ID");
                                 in_flight = scope.modifier.modify(in_flight);
                             }
-                            (in_flight, Some(route.id), Some(endpoint.id), captures)
+                            (in_flight, Some(endpoint.id), captures)
                         }
                         Recognize::NotFound => {
                             let in_flight = AsyncResult::err(StatusCode::NOT_FOUND.into());
-                            (in_flight, None, None, None)
+                            let in_flight = self.data.global_scope.modifier.modify(in_flight);
+                            (in_flight, None, None)
                         }
                         Recognize::MethodNotAllowed {
                             endpoint, captures, ..
                         } => {
-                            let allowed_methods = endpoint.allowed_methods.clone();
+                            let allowed_methods = endpoint.allowed_methods_value.clone();
                             let in_flight = AsyncResult::ready(move |input| {
                                 if input.request.method() == Method::OPTIONS {
                                     let mut response = Response::new(ResponseBody::default());
@@ -165,14 +167,14 @@ impl AppFuture {
                                     Err(StatusCode::METHOD_NOT_ALLOWED.into())
                                 }
                             });
+                            let in_flight = self.data.global_scope.modifier.modify(in_flight);
 
-                            (in_flight, None, Some(endpoint.id), captures)
+                            (in_flight, Some(endpoint.id), captures)
                         }
                     };
 
                     Handle {
-                        in_flight: self.data.global_scope.modifier.modify(in_flight),
-                        route_id,
+                        in_flight,
                         endpoint_id,
                         captures,
                     }
@@ -238,7 +240,7 @@ impl Future for AppFuture {
 #[derive(Debug)]
 pub struct States<'task> {
     data: &'task Arc<AppData>,
-    route_id: Option<RouteId>,
+    scope_id: Option<ScopeId>,
 }
 
 impl<'task> States<'task> {
@@ -248,7 +250,7 @@ impl<'task> States<'task> {
     where
         T: Send + Sync + 'static,
     {
-        self.data.get_state(self.route_id?)
+        self.data.get_state(self.scope_id?)
     }
 
     /// Returns the reference to a shared state of `T` registered in the scope.

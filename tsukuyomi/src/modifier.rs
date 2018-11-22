@@ -38,11 +38,6 @@ use crate::{handler::AsyncResult, output::Output};
 
 /// A trait representing a `Modifier`.
 pub trait Modifier {
-    #[allow(unused_variables)]
-    fn setup(&mut self, cx: &mut crate::app::scope::Context<'_>) -> crate::app::Result<()> {
-        Ok(())
-    }
-
     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output>;
 }
 
@@ -70,12 +65,6 @@ where
     M1: Modifier,
     M2: Modifier,
 {
-    fn setup(&mut self, cx: &mut crate::app::scope::Context<'_>) -> crate::app::Result<()> {
-        self.m1.setup(cx)?;
-        self.m2.setup(cx)?;
-        Ok(())
-    }
-
     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
         self.m1.modify(self.m2.modify(result))
     }

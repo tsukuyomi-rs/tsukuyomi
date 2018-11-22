@@ -1,5 +1,5 @@
 use {
-    super::{route, scope, Recognize, RouteId, ScopeId},
+    super::{route, scope, Recognize, ScopeId},
     http::Method,
     matches::assert_matches,
 };
@@ -263,51 +263,35 @@ fn scope_variable() {
         .unwrap();
 
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Global, 0))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Global).map(String::as_str),
         Some("G")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(0), 1))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(0)).map(String::as_str),
         Some("G")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(1), 2))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(1)).map(String::as_str),
         Some("A")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(2), 3))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(2)).map(String::as_str),
         Some("B")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(3), 4))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(3)).map(String::as_str),
         Some("C")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(4), 5))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(4)).map(String::as_str),
         Some("C")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(5), 6))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(5)).map(String::as_str),
         Some("B")
     );
     assert_eq!(
-        app.data
-            .get_state(RouteId(ScopeId::Local(6), 7))
-            .map(String::as_str),
+        app.data.get_state(ScopeId::Local(6)).map(String::as_str),
         Some("B")
     );
 }

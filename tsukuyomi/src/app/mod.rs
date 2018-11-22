@@ -63,12 +63,6 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct RouteId(pub(crate) ScopeId, pub(crate) usize);
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct EndpointId(usize);
-
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppData {
     routes: Vec<RouteData>,
@@ -76,7 +70,7 @@ struct AppData {
     global_scope: ScopeData,
 
     recognizer: Recognizer,
-    endpoints: Vec<EndpointData>,
+    endpoints: IndexMap<Uri, EndpointData>,
 
     states: ScopedContainer,
     on_error: Box<dyn ErrorHandler + Send + Sync + 'static>,
@@ -100,14 +94,17 @@ impl fmt::Debug for AppData {
 
 impl AppData {
     fn uri(&self, id: EndpointId) -> &Uri {
-        &self.endpoints[id.0].uri
+        self.endpoints
+            .get_index(id.1)
+            .map(|(uri, _endpoint)| uri)
+            .expect("the wrong endpoint ID")
     }
 
-    pub(crate) fn get_state<T>(&self, id: RouteId) -> Option<&T>
+    fn get_state<T>(&self, id: ScopeId) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
-        self.states.get(id.0)
+        self.states.get(id)
     }
 
     fn get_scope(&self, id: ScopeId) -> Option<&ScopeData> {
@@ -123,12 +120,15 @@ impl AppData {
             None => return Recognize::NotFound,
         };
 
-        let endpoint = &self.endpoints[i];
-        debug_assert_eq!(endpoint.id.0, i);
+        let (_, endpoint) = &self
+            .endpoints
+            .get_index(i)
+            .expect("the wrong index was registered in recognizer");
+        debug_assert_eq!(endpoint.id.1, i);
 
-        if let Some(&pos) = endpoint.route_ids.get(method) {
-            let route = &self.routes[pos];
-            debug_assert_eq!(route.id.1, pos);
+        if let Some(&id) = endpoint.route_ids.get(method) {
+            let route = &self.routes[id.1];
+            debug_assert_eq!(route.id, id);
             return Recognize::Matched {
                 route,
                 endpoint,
@@ -138,9 +138,9 @@ impl AppData {
         }
 
         if self.config.fallback_head && *method == Method::HEAD {
-            if let Some(&pos) = endpoint.route_ids.get(&Method::GET) {
-                let route = &self.routes[pos];
-                debug_assert_eq!(route.id.1, pos);
+            if let Some(&id) = endpoint.route_ids.get(&Method::GET) {
+                let route = &self.routes[id.1];
+                debug_assert_eq!(route.id, id);
                 return Recognize::Matched {
                     route,
                     endpoint,
@@ -156,7 +156,7 @@ impl AppData {
 
 struct ScopeData {
     id: ScopeId,
-    parent: ScopeId,
+    parents: Vec<ScopeId>,
     prefix: Option<Uri>,
     modifier: Box<dyn Modifier + Send + Sync + 'static>,
 }
@@ -166,38 +166,41 @@ impl fmt::Debug for ScopeData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopeData")
             .field("id", &self.id)
-            .field("parent", &self.parent)
+            .field("parents", &self.parents)
             .field("prefix", &self.prefix)
             .finish()
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct EndpointId(ScopeId, usize);
+
+#[derive(Debug)]
+struct EndpointData {
+    id: EndpointId,
+    uri: Uri,
+    route_ids: IndexMap<Method, RouteId>,
+    allowed_methods_value: HeaderValue,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct RouteId(EndpointId, usize);
 
 struct RouteData {
     id: RouteId,
     uri: Uri,
     methods: IndexSet<Method>,
     handler: Box<dyn Handler + Send + Sync + 'static>,
-    modifier_ids: Vec<ScopeId>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for RouteData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RouteData")
-            .field("id", &self.id)
             .field("uri", &self.uri)
             .field("methods", &self.methods)
-            .field("modifier_ids", &self.modifier_ids)
             .finish()
     }
-}
-
-#[derive(Debug)]
-struct EndpointData {
-    id: EndpointId,
-    uri: Uri,
-    route_ids: IndexMap<Method, usize>,
-    allowed_methods: HeaderValue,
 }
 
 #[derive(Debug)]

@@ -8,7 +8,6 @@ use {
     },
     bytes::BytesMut,
     crate::{
-        handler::Handler,
         modifier::Modifier,
         recognizer::Recognizer,
         scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
@@ -16,7 +15,7 @@ use {
     },
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
-    std::{fmt, sync::Arc},
+    std::sync::Arc,
 };
 
 /// A builder object for constructing an instance of `App`.
@@ -139,165 +138,76 @@ where
 
 fn build(
     scope: impl Scope,
-    mut modifier: impl Modifier + Send + Sync + 'static,
+    modifier: impl Modifier + Send + Sync + 'static,
     on_error: impl ErrorHandler + Send + Sync + 'static,
     config: Config,
 ) -> Result<App> {
     let mut cx = AppContext {
+        endpoints: IndexMap::new(),
         routes: vec![],
         scopes: vec![],
+        global_scope: ScopeData {
+            id: ScopeId::Global,
+            parents: vec![],
+            prefix: None,
+            modifier: Box::new(modifier),
+        },
         states: ScopedContainerBuilder::default(),
-        prefix: None,
     };
 
     {
         let mut cx = ScopeContext::new(&mut cx, ScopeId::Global);
         scope.configure(&mut cx).map_err(Into::into)?;
-        modifier.setup(&mut cx)?;
     }
 
     let AppContext {
+        mut endpoints,
         routes,
         scopes,
+        global_scope,
         states,
-        prefix,
     } = cx;
 
-    // finalize endpoints based on the created scope information.
-    let routes: Vec<RouteData> = routes
-        .into_iter()
-        .enumerate()
-        .map(|(route_id, route)| -> Result<RouteData> {
-            // build absolute URI.
-            let mut uris = vec![&route.uri];
-            let mut current = route.scope_id.local_id();
-            while let Some(scope) = current.and_then(|i| scopes.get(i)) {
-                uris.extend(scope.prefix.as_ref());
-                current = scope.parent.local_id();
-            }
-            uris.extend(prefix.as_ref());
-            let uri = crate::uri::join_all(uris.into_iter().rev())?;
-
-            let handler = route.handler;
-
-            // calculate the modifier identifiers.
-            let mut modifier_ids = vec![];
-            if let Some(scope) = route.scope_id.local_id().and_then(|id| scopes.get(id)) {
-                for (id, _scope) in scope.chain.iter().filter_map(|&id| {
-                    id.local_id()
-                        .and_then(|id| scopes.get(id).map(|scope| (id, scope)))
-                }) {
-                    modifier_ids.push(ScopeId::Local(id));
-                }
-            }
-
-            let id = RouteId(route.scope_id, route_id);
-
-            let mut methods = route.methods;
-            if methods.is_empty() {
-                methods.insert(Method::GET);
-            }
-
-            if uri.is_asterisk() {
-                if !methods.contains(&Method::OPTIONS) {
-                    return Err(failure::format_err!("the route with asterisk URI must explicitly handles OPTIONS").into());
-                }
-                if methods.iter().any(|method| method != Method::OPTIONS) {
-                    return Err(failure::format_err!("the route with asterisk URI must not accept any methods other than OPTIONS").into());
-                }
-            }
-
-            Ok(RouteData {
-                id,
-                uri,
-                methods,
-                handler,
-                modifier_ids,
-            })
-        }).collect::<std::result::Result<_, _>>()?;
-
-    // create a router
-    let (recognizer, endpoints) = {
-        let mut collected_routes = IndexMap::<Uri, IndexMap<Method, usize>>::new();
-        for (i, route) in routes.iter().enumerate() {
-            let methods = collected_routes
-                .entry(route.uri.clone())
-                .or_insert_with(IndexMap::<Method, usize>::new);
-
-            for method in &route.methods {
-                if methods.contains_key(method) {
-                    return Err(Error::from(failure::format_err!(
-                        "Adding routes with duplicate URI and method is currenly not supported. \
-                         (uri={}, method={})",
-                        route.uri,
-                        method
-                    )));
-                }
-
-                methods.insert(method.clone(), i);
-            }
-        }
-
-        log::debug!("collected routes:");
-        for (uri, methods) in &collected_routes {
-            log::debug!(" - {} {:?}", uri, methods.keys().collect::<Vec<_>>());
-        }
-
-        let mut recognizer = Recognizer::default();
-        let mut endpoints = vec![];
-        for (i, (uri, methods)) in collected_routes.into_iter().enumerate() {
-            let allowed_methods = {
-                let allowed_methods: IndexSet<_> =
-                    methods.keys().chain(Some(&Method::OPTIONS)).collect();
-                let bytes =
-                    allowed_methods
-                        .iter()
-                        .enumerate()
-                        .fold(BytesMut::new(), |mut acc, (i, m)| {
-                            if i > 0 {
-                                acc.extend_from_slice(b", ");
-                            }
-                            acc.extend_from_slice(m.as_str().as_bytes());
-                            acc
-                        });
-                unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-            };
-
-            recognizer.add_route(uri.clone())?;
-            endpoints.push(EndpointData {
-                id: EndpointId(i),
-                uri,
-                route_ids: methods,
-                allowed_methods,
-            });
-        }
-
-        (recognizer, endpoints)
-    };
-
     // finalize global/scope-local storages.
-    let parents: Vec<_> = scopes.iter().map(|scope| scope.parent).collect();
+    let parents: Vec<_> = scopes
+        .iter()
+        .map(|scope| *scope.parents.last().expect("no parent"))
+        .collect();
     let states = states.finish(&parents[..]);
 
-    let scopes = scopes
-        .into_iter()
-        .map(|scope| ScopeData {
-            id: scope.id,
-            parent: scope.parent,
-            prefix: scope.prefix,
-            modifier: scope.modifier.expect("unexpected condition"),
-        }).collect();
+    // create a route recognizer.
+    let mut recognizer = Recognizer::default();
+    for uri in endpoints.keys().cloned() {
+        recognizer.add_route(uri)?;
+    }
+
+    for endpoint in endpoints.values_mut() {
+        endpoint.allowed_methods_value = {
+            let allowed_methods: IndexSet<_> = endpoint
+                .route_ids
+                .keys()
+                .chain(Some(&Method::OPTIONS))
+                .collect();
+            let bytes =
+                allowed_methods
+                    .iter()
+                    .enumerate()
+                    .fold(BytesMut::new(), |mut acc, (i, m)| {
+                        if i > 0 {
+                            acc.extend_from_slice(b", ");
+                        }
+                        acc.extend_from_slice(m.as_str().as_bytes());
+                        acc
+                    });
+            unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+        };
+    }
 
     Ok(App {
         data: Arc::new(AppData {
             routes,
             scopes,
-            global_scope: ScopeData {
-                id: ScopeId::Global,
-                parent: ScopeId::Global, // dummy
-                prefix,
-                modifier: Box::new(modifier),
-            },
+            global_scope,
             recognizer,
             endpoints,
             config,
@@ -307,27 +217,33 @@ fn build(
     })
 }
 
-#[allow(missing_debug_implementations)]
+#[derive(Debug)]
 pub struct AppContext {
-    routes: Vec<RouteBuilder>,
-    scopes: Vec<ScopeBuilder>,
+    routes: Vec<RouteData>,
+    scopes: Vec<ScopeData>,
+    global_scope: ScopeData,
+    endpoints: IndexMap<Uri, EndpointData>,
     states: ScopedContainerBuilder,
-    prefix: Option<Uri>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for AppContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AppContext")
-            .field("routes", &self.routes)
-            .field("scopes", &self.scopes)
-            .field("states", &self.states)
-            .field("prefix", &self.prefix)
-            .finish()
-    }
 }
 
 impl AppContext {
+    fn build_absolute_uri(&self, scope_id: ScopeId, suffix: &Uri) -> Result<Uri> {
+        let mut uris = vec![];
+        let scope = match scope_id {
+            ScopeId::Global => &self.global_scope,
+            ScopeId::Local(i) => &self.scopes[i],
+        };
+        uris.extend(scope.prefix.as_ref());
+        for &scope_id in scope.parents.iter().rev() {
+            let scope = match scope_id {
+                ScopeId::Global => &self.global_scope,
+                ScopeId::Local(i) => &self.scopes[i],
+            };
+            uris.extend(scope.prefix.as_ref());
+        }
+        crate::uri::join_all(uris.into_iter().rev().chain(Some(suffix))).map_err(Into::into)
+    }
+
     pub(super) fn new_route(&mut self, scope_id: ScopeId, route: impl Route) -> Result<()> {
         let mut cx = RouteContext {
             uri: Uri::root(),
@@ -336,17 +252,63 @@ impl AppContext {
         };
         route.configure(&mut cx);
 
-        let route = RouteBuilder {
-            scope_id,
-            methods: cx
-                .methods
-                .unwrap_or_else(|| vec![Method::GET].into_iter().collect()),
+        // build absolute URI.
+        let uri = self.build_absolute_uri(scope_id, &cx.uri)?;
+
+        let endpoint = {
+            let pos = self.endpoints.len();
+            self.endpoints
+                .entry(uri.clone())
+                .or_insert_with(|| EndpointData {
+                    id: EndpointId(scope_id, pos),
+                    uri: uri.clone(),
+                    route_ids: IndexMap::new(),
+                    allowed_methods_value: HeaderValue::from_static(""),
+                })
+        };
+
+        if scope_id != endpoint.id.0 {
+            return Err(Error::from(failure::format_err!(
+                "all routes with the same URI belong to the same scope"
+            )));
+        }
+
+        let mut methods = cx.methods.unwrap_or_default();
+        if methods.is_empty() {
+            methods.insert(Method::GET);
+        }
+
+        if uri.is_asterisk() {
+            if !methods.contains(&Method::OPTIONS) {
+                return Err(failure::format_err!(
+                    "the route with asterisk URI must explicitly handles OPTIONS"
+                ).into());
+            }
+            if methods.iter().any(|method| method != Method::OPTIONS) {
+                return Err(failure::format_err!(
+                    "the route with asterisk URI must not accept any methods other than OPTIONS"
+                ).into());
+            }
+        }
+
+        let route_id = RouteId(endpoint.id, self.routes.len());
+        for method in &methods {
+            if endpoint.route_ids.contains_key(method) {
+                return Err(Error::from(failure::format_err!(
+                    "the route with the same URI and method is not supported."
+                )));
+            }
+            endpoint.route_ids.insert(method.clone(), route_id);
+        }
+
+        self.routes.push(RouteData {
+            id: route_id,
             uri: cx.uri,
+            methods,
             handler: cx
                 .handler
                 .ok_or_else(|| failure::format_err!("default handler is not supported"))?,
-        };
-        self.routes.push(route);
+        });
 
         Ok(())
     }
@@ -355,29 +317,31 @@ impl AppContext {
         &mut self,
         parent: ScopeId,
         scope: impl Scope,
-        mut modifier: impl Modifier + Send + Sync + 'static,
+        modifier: impl Modifier + Send + Sync + 'static,
     ) -> Result<()> {
         let pos = self.scopes.len();
         let id = ScopeId::Local(pos);
-        let mut chain = parent
-            .local_id()
-            .map_or_else(Default::default, |id| self.scopes[id].chain.clone());
-        chain.push(id);
-        self.scopes.push(ScopeBuilder {
+
+        let parents = match parent {
+            ScopeId::Global => vec![ScopeId::Global],
+            ScopeId::Local(i) => self.scopes[i]
+                .parents
+                .iter()
+                .cloned()
+                .chain(Some(parent))
+                .collect(),
+        };
+
+        self.scopes.push(ScopeData {
             id,
-            parent,
+            parents,
             prefix: None,
-            modifier: None,
-            chain,
+            modifier: Box::new(modifier),
         });
 
-        {
-            let mut cx = ScopeContext::new(self, id);
-            scope.configure(&mut cx).map_err(Into::into)?;
-            modifier.setup(&mut cx)?;
-        }
-
-        self.scopes[pos].modifier = Some(Box::new(modifier));
+        scope
+            .configure(&mut ScopeContext::new(self, id))
+            .map_err(Into::into)?;
 
         Ok(())
     }
@@ -391,44 +355,8 @@ impl AppContext {
 
     pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) {
         match id {
-            ScopeId::Global => self.prefix = Some(prefix),
+            ScopeId::Global => self.global_scope.prefix = Some(prefix),
             ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
         }
-    }
-}
-
-struct RouteBuilder {
-    scope_id: ScopeId,
-    methods: IndexSet<Method>,
-    uri: Uri,
-    handler: Box<dyn Handler + Send + Sync + 'static>,
-}
-
-impl fmt::Debug for RouteBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RouteBuilder")
-            .field("scope_id", &self.scope_id)
-            .field("methods", &self.methods)
-            .field("uri", &self.uri)
-            .finish()
-    }
-}
-
-struct ScopeBuilder {
-    id: ScopeId,
-    parent: ScopeId,
-    modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
-    prefix: Option<Uri>,
-    chain: Vec<ScopeId>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for ScopeBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ScopeBuilder")
-            .field("parent", &self.parent)
-            .field("prefix", &self.prefix)
-            .field("chain", &self.chain)
-            .finish()
     }
 }

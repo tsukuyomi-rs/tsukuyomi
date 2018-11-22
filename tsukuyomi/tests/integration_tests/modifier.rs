@@ -1,11 +1,6 @@
 use {
-    http::Response,
     std::sync::{Arc, Mutex},
-    tsukuyomi::{
-        handler::AsyncResult,
-        output::{Output, ResponseBody},
-        route, scope, Modifier,
-    },
+    tsukuyomi::{handler::AsyncResult, output::Output, route, scope, Modifier},
 };
 
 #[derive(Clone)]
@@ -135,53 +130,6 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     marker.lock().unwrap().clear();
     let _ = server.perform("/path/to/a")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M3", "M2", "M1"]);
-
-    Ok(())
-}
-
-#[test]
-fn setup() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::app::scope::Context;
-
-    struct SetState(Option<String>);
-    impl Modifier for SetState {
-        fn setup(&mut self, cx: &mut Context<'_>) -> tsukuyomi::app::Result<()> {
-            cx.set_state(self.0.take().unwrap());
-            Ok(())
-        }
-
-        fn modify(&self, handle: AsyncResult<Output>) -> AsyncResult<Output> {
-            handle
-        }
-    }
-
-    let mut server = tsukuyomi::app!()
-        .modifier(SetState(Some("foo".into())))
-        .route(
-            route!("/") //
-                .raw(|| {
-                    AsyncResult::ready(|input| {
-                        assert_eq!(input.states.get::<String>(), "foo");
-                        Ok(Response::new(ResponseBody::default()))
-                    })
-                }),
-        ) //
-        .mount(
-            scope!("/sub").modifier(SetState(Some("bar".into()))).route(
-                route!("/") //
-                    .raw(|| {
-                        AsyncResult::ready(|input| {
-                            assert_eq!(input.states.get::<String>(), "bar");
-                            Ok(Response::new(ResponseBody::default()))
-                        })
-                    }),
-            ),
-        ) //
-        .build_server()?
-        .into_test_server()?;
-
-    let _ = server.perform("/")?;
-    let _ = server.perform("/sub")?;
 
     Ok(())
 }
