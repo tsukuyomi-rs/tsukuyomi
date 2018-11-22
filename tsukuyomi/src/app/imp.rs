@@ -1,5 +1,5 @@
 use {
-    super::{AppData, EndpointId, Recognize, ScopeId},
+    super::{AppData, EndpointData, EndpointId, Recognize, ScopeId},
     cookie::{Cookie, CookieJar},
     crate::{
         error::{Critical, Error},
@@ -38,8 +38,10 @@ pub struct AppFuture {
     data: Arc<AppData>,
     body: BodyState,
     cookie_jar: Option<CookieJar>,
-    locals: LocalMap,
     response_headers: Option<HeaderMap>,
+    locals: LocalMap,
+    endpoint_id: Option<EndpointId>,
+    captures: Option<Captures>,
     state: AppFutureState,
 }
 
@@ -47,11 +49,7 @@ pub struct AppFuture {
 #[derive(Debug)]
 enum AppFutureState {
     Init,
-    Handle {
-        in_flight: AsyncResult<Output>,
-        endpoint_id: Option<EndpointId>,
-        captures: Option<Captures>,
-    },
+    InFlight(AsyncResult<Output>),
     Done,
 }
 
@@ -64,15 +62,12 @@ enum BodyState {
 
 macro_rules! input {
     ($self:expr) => {
-        input!($self, None, None)
-    };
-    ($self:expr, $endpoint_id:expr, $captures:expr) => {
         &mut Input {
             request: &$self.request,
             params: {
-                &if let Some(endpoint_id) = $endpoint_id {
-                    if let (Some(names), &Some(captures)) =
-                        ($self.data.uri(endpoint_id).capture_names(), &$captures)
+                &if let Some(endpoint_id) = $self.endpoint_id {
+                    if let (Some(names), &Some(ref captures)) =
+                        ($self.data.uri(endpoint_id).capture_names(), &$self.captures)
                     {
                         Some(Params {
                             path: $self.request.uri().path(),
@@ -88,7 +83,7 @@ macro_rules! input {
             },
             states: &States {
                 data: &$self.data,
-                scope_id: $endpoint_id.map(|EndpointId(scope, _)| scope),
+                scope_id: $self.endpoint_id.map(|EndpointId(scope, _)| scope),
             },
             cookies: &mut Cookies {
                 jar: &mut $self.cookie_jar,
@@ -96,8 +91,10 @@ macro_rules! input {
                 _marker: PhantomData,
             },
             locals: &mut $self.locals,
-            response_headers: &mut $self.response_headers,
             body: &mut $self.body,
+            response_headers: &mut $self.response_headers,
+            data: &*$self.data,
+            endpoint_id: $self.endpoint_id,
             _marker: PhantomData,
         }
     };
@@ -111,89 +108,89 @@ impl AppFuture {
             data,
             body: BodyState::Some(body),
             cookie_jar: None,
-            locals: LocalMap::default(),
             response_headers: None,
+            locals: LocalMap::default(),
+            endpoint_id: None,
+            captures: None,
             state: AppFutureState::Init,
         }
     }
 
-    fn poll_in_flight(&mut self) -> Poll<Output, Error> {
-        use self::AppFutureState::*;
-        loop {
-            self.state = match self.state {
-                Handle {
-                    ref mut in_flight,
-                    endpoint_id,
-                    ref captures,
-                } => return in_flight.poll_ready(input!(self, endpoint_id, captures)),
-                Init => {
-                    let (in_flight, endpoint_id, captures) = match self
-                        .data
-                        .recognize(self.request.uri().path(), self.request.method())
-                    {
-                        Recognize::Matched {
-                            route,
-                            endpoint,
-                            captures,
-                            ..
-                        } => {
-                            let mut in_flight = route.handler.handle();
+    fn handle_fallback(&self, endpoint: &EndpointData) -> AsyncResult<Output> {
+        let allowed_methods = endpoint.allowed_methods_value.clone();
+        AsyncResult::ready(move |input| {
+            if input.request.method() == Method::OPTIONS {
+                let mut response = Response::new(ResponseBody::default());
+                response
+                    .headers_mut()
+                    .insert(http::header::ALLOW, allowed_methods);
+                Ok(response)
+            } else {
+                Err(StatusCode::METHOD_NOT_ALLOWED.into())
+            }
+        })
+    }
 
-                            let scope = self.data.scope(endpoint.id.0);
-                            for modifier in scope.modifiers.iter().rev() {
-                                in_flight = modifier.modify(in_flight);
-                            }
-                            for &parent in scope.parents.iter().rev() {
-                                let scope = self.data.scope(parent);
-                                for modifier in scope.modifiers.iter().rev() {
-                                    in_flight = modifier.modify(in_flight);
-                                }
-                            }
+    fn apply_all_modifiers(
+        &self,
+        mut in_flight: AsyncResult<Output>,
+        id: ScopeId,
+    ) -> AsyncResult<Output> {
+        let scope = self.data.scope(id);
+        for modifier in scope.modifiers.iter().rev() {
+            in_flight = modifier.modify(in_flight);
+        }
+        for &parent in scope.parents.iter().rev() {
+            let scope = self.data.scope(parent);
+            for modifier in scope.modifiers.iter().rev() {
+                in_flight = modifier.modify(in_flight);
+            }
+        }
+        in_flight
+    }
 
-                            (in_flight, Some(endpoint.id), captures)
-                        }
-                        Recognize::NotFound => {
-                            let mut in_flight = AsyncResult::err(StatusCode::NOT_FOUND.into());
-                            for modifier in self.data.global_scope.modifiers.iter().rev() {
-                                in_flight = modifier.modify(in_flight);
-                            }
-                            (in_flight, None, None)
-                        }
-                        Recognize::MethodNotAllowed {
-                            endpoint, captures, ..
-                        } => {
-                            let allowed_methods = endpoint.allowed_methods_value.clone();
-                            let mut in_flight = AsyncResult::ready(move |input| {
-                                if input.request.method() == Method::OPTIONS {
-                                    let mut response = Response::new(ResponseBody::default());
-                                    response
-                                        .headers_mut()
-                                        .insert(http::header::ALLOW, allowed_methods);
-                                    Ok(response)
-                                } else {
-                                    Err(StatusCode::METHOD_NOT_ALLOWED.into())
-                                }
-                            });
-                            for modifier in self.data.global_scope.modifiers.iter().rev() {
-                                in_flight = modifier.modify(in_flight);
-                            }
+    fn apply_global_modifiers(&self, mut in_flight: AsyncResult<Output>) -> AsyncResult<Output> {
+        for modifier in self.data.global_scope.modifiers.iter().rev() {
+            in_flight = modifier.modify(in_flight);
+        }
+        in_flight
+    }
 
-                            (in_flight, Some(endpoint.id), captures)
-                        }
-                    };
+    fn process_recognize(&mut self) -> AsyncResult<Output> {
+        match self
+            .data
+            .recognize(self.request.uri().path(), self.request.method())
+        {
+            Recognize::Matched {
+                route,
+                endpoint,
+                captures,
+                ..
+            } => {
+                self.endpoint_id = Some(endpoint.id);
+                self.captures = captures;
+                self.apply_all_modifiers(route.handler.handle(), endpoint.id.0)
+            }
 
-                    Handle {
-                        in_flight,
-                        endpoint_id,
-                        captures,
-                    }
-                }
-                Done => panic!("the future has already polled."),
+            Recognize::MethodNotAllowed {
+                endpoint, captures, ..
+            } => {
+                self.endpoint_id = Some(endpoint.id);
+                self.captures = captures;
+                self.apply_all_modifiers(self.handle_fallback(endpoint), endpoint.id.0)
+            }
+
+            Recognize::NotFound => {
+                self.apply_global_modifiers(AsyncResult::err(StatusCode::NOT_FOUND.into()))
             }
         }
     }
 
-    fn handle_response(&mut self, mut output: Output) -> Result<Output, Critical> {
+    fn process_on_error(&mut self, err: Error) -> Result<Output, Critical> {
+        self.data.on_error.call(err, input!(self))
+    }
+
+    fn process_before_reply(&mut self, output: &mut Output) {
         // append Cookie entries.
         if let Some(ref jar) = self.cookie_jar {
             for cookie in jar.delta() {
@@ -204,9 +201,11 @@ impl AppFuture {
             }
         }
 
-        // append response headers.
-        if let Some(hdrs) = self.response_headers.take() {
-            output.headers_mut().extend(hdrs);
+        // append supplemental response headers.
+        if let Some(mut hdrs) = self.response_headers.take() {
+            for (k, v) in hdrs.drain() {
+                output.headers_mut().extend(v.map(|v| (k.clone(), v)));
+            }
         }
 
         // append the value of Content-Length to the response header if missing.
@@ -221,12 +220,6 @@ impl AppFuture {
                     unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
                 });
         }
-
-        Ok(output)
-    }
-
-    fn handle_error(&mut self, err: Error) -> Result<Output, Critical> {
-        self.data.on_error.call(err, input!(self))
     }
 }
 
@@ -235,14 +228,27 @@ impl Future for AppFuture {
     type Error = Critical;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let output = match ready!(self.poll_in_flight()) {
+        let polled = loop {
+            self.state = match self.state {
+                AppFutureState::Init => AppFutureState::InFlight(self.process_recognize()),
+                AppFutureState::InFlight(ref mut in_flight) => {
+                    break ready!(in_flight.poll_ready(input!(self)))
+                }
+                AppFutureState::Done => panic!("the future has already polled."),
+            };
+        };
+
+        let mut output = match polled {
             Ok(output) => output,
             Err(err) => {
                 self.state = AppFutureState::Done;
-                self.handle_error(err)?
+                self.process_on_error(err)?
             }
         };
-        self.handle_response(output).map(Async::Ready)
+
+        self.process_before_reply(&mut output);
+
+        Ok(Async::Ready(output))
     }
 }
 
@@ -396,10 +402,10 @@ pub struct Input<'task> {
     /// A typemap that holds arbitrary request-local data.
     pub locals: &'task mut LocalMap,
 
-    /// A header map that holds additional response header fields.
-    pub response_headers: &'task mut Option<HeaderMap>,
-
     body: &'task mut BodyState,
+    response_headers: &'task mut Option<HeaderMap>,
+    data: &'task AppData,
+    endpoint_id: Option<EndpointId>,
     _marker: PhantomData<Rc<()>>,
 }
 
@@ -465,5 +471,20 @@ impl<'task> Input<'task> {
                 Ok(entry.insert(mime).as_ref())
             }
         }
+    }
+
+    pub fn response_headers(&mut self) -> &mut HeaderMap {
+        self.response_headers.get_or_insert_with(Default::default)
+    }
+
+    pub fn allowed_methods<'a>(&'a self) -> Option<impl Iterator<Item = &'a Method> + 'a> {
+        Some(
+            self.data
+                .endpoints
+                .get_index(self.endpoint_id?.1)?
+                .1
+                .route_ids
+                .keys(),
+        )
     }
 }
