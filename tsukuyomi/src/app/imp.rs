@@ -345,7 +345,7 @@ impl<'input> Params<'input> {
     pub fn name(&self, name: &str) -> Option<&str> {
         match name {
             "*" => self.get_wildcard(),
-            name => self.get(self.names.get_position(name)?),
+            name => self.get(self.names.position(name)?),
         }
     }
 }

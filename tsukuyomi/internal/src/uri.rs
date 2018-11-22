@@ -52,14 +52,14 @@ pub struct Uri(UriKind);
 #[derive(Debug, Clone, PartialEq)]
 enum UriKind {
     Root,
-    Wildcard,
+    Asterisk,
     Segments(String, Option<CaptureNames>),
 }
 
 impl PartialEq for Uri {
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
-            (&UriKind::Root, &UriKind::Root) | (&UriKind::Wildcard, &UriKind::Wildcard) => true,
+            (&UriKind::Root, &UriKind::Root) | (&UriKind::Asterisk, &UriKind::Asterisk) => true,
             (&UriKind::Segments(ref s, ..), &UriKind::Segments(ref o, ..)) if s == o => true,
             _ => false,
         }
@@ -70,18 +70,32 @@ impl Eq for Uri {}
 
 impl Hash for Uri {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self.0 {
-            UriKind::Root => "/".hash(state),
-            UriKind::Wildcard => "*".hash(state),
-            UriKind::Segments(ref s, ..) => s.hash(state),
-        }
+        self.as_str().hash(state)
     }
 }
 
 impl FromStr for Uri {
     type Err = Error;
 
-    fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl Uri {
+    pub fn root() -> Self {
+        Uri(UriKind::Root)
+    }
+
+    pub fn asterisk() -> Self {
+        Uri(UriKind::Asterisk)
+    }
+
+    pub fn from_static(s: &'static str) -> Self {
+        s.parse().expect("invalid URI")
+    }
+
+    pub fn parse(mut s: &str) -> Result<Self, Error> {
         if !s.is_ascii() {
             failure::bail!("The URI is not ASCII");
         }
@@ -90,7 +104,7 @@ impl FromStr for Uri {
             if s.len() > 1 {
                 failure::bail!("the URI with wildcard parameter must start with '/'");
             }
-            return Ok(Uri(UriKind::Wildcard));
+            return Ok(Uri(UriKind::Asterisk));
         }
 
         if !s.starts_with('/') {
@@ -109,13 +123,12 @@ impl FromStr for Uri {
 
         let mut names: Option<CaptureNames> = None;
         for segment in s[1..].split('/') {
+            if names.as_ref().map_or(false, |names| names.has_wildcard) {
+                failure::bail!("The wildcard parameter has already set.");
+            }
             if segment.is_empty() {
                 failure::bail!("empty segment");
             }
-            if names.as_ref().map_or(false, |names| names.wildcard) {
-                failure::bail!("The wildcard parameter has already set.");
-            }
-
             if segment
                 .get(1..)
                 .map_or(false, |s| s.bytes().any(|b| b == b':' || b == b'*'))
@@ -123,13 +136,8 @@ impl FromStr for Uri {
                 failure::bail!("invalid character in a segment");
             }
             match segment.as_bytes()[0] {
-                c @ b':' | c @ b'*' => {
-                    let names = names.get_or_insert_with(Default::default);
-                    match c {
-                        b':' => names.append(&segment[1..])?,
-                        b'*' => names.set_wildcard()?,
-                        _ => unreachable!(),
-                    }
+                b':' | b'*' => {
+                    names.get_or_insert_with(Default::default).push(segment)?;
                 }
                 _ => {}
             }
@@ -140,12 +148,6 @@ impl FromStr for Uri {
         } else {
             Ok(Self::segments(s, names))
         }
-    }
-}
-
-impl Uri {
-    pub fn root() -> Self {
-        Uri(UriKind::Root)
     }
 
     fn segments(s: impl Into<String>, names: Option<CaptureNames>) -> Self {
@@ -165,14 +167,14 @@ impl Uri {
     pub fn as_str(&self) -> &str {
         match self.0 {
             UriKind::Root => "/",
-            UriKind::Wildcard => "*",
+            UriKind::Asterisk => "*",
             UriKind::Segments(ref s, ..) => s.as_str(),
         }
     }
 
     pub fn is_asterisk(&self) -> bool {
         match self.0 {
-            UriKind::Wildcard => true,
+            UriKind::Asterisk => true,
             _ => false,
         }
     }
@@ -187,12 +189,12 @@ impl Uri {
     fn join(self, other: impl AsRef<Self>) -> Result<Self, Error> {
         match self.0 {
             UriKind::Root => Ok(other.as_ref().clone()),
-            UriKind::Wildcard => {
+            UriKind::Asterisk => {
                 failure::bail!("the asterisk URI cannot be joined with other URI(s)")
             }
             UriKind::Segments(mut segment, mut names) => match other.as_ref().0 {
                 UriKind::Root => Ok(Self::segments(segment, names)),
-                UriKind::Wildcard => {
+                UriKind::Asterisk => {
                     failure::bail!("the asterisk URI cannot be joined with other URI(s)")
                 }
                 UriKind::Segments(ref other_segment, ref other_names) => {
@@ -204,9 +206,6 @@ impl Uri {
                     match (&mut names, other_names) {
                         (&mut Some(ref mut names), &Some(ref other_names)) => {
                             names.extend(other_names.params.iter().cloned())?;
-                            if other_names.wildcard {
-                                names.set_wildcard()?;
-                            }
                         }
                         (ref mut names @ None, &Some(ref other_names)) => {
                             **names = Some(other_names.clone());
@@ -234,45 +233,49 @@ impl fmt::Display for Uri {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CaptureNames {
-    pub(crate) params: IndexSet<String>,
-    pub(crate) wildcard: bool,
+    params: IndexSet<String>,
+    has_wildcard: bool,
 }
 
 impl CaptureNames {
-    pub(super) fn append(&mut self, name: impl Into<String>) -> Result<(), Error> {
-        if self.wildcard {
+    fn push(&mut self, segment: &str) -> Result<(), Error> {
+        if self.has_wildcard {
             failure::bail!("The wildcard parameter has already set");
         }
 
-        let name = name.into();
+        let (kind, name) = segment.split_at(1);
+        match kind {
+            ":" | "*" => {}
+            "" => failure::bail!("empty segment"),
+            c => failure::bail!("unknown parameter kind: '{}'", c),
+        }
+
         if name.is_empty() {
             failure::bail!("empty parameter name");
         }
-        if !self.params.insert(name) {
+
+        if !self.params.insert(name.into()) {
             failure::bail!("the duplicated parameter name");
         }
+
+        if kind == "*" {
+            self.has_wildcard = true;
+        }
+
         Ok(())
     }
 
-    pub(super) fn extend<T>(&mut self, names: impl IntoIterator<Item = T>) -> Result<(), Error>
+    fn extend<T>(&mut self, names: impl IntoIterator<Item = T>) -> Result<(), Error>
     where
-        T: Into<String>,
+        T: AsRef<str>,
     {
         for name in names {
-            self.append(name)?;
+            self.push(name.as_ref())?;
         }
         Ok(())
     }
 
-    pub(super) fn set_wildcard(&mut self) -> Result<(), Error> {
-        if self.wildcard {
-            failure::bail!("The wildcard parameter has already set");
-        }
-        self.wildcard = true;
-        Ok(())
-    }
-
-    pub fn get_position(&self, name: &str) -> Option<usize> {
+    pub fn position(&self, name: &str) -> Option<usize> {
         Some(self.params.get_full(name)?.0)
     }
 }
@@ -314,8 +317,8 @@ mod tests {
             Uri::captured(
                 "/api/v1/:param/*path",
                 CaptureNames {
-                    params: indexset!["param".into()],
-                    wildcard: true,
+                    params: indexset!["param".into(), "path".into()],
+                    has_wildcard: true,
                 }
             )
         );

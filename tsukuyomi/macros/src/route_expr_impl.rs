@@ -15,38 +15,37 @@ enum ParamKind {
 }
 
 struct RouteExprImplInput {
-    uri: syn::LitStr,
+    uri_lit: syn::LitStr,
     params: Vec<(syn::Ident, ParamKind)>,
 }
 
 fn parse(input: TokenStream) -> ParseResult<RouteExprImplInput> {
-    let uri: syn::LitStr = syn::parse2(input)?;
+    let uri_lit: syn::LitStr = syn::parse2(input)?;
 
-    if let Err(err) = uri.value().parse::<Uri>() {
-        return Err(ParseError::new(
-            uri.span(),
-            format!("URI parse error: {}", err),
-        ));
-    }
+    let uri = uri_lit
+        .value()
+        .parse::<Uri>()
+        .map_err(|err| ParseError::new(uri_lit.span(), format!("URI parse error: {}", err)))?;
 
     let mut params = vec![];
-    for segment in uri.value().split('/') {
-        match segment.as_bytes().get(0) {
-            Some(b':') => {
-                let i = params.len();
-                let ident = syn::Ident::new(&format!("T{}", i), Span::call_site());
-                params.push((ident, ParamKind::Pos(i)));
+    if uri.capture_names().is_some() {
+        for segment in uri.as_str().split('/') {
+            match segment.as_bytes().get(0) {
+                Some(b':') => {
+                    let i = params.len();
+                    let ident = syn::Ident::new(&format!("T{}", i), Span::call_site());
+                    params.push((ident, ParamKind::Pos(i)));
+                }
+                Some(b'*') => {
+                    let i = params.len();
+                    let ident = syn::Ident::new(&format!("T{}", i), Span::call_site());
+                    params.push((ident, ParamKind::Wildcard));
+                }
+                _ => {}
             }
-            Some(b'*') => {
-                let i = params.len();
-                let ident = syn::Ident::new(&format!("T{}", i), Span::call_site());
-                params.push((ident, ParamKind::Wildcard));
-            }
-            _ => {}
         }
     }
-
-    Ok(RouteExprImplInput { uri, params })
+    Ok(RouteExprImplInput { uri_lit, params })
 }
 
 #[allow(nonstandard_style)]
@@ -57,7 +56,7 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
     let Error = quote!(tsukuyomi::error::Error);
     let route = quote!(tsukuyomi::app::route);
     let Builder = quote!(tsukuyomi::app::route::Builder);
-    let uri = &input.uri;
+    let uri = &input.uri_lit;
 
     if input.params.is_empty() {
         quote! {
@@ -183,6 +182,17 @@ t! {
                 .with(tsukuyomi::extractor::param::pos(0usize))
                 .with(tsukuyomi::extractor::param::pos(1usize))
                 .with(tsukuyomi::extractor::param::wildcard())
+        }
+    },
+}
+
+t! {
+    name: asterisk,
+    source: ("*"),
+    expected: {
+        fn route() -> tsukuyomi::app::route::Builder<()> {
+            tsukuyomi::app::route()
+                .uri("*".parse().expect("this is a bug"))
         }
     },
 }
