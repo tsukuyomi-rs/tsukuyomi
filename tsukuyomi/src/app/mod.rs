@@ -38,7 +38,7 @@ use {
     tower_service::{NewService, Service},
 };
 
-pub fn app() -> self::builder::Builder<(), ()> {
+pub fn app() -> self::builder::Builder<()> {
     self::builder::Builder::default()
 }
 
@@ -107,10 +107,10 @@ impl AppData {
         self.states.get(id)
     }
 
-    fn get_scope(&self, id: ScopeId) -> Option<&ScopeData> {
+    fn scope(&self, id: ScopeId) -> &ScopeData {
         match id {
-            ScopeId::Global => Some(&self.global_scope),
-            ScopeId::Local(id) => self.scopes.get(id),
+            ScopeId::Global => &self.global_scope,
+            ScopeId::Local(id) => &self.scopes[id],
         }
     }
 
@@ -158,7 +158,7 @@ struct ScopeData {
     id: ScopeId,
     parents: Vec<ScopeId>,
     prefix: Option<Uri>,
-    modifier: Box<dyn Modifier + Send + Sync + 'static>,
+    modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
 #[cfg_attr(tarpaulin, skip)]

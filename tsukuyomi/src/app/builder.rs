@@ -15,26 +15,39 @@ use {
     },
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
-    std::sync::Arc,
+    std::{fmt, sync::Arc},
 };
 
 /// A builder object for constructing an instance of `App`.
-#[derive(Debug, Default)]
-pub struct Builder<S: Scope = (), M = (), E: ErrorHandler = ()> {
-    scope: super::scope::Builder<S, M>,
-    on_error: E,
+#[derive(Default)]
+pub struct Builder<S: Scope = ()> {
+    scope: super::scope::Builder<S>,
     config: Config,
+    on_error: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
+}
+
+impl<S> fmt::Debug for Builder<S>
+where
+    S: Scope + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Builder")
+            .field("scope", &self.scope)
+            .field("config", &self.config)
+            .field(
+                "on_error",
+                &self.on_error.as_ref().map(|_| "<error handler>"),
+            ).finish()
+    }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, M, E> Builder<S, M, E>
+impl<S> Builder<S>
 where
     S: Scope,
-    M: Modifier + Send + Sync + 'static,
-    E: ErrorHandler + Send + Sync + 'static,
 {
     /// Adds a route into the global scope.
-    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>, M, E> {
+    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         Builder {
             on_error: self.on_error,
             config: self.config,
@@ -43,23 +56,16 @@ where
     }
 
     /// Creates a new scope onto the global scope using the specified `Scope`.
-    pub fn mount<S2, M2>(
-        self,
-        scope: super::scope::Builder<S2, M2>,
-    ) -> Builder<impl Scope<Error = Error>, M, E>
-    where
-        S2: Scope,
-        M2: Modifier + Send + Sync + 'static,
-    {
+    pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             on_error: self.on_error,
             config: self.config,
-            scope: self.scope.mount(scope),
+            scope: self.scope.mount(new_scope),
         }
     }
 
     /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
-    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>, M, E> {
+    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             on_error: self.on_error,
             config: self.config,
@@ -68,7 +74,7 @@ where
     }
 
     /// Adds a *global* variable into the application.
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>, M, E>
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
     where
         T: Send + Sync + 'static,
     {
@@ -80,10 +86,9 @@ where
     }
 
     /// Register a `Modifier` into the global scope.
-    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, impl Modifier + Send + Sync + 'static, E>
+    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>>
     where
-        S: 'static,
-        M2: Modifier + Send + Sync + 'static,
+        M: Modifier + Send + Sync + 'static,
     {
         Builder {
             on_error: self.on_error,
@@ -92,7 +97,7 @@ where
         }
     }
 
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>, M, E> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
         Builder {
             on_error: self.on_error,
             config: self.config,
@@ -103,29 +108,28 @@ where
     /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
     ///
     /// The default value is `true`.
-    pub fn fallback_head(mut self, enabled: bool) -> Builder<S, M, E> {
+    pub fn fallback_head(mut self, enabled: bool) -> Builder<S> {
         self.config.fallback_head = enabled;
         self
     }
 
     /// Sets the error handler.
-    pub fn on_error<E2>(self, on_error: E2) -> Builder<S, M, E2>
+    pub fn on_error<E>(self, on_error: E) -> Builder<S>
     where
-        E2: ErrorHandler + Send + Sync + 'static,
+        E: ErrorHandler + Send + Sync + 'static,
     {
         Builder {
             scope: self.scope,
             config: self.config,
-            on_error,
+            on_error: Some(Box::new(on_error)),
         }
     }
 
     /// Creates an `App` using the current configuration.
     pub fn build(self) -> Result<App> {
         build(
-            self.scope.scope,
-            self.scope.modifier,
-            self.on_error,
+            self.scope,
+            self.on_error.unwrap_or_else(|| Box::new(())),
             self.config,
         )
     }
@@ -138,8 +142,7 @@ where
 
 fn build(
     scope: impl Scope,
-    modifier: impl Modifier + Send + Sync + 'static,
-    on_error: impl ErrorHandler + Send + Sync + 'static,
+    on_error: Box<dyn ErrorHandler + Send + Sync + 'static>,
     config: Config,
 ) -> Result<App> {
     let mut cx = AppContext {
@@ -150,15 +153,14 @@ fn build(
             id: ScopeId::Global,
             parents: vec![],
             prefix: None,
-            modifier: Box::new(modifier),
+            modifiers: vec![],
         },
         states: ScopedContainerBuilder::default(),
     };
 
-    {
-        let mut cx = ScopeContext::new(&mut cx, ScopeId::Global);
-        scope.configure(&mut cx).map_err(Into::into)?;
-    }
+    scope
+        .configure(&mut ScopeContext::new(&mut cx, ScopeId::Global))
+        .map_err(Into::into)?;
 
     let AppContext {
         mut endpoints,
@@ -211,7 +213,7 @@ fn build(
             recognizer,
             endpoints,
             config,
-            on_error: Box::new(on_error),
+            on_error,
             states,
         }),
     })
@@ -313,12 +315,7 @@ impl AppContext {
         Ok(())
     }
 
-    pub(super) fn new_scope(
-        &mut self,
-        parent: ScopeId,
-        scope: impl Scope,
-        modifier: impl Modifier + Send + Sync + 'static,
-    ) -> Result<()> {
+    pub(super) fn new_scope(&mut self, parent: ScopeId, scope: impl Scope) -> Result<()> {
         let pos = self.scopes.len();
         let id = ScopeId::Local(pos);
 
@@ -336,7 +333,7 @@ impl AppContext {
             id,
             parents,
             prefix: None,
-            modifier: Box::new(modifier),
+            modifiers: vec![],
         });
 
         scope
@@ -351,6 +348,17 @@ impl AppContext {
         T: Send + Sync + 'static,
     {
         self.states.set(value, id);
+    }
+
+    pub(super) fn add_modifier(
+        &mut self,
+        modifier: impl Modifier + Send + Sync + 'static,
+        id: ScopeId,
+    ) {
+        match id {
+            ScopeId::Global => self.global_scope.modifiers.push(Box::new(modifier)),
+            ScopeId::Local(i) => self.scopes[i].modifiers.push(Box::new(modifier)),
+        }
     }
 
     pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) {

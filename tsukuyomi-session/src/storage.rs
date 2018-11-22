@@ -1,6 +1,7 @@
 use {
     crate::{backend::Backend, session::SessionInner},
     futures::{try_ready, Async},
+    std::marker::PhantomData,
     tsukuyomi::{handler::AsyncResult, modifier::Modifier, output::Output},
 };
 
@@ -8,7 +9,7 @@ use {
 #[derive(Debug)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct SessionStorage<B> {
-    backend: Option<B>,
+    backend: B,
 }
 
 impl<B> SessionStorage<B>
@@ -17,21 +18,29 @@ where
 {
     /// Creates a `Storage` with the specified session backend.
     pub fn new(backend: B) -> Self {
-        Self {
-            backend: Some(backend),
-        }
+        Self { backend }
     }
 }
 
-impl<B> Modifier for SessionStorage<B>
+impl<B> tsukuyomi::app::Scope for SessionStorage<B>
 where
     B: Backend + Send + Sync + 'static,
 {
-    fn setup(&mut self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> tsukuyomi::app::Result<()> {
-        cx.set_state(self.backend.take().unwrap());
+    type Error = tsukuyomi::Never;
+
+    fn configure(self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> Result<(), Self::Error> {
+        cx.set_state(self.backend);
+        cx.add_modifier(SessionModifier::<B>(PhantomData));
         Ok(())
     }
+}
 
+struct SessionModifier<B>(PhantomData<B>);
+
+impl<B> Modifier for SessionModifier<B>
+where
+    B: Backend + Send + Sync + 'static,
+{
     fn modify(&self, handle: AsyncResult<Output>) -> AsyncResult<Output> {
         enum State {
             Init(Option<AsyncResult<Output>>),

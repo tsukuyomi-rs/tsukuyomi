@@ -39,6 +39,14 @@ use crate::{handler::AsyncResult, output::Output};
 /// A trait representing a `Modifier`.
 pub trait Modifier {
     fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output>;
+
+    fn chain<M>(self, next: M) -> Chain<Self, M>
+    where
+        Self: Sized,
+        M: Modifier,
+    {
+        Chain::new(self, next)
+    }
 }
 
 impl Modifier for () {
@@ -55,7 +63,7 @@ pub struct Chain<M1, M2> {
 }
 
 impl<M1, M2> Chain<M1, M2> {
-    pub(super) fn new(m1: M1, m2: M2) -> Self {
+    pub fn new(m1: M1, m2: M2) -> Self {
         Self { m1, m2 }
     }
 }

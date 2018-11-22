@@ -138,25 +138,32 @@ impl AppFuture {
                             ..
                         } => {
                             let mut in_flight = route.handler.handle();
-                            let scope = self.data.get_scope(endpoint.id.0).expect("wrong scope ID");
-                            in_flight = scope.modifier.modify(in_flight);
-                            for &parent in scope.parents.iter().rev() {
-                                let scope =
-                                    self.data.get_scope(parent).expect("should be valid ID");
-                                in_flight = scope.modifier.modify(in_flight);
+
+                            let scope = self.data.scope(endpoint.id.0);
+                            for modifier in scope.modifiers.iter().rev() {
+                                in_flight = modifier.modify(in_flight);
                             }
+                            for &parent in scope.parents.iter().rev() {
+                                let scope = self.data.scope(parent);
+                                for modifier in scope.modifiers.iter().rev() {
+                                    in_flight = modifier.modify(in_flight);
+                                }
+                            }
+
                             (in_flight, Some(endpoint.id), captures)
                         }
                         Recognize::NotFound => {
-                            let in_flight = AsyncResult::err(StatusCode::NOT_FOUND.into());
-                            let in_flight = self.data.global_scope.modifier.modify(in_flight);
+                            let mut in_flight = AsyncResult::err(StatusCode::NOT_FOUND.into());
+                            for modifier in self.data.global_scope.modifiers.iter().rev() {
+                                in_flight = modifier.modify(in_flight);
+                            }
                             (in_flight, None, None)
                         }
                         Recognize::MethodNotAllowed {
                             endpoint, captures, ..
                         } => {
                             let allowed_methods = endpoint.allowed_methods_value.clone();
-                            let in_flight = AsyncResult::ready(move |input| {
+                            let mut in_flight = AsyncResult::ready(move |input| {
                                 if input.request.method() == Method::OPTIONS {
                                     let mut response = Response::new(ResponseBody::default());
                                     response
@@ -167,7 +174,9 @@ impl AppFuture {
                                     Err(StatusCode::METHOD_NOT_ALLOWED.into())
                                 }
                             });
-                            let in_flight = self.data.global_scope.modifier.modify(in_flight);
+                            for modifier in self.data.global_scope.modifiers.iter().rev() {
+                                in_flight = modifier.modify(in_flight);
+                            }
 
                             (in_flight, Some(endpoint.id), captures)
                         }
