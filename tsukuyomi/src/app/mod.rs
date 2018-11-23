@@ -4,7 +4,6 @@ pub mod route;
 pub mod scope;
 
 mod builder;
-mod callback;
 mod error;
 pub(crate) mod imp;
 #[cfg(test)]
@@ -13,7 +12,6 @@ mod tests;
 pub use {
     self::{
         builder::Builder,
-        callback::ErrorHandler,
         error::{Error, Result},
         route::Route,
         scope::Scope,
@@ -73,7 +71,6 @@ struct AppData {
     endpoints: IndexMap<Uri, EndpointData>,
 
     states: ScopedContainer,
-    on_error: Box<dyn ErrorHandler + Send + Sync + 'static>,
     config: Config,
 }
 

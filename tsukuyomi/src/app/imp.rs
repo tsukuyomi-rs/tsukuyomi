@@ -186,10 +186,6 @@ impl AppFuture {
         }
     }
 
-    fn process_on_error(&mut self, err: Error) -> Result<Output, Critical> {
-        self.data.on_error.call(err, input!(self))
-    }
-
     fn process_before_reply(&mut self, output: &mut Output) {
         // append Cookie entries.
         if let Some(ref jar) = self.cookie_jar {
@@ -237,13 +233,11 @@ impl Future for AppFuture {
                 AppFutureState::Done => panic!("the future has already polled."),
             };
         };
+        self.state = AppFutureState::Done;
 
         let mut output = match polled {
             Ok(output) => output,
-            Err(err) => {
-                self.state = AppFutureState::Done;
-                self.process_on_error(err)?
-            }
+            Err(err) => err.into_response(input!(self))?,
         };
 
         self.process_before_reply(&mut output);

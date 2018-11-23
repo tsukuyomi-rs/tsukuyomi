@@ -1,6 +1,5 @@
 use {
     super::{
-        callback::ErrorHandler,
         error::{Error, Result},
         route::{Context as RouteContext, Route},
         scope::{Context as ScopeContext, Scope},
@@ -23,7 +22,6 @@ use {
 pub struct Builder<S: Scope = ()> {
     scope: super::scope::Builder<S>,
     config: Config,
-    on_error: Option<Box<dyn ErrorHandler + Send + Sync + 'static>>,
 }
 
 impl<S> fmt::Debug for Builder<S>
@@ -34,10 +32,7 @@ where
         f.debug_struct("Builder")
             .field("scope", &self.scope)
             .field("config", &self.config)
-            .field(
-                "on_error",
-                &self.on_error.as_ref().map(|_| "<error handler>"),
-            ).finish()
+            .finish()
     }
 }
 
@@ -49,7 +44,6 @@ where
     /// Adds a route into the global scope.
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         Builder {
-            on_error: self.on_error,
             config: self.config,
             scope: self.scope.route(route),
         }
@@ -58,7 +52,6 @@ where
     /// Creates a new scope onto the global scope using the specified `Scope`.
     pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
-            on_error: self.on_error,
             config: self.config,
             scope: self.scope.mount(new_scope),
         }
@@ -67,7 +60,6 @@ where
     /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
     pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
-            on_error: self.on_error,
             config: self.config,
             scope: self.scope.with(scope),
         }
@@ -79,7 +71,6 @@ where
         T: Send + Sync + 'static,
     {
         Builder {
-            on_error: self.on_error,
             config: self.config,
             scope: self.scope.state(state),
         }
@@ -91,7 +82,6 @@ where
         M: Modifier + Send + Sync + 'static,
     {
         Builder {
-            on_error: self.on_error,
             config: self.config,
             scope: self.scope.modifier(modifier),
         }
@@ -99,7 +89,6 @@ where
 
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
         Builder {
-            on_error: self.on_error,
             config: self.config,
             scope: self.scope.prefix(prefix),
         }
@@ -113,25 +102,9 @@ where
         self
     }
 
-    /// Sets the error handler.
-    pub fn on_error<E>(self, on_error: E) -> Builder<S>
-    where
-        E: ErrorHandler + Send + Sync + 'static,
-    {
-        Builder {
-            scope: self.scope,
-            config: self.config,
-            on_error: Some(Box::new(on_error)),
-        }
-    }
-
     /// Creates an `App` using the current configuration.
     pub fn build(self) -> Result<App> {
-        build(
-            self.scope,
-            self.on_error.unwrap_or_else(|| Box::new(())),
-            self.config,
-        )
+        build(self.scope, self.config)
     }
 
     /// Creates a builder of HTTP server using the current configuration.
@@ -140,11 +113,7 @@ where
     }
 }
 
-fn build(
-    scope: impl Scope,
-    on_error: Box<dyn ErrorHandler + Send + Sync + 'static>,
-    config: Config,
-) -> Result<App> {
+fn build(scope: impl Scope, config: Config) -> Result<App> {
     let mut cx = AppContext {
         endpoints: IndexMap::new(),
         routes: vec![],
@@ -213,7 +182,6 @@ fn build(
             recognizer,
             endpoints,
             config,
-            on_error,
             states,
         }),
     })
