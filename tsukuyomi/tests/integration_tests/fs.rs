@@ -11,3 +11,14 @@ fn compiletest() {
             .unwrap(),
     );
 }
+
+#[test]
+#[ignore]
+fn compiletest_staticfiles() {
+    drop(
+        tsukuyomi::app!()
+            .with(tsukuyomi::fs::Staticfiles::new("./public")) //
+            .build()
+            .unwrap(),
+    );
+}

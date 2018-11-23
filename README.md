@@ -54,8 +54,8 @@ fn main() -> tsukuyomi::server::Result<()> {
 ## Extensions
 
 - [`tsukuyomi-askama`] - template support using [`askama`]
+- [`tsukuyomi-cors`] - CORS support
 - [`tsukuyomi-juniper`] - GraphQL integration using [`juniper`]
-- [`tsukuyomi-fs`] - serving static files
 - [`tsukuyomi-session`] - session management
 - [`tsukuyomi-websocket`] - WebSocket support using [`tungstenite`]
 
@@ -86,7 +86,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [`tungstenite`]: https://github.com/snapview/tungstenite-rs
 
 [`tsukuyomi-askama`]: ./tsukuyomi-askama
+[`tsukuyomi-cors`]: ./tsukuyomi-cors
 [`tsukuyomi-juniper`]: ./tsukuyomi-juniper
-[`tsukuyomi-fs`]: ./tsukuyomi-fs
 [`tsukuyomi-session`]: ./tsukuyomi-session
 [`tsukuyomi-websocket`]: ./tsukuyomi-websocket
