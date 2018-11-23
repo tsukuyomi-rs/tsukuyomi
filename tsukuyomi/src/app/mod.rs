@@ -1,5 +1,6 @@
 //! Components for constructing HTTP applications.
 
+pub mod fallback;
 pub mod route;
 pub mod scope;
 

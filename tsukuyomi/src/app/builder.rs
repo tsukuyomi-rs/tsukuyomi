@@ -1,6 +1,7 @@
 use {
     super::{
         error::{Error, Result},
+        fallback::{Fallback, FallbackInstance},
         route::{Context as RouteContext, Route},
         scope::{Context as ScopeContext, Scope},
         App, AppData, Config, EndpointData, EndpointId, RouteData, RouteId, ScopeData,
@@ -85,6 +86,13 @@ where
             config: self.config,
             scope: self.scope.modifier(modifier),
         }
+    }
+
+    pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = S::Error>>
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        self.state(FallbackInstance::from(fallback))
     }
 
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {

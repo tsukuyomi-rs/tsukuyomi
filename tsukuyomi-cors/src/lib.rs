@@ -39,6 +39,11 @@ use {
     },
     std::{collections::HashSet, sync::Arc, time::Duration},
     tsukuyomi::{
+        app::{
+            fallback::{self, Fallback},
+            scope,
+            scope::Scope,
+        },
         extractor::{Extract, ExtractStatus, Extractor}, //
         handler::AsyncResult,
         HttpError,
@@ -201,9 +206,54 @@ impl CORS {
     }
 }
 
+/// The implementation of `Scope` for registering itself as `Modifier` and `Fallback`
+/// into a specific scope.
+impl Scope for CORS {
+    type Error = tsukuyomi::Never;
+
+    fn configure(self, cx: &mut scope::Context<'_>) -> Result<(), Self::Error> {
+        scope()
+            .fallback(self.clone()) // <-- handles the fallback preflight request
+            .modifier(self) // <-- handle explicit preflight/simple request
+            .configure(cx)
+    }
+}
+
+/// The implementation of `Fallback` for processing the CORS request.
+///
+/// This fallback adds the processing for CORS preflight request for all URLs
+/// registered in the scope. If the route explicitly handles `OPTIONS`, it will be
+/// ignored.
+impl Fallback for CORS {
+    fn call(&self, cx: &fallback::Context<'_>) -> tsukuyomi::Result<Output> {
+        if cx.request().method() == Method::OPTIONS {
+            if let Some(origin) = self.inner.validate_origin(cx.request())? {
+                return self
+                    .inner
+                    .process_preflight_request(cx.request(), origin)
+                    .map(|response| response.map(Into::into))
+                    .map_err(Into::into);
+            }
+        }
+
+        tsukuyomi::app::fallback::default(cx)
+    }
+}
+
+/// The implementation of `Extractor` for processing the CORS requests.
+///
+/// This extractor is used in a route to enable CORS explicitly, and behaves as follows:
+///
+/// * When the method is `OPTIONS`, it handles the request as a CORS preflight
+///   and cancels subsequent processes remaining in the handler.
+/// * Otherwise, it handles the request as a simple CORS, registers the CORS response
+///   headers in the current context and continue subsequent processes.
+///
+/// Note that the processing of preflight requests are enabled only if the route
+/// accepts `OPTIONS` explicitly.
 impl Extractor for CORS {
     type Output = ();
-    type Error = tsukuyomi::Error;
+    type Error = CORSError;
     type Future = tsukuyomi::extractor::Placeholder<Self::Output, Self::Error>;
 
     fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
@@ -214,6 +264,10 @@ impl Extractor for CORS {
     }
 }
 
+/// The implementation of `Modifier` for processing CORS requests.
+///
+/// This modifier inserts the processing of CORS request for all `AsyncResult`s
+/// returned from the handlers in the scope.
 impl Modifier for CORS {
     fn modify(&self, mut handle: AsyncResult<Output>) -> AsyncResult<Output> {
         let inner = self.inner.clone();
@@ -243,20 +297,38 @@ struct Inner {
 }
 
 impl Inner {
-    fn validate_origin(&self, origin: &HeaderValue) -> Result<AllowedOrigin, CORSError> {
-        let parsed_origin = parse_origin(origin)?;
+    fn validate_origin<T>(&self, request: &Request<T>) -> Result<Option<AllowedOrigin>, CORSError> {
+        let origin = match request.headers().get(ORIGIN) {
+            Some(origin) => origin,
+            None => return Ok(None),
+        };
+
+        let parsed_origin = {
+            let h_str = origin.to_str().map_err(|_| CORSErrorKind::InvalidOrigin)?;
+            let origin_uri: Uri = h_str.parse().map_err(|_| CORSErrorKind::InvalidOrigin)?;
+
+            if origin_uri.scheme_part().is_none() {
+                return Err(CORSErrorKind::InvalidOrigin.into());
+            }
+
+            if origin_uri.host().is_none() {
+                return Err(CORSErrorKind::InvalidOrigin.into());
+            }
+
+            origin_uri
+        };
 
         if let Some(ref origins) = self.origins {
             if !origins.contains(&parsed_origin) {
                 return Err(CORSErrorKind::DisallowedOrigin.into());
             }
-            return Ok(AllowedOrigin::Some(origin.clone()));
+            return Ok(Some(AllowedOrigin::Some(origin.clone())));
         }
 
         if self.allow_credentials {
-            Ok(AllowedOrigin::Some(origin.clone()))
+            Ok(Some(AllowedOrigin::Some(origin.clone())))
         } else {
-            Ok(AllowedOrigin::Any)
+            Ok(Some(AllowedOrigin::Any))
         }
     }
 
@@ -368,12 +440,11 @@ impl Inner {
         Ok(())
     }
 
-    fn process_request(&self, input: &mut Input<'_>) -> tsukuyomi::Result<Option<Output>> {
-        let origin = match input.request.headers().get(ORIGIN) {
-            Some(origin) => self.validate_origin(origin)?,
-            None => return Ok(None),
+    fn process_request(&self, input: &mut Input<'_>) -> Result<Option<Output>, CORSError> {
+        let origin = match self.validate_origin(input.request)? {
+            Some(origin) => origin,
+            None => return Ok(None), // do nothing
         };
-
         if input.request.method() == Method::OPTIONS {
             self.process_preflight_request(input.request, origin)
                 .map(|response| Some(response.map(Into::into)))
@@ -385,21 +456,6 @@ impl Inner {
                 .map_err(Into::into)
         }
     }
-}
-
-fn parse_origin(h: &HeaderValue) -> Result<Uri, CORSError> {
-    let h_str = h.to_str().map_err(|_| CORSErrorKind::InvalidOrigin)?;
-    let origin_uri: Uri = h_str.parse().map_err(|_| CORSErrorKind::InvalidOrigin)?;
-
-    if origin_uri.scheme_part().is_none() {
-        return Err(CORSErrorKind::InvalidOrigin.into());
-    }
-
-    if origin_uri.host().is_none() {
-        return Err(CORSErrorKind::InvalidOrigin.into());
-    }
-
-    Ok(origin_uri)
 }
 
 #[derive(Debug, Clone)]
@@ -417,10 +473,18 @@ impl Into<HeaderValue> for AllowedOrigin {
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Debug, Fail)]
 #[fail(display = "Invalid CORS request: {}", kind)]
-struct CORSError {
+pub struct CORSError {
     kind: CORSErrorKind,
+}
+
+impl CORSError {
+    #[allow(missing_docs)]
+    pub fn kind(&self) -> &CORSErrorKind {
+        &self.kind
+    }
 }
 
 impl From<CORSErrorKind> for CORSError {
@@ -435,8 +499,9 @@ impl HttpError for CORSError {
     }
 }
 
+#[allow(missing_docs)]
 #[derive(Debug, Fail)]
-enum CORSErrorKind {
+pub enum CORSErrorKind {
     #[fail(display = "the provided Origin is not a valid value.")]
     InvalidOrigin,
 

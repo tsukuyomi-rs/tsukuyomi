@@ -29,7 +29,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .route(tsukuyomi::route!("/").reply(|| "hello"))
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -62,7 +62,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .route(tsukuyomi::route!("/").reply(|| "hello"))
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -96,8 +96,8 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let mut server = tsukuyomi::app!()
-        .route(tsukuyomi::route!("/").reply(|| "hello"))
-        .modifier(cors)
+        .route(tsukuyomi::route!("/", methods = [GET, DELETE]).reply(|| "hello"))
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -129,7 +129,7 @@ fn simple_request_with_allow_credentials() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .route(tsukuyomi::route!("/").reply(|| "hello"))
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -183,7 +183,7 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -214,7 +214,7 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -246,7 +246,7 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -282,7 +282,7 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -318,7 +318,7 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .route(tsukuyomi::route!("/").reply(|| "hello"))
-        .modifier(cors)
+        .with(cors)
         .build_server()?
         .into_test_server()?;
 
@@ -398,7 +398,7 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
         .mount(
             tsukuyomi::scope!("/cors")
-                .modifier(cors.clone())
+                .with(cors.clone())
                 .route(tsukuyomi::route!("/").reply(|| "cors")),
         ) //
         .route(

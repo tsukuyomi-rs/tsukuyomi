@@ -1,5 +1,8 @@
 use {
-    super::{AppData, EndpointData, EndpointId, Recognize, ScopeId},
+    super::{
+        fallback::{Context as FallbackContext, FallbackInstance},
+        AppData, EndpointData, EndpointId, Recognize, ScopeId,
+    },
     cookie::{Cookie, CookieJar},
     crate::{
         error::{Critical, Error},
@@ -10,10 +13,11 @@ use {
         recognizer::Captures,
         uri::CaptureNames,
     },
+    either::Either,
     futures::{Async, Future, IntoFuture, Poll},
     http::{
         header::{self, HeaderMap, HeaderValue},
-        Method, Request, Response, StatusCode,
+        Method, Request, Response,
     },
     hyper::body::Payload,
     mime::Mime,
@@ -116,47 +120,7 @@ impl AppFuture {
         }
     }
 
-    fn handle_fallback(&self, endpoint: &EndpointData) -> AsyncResult<Output> {
-        let allowed_methods = endpoint.allowed_methods_value.clone();
-        AsyncResult::ready(move |input| {
-            if input.request.method() == Method::OPTIONS {
-                let mut response = Response::new(ResponseBody::default());
-                response
-                    .headers_mut()
-                    .insert(http::header::ALLOW, allowed_methods);
-                Ok(response)
-            } else {
-                Err(StatusCode::METHOD_NOT_ALLOWED.into())
-            }
-        })
-    }
-
-    fn apply_all_modifiers(
-        &self,
-        mut in_flight: AsyncResult<Output>,
-        id: ScopeId,
-    ) -> AsyncResult<Output> {
-        let scope = self.data.scope(id);
-        for modifier in scope.modifiers.iter().rev() {
-            in_flight = modifier.modify(in_flight);
-        }
-        for &parent in scope.parents.iter().rev() {
-            let scope = self.data.scope(parent);
-            for modifier in scope.modifiers.iter().rev() {
-                in_flight = modifier.modify(in_flight);
-            }
-        }
-        in_flight
-    }
-
-    fn apply_global_modifiers(&self, mut in_flight: AsyncResult<Output>) -> AsyncResult<Output> {
-        for modifier in self.data.global_scope.modifiers.iter().rev() {
-            in_flight = modifier.modify(in_flight);
-        }
-        in_flight
-    }
-
-    fn process_recognize(&mut self) -> AsyncResult<Output> {
+    fn process_recognize(&mut self) -> Result<Either<Output, AsyncResult<Output>>, Error> {
         match self
             .data
             .recognize(self.request.uri().path(), self.request.method())
@@ -169,7 +133,20 @@ impl AppFuture {
             } => {
                 self.endpoint_id = Some(endpoint.id);
                 self.captures = captures;
-                self.apply_all_modifiers(route.handler.handle(), endpoint.id.0)
+
+                let mut in_flight = route.handler.handle();
+                let scope = self.data.scope(endpoint.id.0);
+                for modifier in scope.modifiers.iter().rev() {
+                    in_flight = modifier.modify(in_flight);
+                }
+                for &parent in scope.parents.iter().rev() {
+                    let scope = self.data.scope(parent);
+                    for modifier in scope.modifiers.iter().rev() {
+                        in_flight = modifier.modify(in_flight);
+                    }
+                }
+
+                Ok(Either::Right(in_flight))
             }
 
             Recognize::MethodNotAllowed {
@@ -177,13 +154,27 @@ impl AppFuture {
             } => {
                 self.endpoint_id = Some(endpoint.id);
                 self.captures = captures;
-                self.apply_all_modifiers(self.handle_fallback(endpoint), endpoint.id.0)
+                self.process_fallback(Some(endpoint)).map(Either::Left)
             }
 
-            Recognize::NotFound => {
-                self.apply_global_modifiers(AsyncResult::err(StatusCode::NOT_FOUND.into()))
-            }
+            Recognize::NotFound => self.process_fallback(None).map(Either::Left),
         }
+    }
+
+    fn process_fallback(&self, endpoint: Option<&EndpointData>) -> Result<Output, Error> {
+        let cx = FallbackContext {
+            request: &self.request,
+            app: &*self.data,
+            endpoint,
+        };
+
+        let scope_id = endpoint.map_or(ScopeId::Global, |e| e.id.0);
+        self.data
+            .get_state::<FallbackInstance>(scope_id)
+            .map_or_else(
+                || super::fallback::default(&cx),
+                |ref fallback| fallback.call(&cx),
+            )
     }
 
     fn process_before_reply(&mut self, output: &mut Output) {
@@ -226,7 +217,11 @@ impl Future for AppFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let polled = loop {
             self.state = match self.state {
-                AppFutureState::Init => AppFutureState::InFlight(self.process_recognize()),
+                AppFutureState::Init => match self.process_recognize() {
+                    Ok(Either::Right(in_flight)) => AppFutureState::InFlight(in_flight),
+                    Ok(Either::Left(output)) => break Ok(output),
+                    Err(err) => break Err(err),
+                },
                 AppFutureState::InFlight(ref mut in_flight) => {
                     break ready!(in_flight.poll_ready(input!(self)))
                 }

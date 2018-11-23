@@ -2,6 +2,7 @@ use {
     super::{
         builder::AppContext,
         error::{Error, Result},
+        fallback::{Fallback, FallbackInstance},
         route::Route,
     },
     crate::{common::Never, modifier::Modifier, scoped_map::ScopeId, uri::Uri},
@@ -114,6 +115,13 @@ where
                 Ok(())
             }),
         }
+    }
+
+    pub fn fallback(
+        self,
+        fallback: impl Fallback + Send + Sync + 'static,
+    ) -> Builder<impl Scope<Error = S::Error>> {
+        self.state(FallbackInstance::from(fallback))
     }
 
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {

@@ -33,8 +33,8 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
     assert_eq!(*marker.lock().unwrap(), vec!["M"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.perform("/dummy")?;
-    assert_eq!(*marker.lock().unwrap(), vec!["M"]);
+    let _ = server.perform("/noroute")?;
+    assert!(marker.lock().unwrap().is_empty());
 
     Ok(())
 }
