@@ -5,7 +5,7 @@ authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [[bin]]
-name = "juniper"
+name = "example_juniper"
 path = "src/main.rs"
 doc = false
 

@@ -1,7 +1,13 @@
+extern crate cargo_version_sync;
 extern crate tsukuyomi;
 extern crate tsukuyomi_websocket;
 
 use tsukuyomi_websocket::Ws;
+
+#[test]
+fn test_version_sync() {
+    cargo_version_sync::assert_version_sync();
+}
 
 #[test]
 #[ignore]
