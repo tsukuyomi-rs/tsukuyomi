@@ -1,6 +1,6 @@
 use {
     http::{header, Method, Request, Response, StatusCode},
-    tsukuyomi::{extractor, route, test::ResponseExt},
+    tsukuyomi::{extractor, handler::AsyncResult, route, test::ResponseExt, Output},
 };
 
 #[test]
@@ -172,5 +172,70 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
     let response = server.perform(Request::post("/"))?;
     assert_eq!(response.body().to_utf8()?, "canceled");
 
+    Ok(())
+}
+
+#[test]
+fn scope_variables() -> tsukuyomi::test::Result<()> {
+    let mut server = tsukuyomi::app!()
+        .state(String::from("foo"))
+        .route(tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
+            AsyncResult::ready(|input| {
+                assert_eq!(input.states.get::<String>(), "foo");
+                Ok(Output::default())
+            })
+        }))) //
+        .mount(tsukuyomi::scope!("/sub").state(String::from("bar")).route(
+            tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
+                AsyncResult::ready(|input| {
+                    assert_eq!(input.states.get::<String>(), "bar");
+                    Ok(Output::default())
+                })
+            })),
+        )) //
+        .build_server()?
+        .into_test_server()?;
+
+    let _ = server.perform("/")?;
+    let _ = server.perform("/sub")?;
+    Ok(())
+}
+
+#[test]
+fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
+    struct MyModifier;
+    impl tsukuyomi::Modifier for MyModifier {
+        fn modify(&self, mut handle: AsyncResult<Output>) -> AsyncResult<Output> {
+            AsyncResult::poll_fn(move |input| {
+                assert!(input.states.try_get::<String>().is_some());
+                handle.poll_ready(input)
+            })
+        }
+    }
+
+    let mut server = tsukuyomi::app!()
+        .state(String::from("foo"))
+        .modifier(MyModifier)
+        .route(tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
+            AsyncResult::ready(|input| {
+                assert_eq!(input.states.get::<String>(), "foo");
+                Ok(Output::default())
+            })
+        }))) //
+        .mount(
+            tsukuyomi::scope!("/sub")
+                .state(String::from("bar"))
+                .modifier(MyModifier)
+                .route(tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
+                    AsyncResult::ready(|input| {
+                        assert_eq!(input.states.get::<String>(), "bar");
+                        Ok(Output::default())
+                    })
+                }))),
+        ).build_server()?
+        .into_test_server()?;
+
+    let _ = server.perform("/")?;
+    let _ = server.perform("/sub")?;
     Ok(())
 }
