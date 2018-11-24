@@ -75,6 +75,10 @@ where
         self
     }
 
+    pub fn cookie(&self, name: &str) -> Option<&str> {
+        self.cookies.as_ref()?.get(name).map(|s| s.as_str())
+    }
+
     /// Returns the reference to the underlying Tokio runtime.
     pub fn runtime(&mut self) -> &mut Rt {
         &mut *self.runtime

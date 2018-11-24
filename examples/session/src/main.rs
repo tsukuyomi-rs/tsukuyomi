@@ -9,19 +9,21 @@ use {
         app::route,
         output::{html, redirect},
     },
-    tsukuyomi_session::{backend::CookieSessionBackend, Session},
+    tsukuyomi_session::{backend::CookieBackend, Session, SessionStorage},
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
-    let backend = CookieSessionBackend::plain();
+    let backend = CookieBackend::plain();
+    let storage = SessionStorage::new(backend);
 
     tsukuyomi::app!()
-        .with(tsukuyomi_session::storage(backend))
+        .modifier(storage)
         .route(
             route!("/") //
-                .with(tsukuyomi_session::extractor())
-                .handle(|session: Session| {
-                    session.get::<String>("username").map(|username| {
+                .with(tsukuyomi_session::session())
+                .handle(|session: Session| -> tsukuyomi::Result<_> {
+                    let username = session.get::<String>("username")?;
+                    Ok(session.finish({
                         if let Some(username) = username {
                             Either::Right(html(format!(
                                 "Hello, {}! <br />\n\
@@ -34,14 +36,14 @@ fn main() -> tsukuyomi::server::Result<()> {
                         } else {
                             Either::Left(redirect::to("/login"))
                         }
-                    })
+                    }))
                 }),
         ) //
         .route(
             route!("/login") //
-                .with(tsukuyomi_session::extractor())
+                .with(tsukuyomi_session::session())
                 .reply(|session: Session| {
-                    if session.contains("username") {
+                    let output = if session.contains("username") {
                         Either::Left(redirect::to("/"))
                     } else {
                         Either::Right(html(
@@ -51,13 +53,14 @@ fn main() -> tsukuyomi::server::Result<()> {
                              <input type=\"submit\">\n\
                              </form>",
                         ))
-                    }
+                    };
+                    session.finish(output)
                 }),
         ) //
         .route(
             route!("/login")
                 .with(tsukuyomi::extractor::body::urlencoded())
-                .with(tsukuyomi_session::extractor())
+                .with(tsukuyomi_session::session())
                 .handle({
                     #[derive(Debug, serde::Deserialize)]
                     struct Form {
@@ -65,16 +68,16 @@ fn main() -> tsukuyomi::server::Result<()> {
                     }
                     |form: Form, mut session: Session| -> tsukuyomi::error::Result<_> {
                         session.set("username", form.username)?;
-                        Ok(redirect::to("/"))
+                        Ok(session.finish(redirect::to("/")))
                     }
                 }),
         ) //
         .route(
-            route!("/logout")
-                .with(tsukuyomi_session::extractor())
+            route!("/logout") //
+                .with(tsukuyomi_session::session())
                 .reply(|mut session: Session| {
                     session.remove("username");
-                    redirect::to("/")
+                    session.finish(redirect::to("/"))
                 }),
         ) //
         .build_server()?
