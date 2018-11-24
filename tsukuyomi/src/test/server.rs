@@ -5,14 +5,18 @@ use {
         input::Input,
         output::{Output, Receive},
     },
+    cookie::Cookie,
     crate::server::{
         service::{HttpService, Identity, MakeHttpService, ModifyHttpService},
         CritError,
     },
     futures::{Future, Poll},
-    http::Response,
+    http::{
+        header::{COOKIE, SET_COOKIE},
+        Request, Response,
+    },
     hyper::body::Payload,
-    std::mem,
+    std::{collections::HashMap, mem},
 };
 
 /// A test server which emulates an HTTP service without using the low-level I/O.
@@ -38,18 +42,74 @@ where
     }
 }
 
-/// A type which emulates a connection to a peer.
+/// A type which manages a series of requests.
 #[derive(Debug)]
 #[allow(explicit_outlives_requirements)]
-pub struct Client<'a, S, Rt: 'a> {
+pub struct Session<'a, S, Rt: 'a> {
     service: S,
+    cookies: Option<HashMap<String, String>>,
     runtime: &'a mut Rt,
 }
 
-impl<'a, S, Rt> Client<'a, S, Rt> {
+impl<'a, S, Rt> Session<'a, S, Rt>
+where
+    S: HttpService,
+{
+    fn new(service: S, runtime: &'a mut Rt) -> Self {
+        Session {
+            service,
+            runtime,
+            cookies: None,
+        }
+    }
+
+    /// Sets whether to save the Cookie entries or not.
+    ///
+    /// The default value is `false`.
+    pub fn save_cookies(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.cookies.get_or_insert_with(Default::default);
+        } else {
+            self.cookies.take();
+        }
+        self
+    }
+
     /// Returns the reference to the underlying Tokio runtime.
     pub fn runtime(&mut self) -> &mut Rt {
         &mut *self.runtime
+    }
+
+    fn build_request<T>(&self, input: T) -> super::Result<Request<S::RequestBody>>
+    where
+        T: Input,
+    {
+        let mut request = input.build_request()?.map(S::RequestBody::from);
+        if let Some(cookies) = &self.cookies {
+            for (k, v) in cookies {
+                request.headers_mut().append(
+                    COOKIE,
+                    Cookie::new(k.to_owned(), v.to_owned())
+                        .to_string()
+                        .parse()?,
+                );
+            }
+        }
+        Ok(request)
+    }
+
+    fn handle_set_cookies(&mut self, response: &Response<Output>) -> super::Result<()> {
+        if let Some(ref mut cookies) = &mut self.cookies {
+            for set_cookie in response.headers().get_all(SET_COOKIE) {
+                let cookie = Cookie::parse_encoded(set_cookie.to_str()?)?;
+                if cookie.value().is_empty() {
+                    cookies.remove(cookie.name());
+                } else {
+                    cookies.insert(cookie.name().to_owned(), cookie.value().to_owned());
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -80,17 +140,17 @@ mod threadpool {
         S::Service: Send + 'static,
         M: ModifyHttpService<S::Service>,
     {
-        /// Create a `Client` associated with this server.
-        pub fn client(&mut self) -> super::super::Result<Client<'_, M::Service, Runtime>> {
+        /// Create a `Session` associated with this server.
+        pub fn new_session(&mut self) -> super::super::Result<Session<'_, M::Service, Runtime>> {
             let service = block_on(
                 &mut self.runtime,
                 self.new_service.make_http_service().map_err(Into::into),
             ).map_err(failure::Error::from_boxed_compat)?;
 
-            Ok(Client {
-                service: self.modify_service.modify_http_service(service),
-                runtime: &mut self.runtime,
-            })
+            Ok(Session::new(
+                self.modify_service.modify_http_service(service),
+                &mut self.runtime,
+            ))
         }
 
         pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
@@ -98,12 +158,12 @@ mod threadpool {
             T: Input,
             <M::Service as HttpService>::Future: Send + 'static,
         {
-            let mut client = self.client()?;
-            client.perform(input)
+            let mut session = self.new_session()?;
+            session.perform(input)
         }
     }
 
-    impl<'a, S> Client<'a, S, Runtime>
+    impl<'a, S> Session<'a, S, Runtime>
     where
         S: HttpService,
         S::Future: Send + 'static,
@@ -113,10 +173,14 @@ mod threadpool {
         where
             T: Input,
         {
-            let request = input.build_request()?.map(S::RequestBody::from);
+            let request = self.build_request(input)?;
+
             let future = TestResponseFuture::Initial(self.service.call_http(request));
-            block_on(&mut self.runtime, future)
-                .map_err(|err| failure::Error::from_boxed_compat(err).into())
+            let response =
+                block_on(&mut self.runtime, future).map_err(failure::Error::from_boxed_compat)?;
+            self.handle_set_cookies(&response)?;
+
+            Ok(response)
         }
     }
 }
@@ -129,29 +193,26 @@ mod current_thread {
         S: MakeHttpService,
         M: ModifyHttpService<S::Service>,
     {
-        /// Create a `Client` associated with this server.
-        pub fn client(&mut self) -> super::super::Result<Client<'_, M::Service, Runtime>> {
+        /// Create a `Session` associated with this server.
+        pub fn new_session(&mut self) -> super::super::Result<Session<'_, M::Service, Runtime>> {
             let service = self
                 .runtime
                 .block_on(self.new_service.make_http_service())
                 .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
             let service = self.modify_service.modify_http_service(service);
-            Ok(Client {
-                service,
-                runtime: &mut self.runtime,
-            })
+            Ok(Session::new(service, &mut self.runtime))
         }
 
         pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
         where
             T: Input,
         {
-            let mut client = self.client()?;
-            client.perform(input)
+            let mut session = self.new_session()?;
+            session.perform(input)
         }
     }
 
-    impl<'a, S> Client<'a, S, Runtime>
+    impl<'a, S> Session<'a, S, Runtime>
     where
         S: HttpService,
     {
@@ -160,11 +221,16 @@ mod current_thread {
         where
             T: Input,
         {
-            let request = input.build_request()?.map(S::RequestBody::from);
+            let request = self.build_request(input)?;
+
             let future = TestResponseFuture::Initial(self.service.call_http(request));
-            self.runtime
+            let response = self
+                .runtime
                 .block_on(future)
-                .map_err(|err| failure::Error::from_boxed_compat(err).into())
+                .map_err(failure::Error::from_boxed_compat)?;
+            self.handle_set_cookies(&response)?;
+
+            Ok(response)
         }
     }
 }

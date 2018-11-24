@@ -11,7 +11,7 @@ pub use self::{
     error::{Error, Result},
     input::{Input, IntoRequestBody},
     output::Output,
-    server::{Client, Server},
+    server::{Server, Session},
 };
 
 pub trait ResponseExt {
