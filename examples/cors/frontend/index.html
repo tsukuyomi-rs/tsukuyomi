@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Frontend</title>
+    </head>
+    <body>
+        <button onclick="submit()">Submit</button>
+        <script>
+            function submit() {
+                fetch("http://localhost:4000/user/info", {
+                    method: 'POST',
+                    mode: 'cors',
+                    body: JSON.stringify({
+                        username: "Alice Cartelet",
+                        email: "alice@moegi.example.com",
+                        password: "shino",
+                        confirm_password: "shino",
+                    }),
+                    headers: {
+                        "Content-type": "application/json",
+                    },
+                })
+                .then(response => response.json())
+                .then(function(info) {
+                    console.log("Username: ", info.username)
+                    console.log("Email: ", info.email)
+                })
+            }
+        </script>
+    </body>
+</html>
