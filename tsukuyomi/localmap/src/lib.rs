@@ -25,12 +25,12 @@ pub use std::{any::TypeId, marker::PhantomData};
 #[macro_export]
 macro_rules! local_key {
     ($(#[$m:meta])* $vis:vis static $NAME:ident : $t:ty; $($tail:tt)*) => {
-        local_key!(@declare ($vis) static $NAME: $t);
+        local_key!(@declare $(#[$m])* ($vis) static $NAME: $t);
         local_key!($($tail)*);
     };
 
     ($(#[$m:meta])* $vis:vis const $NAME:ident : $t:ty; $($tail:tt)*) => {
-        local_key!(@declare ($vis) const $NAME: $t);
+        local_key!(@declare $(#[$m])* ($vis) const $NAME: $t);
         local_key!($($tail)*);
     };
 

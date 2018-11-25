@@ -135,6 +135,7 @@ trait ScopedValue: Send + Sync + 'static {
 }
 
 impl<T: Send + Sync + 'static> ScopedValue for TypedScopedValue<T> {
+    #[cfg_attr(tarpaulin, skip)]
     fn fmt_debug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
@@ -144,6 +145,7 @@ impl<T: Send + Sync + 'static> ScopedValue for TypedScopedValue<T> {
     }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for dyn ScopedValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_debug(f)

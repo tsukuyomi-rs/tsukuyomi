@@ -70,8 +70,9 @@ pub trait Backend: Send + Sync + 'static {
     fn write(&self, input: &mut Input<'_>, data: Self::Session) -> Self::WriteSession;
 }
 
+#[allow(keyword_idents)]
 local_key! {
-    const RAW_SESSION: Box<dyn RawSession>;
+    static RAW_SESSION: Box<dyn RawSession>;
 }
 
 /// An interface of session values.
@@ -79,6 +80,7 @@ pub struct Session {
     raw: Box<dyn RawSession>,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Session").finish()

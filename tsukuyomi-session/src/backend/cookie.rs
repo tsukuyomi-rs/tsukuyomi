@@ -74,6 +74,7 @@ enum Security {
     Plain,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for Security {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -117,6 +118,7 @@ pub struct CookieBackend {
     builder: Box<dyn Fn(CookieBuilder) -> CookieBuilder + Send + Sync + 'static>,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl fmt::Debug for CookieBackend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CookieBackend")

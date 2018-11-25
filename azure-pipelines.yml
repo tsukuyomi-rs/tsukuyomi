@@ -104,9 +104,9 @@ jobs:
       displayName: 'run test (allow failure)'
       condition: eq(variables['rust_toolchain'], 'nightly')
 
-    - script: |
-        rm -rf target/doc
-        bash .ci/build_doc.sh
+    - bash: >-
+        rm -rf target/doc &&
+        bash .ci/build_doc.sh &&
         bash .ci/deploy_doc.sh
       displayName: 'deploy API doc'
       condition: eq(variables['rust_toolchain'], 'stable')

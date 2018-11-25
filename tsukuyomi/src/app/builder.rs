@@ -25,6 +25,7 @@ pub struct Builder<S: Scope = ()> {
     config: Config,
 }
 
+#[cfg_attr(tarpaulin, skip)]
 impl<S> fmt::Debug for Builder<S>
 where
     S: Scope + fmt::Debug,
