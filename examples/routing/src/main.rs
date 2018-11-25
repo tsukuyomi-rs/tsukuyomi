@@ -6,19 +6,19 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
         .route(
             route!() //
-                .reply(|| "Hello, world\n"),
+                .say("Hello, world\n"),
         ) //
         .mount(
             scope!("/api/v1/")
                 .mount(
                     scope!("/posts")
-                        .route(route!("/").reply(|| "list_posts"))
+                        .route(route!("/").say("list_posts"))
                         .route(route!("/:id").reply(|id: i32| format!("get_post(id = {})", id)))
-                        .route(route!("/", method = POST).reply(|| "add_post")),
+                        .route(route!("/", method = POST).say("add_post")),
                 ) //
                 .mount(
                     scope!("/user") //
-                        .route(route!("/auth").reply(|| "Authentication")),
+                        .route(route!("/auth").say("Authentication")),
                 ),
         ) //
         .route(

@@ -29,8 +29,8 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
     let test_server = tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!("/", methods = [GET, POST])
-                .with(executor.clone())
-                .handle({
+                .extract(executor.clone())
+                .call({
                     let database = database.clone();
                     move |exec: Executor<_>| exec.execute(database.clone())
                 }),

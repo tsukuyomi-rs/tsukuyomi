@@ -331,7 +331,7 @@ pub mod redirect {
         std::borrow::Cow,
     };
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Redirect {
         status: StatusCode,
         location: Cow<'static, str>,

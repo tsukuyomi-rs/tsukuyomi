@@ -85,7 +85,7 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
             {
                 #route()
                     .uri(#uri.parse().expect("this is a bug"))
-                    #( .with(#extractors) )*
+                    #( .extract(#extractors) )*
             }
         )
     }
@@ -143,7 +143,7 @@ t! {
         {
             tsukuyomi::app::route()
                 .uri("/:id".parse().expect("this is a bug"))
-                .with(tsukuyomi::extractor::param::pos(0usize))
+                .extract(tsukuyomi::extractor::param::pos(0usize))
         }
     },
 }
@@ -160,7 +160,7 @@ t! {
         {
             tsukuyomi::app::route()
                 .uri("/*path".parse().expect("this is a bug"))
-                .with(tsukuyomi::extractor::param::wildcard())
+                .extract(tsukuyomi::extractor::param::wildcard())
         }
     },
 }
@@ -179,9 +179,9 @@ t! {
         {
             tsukuyomi::app::route()
                 .uri("/:id/people/:name/*path".parse().expect("this is a bug"))
-                .with(tsukuyomi::extractor::param::pos(0usize))
-                .with(tsukuyomi::extractor::param::pos(1usize))
-                .with(tsukuyomi::extractor::param::wildcard())
+                .extract(tsukuyomi::extractor::param::pos(0usize))
+                .extract(tsukuyomi::extractor::param::pos(1usize))
+                .extract(tsukuyomi::extractor::param::wildcard())
         }
     },
 }

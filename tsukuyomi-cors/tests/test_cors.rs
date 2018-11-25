@@ -344,7 +344,7 @@ fn as_extractor() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
         .route(
             tsukuyomi::route!("/cors", methods = [GET, OPTIONS])
-                .with(cors.clone())
+                .extract(cors.clone())
                 .reply(|| "cors"),
         ) //
         .route(
@@ -353,7 +353,7 @@ fn as_extractor() -> tsukuyomi::test::Result<()> {
         ) //
         .route(
             tsukuyomi::route!("*", method = OPTIONS)
-                .with(cors)
+                .extract(cors)
                 .reply(|| ()),
         ) //
         .build_server()?
@@ -407,7 +407,7 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
         ) //
         .route(
             tsukuyomi::route!("*", method = OPTIONS)
-                .with(cors)
+                .extract(cors)
                 .reply(|| ()),
         ) //
         .build_server()?

@@ -12,10 +12,7 @@ use {std::sync::Arc, tsukuyomi_juniper::Executor};
 
 fn main() -> tsukuyomi::server::Result<()> {
     // Extractor for extracting `Executor` for executing a GraphQL request from client.
-    let extract_graphql_executor = tsukuyomi_juniper::executor(
-        //
-        crate::schema::create_schema(),
-    );
+    let extract_graphql_executor = tsukuyomi_juniper::executor(crate::schema::create_schema());
 
     // Extractor which constructs a context value used by `Executor`.
     let fetch_graphql_context = {
@@ -26,16 +23,13 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!("/") //
-                .reply({
-                    let source = tsukuyomi_juniper::graphiql_source("/graphql");
-                    move || source.clone()
-                }),
+                .say(tsukuyomi_juniper::graphiql_source("/graphql")),
         ) //
         .route(
             tsukuyomi::app::route!("/graphql", methods = [GET, POST])
-                .with(extract_graphql_executor)
-                .with(fetch_graphql_context)
-                .handle(move |exec: Executor<_>, context| exec.execute(context)),
+                .extract(extract_graphql_executor)
+                .extract(fetch_graphql_context)
+                .call(move |exec: Executor<_>, context| exec.execute(context)),
         ) //
         .build_server()?
         .run()

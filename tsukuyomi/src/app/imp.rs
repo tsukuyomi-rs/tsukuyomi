@@ -34,7 +34,7 @@ macro_rules! ready {
     };
 }
 
-/// A future for managing an incoming HTTP request, created by `AppService`.
+/// A future that manages an HTTP request, created by `AppService`.
 #[must_use = "futures do nothing unless polled"]
 #[derive(Debug)]
 pub struct AppFuture {

@@ -55,7 +55,7 @@ impl<S> Builder<S>
 where
     S: Scope,
 {
-    /// Adds a route into the current scope.
+    /// Adds a route into this scope.
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
@@ -66,7 +66,7 @@ where
         }
     }
 
-    /// Create a new scope mounted to the certain URI.
+    /// Create a new subscope onto this scope.
     #[inline]
     pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
@@ -78,7 +78,7 @@ where
         }
     }
 
-    /// Merges the specified `Scope` into the current scope, *without* creating a new scope.
+    /// Merges the specified `Scope` into this scope, *without* creating a new subscope.
     pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
@@ -89,7 +89,7 @@ where
         }
     }
 
-    /// Adds a *scope-local* variable into the application.
+    /// Registers a shared variable into this scope.
     pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
     where
         T: Send + Sync + 'static,
@@ -103,7 +103,7 @@ where
         }
     }
 
-    /// Register a `Modifier` into the current scope.
+    /// Registers a `Modifier` into this scope.
     pub fn modifier(
         self,
         modifier: impl Modifier + Send + Sync + 'static,
@@ -117,6 +117,7 @@ where
         }
     }
 
+    /// Registers a `Fallback` into this scope.
     pub fn fallback(
         self,
         fallback: impl Fallback + Send + Sync + 'static,
@@ -124,6 +125,7 @@ where
         self.state(FallbackInstance::from(fallback))
     }
 
+    /// Set the prefix URL of this scope.
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
         Builder {
             scope: raw(move |cx| {

@@ -53,7 +53,7 @@ fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
         .route(
             route!("/hello", method = POST)
-                .with(tsukuyomi::extractor::body::plain())
+                .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body),
         ) //
         .build_server()?
@@ -85,7 +85,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
         .route(
             route!("/login")
-                .with(extractor::guard(move |input| {
+                .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
                         Cookie::build("session", "dummy_session_id")
                             .domain("www.example.com")
@@ -97,7 +97,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
         ) //
         .route(
             route!("/logout")
-                .with(extractor::guard(|input| {
+                .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(None)
                 })).reply(|| "Logged out"),
@@ -153,7 +153,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
         .route(
             route!("/", methods = [GET, POST])
-                .with(tsukuyomi::extractor::guard(
+                .extract(tsukuyomi::extractor::guard(
                     |input| -> tsukuyomi::error::Result<_> {
                         if input.request.method() == Method::GET {
                             Ok(None)

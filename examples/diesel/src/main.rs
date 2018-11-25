@@ -48,9 +48,9 @@ fn main() -> tsukuyomi::server::Result<()> {
             .map(|param: Option<Param>| param.unwrap_or_else(|| Param { count: 20 }));
 
         route!("/", method = GET)
-            .with(parse_query)
-            .with(db_conn.clone())
-            .handle(|param: Param, conn: Conn| {
+            .extract(parse_query)
+            .extract(db_conn.clone())
+            .call(|param: Param, conn: Conn| {
                 blocking_section(move || {
                     use crate::schema::posts::dsl::*;
                     use diesel::prelude::*;
@@ -70,9 +70,9 @@ fn main() -> tsukuyomi::server::Result<()> {
         }
 
         route!("/", method = POST)
-            .with(extractor::body::json())
-            .with(db_conn.clone())
-            .handle(|param: Param, conn: Conn| {
+            .extract(extractor::body::json())
+            .extract(db_conn.clone())
+            .call(|param: Param, conn: Conn| {
                 use crate::schema::posts;
                 use diesel::prelude::*;
                 blocking_section(move || {
@@ -89,8 +89,8 @@ fn main() -> tsukuyomi::server::Result<()> {
     };
 
     let get_post = route!("/:id", method = GET) //
-        .with(db_conn)
-        .handle(|id: i32, conn: Conn| {
+        .extract(db_conn)
+        .call(|id: i32, conn: Conn| {
             blocking_section(move || {
                 use crate::schema::posts::dsl;
                 use diesel::prelude::*;

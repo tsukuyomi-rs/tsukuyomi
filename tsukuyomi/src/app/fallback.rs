@@ -4,6 +4,8 @@ use {
     http::{Method, Request, StatusCode},
 };
 
+/// A trait representing the callback function to be called when the incoming request
+/// does not match to the registered routes in the application.
 pub trait Fallback {
     fn call(&self, cx: &Context<'_>) -> Result<Output, Error>;
 }
@@ -59,19 +61,20 @@ impl std::ops::Deref for FallbackInstance {
     }
 }
 
+/// The default fallback when the `Fallback` is not registered.
 pub fn default(cx: &Context<'_>) -> Result<Output, Error> {
-    if cx.endpoint.is_none() {
-        return Err(StatusCode::NOT_FOUND.into());
-    }
+    let endpoint = match cx.endpoint {
+        Some(endpoint) => endpoint,
+        None => return Err(StatusCode::NOT_FOUND.into()),
+    };
 
-    if cx.request.method() != Method::OPTIONS {
-        return Err(StatusCode::METHOD_NOT_ALLOWED.into());
+    if cx.request.method() == Method::OPTIONS {
+        let mut response = Output::default();
+        response
+            .headers_mut()
+            .insert(http::header::ALLOW, endpoint.allowed_methods_value.clone());
+        Ok(response)
+    } else {
+        Err(StatusCode::METHOD_NOT_ALLOWED.into())
     }
-
-    let allowed_methods = cx.endpoint.unwrap().allowed_methods_value.clone();
-    let mut response = Output::default();
-    response
-        .headers_mut()
-        .insert(http::header::ALLOW, allowed_methods);
-    Ok(response)
 }

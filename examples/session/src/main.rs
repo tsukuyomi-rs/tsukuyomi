@@ -20,28 +20,27 @@ fn main() -> tsukuyomi::server::Result<()> {
         .modifier(storage)
         .route(
             route!("/") //
-                .with(tsukuyomi_session::session())
-                .handle(|session: Session| -> tsukuyomi::Result<_> {
+                .extract(tsukuyomi_session::session())
+                .call(|session: Session| -> tsukuyomi::Result<_> {
                     let username = session.get::<String>("username")?;
-                    Ok(session.finish({
-                        if let Some(username) = username {
-                            Either::Right(html(format!(
-                                "Hello, {}! <br />\n\
-                                 <form method=\"post\" action=\"/logout\">\n\
-                                 <input type=\"submit\" value=\"Log out\" />\n\
-                                 </form>\
-                                 ",
-                                username
-                            )))
-                        } else {
-                            Either::Left(redirect::to("/login"))
-                        }
-                    }))
+                    let output = if let Some(username) = username {
+                        Either::Right(html(format!(
+                            "Hello, {}! <br />\n\
+                             <form method=\"post\" action=\"/logout\">\n\
+                             <input type=\"submit\" value=\"Log out\" />\n\
+                             </form>\
+                             ",
+                            username
+                        )))
+                    } else {
+                        Either::Left(redirect::to("/login"))
+                    };
+                    Ok(session.finish(output))
                 }),
         ) //
         .route(
             route!("/login") //
-                .with(tsukuyomi_session::session())
+                .extract(tsukuyomi_session::session())
                 .reply(|session: Session| {
                     let output = if session.contains("username") {
                         Either::Left(redirect::to("/"))
@@ -57,24 +56,24 @@ fn main() -> tsukuyomi::server::Result<()> {
                     session.finish(output)
                 }),
         ) //
-        .route(
+        .route({
+            #[derive(Debug, serde::Deserialize)]
+            struct Form {
+                username: String,
+            }
             route!("/login")
-                .with(tsukuyomi::extractor::body::urlencoded())
-                .with(tsukuyomi_session::session())
-                .handle({
-                    #[derive(Debug, serde::Deserialize)]
-                    struct Form {
-                        username: String,
-                    }
+                .extract(tsukuyomi::extractor::body::urlencoded())
+                .extract(tsukuyomi_session::session())
+                .call(
                     |form: Form, mut session: Session| -> tsukuyomi::error::Result<_> {
                         session.set("username", form.username)?;
                         Ok(session.finish(redirect::to("/")))
-                    }
-                }),
-        ) //
+                    },
+                )
+        }) //
         .route(
             route!("/logout") //
-                .with(tsukuyomi_session::session())
+                .extract(tsukuyomi_session::session())
                 .reply(|mut session: Session| {
                     session.remove("username");
                     session.finish(redirect::to("/"))

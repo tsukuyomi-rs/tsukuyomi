@@ -25,8 +25,8 @@ fn main() -> tsukuyomi::server::Result<()> {
         .with(cors)
         .route(
             tsukuyomi::route!("/user/info", method = POST) //
-                .with(tsukuyomi::extractor::body::json())
-                .handle(|info: UserInfo| -> tsukuyomi::Result<_> {
+                .extract(tsukuyomi::extractor::body::json())
+                .call(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
                         return Err(tsukuyomi::error::bad_request(
                             "the field confirm_password is not matched to password.",

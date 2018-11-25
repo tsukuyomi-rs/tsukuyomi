@@ -5,7 +5,7 @@ fn compiletest() {
         tsukuyomi::app!()
             .route(
                 tsukuyomi::route!("/index.html") //
-                    .serve_file("/path/to/index.html"),
+                    .send_file("/path/to/index.html", None),
             ) //
             .build()
             .unwrap(),

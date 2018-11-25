@@ -51,7 +51,7 @@ where
         }
     }
 
-    /// Creates a new scope onto the global scope using the specified `Scope`.
+    /// Creates a new subscope onto the global scope.
     pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             config: self.config,
@@ -59,7 +59,7 @@ where
         }
     }
 
-    /// Merges the specified `Scope` into the global scope, *without* creating a new scope.
+    /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
     pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             config: self.config,
@@ -67,7 +67,7 @@ where
         }
     }
 
-    /// Adds a *global* variable into the application.
+    /// Registers a shared state into the global scope.
     pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
     where
         T: Send + Sync + 'static,
@@ -78,7 +78,7 @@ where
         }
     }
 
-    /// Register a `Modifier` into the global scope.
+    /// Registers a `Modifier` into the global scope.
     pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>>
     where
         M: Modifier + Send + Sync + 'static,
@@ -89,6 +89,7 @@ where
         }
     }
 
+    /// Registers a `Fallback` into the global scope.
     pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = S::Error>>
     where
         F: Fallback + Send + Sync + 'static,
@@ -96,6 +97,7 @@ where
         self.state(FallbackInstance::from(fallback))
     }
 
+    /// Sets the prefix URI of the global scope.
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
         Builder {
             config: self.config,
@@ -197,7 +199,7 @@ fn build(scope: impl Scope, config: Config) -> Result<App> {
 }
 
 #[derive(Debug)]
-pub struct AppContext {
+pub(super) struct AppContext {
     routes: Vec<RouteData>,
     scopes: Vec<ScopeData>,
     global_scope: ScopeData,
@@ -229,7 +231,7 @@ impl AppContext {
             methods: None,
             handler: None,
         };
-        route.configure(&mut cx);
+        route.configure(&mut cx).map_err(Into::into)?;
 
         // build absolute URI.
         let uri = self.build_absolute_uri(scope_id, &cx.uri)?;

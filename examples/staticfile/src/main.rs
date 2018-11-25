@@ -8,7 +8,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
         .route(
             route!("/") //
-                .serve_file(manifest_dir.join("static/index.html")),
+                .send_file(manifest_dir.join("static/index.html"), None),
         ) //
         .with(Staticfiles::new(manifest_dir.join("static"))) //
         .build_server()?

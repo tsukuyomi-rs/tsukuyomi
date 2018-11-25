@@ -11,7 +11,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
         .route(
             tsukuyomi::app::route!() //
-                .reply(|| "Hello, Tsukuyomi.\n"),
+                .say("Hello, Tsukuyomi.\n"),
         ) //
         .build_server()?
         .acceptor(tls_acceptor)

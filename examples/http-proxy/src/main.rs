@@ -16,8 +16,8 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
         .route(
             route!("/")
-                .with(proxy_client.clone())
-                .handle(|client: Client| {
+                .extract(proxy_client.clone())
+                .call(|client: Client| {
                     client
                         .send_forwarded_request("http://www.example.com")
                         .and_then(|resp| resp.receive_all())
@@ -25,8 +25,8 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .route(
             route!("/streaming")
-                .with(proxy_client)
-                .handle(|client: Client| {
+                .extract(proxy_client)
+                .call(|client: Client| {
                     client.send_forwarded_request("https://www.rust-lang.org/en-US/")
                 }),
         ) //

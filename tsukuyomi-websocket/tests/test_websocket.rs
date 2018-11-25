@@ -16,8 +16,8 @@ fn compiletest() {
         tsukuyomi::app!()
             .route(
                 tsukuyomi::app::route!("/ws")
-                    .with(tsukuyomi_websocket::extractor())
-                    .handle(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
+                    .extract(tsukuyomi_websocket::extractor())
+                    .call(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
             ) //
             .build()
             .unwrap(),

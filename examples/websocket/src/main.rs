@@ -11,7 +11,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!() //
         .route(
             tsukuyomi::app::route!("/ws")
-                .with(tsukuyomi_websocket::extractor())
+                .extract(tsukuyomi_websocket::extractor())
                 .reply(|ws: Ws| {
                     ws.finish(|stream| {
                         let (tx, rx) = stream.split();

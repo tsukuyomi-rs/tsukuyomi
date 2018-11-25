@@ -459,14 +459,7 @@ where
                 cx.add_route(
                     crate::app::route() //
                         .uri(uri)
-                        .handle(move || {
-                            if let Some(ref config) = config {
-                                NamedFile::open_with_config(path.clone(), config.clone())
-                                    .map_err(Into::into)
-                            } else {
-                                NamedFile::open(path.clone()).map_err(Into::into)
-                            }
-                        }),
+                        .send_file(path, config),
                 )?;
             } else if file_type.is_dir() {
                 let uri = format!("/{}/*path", name).parse()?;
@@ -475,8 +468,8 @@ where
                 cx.add_route(
                     crate::app::route()
                         .uri(uri)
-                        .with(crate::extractor::param::wildcard())
-                        .handle(move |suffix: PathBuf| {
+                        .extract(crate::extractor::param::wildcard())
+                        .call(move |suffix: PathBuf| {
                             let path = root_dir.join(suffix);
                             if let Some(ref config) = config {
                                 NamedFile::open_with_config(path, config.clone())

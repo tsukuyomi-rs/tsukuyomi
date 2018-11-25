@@ -20,16 +20,16 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
         .modifier(storage)
         .route(
             tsukuyomi::route!("/counter", method = GET)
-                .with(tsukuyomi_session::session())
-                .handle(|sess: Session| -> tsukuyomi::Result<_> {
+                .extract(tsukuyomi_session::session())
+                .call(|sess: Session| -> tsukuyomi::Result<_> {
                     let counter: Option<i64> = sess.get("counter")?;
                     Ok(sess.finish(format!("{:?}", counter)))
                 }),
         ) //
         .route(
             tsukuyomi::route!("/counter", method = PUT)
-                .with(tsukuyomi_session::session())
-                .handle(|mut sess: Session| -> tsukuyomi::Result<_> {
+                .extract(tsukuyomi_session::session())
+                .call(|mut sess: Session| -> tsukuyomi::Result<_> {
                     let counter: i64 = sess.get("counter")?.unwrap_or_default();
                     sess.set("counter", counter + 1)?;
                     Ok(sess.finish(format!("{}", counter)))
@@ -37,7 +37,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
         ) //
         .route(
             tsukuyomi::route!("/counter", method = DELETE)
-                .with(tsukuyomi_session::session())
+                .extract(tsukuyomi_session::session())
                 .reply(|mut sess: Session| {
                     sess.remove("counter");
                     sess.finish("removed")
@@ -45,7 +45,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
         ) //
         .route(
             tsukuyomi::route!("/clear", method = PUT)
-                .with(tsukuyomi_session::session())
+                .extract(tsukuyomi_session::session())
                 .reply(|mut sess: Session| {
                     sess.clear();
                     sess.finish("cleared")
