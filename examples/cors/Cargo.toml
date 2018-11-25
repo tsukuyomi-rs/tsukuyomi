@@ -12,5 +12,4 @@ doc = false
 [dependencies]
 tsukuyomi = "0.4.0-dev"
 tsukuyomi-cors = "0.1.0"
-http = "0.1"
 serde = { version = "1", features = ["derive"] }

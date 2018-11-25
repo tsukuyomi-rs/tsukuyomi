@@ -1,9 +1,7 @@
-extern crate http;
 extern crate serde;
 extern crate tsukuyomi;
 extern crate tsukuyomi_cors;
 
-use http::{Method, Uri};
 use tsukuyomi_cors::CORS;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, tsukuyomi::Responder)]
@@ -17,9 +15,9 @@ struct UserInfo {
 
 fn main() -> tsukuyomi::server::Result<()> {
     let cors = CORS::builder()
-        .allow_origin(Uri::from_static("http://127.0.0.1:5000"))
-        .allow_methods(vec![Method::GET, Method::POST])
-        .allow_header(http::header::CONTENT_TYPE)
+        .allow_origin("http://127.0.0.1:5000")?
+        .allow_methods(vec!["GET", "POST"])?
+        .allow_header("content-type")?
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 

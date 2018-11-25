@@ -471,7 +471,6 @@ dependencies = [
 name = "example-cors"
 version = "0.1.0"
 dependencies = [
- "http 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.4.0-dev",
  "tsukuyomi-cors 0.1.0",

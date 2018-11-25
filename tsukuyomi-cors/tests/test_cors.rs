@@ -5,7 +5,6 @@ extern crate tsukuyomi_cors;
 use {
     http::{
         header::{
-            HeaderName,
             ACCESS_CONTROL_ALLOW_CREDENTIALS, //
             ACCESS_CONTROL_ALLOW_HEADERS,
             ACCESS_CONTROL_ALLOW_METHODS,
@@ -17,7 +16,7 @@ use {
             HOST,
             ORIGIN,
         },
-        Method, Request, Uri,
+        Method, Request,
     },
     tsukuyomi::test::ResponseExt,
     tsukuyomi_cors::CORS,
@@ -56,9 +55,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
-    let cors = CORS::builder()
-        .allow_origin(Uri::from_static("http://example.com"))
-        .build();
+    let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let mut server = tsukuyomi::app!()
         .route(tsukuyomi::route!("/").reply(|| "hello"))
@@ -92,7 +89,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
 #[test]
 fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder() //
-        .allow_method(Method::GET)
+        .allow_method(Method::GET)?
         .build();
 
     let mut server = tsukuyomi::app!()
@@ -205,9 +202,7 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
-    let cors = CORS::builder()
-        .allow_origin(Uri::from_static("http://example.com"))
-        .build();
+    let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let mut server = tsukuyomi::app!()
         .route(
@@ -239,7 +234,9 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
-    let cors = CORS::builder().allow_method(Method::GET).build();
+    let cors = CORS::builder() //
+        .allow_method(Method::GET)?
+        .build();
 
     let mut server = tsukuyomi::app!()
         .route(
@@ -271,10 +268,10 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
-    let x_api_key = HeaderName::from_static("x-api-key");
+    const X_API_KEY: &str = "x-api-key";
 
     let cors = CORS::builder() //
-        .allow_header(x_api_key.clone())
+        .allow_header(X_API_KEY)?
         .build();
 
     let mut server = tsukuyomi::app!()
@@ -291,10 +288,13 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
             .header(HOST, "localhost")
             .header(ORIGIN, "http://example.com")
             .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
-            .header(ACCESS_CONTROL_REQUEST_HEADERS, "x-api-key"),
+            .header(ACCESS_CONTROL_REQUEST_HEADERS, X_API_KEY),
     )?;
     assert_eq!(response.status(), 204);
-    assert_headers!(response.header(ACCESS_CONTROL_ALLOW_HEADERS)?, [x_api_key]);
+    assert_headers!(
+        response.header(ACCESS_CONTROL_ALLOW_HEADERS)?,
+        [X_API_KEY.parse().unwrap()]
+    );
 
     let response = server.perform(
         Request::options("*")

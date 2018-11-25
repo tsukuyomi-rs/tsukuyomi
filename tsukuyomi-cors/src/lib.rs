@@ -35,7 +35,7 @@ use {
             ACCESS_CONTROL_REQUEST_METHOD,
             ORIGIN,
         },
-        Method, Request, Response, StatusCode, Uri,
+        HttpTryFrom, Method, Request, Response, StatusCode, Uri,
     },
     std::{collections::HashSet, sync::Arc, time::Duration},
     tsukuyomi::{
@@ -70,51 +70,87 @@ impl Builder {
     }
 
     #[allow(missing_docs)]
-    pub fn allow_origin(mut self, origin: impl Into<Uri>) -> Self {
+    pub fn allow_origin<U>(mut self, origin: U) -> http::Result<Self>
+    where
+        Uri: HttpTryFrom<U>,
+    {
+        let origin = Uri::try_from(origin).map_err(Into::into)?;
         self.origins
             .get_or_insert_with(Default::default)
-            .insert(origin.into());
-        self
+            .insert(origin);
+        Ok(self)
     }
 
     #[allow(missing_docs)]
-    pub fn allow_origins(mut self, origins: impl IntoIterator<Item = Uri>) -> Self {
+    pub fn allow_origins<U>(mut self, origins: impl IntoIterator<Item = U>) -> http::Result<Self>
+    where
+        Uri: HttpTryFrom<U>,
+    {
+        let origins = origins
+            .into_iter()
+            .map(Uri::try_from)
+            .collect::<Result<Vec<Uri>, _>>()
+            .map_err(Into::into)?;
         self.origins
             .get_or_insert_with(Default::default)
             .extend(origins);
-        self
+        Ok(self)
     }
 
     #[allow(missing_docs)]
-    pub fn allow_method(mut self, method: Method) -> Self {
+    pub fn allow_method<M>(mut self, method: M) -> http::Result<Self>
+    where
+        Method: HttpTryFrom<M>,
+    {
+        let method = Method::try_from(method).map_err(Into::into)?;
         self.methods
             .get_or_insert_with(Default::default)
             .insert(method);
-        self
+        Ok(self)
     }
 
     #[allow(missing_docs)]
-    pub fn allow_methods(mut self, methods: impl IntoIterator<Item = Method>) -> Self {
+    pub fn allow_methods<M>(mut self, methods: impl IntoIterator<Item = M>) -> http::Result<Self>
+    where
+        Method: HttpTryFrom<M>,
+    {
+        let methods = methods
+            .into_iter()
+            .map(Method::try_from)
+            .collect::<Result<Vec<Method>, _>>()
+            .map_err(Into::into)?;
         self.methods
             .get_or_insert_with(Default::default)
             .extend(methods);
-        self
+        Ok(self)
     }
 
     #[allow(missing_docs)]
-    pub fn allow_header(mut self, header: HeaderName) -> Self {
+    pub fn allow_header<H>(mut self, header: H) -> http::Result<Self>
+    where
+        HeaderName: HttpTryFrom<H>,
+    {
+        let header = HeaderName::try_from(header).map_err(Into::into)?;
         self.headers
             .get_or_insert_with(Default::default)
             .insert(header);
-        self
+        Ok(self)
     }
 
     #[allow(missing_docs)]
-    pub fn allow_headers(mut self, headers: impl IntoIterator<Item = HeaderName>) -> Self {
+    pub fn allow_headers<H>(mut self, headers: impl IntoIterator<Item = H>) -> http::Result<Self>
+    where
+        HeaderName: HttpTryFrom<H>,
+    {
+        let headers = headers
+            .into_iter()
+            .map(HeaderName::try_from)
+            .collect::<Result<Vec<HeaderName>, _>>()
+            .map_err(Into::into)?;
         self.headers
             .get_or_insert_with(Default::default)
             .extend(headers);
-        self
+        Ok(self)
     }
 
     #[allow(missing_docs)]
