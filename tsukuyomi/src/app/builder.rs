@@ -98,7 +98,7 @@ where
     }
 
     /// Sets the prefix URI of the global scope.
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = Error>> {
         Builder {
             config: self.config,
             scope: self.scope.prefix(prefix),
@@ -133,6 +133,7 @@ fn build(scope: impl Scope, config: Config) -> Result<App> {
             id: ScopeId::Global,
             parents: vec![],
             prefix: None,
+            uri: None,
             modifiers: vec![],
         },
         states: ScopedContainerBuilder::default(),
@@ -208,23 +209,6 @@ pub(super) struct AppContext {
 }
 
 impl AppContext {
-    fn build_absolute_uri(&self, scope_id: ScopeId, suffix: &Uri) -> Result<Uri> {
-        let mut uris = vec![];
-        let scope = match scope_id {
-            ScopeId::Global => &self.global_scope,
-            ScopeId::Local(i) => &self.scopes[i],
-        };
-        uris.extend(scope.prefix.as_ref());
-        for &scope_id in scope.parents.iter().rev() {
-            let scope = match scope_id {
-                ScopeId::Global => &self.global_scope,
-                ScopeId::Local(i) => &self.scopes[i],
-            };
-            uris.extend(scope.prefix.as_ref());
-        }
-        crate::uri::join_all(uris.into_iter().rev().chain(Some(suffix))).map_err(Into::into)
-    }
-
     pub(super) fn new_route(&mut self, scope_id: ScopeId, route: impl Route) -> Result<()> {
         let mut cx = RouteContext {
             uri: Uri::root(),
@@ -234,7 +218,24 @@ impl AppContext {
         route.configure(&mut cx).map_err(Into::into)?;
 
         // build absolute URI.
-        let uri = self.build_absolute_uri(scope_id, &cx.uri)?;
+        let uri = {
+            let scope = match scope_id {
+                ScopeId::Global => &self.global_scope,
+                ScopeId::Local(i) => &self.scopes[i],
+            };
+            crate::uri::join_all(scope.uri.iter().chain(Some(&cx.uri)))?
+        };
+
+        // collect a chain of scope IDs where this endpoint belongs.
+        let parents = match scope_id {
+            ScopeId::Local(i) => self.scopes[i]
+                .parents
+                .iter()
+                .cloned()
+                .chain(Some(scope_id))
+                .collect(),
+            ScopeId::Global => vec![ScopeId::Global],
+        };
 
         let endpoint = {
             let pos = self.endpoints.len();
@@ -245,6 +246,7 @@ impl AppContext {
                     uri: uri.clone(),
                     route_ids: IndexMap::new(),
                     allowed_methods_value: HeaderValue::from_static(""),
+                    parents,
                 })
         };
 
@@ -298,20 +300,20 @@ impl AppContext {
         let pos = self.scopes.len();
         let id = ScopeId::Local(pos);
 
-        let parents = match parent {
-            ScopeId::Global => vec![ScopeId::Global],
-            ScopeId::Local(i) => self.scopes[i]
-                .parents
-                .iter()
-                .cloned()
-                .chain(Some(parent))
-                .collect(),
+        let (parents, uri) = match parent {
+            ScopeId::Global => (vec![ScopeId::Global], self.global_scope.uri.clone()),
+            ScopeId::Local(i) => {
+                let mut parents = self.scopes[i].parents.clone();
+                parents.push(parent);
+                (parents, self.scopes[i].uri.clone())
+            }
         };
 
         self.scopes.push(ScopeData {
             id,
             parents,
             prefix: None,
+            uri,
             modifiers: vec![],
         });
 
@@ -340,10 +342,32 @@ impl AppContext {
         }
     }
 
-    pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) {
+    pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) -> Result<()> {
         match id {
-            ScopeId::Global => self.global_scope.prefix = Some(prefix),
-            ScopeId::Local(id) => self.scopes[id].prefix = Some(prefix),
+            ScopeId::Global => {
+                self.global_scope.prefix = Some(prefix);
+                self.global_scope.uri = self.global_scope.prefix.clone();
+            }
+            ScopeId::Local(id) => {
+                self.scopes[id].prefix = Some(prefix);
+
+                self.scopes[id].uri = {
+                    let parent_scope = match self.scopes[id].parents.last().cloned() {
+                        Some(ScopeId::Global) => &self.global_scope,
+                        Some(ScopeId::Local(i)) => &self.scopes[i],
+                        None => unreachable!("the local scope must have at least one parent."),
+                    };
+                    match (&parent_scope.uri, &self.scopes[id].prefix) {
+                        (Some(uri), Some(prefix)) => {
+                            crate::uri::join_all(&[uri, prefix]).map(Some)?
+                        }
+                        (Some(uri), None) => Some(uri.clone()),
+                        (None, uri) => uri.clone(),
+                    }
+                };
+            }
         }
+
+        Ok(())
     }
 }

@@ -32,6 +32,10 @@ impl Candidates {
     fn insert(&mut self, value: usize) {
         self.0.insert(value);
     }
+
+    pub(crate) fn iter<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+        self.0.iter().cloned()
+    }
 }
 
 pub type Recognize<'a> = Result<(usize, Option<Captures>), RecognizeError<'a>>;
@@ -371,7 +375,7 @@ impl Tree {
         self.root
             .as_ref()
             .ok_or_else(|| RecognizeError::NotMatched)?
-            .recognize(path.as_ref(), captures)
+            .recognize(path, captures)
     }
 }
 

@@ -7,7 +7,10 @@ use {
 #[test]
 fn empty() {
     let app = crate::app::app().build().unwrap();
-    assert_matches!(app.data.recognize("/", &Method::GET), Recognize::NotFound);
+    assert_matches!(
+        app.data.recognize("/", &Method::GET),
+        Recognize::NotFound(ScopeId::Global)
+    );
 }
 
 #[test]
@@ -24,7 +27,7 @@ fn route_single_method() {
 
     assert_matches!(
         app.data.recognize("/path/to", &Method::GET),
-        Recognize::NotFound
+        Recognize::NotFound(ScopeId::Global)
     );
     assert_matches!(
         app.data.recognize("/", &Method::POST),
@@ -169,20 +172,21 @@ fn scope_simple() {
 fn scope_nested() {
     let app = crate::app::app()
         .mount(
-            scope()
+            scope() // 0
                 .route(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
                 .route(route().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
         ) //
         .mount(
-            scope()
+            scope() // 1
                 .prefix("/baz".parse().unwrap())
                 .route(route().reply(|| "")) // /baz
                 .mount(
-                    scope().route(
-                        route()
-                            .uri("/foobar".parse().unwrap()) // /baz/foobar
-                            .reply(|| ""),
-                    ),
+                    scope() // 2
+                        .route(
+                            route()
+                                .uri("/foobar".parse().unwrap()) // /baz/foobar
+                                .reply(|| ""),
+                        ),
                 ), //
         ) //
         .route(route().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
@@ -212,7 +216,7 @@ fn scope_nested() {
 
     assert_matches!(
         app.data.recognize("/baz/", &Method::GET),
-        Recognize::NotFound
+        Recognize::NotFound(ScopeId::Local(2))
     );
 }
 
@@ -293,6 +297,62 @@ fn scope_variable() {
     assert_eq!(
         app.data.get_state(ScopeId::Local(6)).map(String::as_str),
         Some("B")
+    );
+}
+
+#[test]
+fn scope_candidates() {
+    let app = crate::app::app()
+        .mount(
+            scope() // 0
+                .prefix("/s0".parse().unwrap())
+                .mount(
+                    scope() // 1
+                        .prefix("/s1".parse().unwrap())
+                        .mount(
+                            scope() // 2
+                                .prefix("/s2".parse().unwrap())
+                                .route(route().uri("/r0".parse().unwrap()).say(""))
+                                .route(route().uri("/r1".parse().unwrap()).say("")),
+                        ),
+                ) //
+                .route(route().uri("/r2".parse().unwrap()).say("")),
+        ) //
+        .mount(
+            scope() // 3
+                .route(route().uri("/r3".parse().unwrap()).say("")),
+        ) //
+        .build()
+        .unwrap();
+
+    assert_matches!(
+        app.data.recognize("/s0", &Method::GET),
+        Recognize::NotFound(ScopeId::Local(0))
+    );
+
+    assert_matches!(
+        app.data.recognize("/s0/s1", &Method::GET),
+        Recognize::NotFound(ScopeId::Local(1))
+    );
+
+    assert_matches!(
+        app.data.recognize("/s0/s1/s2", &Method::GET),
+        Recognize::NotFound(ScopeId::Local(2))
+    );
+
+    assert_matches!(
+        app.data.recognize("/s0/r", &Method::GET),
+        Recognize::NotFound(ScopeId::Local(0))
+    );
+
+    assert_matches!(
+        app.data.recognize("/r", &Method::GET),
+        Recognize::NotFound(ScopeId::Local(3))
+    );
+
+    assert_matches!(
+        app.data.recognize("/noroute", &Method::GET),
+        Recognize::NotFound(ScopeId::Global)
     );
 }
 

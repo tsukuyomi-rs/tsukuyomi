@@ -1,7 +1,7 @@
 use {
     super::{
         fallback::{Context as FallbackContext, FallbackInstance},
-        AppData, EndpointData, EndpointId, Recognize, ScopeId,
+        AppData, EndpointId, Recognize, ScopeId,
     },
     cookie::{Cookie, CookieJar},
     crate::{
@@ -154,27 +154,38 @@ impl AppFuture {
             } => {
                 self.endpoint_id = Some(endpoint.id);
                 self.captures = captures;
-                self.process_fallback(Some(endpoint)).map(Either::Left)
+
+                let cx = FallbackContext {
+                    request: &self.request,
+                    app: &*self.data,
+                    endpoint: Some(endpoint),
+                };
+
+                self.data
+                    .get_state::<FallbackInstance>(endpoint.id.0)
+                    .map_or_else(
+                        || super::fallback::default(&cx),
+                        |ref fallback| fallback.call(&cx),
+                    ) //
+                    .map(Either::Left)
             }
 
-            Recognize::NotFound => self.process_fallback(None).map(Either::Left),
+            Recognize::NotFound(scope_id) => {
+                let cx = FallbackContext {
+                    request: &self.request,
+                    app: &*self.data,
+                    endpoint: None,
+                };
+
+                self.data
+                    .get_state::<FallbackInstance>(scope_id)
+                    .map_or_else(
+                        || super::fallback::default(&cx),
+                        |ref fallback| fallback.call(&cx),
+                    ) //
+                    .map(Either::Left)
+            }
         }
-    }
-
-    fn process_fallback(&self, endpoint: Option<&EndpointData>) -> Result<Output, Error> {
-        let cx = FallbackContext {
-            request: &self.request,
-            app: &*self.data,
-            endpoint,
-        };
-
-        let scope_id = endpoint.map_or(ScopeId::Global, |e| e.id.0);
-        self.data
-            .get_state::<FallbackInstance>(scope_id)
-            .map_or_else(
-                || super::fallback::default(&cx),
-                |ref fallback| fallback.call(&cx),
-            )
     }
 
     fn process_before_reply(&mut self, output: &mut Output) {
