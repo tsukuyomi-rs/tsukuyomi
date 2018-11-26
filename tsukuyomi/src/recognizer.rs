@@ -25,6 +25,23 @@ impl Captures {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Candidates(IndexSet<usize>);
+
+impl Candidates {
+    fn insert(&mut self, value: usize) {
+        self.0.insert(value);
+    }
+}
+
+pub type Recognize<'a> = Result<(usize, Option<Captures>), RecognizeError<'a>>;
+
+#[derive(Debug, PartialEq)]
+pub enum RecognizeError<'a> {
+    NotMatched,
+    PartiallyMatched(&'a Candidates),
+}
+
 /// A route recognizer.
 #[derive(Debug, Default)]
 pub struct Recognizer {
@@ -58,11 +75,16 @@ impl Recognizer {
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub fn recognize(&self, path: &str) -> Option<(usize, Option<Captures>)> {
+    pub fn recognize(&self, path: &str) -> Recognize<'_> {
         if path == "*" {
-            self.asterisk.map(|pos| (pos, None))
+            self.asterisk
+                .map(|pos| (pos, None))
+                .ok_or_else(|| RecognizeError::NotMatched)
         } else {
-            self.tree.recognize(path.as_ref())
+            let mut captures = None;
+            self.tree
+                .recognize(path.as_ref(), &mut captures)
+                .map(|i| (i, captures))
         }
     }
 }
@@ -91,7 +113,7 @@ impl fmt::Debug for NodeKind {
 #[derive(Debug, PartialEq)]
 struct Node {
     kind: NodeKind,
-    candidates: IndexSet<usize>,
+    candidates: Candidates,
     leaf: Option<usize>,
     children: Vec<Node>,
 }
@@ -185,7 +207,7 @@ impl Node {
                     let pos = find_wildcard_begin(path, offset);
                     let mut ch = Self {
                         kind: NodeKind::Static(path[offset..pos].to_owned()),
-                        candidates: indexset![value],
+                        candidates: Candidates(indexset![value]),
                         leaf: None,
                         children: vec![],
                     };
@@ -221,7 +243,7 @@ impl Node {
                     b'*' => NodeKind::CatchAll,
                     c => failure::bail!("unexpected parameter type: '{}'", c),
                 },
-                candidates: indexset![value],
+                candidates: Candidates(indexset![value]),
                 leaf: None,
                 children: vec![],
             });
@@ -234,7 +256,7 @@ impl Node {
                 n.children.push(Self {
                     kind: NodeKind::Static(path[pos..index].into()),
                     leaf: None,
-                    candidates: indexset![value],
+                    candidates: Candidates(indexset![value]),
                     children: vec![],
                 });
                 n = { n }.children.iter_mut().last().unwrap();
@@ -246,7 +268,11 @@ impl Node {
         Ok(())
     }
 
-    fn get_value(&self, path: &[u8], captures: &mut Option<Captures>) -> Option<usize> {
+    fn recognize(
+        &self,
+        path: &[u8],
+        captures: &mut Option<Captures>,
+    ) -> Result<usize, RecognizeError<'_>> {
         let mut offset = 0;
         let mut n = self;
 
@@ -262,10 +288,10 @@ impl Node {
                     Ordering::Equal if s[..] == path[offset..] => {
                         offset = path.len();
                         if let Some(i) = n.leaf {
-                            return Some(i);
+                            return Ok(i);
                         }
                     }
-                    _ => return None,
+                    _ => return Err(RecognizeError::NotMatched),
                 },
                 NodeKind::Param => {
                     let span = path[offset..]
@@ -279,20 +305,28 @@ impl Node {
                     offset += span;
 
                     if offset >= path.len() {
-                        return n.leaf;
+                        return n
+                            .leaf //
+                            .ok_or_else(|| RecognizeError::PartiallyMatched(&n.candidates));
                     }
                 }
                 NodeKind::CatchAll => {
                     captures.get_or_insert_with(Default::default).wildcard =
                         Some((offset, path.len()));
-                    return n.leaf;
+                    return n
+                        .leaf //
+                        .ok_or_else(|| RecognizeError::PartiallyMatched(&n.candidates));
                 }
             }
 
-            n = n.children.iter().find(|ch| match ch.kind {
-                NodeKind::Static(ref s) => s[0] == path[offset],
-                NodeKind::Param | NodeKind::CatchAll => true,
-            })?;
+            n = n
+                .children
+                .iter()
+                .find(|ch| match ch.kind {
+                    NodeKind::Static(ref s) => path.get(offset).map_or(false, |&c| s[0] == c),
+                    NodeKind::Param | NodeKind::CatchAll => true,
+                }) //
+                .ok_or_else(|| RecognizeError::PartiallyMatched(&n.candidates))?;
         }
     }
 
@@ -321,7 +355,7 @@ impl Tree {
         self.root
             .get_or_insert(Node {
                 kind: NodeKind::Static(path[..pos].into()),
-                candidates: indexset![index],
+                candidates: Candidates(indexset![index]),
                 leaf: None,
                 children: vec![],
             }).insert_child(&path[pos..], index)?;
@@ -329,13 +363,15 @@ impl Tree {
         Ok(())
     }
 
-    fn recognize(&self, path: &[u8]) -> Option<(usize, Option<Captures>)> {
-        let mut captures = None;
-        let i = self
-            .root
-            .as_ref()?
-            .get_value(path.as_ref(), &mut captures)?;
-        Some((i, captures))
+    fn recognize(
+        &self,
+        path: &[u8],
+        captures: &mut Option<Captures>,
+    ) -> Result<usize, RecognizeError<'_>> {
+        self.root
+            .as_ref()
+            .ok_or_else(|| RecognizeError::NotMatched)?
+            .recognize(path.as_ref(), captures)
     }
 }
 
@@ -383,14 +419,17 @@ fn find_wildcard_end(path: &[u8], offset: usize) -> Result<usize, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Captures, Recognizer};
+    use {
+        super::{Candidates, Captures, RecognizeError, Recognizer},
+        indexmap::indexset,
+    };
 
     #[test]
     fn case1_empty() {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/").unwrap();
 
-        assert_eq!(recognizer.recognize("/"), Some((0, None,)));
+        assert_eq!(recognizer.recognize("/"), Ok((0, None)));
     }
 
     #[test]
@@ -400,7 +439,7 @@ mod tests {
 
         assert_eq!(
             recognizer.recognize("/files/readme/0"),
-            Some((
+            Ok((
                 0,
                 Some(Captures {
                     params: vec![(7, 13), (14, 15)],
@@ -417,7 +456,7 @@ mod tests {
 
         assert_eq!(
             recognizer.recognize("/path/to/readme.txt"),
-            Some((
+            Ok((
                 0,
                 Some(Captures {
                     params: vec![],
@@ -434,7 +473,7 @@ mod tests {
 
         assert_eq!(
             recognizer.recognize("/path/to/readme.txt"),
-            Some((
+            Ok((
                 0,
                 Some(Captures {
                     params: vec![],
@@ -451,7 +490,7 @@ mod tests {
 
         assert_eq!(
             recognizer.recognize("/"),
-            Some((
+            Ok((
                 0,
                 Some(Captures {
                     params: vec![],
@@ -468,7 +507,7 @@ mod tests {
 
         assert_eq!(
             recognizer.recognize("/path/to/"),
-            Some((
+            Ok((
                 0,
                 Some(Captures {
                     params: vec![],
@@ -485,7 +524,7 @@ mod tests {
 
         assert_eq!(
             recognizer.recognize("/path/to/10/"),
-            Some((
+            Ok((
                 0,
                 Some(Captures {
                     params: vec![(9, 11)],
@@ -494,12 +533,59 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn case8_partially_matched() {
+        let mut recognizer = Recognizer::default();
+        recognizer.add_path("/path/to/foo").unwrap();
+        recognizer.add_path("/path/to/bar").unwrap();
+
+        // too short path
+        assert_eq!(
+            recognizer.recognize("/path/to/"),
+            Err(RecognizeError::PartiallyMatched(&Candidates(indexset![
+                0, 1
+            ])))
+        );
+
+        // too long path
+        assert_eq!(
+            recognizer.recognize("/path/to/foo/baz"),
+            Err(RecognizeError::PartiallyMatched(&Candidates(indexset![0])))
+        );
+    }
+
+    #[test]
+    fn case9_completely_mismatched() {
+        let mut recognizer = Recognizer::default();
+        recognizer.add_path("/path/to/foo").unwrap();
+
+        // the suffix is different
+        assert_eq!(
+            recognizer.recognize("/path/to/baz"),
+            Err(RecognizeError::NotMatched)
+        );
+    }
+
+    #[test]
+    fn case10_asterisk() {
+        let mut recognizer = Recognizer::default();
+        recognizer.add_path("*").unwrap();
+        assert_eq!(recognizer.recognize("*"), Ok((0, None)));
+    }
+
+    #[test]
+    fn case11_no_asterisk() {
+        let mut recognizer = Recognizer::default();
+        recognizer.add_path("/foo").unwrap();
+        assert_eq!(recognizer.recognize("*"), Err(RecognizeError::NotMatched));
+    }
 }
 
 #[cfg(test)]
 mod tests_tree {
     use {
-        super::{Node, NodeKind, Tree},
+        super::{Candidates, Node, NodeKind, Tree},
         indexmap::indexset,
     };
 
@@ -530,7 +616,7 @@ mod tests_tree {
         ["/foo"],
         Node {
             kind: NodeKind::Static("/foo".into()),
-            candidates: indexset![0],
+            candidates: Candidates(indexset![0]),
             leaf: Some(0),
             children: vec![],
         }
@@ -541,18 +627,18 @@ mod tests_tree {
         ["/foo", "/bar"],
         Node {
             kind: NodeKind::Static("/".into()),
-            candidates: indexset![0, 1],
+            candidates: Candidates(indexset![0, 1]),
             leaf: None,
             children: vec![
                 Node {
                     kind: NodeKind::Static("foo".into()),
-                    candidates: indexset![0],
+                    candidates: Candidates(indexset![0]),
                     leaf: Some(0),
                     children: vec![],
                 },
                 Node {
                     kind: NodeKind::Static("bar".into()),
-                    candidates: indexset![1],
+                    candidates: Candidates(indexset![1]),
                     leaf: Some(1),
                     children: vec![],
                 },
@@ -565,11 +651,11 @@ mod tests_tree {
         ["/foo", "/foobar"],
         Node {
             kind: NodeKind::Static("/foo".into()),
-            candidates: indexset![0, 1],
+            candidates: Candidates(indexset![0, 1]),
             leaf: Some(0),
             children: vec![Node {
                 kind: NodeKind::Static("bar".into()),
-                candidates: indexset![1],
+                candidates: Candidates(indexset![1]),
                 leaf: Some(1),
                 children: vec![],
             }],
@@ -582,11 +668,11 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/".into()),
             leaf: None,
-            candidates: indexset![0],
+            candidates: Candidates(indexset![0]),
             children: vec![Node {
                 kind: NodeKind::Param, // ":id"
                 leaf: Some(0),
-                candidates: indexset![0],
+                candidates: Candidates(indexset![0]),
                 children: vec![],
             }],
         }
@@ -604,27 +690,27 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/files".into()),
             leaf: Some(0),
-            candidates: indexset![0, 1, 2, 3, 4],
+            candidates: Candidates(indexset![0, 1, 2, 3, 4]),
             children: vec![Node {
                 kind: NodeKind::Static("/".into()),
                 leaf: None,
-                candidates: indexset![1, 2, 3, 4],
+                candidates: Candidates(indexset![1, 2, 3, 4]),
                 children: vec![Node {
                     kind: NodeKind::Param, // ":name"
                     leaf: Some(2),
-                    candidates: indexset![1, 2, 3, 4],
+                    candidates: Candidates(indexset![1, 2, 3, 4]),
                     children: vec![Node {
                         kind: NodeKind::Static("/likes/".into()),
                         leaf: Some(1),
-                        candidates: indexset![1, 3, 4],
+                        candidates: Candidates(indexset![1, 3, 4]),
                         children: vec![Node {
                             kind: NodeKind::Param, // ":id"
                             leaf: Some(4),
-                            candidates: indexset![3, 4],
+                            candidates: Candidates(indexset![3, 4]),
                             children: vec![Node {
                                 kind: NodeKind::Static("/".into()),
                                 leaf: Some(3),
-                                candidates: indexset![3],
+                                candidates: Candidates(indexset![3]),
                                 children: vec![],
                             }],
                         }],
@@ -640,11 +726,11 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/".into()),
             leaf: None,
-            candidates: indexset![0],
+            candidates: Candidates(indexset![0]),
             children: vec![Node {
                 kind: NodeKind::CatchAll, // "*path"
                 leaf: Some(0),
-                candidates: indexset![0],
+                candidates: Candidates(indexset![0]),
                 children: vec![],
             }],
         }
@@ -656,15 +742,15 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/files".into()),
             leaf: Some(0),
-            candidates: indexset![0, 1],
+            candidates: Candidates(indexset![0, 1]),
             children: vec![Node {
                 kind: NodeKind::Static("/".into()),
                 leaf: None,
-                candidates: indexset![1],
+                candidates: Candidates(indexset![1]),
                 children: vec![Node {
                     kind: NodeKind::CatchAll, // "*path"
                     leaf: Some(1),
-                    candidates: indexset![1],
+                    candidates: Candidates(indexset![1]),
                     children: vec![],
                 }],
             }],

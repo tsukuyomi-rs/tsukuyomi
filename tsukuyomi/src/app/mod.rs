@@ -114,8 +114,8 @@ impl AppData {
 
     fn recognize(&self, path: &str, method: &Method) -> Recognize<'_> {
         let (i, captures) = match self.recognizer.recognize(path) {
-            Some(result) => result,
-            None => return Recognize::NotFound,
+            Ok((i, captures)) => (i, captures),
+            Err(..) => return Recognize::NotFound,
         };
 
         let (_, endpoint) = &self
