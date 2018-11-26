@@ -2,6 +2,7 @@
 
 use {
     failure::Error,
+    indexmap::{indexset, IndexSet},
     std::{
         cmp::{self, Ordering},
         fmt, mem,
@@ -90,6 +91,7 @@ impl fmt::Debug for NodeKind {
 #[derive(Debug, PartialEq)]
 struct Node {
     kind: NodeKind,
+    candidates: IndexSet<usize>,
     leaf: Option<usize>,
     children: Vec<Node>,
 }
@@ -115,12 +117,15 @@ impl Node {
                     };
                     let child = Self {
                         kind: NodeKind::Static(p2),
+                        candidates: n.candidates.clone(),
                         leaf: n.leaf.take(),
                         children: mem::replace(&mut n.children, vec![]),
                     };
                     n.kind = NodeKind::Static(p1);
                     n.children.push(child);
                 }
+
+                n.candidates.insert(value);
 
                 offset += i;
                 if offset == path.len() {
@@ -145,6 +150,7 @@ impl Node {
                         failure::bail!("A static node has already inserted at wildcard position.");
                     }
 
+                    n.candidates.insert(value);
                     n = &mut { n }.children[0];
                     let end = find_wildcard_end(path, offset)?;
                     if end == path.len() {
@@ -170,6 +176,7 @@ impl Node {
                         }
                     }
                     if let Some(pos) = ch_pos {
+                        n.candidates.insert(value);
                         n = &mut { n }.children[pos];
                         continue 'walk;
                     }
@@ -178,11 +185,13 @@ impl Node {
                     let pos = find_wildcard_begin(path, offset);
                     let mut ch = Self {
                         kind: NodeKind::Static(path[offset..pos].to_owned()),
+                        candidates: indexset![value],
                         leaf: None,
                         children: vec![],
                     };
                     ch.insert_child(&path[pos..], value)?;
                     n.children.push(ch);
+                    n.candidates.insert(value);
 
                     return Ok(());
                 }
@@ -195,6 +204,7 @@ impl Node {
         }
 
         n.set_leaf(value)?;
+        n.candidates.insert(value);
         Ok(())
     }
 
@@ -211,6 +221,7 @@ impl Node {
                     b'*' => NodeKind::CatchAll,
                     c => failure::bail!("unexpected parameter type: '{}'", c),
                 },
+                candidates: indexset![value],
                 leaf: None,
                 children: vec![],
             });
@@ -223,6 +234,7 @@ impl Node {
                 n.children.push(Self {
                     kind: NodeKind::Static(path[pos..index].into()),
                     leaf: None,
+                    candidates: indexset![value],
                     children: vec![],
                 });
                 n = { n }.children.iter_mut().last().unwrap();
@@ -309,6 +321,7 @@ impl Tree {
         self.root
             .get_or_insert(Node {
                 kind: NodeKind::Static(path[..pos].into()),
+                candidates: indexset![index],
                 leaf: None,
                 children: vec![],
             }).insert_child(&path[pos..], index)?;
@@ -485,7 +498,10 @@ mod tests {
 
 #[cfg(test)]
 mod tests_tree {
-    use super::{Node, NodeKind, Tree};
+    use {
+        super::{Node, NodeKind, Tree},
+        indexmap::indexset,
+    };
 
     macro_rules! t {
         ($test:ident, [$($path:expr),*], $expected:expr) => {
@@ -514,6 +530,7 @@ mod tests_tree {
         ["/foo"],
         Node {
             kind: NodeKind::Static("/foo".into()),
+            candidates: indexset![0],
             leaf: Some(0),
             children: vec![],
         }
@@ -524,15 +541,18 @@ mod tests_tree {
         ["/foo", "/bar"],
         Node {
             kind: NodeKind::Static("/".into()),
+            candidates: indexset![0, 1],
             leaf: None,
             children: vec![
                 Node {
                     kind: NodeKind::Static("foo".into()),
+                    candidates: indexset![0],
                     leaf: Some(0),
                     children: vec![],
                 },
                 Node {
                     kind: NodeKind::Static("bar".into()),
+                    candidates: indexset![1],
                     leaf: Some(1),
                     children: vec![],
                 },
@@ -545,9 +565,11 @@ mod tests_tree {
         ["/foo", "/foobar"],
         Node {
             kind: NodeKind::Static("/foo".into()),
+            candidates: indexset![0, 1],
             leaf: Some(0),
             children: vec![Node {
                 kind: NodeKind::Static("bar".into()),
+                candidates: indexset![1],
                 leaf: Some(1),
                 children: vec![],
             }],
@@ -560,9 +582,11 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/".into()),
             leaf: None,
+            candidates: indexset![0],
             children: vec![Node {
                 kind: NodeKind::Param, // ":id"
                 leaf: Some(0),
+                candidates: indexset![0],
                 children: vec![],
             }],
         }
@@ -580,21 +604,27 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/files".into()),
             leaf: Some(0),
+            candidates: indexset![0, 1, 2, 3, 4],
             children: vec![Node {
                 kind: NodeKind::Static("/".into()),
                 leaf: None,
+                candidates: indexset![1, 2, 3, 4],
                 children: vec![Node {
                     kind: NodeKind::Param, // ":name"
                     leaf: Some(2),
+                    candidates: indexset![1, 2, 3, 4],
                     children: vec![Node {
                         kind: NodeKind::Static("/likes/".into()),
                         leaf: Some(1),
+                        candidates: indexset![1, 3, 4],
                         children: vec![Node {
                             kind: NodeKind::Param, // ":id"
                             leaf: Some(4),
+                            candidates: indexset![3, 4],
                             children: vec![Node {
                                 kind: NodeKind::Static("/".into()),
                                 leaf: Some(3),
+                                candidates: indexset![3],
                                 children: vec![],
                             }],
                         }],
@@ -610,9 +640,11 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/".into()),
             leaf: None,
+            candidates: indexset![0],
             children: vec![Node {
                 kind: NodeKind::CatchAll, // "*path"
                 leaf: Some(0),
+                candidates: indexset![0],
                 children: vec![],
             }],
         }
@@ -624,12 +656,15 @@ mod tests_tree {
         Node {
             kind: NodeKind::Static("/files".into()),
             leaf: Some(0),
+            candidates: indexset![0, 1],
             children: vec![Node {
                 kind: NodeKind::Static("/".into()),
                 leaf: None,
+                candidates: indexset![1],
                 children: vec![Node {
                     kind: NodeKind::CatchAll, // "*path"
                     leaf: Some(1),
+                    candidates: indexset![1],
                     children: vec![],
                 }],
             }],
