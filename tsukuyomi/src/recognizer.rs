@@ -1,9 +1,11 @@
 //! The implementation of route recognizer.
 
 use {
-    crate::uri::{TryIntoUri, Uri},
     failure::Error,
-    std::{cmp, fmt, mem},
+    std::{
+        cmp::{self, Ordering},
+        fmt, mem,
+    },
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -25,32 +27,29 @@ impl Captures {
 /// A route recognizer.
 #[derive(Debug, Default)]
 pub struct Recognizer {
+    paths: Vec<String>,
     tree: Tree,
     asterisk: Option<usize>,
-    uris: Vec<Uri>,
 }
 
 impl Recognizer {
     /// Add a path to this builder with a value of `T`.
-    pub fn add_route<T>(&mut self, uri: T) -> Result<(), Error>
-    where
-        T: TryIntoUri,
-    {
-        let uri = uri.try_into_uri().map_err(Into::<Error>::into)?;
-        if !uri.as_str().is_ascii() {
+    pub fn add_path(&mut self, path: &str) -> Result<(), Error> {
+        if !path.is_ascii() {
             failure::bail!("The path must be a sequence of ASCII characters");
         }
 
-        if uri.is_asterisk() {
+        if path == "*" {
             if self.asterisk.is_some() {
                 failure::bail!("the asterisk URI has already set");
             }
-            self.asterisk = Some(self.uris.len());
+            self.asterisk = Some(self.paths.len());
         } else {
-            self.tree.insert(uri.as_str(), self.uris.len())?;
+            self.tree.insert(path.as_ref(), self.paths.len())?;
         }
 
-        self.uris.push(uri);
+        self.paths.push(path.into());
+
         Ok(())
     }
 
@@ -62,69 +61,65 @@ impl Recognizer {
         if path == "*" {
             self.asterisk.map(|pos| (pos, None))
         } else {
-            self.tree.recognize(path)
+            self.tree.recognize(path.as_ref())
         }
     }
 }
 
 #[derive(Clone, PartialEq)]
-enum PathKind {
-    Segment(Vec<u8>),
+enum NodeKind {
+    Static(Vec<u8>),
     Param,
     CatchAll,
 }
 
 #[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for PathKind {
+impl fmt::Debug for NodeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PathKind::Segment(ref s) => f
-                .debug_tuple("Segment")
+            NodeKind::Static(ref s) => f
+                .debug_tuple("Static")
                 .field(&String::from_utf8_lossy(s))
                 .finish(),
-            PathKind::Param => f.debug_tuple("Param").finish(),
-            PathKind::CatchAll => f.debug_tuple("CatchAll").finish(),
+            NodeKind::Param => f.debug_tuple("Param").finish(),
+            NodeKind::CatchAll => f.debug_tuple("CatchAll").finish(),
         }
-    }
-}
-
-impl PathKind {
-    fn segment(path: impl Into<Vec<u8>>) -> Self {
-        PathKind::Segment(path.into())
     }
 }
 
 #[derive(Debug, PartialEq)]
 struct Node {
-    path: PathKind,
+    kind: NodeKind,
     leaf: Option<usize>,
     children: Vec<Node>,
 }
 
 impl Node {
-    fn new(path: PathKind) -> Self {
-        Self {
-            path,
-            leaf: None,
-            children: vec![],
-        }
-    }
-
     fn add_path(&mut self, path: &[u8], value: usize) -> Result<(), Error> {
         let mut n = self;
         let mut offset = 0;
 
         'walk: loop {
-            let pos = if let PathKind::Segment(ref s) = n.path {
+            let pos = if let NodeKind::Static(ref s) = n.kind {
                 // Find the longest common prefix
-                Some((lcp(&path[offset..], &s[..]), s.len()))
+                Some((longest_common_prefix(&path[offset..], &s[..]), s.len()))
             } else {
                 None
             };
             if let Some((i, s_len)) = pos {
                 // split the current segment and create a new node.
                 if i < s_len {
-                    n.split_edge(i);
+                    let (p1, p2) = match n.kind {
+                        NodeKind::Static(ref s) => (s[..i].to_owned(), s[i..].to_owned()),
+                        _ => panic!("unexpected condition"),
+                    };
+                    let child = Self {
+                        kind: NodeKind::Static(p2),
+                        leaf: n.leaf.take(),
+                        children: mem::replace(&mut n.children, vec![]),
+                    };
+                    n.kind = NodeKind::Static(p1);
+                    n.children.push(child);
                 }
 
                 offset += i;
@@ -143,7 +138,10 @@ impl Node {
                 Some(b'*') if n.children.is_empty() => failure::bail!("'catch-all' conflict"),
 
                 Some(b':') | Some(b'*') => {
-                    if n.children.iter().any(|ch| !ch.is_wildcard()) {
+                    if n.children.iter().any(|ch| match ch.kind {
+                        NodeKind::Static(..) => true,
+                        _ => false,
+                    }) {
                         failure::bail!("A static node has already inserted at wildcard position.");
                     }
 
@@ -156,12 +154,22 @@ impl Node {
                 }
 
                 Some(&c) => {
-                    if n.children.iter().any(|ch| ch.is_wildcard()) {
-                        failure::bail!("A wildcard node has already inserted.");
-                    }
-
                     // Check if a child with the next path byte exists
-                    if let Some(pos) = n.find_child_position(c, true) {
+                    let mut ch_pos = None;
+                    for (i, ch) in n.children.iter().enumerate() {
+                        match ch.kind {
+                            NodeKind::Static(ref s) => {
+                                if s[0] == c {
+                                    ch_pos = Some(i);
+                                    break;
+                                }
+                            }
+                            NodeKind::Param | NodeKind::CatchAll => {
+                                failure::bail!("A wildcard node has already inserted.")
+                            }
+                        }
+                    }
+                    if let Some(pos) = ch_pos {
                         n = &mut { n }.children[pos];
                         continue 'walk;
                     }
@@ -169,7 +177,7 @@ impl Node {
                     // Otherwise, insert a new child node from remaining path.
                     let pos = find_wildcard_begin(path, offset);
                     let mut ch = Self {
-                        path: PathKind::Segment(path[offset..pos].to_owned()),
+                        kind: NodeKind::Static(path[offset..pos].to_owned()),
                         leaf: None,
                         children: vec![],
                     };
@@ -182,15 +190,11 @@ impl Node {
             }
         }
 
-        if n.children.iter().any(|ch| ch.path == PathKind::CatchAll) {
+        if n.children.iter().any(|ch| ch.kind == NodeKind::CatchAll) {
             failure::bail!("catch-all conflict");
         }
 
-        if n.leaf.is_some() {
-            failure::bail!("normal path conflict");
-        }
-        n.leaf = Some(value);
-
+        n.set_leaf(value)?;
         Ok(())
     }
 
@@ -201,27 +205,32 @@ impl Node {
         while pos < path.len() {
             // Insert a wildcard node
             let i = find_wildcard_end(path, pos)?;
-            let path_kind = match path[pos] {
-                b':' => PathKind::Param,
-                b'*' => PathKind::CatchAll,
-                c => failure::bail!("unexpected parameter type: '{}'", c),
-            };
-            n = { n }.add_child(path_kind)?;
+            n.children.push(Self {
+                kind: match path[pos] {
+                    b':' => NodeKind::Param,
+                    b'*' => NodeKind::CatchAll,
+                    c => failure::bail!("unexpected parameter type: '{}'", c),
+                },
+                leaf: None,
+                children: vec![],
+            });
+            n = { n }.children.iter_mut().last().unwrap();
             pos = i;
 
             // Insert a normal node
             if pos < path.len() {
                 let index = find_wildcard_begin(path, pos);
-                n = { n }.add_child(PathKind::segment(&path[pos..index]))?;
+                n.children.push(Self {
+                    kind: NodeKind::Static(path[pos..index].into()),
+                    leaf: None,
+                    children: vec![],
+                });
+                n = { n }.children.iter_mut().last().unwrap();
                 pos = index;
             }
         }
 
-        if n.leaf.is_some() {
-            failure::bail!("normal path conflict");
-        }
-        n.leaf = Some(value);
-
+        n.set_leaf(value).expect("the leaf should be empty");
         Ok(())
     }
 
@@ -230,36 +239,23 @@ impl Node {
         let mut n = self;
 
         loop {
-            if let PathKind::Segment(ref s) = n.path {
-                if offset + s.len() >= path.len() {
-                    if s[..] != path[offset..] {
-                        return None;
-                    }
-                    return match (n.leaf, n.children.get(0)) {
-                        (Some(i), _) => Some(i),
-                        (None, Some(ch)) if ch.path == PathKind::CatchAll => {
-                            captures.get_or_insert_with(Default::default).wildcard =
-                                Some((path.len(), path.len()));
-                            ch.leaf
+            log::trace!("n = {:?}", n);
+            log::trace!("captures = {:?}", captures);
+            log::trace!("offset = {}", offset);
+
+            match n.kind {
+                NodeKind::Static(ref s) => match compare_length(&s[..], &path[offset..]) {
+                    Ordering::Less if path[offset..].starts_with(&s[..]) => offset += s.len(),
+                    Ordering::Greater if s[..].starts_with(&path[offset..]) => offset = path.len(),
+                    Ordering::Equal if s[..] == path[offset..] => {
+                        offset = path.len();
+                        if let Some(i) = n.leaf {
+                            return Some(i);
                         }
-                        _ => None,
-                    };
-                }
-
-                if path[offset..offset + s.len()] != s[..] {
-                    return None;
-                }
-
-                offset += s.len();
-            } else {
-                panic!("unexpected condition");
-            }
-
-            let pos = n.find_child_position(path[offset], false)?;
-            n = &n.children[pos];
-            match n.path {
-                PathKind::Segment(..) => {}
-                PathKind::Param => {
+                    }
+                    _ => return None,
+                },
+                NodeKind::Param => {
                     let span = path[offset..]
                         .into_iter()
                         .position(|&b| b == b'/')
@@ -269,59 +265,31 @@ impl Node {
                         .params
                         .push((offset, offset + span));
                     offset += span;
+
                     if offset >= path.len() {
                         return n.leaf;
                     }
-
-                    if n.children.is_empty() {
-                        return None;
-                    }
-                    n = &n.children[0];
                 }
-                PathKind::CatchAll => {
+                NodeKind::CatchAll => {
                     captures.get_or_insert_with(Default::default).wildcard =
                         Some((offset, path.len()));
                     return n.leaf;
                 }
             }
+
+            n = n.children.iter().find(|ch| match ch.kind {
+                NodeKind::Static(ref s) => s[0] == path[offset],
+                NodeKind::Param | NodeKind::CatchAll => true,
+            })?;
         }
     }
 
-    fn add_child(&mut self, path: PathKind) -> Result<&mut Self, Error> {
-        self.children.push(Self::new(path));
-        Ok(self.children.iter_mut().last().unwrap())
-    }
-
-    fn split_edge(&mut self, i: usize) {
-        let (p1, p2) = match self.path {
-            PathKind::Segment(ref s) => (s[..i].to_owned(), s[i..].to_owned()),
-            _ => panic!("unexpected condition"),
-        };
-        let child = Self {
-            path: PathKind::Segment(p2),
-            leaf: self.leaf.take(),
-            children: mem::replace(&mut self.children, vec![]),
-        };
-        self.path = PathKind::Segment(p1);
-        self.children.push(child);
-    }
-
-    fn is_wildcard(&self) -> bool {
-        match self.path {
-            PathKind::Param | PathKind::CatchAll => true,
-            _ => false,
+    fn set_leaf(&mut self, value: usize) -> Result<(), Error> {
+        if self.leaf.is_some() {
+            failure::bail!("normal path conflict");
         }
-    }
-
-    fn find_child_position(&self, c: u8, ignore_wildcard: bool) -> Option<usize> {
-        for (pos, ch) in self.children.iter().enumerate() {
-            match ch.path {
-                PathKind::Segment(ref s) if s[0] == c => return Some(pos),
-                PathKind::Param | PathKind::CatchAll if !ignore_wildcard => return Some(pos),
-                _ => {}
-            }
-        }
-        None
+        self.leaf = Some(value);
+        Ok(())
     }
 }
 
@@ -331,9 +299,7 @@ struct Tree {
 }
 
 impl Tree {
-    fn insert(&mut self, path: impl AsRef<[u8]>, index: usize) -> Result<(), Error> {
-        let path = path.as_ref();
-
+    fn insert(&mut self, path: &[u8], index: usize) -> Result<(), Error> {
         if let Some(ref mut root) = self.root {
             root.add_path(path, index)?;
             return Ok(());
@@ -341,13 +307,16 @@ impl Tree {
 
         let pos = find_wildcard_begin(path, 0);
         self.root
-            .get_or_insert(Node::new(PathKind::Segment(path[..pos].into())))
-            .insert_child(&path[pos..], index)?;
+            .get_or_insert(Node {
+                kind: NodeKind::Static(path[..pos].into()),
+                leaf: None,
+                children: vec![],
+            }).insert_child(&path[pos..], index)?;
 
         Ok(())
     }
 
-    fn recognize(&self, path: impl AsRef<[u8]>) -> Option<(usize, Option<Captures>)> {
+    fn recognize(&self, path: &[u8]) -> Option<(usize, Option<Captures>)> {
         let mut captures = None;
         let i = self
             .root
@@ -358,11 +327,15 @@ impl Tree {
 }
 
 /// Calculate the endpoint of longest common prefix between the two slices.
-fn lcp(s1: &[u8], s2: &[u8]) -> usize {
+fn longest_common_prefix(s1: &[u8], s2: &[u8]) -> usize {
     s1.into_iter()
         .zip(s2.into_iter())
         .position(|(s1, s2)| s1 != s2)
         .unwrap_or_else(|| cmp::min(s1.len(), s2.len()))
+}
+
+fn compare_length<T>(s1: &[T], s2: &[T]) -> Ordering {
+    s1.len().cmp(&s2.len())
 }
 
 fn find_wildcard_begin(path: &[u8], offset: usize) -> usize {
@@ -402,7 +375,7 @@ mod tests {
     #[test]
     fn case1_empty() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/").unwrap();
+        recognizer.add_path("/").unwrap();
 
         assert_eq!(recognizer.recognize("/"), Some((0, None,)));
     }
@@ -410,7 +383,7 @@ mod tests {
     #[test]
     fn case2_multi_param() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/files/:name/:id").unwrap();
+        recognizer.add_path("/files/:name/:id").unwrap();
 
         assert_eq!(
             recognizer.recognize("/files/readme/0"),
@@ -427,7 +400,7 @@ mod tests {
     #[test]
     fn case3_wildcard_root() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/*path").unwrap();
+        recognizer.add_path("/*path").unwrap();
 
         assert_eq!(
             recognizer.recognize("/path/to/readme.txt"),
@@ -444,7 +417,7 @@ mod tests {
     #[test]
     fn case4_wildcard_subdir() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/path/to/*path").unwrap();
+        recognizer.add_path("/path/to/*path").unwrap();
 
         assert_eq!(
             recognizer.recognize("/path/to/readme.txt"),
@@ -461,7 +434,7 @@ mod tests {
     #[test]
     fn case5_wildcard_empty_root() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/*path").unwrap();
+        recognizer.add_path("/*path").unwrap();
 
         assert_eq!(
             recognizer.recognize("/"),
@@ -478,7 +451,7 @@ mod tests {
     #[test]
     fn case6_wildcard_empty_subdir() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/path/to/*path").unwrap();
+        recognizer.add_path("/path/to/*path").unwrap();
 
         assert_eq!(
             recognizer.recognize("/path/to/"),
@@ -495,7 +468,7 @@ mod tests {
     #[test]
     fn case7_wildcard_empty_with_param() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_route("/path/to/:id/*path").unwrap();
+        recognizer.add_path("/path/to/:id/*path").unwrap();
 
         assert_eq!(
             recognizer.recognize("/path/to/10/"),
@@ -512,7 +485,7 @@ mod tests {
 
 #[cfg(test)]
 mod tests_tree {
-    use super::{Node, PathKind, Tree};
+    use super::{Node, NodeKind, Tree};
 
     macro_rules! t {
         ($test:ident, [$($path:expr),*], $expected:expr) => {
@@ -540,7 +513,7 @@ mod tests_tree {
         case1,
         ["/foo"],
         Node {
-            path: PathKind::segment("/foo"),
+            kind: NodeKind::Static("/foo".into()),
             leaf: Some(0),
             children: vec![],
         }
@@ -550,16 +523,16 @@ mod tests_tree {
         case2,
         ["/foo", "/bar"],
         Node {
-            path: PathKind::segment("/"),
+            kind: NodeKind::Static("/".into()),
             leaf: None,
             children: vec![
                 Node {
-                    path: PathKind::segment("foo"),
+                    kind: NodeKind::Static("foo".into()),
                     leaf: Some(0),
                     children: vec![],
                 },
                 Node {
-                    path: PathKind::segment("bar"),
+                    kind: NodeKind::Static("bar".into()),
                     leaf: Some(1),
                     children: vec![],
                 },
@@ -571,10 +544,10 @@ mod tests_tree {
         case3,
         ["/foo", "/foobar"],
         Node {
-            path: PathKind::segment("/foo"),
+            kind: NodeKind::Static("/foo".into()),
             leaf: Some(0),
             children: vec![Node {
-                path: PathKind::segment("bar"),
+                kind: NodeKind::Static("bar".into()),
                 leaf: Some(1),
                 children: vec![],
             }],
@@ -585,10 +558,10 @@ mod tests_tree {
         param_case1,
         ["/:id"],
         Node {
-            path: PathKind::segment("/"),
+            kind: NodeKind::Static("/".into()),
             leaf: None,
             children: vec![Node {
-                path: PathKind::Param, // ":id"
+                kind: NodeKind::Param, // ":id"
                 leaf: Some(0),
                 children: vec![],
             }],
@@ -605,22 +578,22 @@ mod tests_tree {
             "/files/:name/likes/:id",
         ],
         Node {
-            path: PathKind::segment("/files"),
+            kind: NodeKind::Static("/files".into()),
             leaf: Some(0),
             children: vec![Node {
-                path: PathKind::segment("/"),
+                kind: NodeKind::Static("/".into()),
                 leaf: None,
                 children: vec![Node {
-                    path: PathKind::Param, // ":name"
+                    kind: NodeKind::Param, // ":name"
                     leaf: Some(2),
                     children: vec![Node {
-                        path: PathKind::segment("/likes/"),
+                        kind: NodeKind::Static("/likes/".into()),
                         leaf: Some(1),
                         children: vec![Node {
-                            path: PathKind::Param, // ":id"
+                            kind: NodeKind::Param, // ":id"
                             leaf: Some(4),
                             children: vec![Node {
-                                path: PathKind::segment("/"),
+                                kind: NodeKind::Static("/".into()),
                                 leaf: Some(3),
                                 children: vec![],
                             }],
@@ -635,10 +608,10 @@ mod tests_tree {
         catch_all_case1,
         ["/*path"],
         Node {
-            path: PathKind::segment("/"),
+            kind: NodeKind::Static("/".into()),
             leaf: None,
             children: vec![Node {
-                path: PathKind::CatchAll, // "*path"
+                kind: NodeKind::CatchAll, // "*path"
                 leaf: Some(0),
                 children: vec![],
             }],
@@ -649,13 +622,13 @@ mod tests_tree {
         catch_all_case2,
         ["/files", "/files/*path"],
         Node {
-            path: PathKind::segment("/files"),
+            kind: NodeKind::Static("/files".into()),
             leaf: Some(0),
             children: vec![Node {
-                path: PathKind::segment("/"),
+                kind: NodeKind::Static("/".into()),
                 leaf: None,
                 children: vec![Node {
-                    path: PathKind::CatchAll, // "*path"
+                    kind: NodeKind::CatchAll, // "*path"
                     leaf: Some(1),
                     children: vec![],
                 }],

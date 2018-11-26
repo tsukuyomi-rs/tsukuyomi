@@ -160,7 +160,7 @@ fn build(scope: impl Scope, config: Config) -> Result<App> {
     // create a route recognizer.
     let mut recognizer = Recognizer::default();
     for uri in endpoints.keys().cloned() {
-        recognizer.add_route(uri)?;
+        recognizer.add_path(uri.as_str())?;
     }
 
     for endpoint in endpoints.values_mut() {
