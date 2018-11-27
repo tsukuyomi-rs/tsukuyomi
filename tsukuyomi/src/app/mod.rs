@@ -146,8 +146,9 @@ impl AppData {
     }
 
     fn recognize(&self, path: &str, method: &Method) -> Recognize<'_> {
-        let (i, captures) = match self.recognizer.recognize(path) {
-            Ok((i, captures)) => (i, captures),
+        let mut captures = None;
+        let i = match self.recognizer.recognize(path, &mut captures) {
+            Ok(i) => i,
             Err(RecognizeError::NotMatched) => return Recognize::NotFound(ScopeId::Global),
             Err(RecognizeError::PartiallyMatched(candidates)) => {
                 return Recognize::NotFound(

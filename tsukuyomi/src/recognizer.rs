@@ -38,14 +38,6 @@ impl Candidates {
     }
 }
 
-pub type Recognize<'a> = Result<(usize, Option<Captures>), RecognizeError<'a>>;
-
-#[derive(Debug, PartialEq)]
-pub enum RecognizeError<'a> {
-    NotMatched,
-    PartiallyMatched(&'a Candidates),
-}
-
 /// A route recognizer.
 #[derive(Debug, Default)]
 pub struct Recognizer {
@@ -67,7 +59,11 @@ impl Recognizer {
             }
             self.asterisk = Some(self.paths.len());
         } else {
-            self.tree.insert(path.as_ref(), self.paths.len())?;
+            InsertContext {
+                path: path.as_ref(),
+                index: self.paths.len(),
+            } //
+            .visit_tree(&mut self.tree)?;
         }
 
         self.paths.push(path.into());
@@ -79,16 +75,15 @@ impl Recognizer {
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub fn recognize(&self, path: &str) -> Recognize<'_> {
+    pub fn recognize(&self, path: &str, captures: &mut Option<Captures>) -> Recognize<'_> {
         if path == "*" {
-            self.asterisk
-                .map(|pos| (pos, None))
-                .ok_or_else(|| RecognizeError::NotMatched)
+            self.asterisk.ok_or_else(|| RecognizeError::NotMatched)
         } else {
-            let mut captures = None;
-            self.tree
-                .recognize(path.as_ref(), &mut captures)
-                .map(|i| (i, captures))
+            RecognizeContext {
+                path: path.as_ref(),
+                captures,
+            } //
+            .visit_tree(&self.tree)
         }
     }
 }
@@ -122,15 +117,24 @@ struct Node {
     children: Vec<Node>,
 }
 
-impl Node {
-    fn add_path(&mut self, path: &[u8], value: usize) -> Result<(), Error> {
-        let mut n = self;
-        let mut offset = 0;
+#[derive(Debug, Default)]
+struct Tree {
+    root: Option<Node>,
+}
 
+#[derive(Debug)]
+struct InsertContext<'a> {
+    path: &'a [u8],
+    index: usize,
+}
+
+impl<'a> InsertContext<'a> {
+    fn add_path(&self, mut n: &mut Node) -> Result<(), Error> {
+        let mut offset = 0;
         'walk: loop {
             let pos = if let NodeKind::Static(ref s) = n.kind {
                 // Find the longest common prefix
-                Some((longest_common_prefix(&path[offset..], &s[..]), s.len()))
+                Some((longest_common_prefix(&self.path[offset..], &s[..]), s.len()))
             } else {
                 None
             };
@@ -141,7 +145,7 @@ impl Node {
                         NodeKind::Static(ref s) => (s[..i].to_owned(), s[i..].to_owned()),
                         _ => panic!("unexpected condition"),
                     };
-                    let child = Self {
+                    let child = Node {
                         kind: NodeKind::Static(p2),
                         candidates: n.candidates.clone(),
                         leaf: n.leaf.take(),
@@ -151,18 +155,18 @@ impl Node {
                     n.children.push(child);
                 }
 
-                n.candidates.insert(value);
+                n.candidates.insert(self.index);
 
                 offset += i;
-                if offset == path.len() {
+                if offset == self.path.len() {
                     break 'walk;
                 }
             }
 
             // Insert the remaing path into the set of children.
-            match path.get(offset) {
+            match self.path.get(offset) {
                 Some(b':') if n.children.is_empty() => {
-                    n.insert_child(&path[offset..], value)?;
+                    self.insert_child(n, offset)?;
                     return Ok(());
                 }
 
@@ -176,10 +180,10 @@ impl Node {
                         failure::bail!("A static node has already inserted at wildcard position.");
                     }
 
-                    n.candidates.insert(value);
+                    n.candidates.insert(self.index);
                     n = &mut { n }.children[0];
-                    let end = find_wildcard_end(path, offset)?;
-                    if end == path.len() {
+                    let end = find_wildcard_end(self.path, offset)?;
+                    if end == self.path.len() {
                         break 'walk;
                     }
                     offset = end;
@@ -202,22 +206,17 @@ impl Node {
                         }
                     }
                     if let Some(pos) = ch_pos {
-                        n.candidates.insert(value);
+                        n.candidates.insert(self.index);
                         n = &mut { n }.children[pos];
                         continue 'walk;
                     }
 
                     // Otherwise, insert a new child node from remaining path.
-                    let pos = find_wildcard_begin(path, offset);
-                    let mut ch = Self {
-                        kind: NodeKind::Static(path[offset..pos].to_owned()),
-                        candidates: Candidates(indexset![value]),
-                        leaf: None,
-                        children: vec![],
-                    };
-                    ch.insert_child(&path[pos..], value)?;
+                    let pos = find_wildcard_begin(self.path, offset);
+                    let mut ch = self.new_node(NodeKind::Static(self.path[offset..pos].to_owned()));
+                    self.insert_child(&mut ch, pos)?;
                     n.children.push(ch);
-                    n.candidates.insert(value);
+                    n.candidates.insert(self.index);
 
                     return Ok(());
                 }
@@ -229,68 +228,100 @@ impl Node {
             failure::bail!("catch-all conflict");
         }
 
-        n.set_leaf(value)?;
-        n.candidates.insert(value);
+        self.set_leaf(n)?;
+        n.candidates.insert(self.index);
         Ok(())
     }
 
-    fn insert_child(&mut self, path: &[u8], value: usize) -> Result<(), Error> {
+    fn insert_child(&self, mut n: &mut Node, offset: usize) -> Result<(), Error> {
+        let path = &self.path[offset..];
         let mut pos = 0;
-        let mut n = self;
 
         while pos < path.len() {
             // Insert a wildcard node
             let i = find_wildcard_end(path, pos)?;
-            n.children.push(Self {
-                kind: match path[pos] {
-                    b':' => NodeKind::Param,
-                    b'*' => NodeKind::CatchAll,
-                    c => failure::bail!("unexpected parameter type: '{}'", c),
-                },
-                candidates: Candidates(indexset![value]),
-                leaf: None,
-                children: vec![],
-            });
+            n.children.push(self.new_node(match path[pos] {
+                b':' => NodeKind::Param,
+                b'*' => NodeKind::CatchAll,
+                c => failure::bail!("unexpected parameter type: '{}'", c),
+            }));
             n = { n }.children.iter_mut().last().unwrap();
             pos = i;
 
             // Insert a normal node
             if pos < path.len() {
                 let index = find_wildcard_begin(path, pos);
-                n.children.push(Self {
-                    kind: NodeKind::Static(path[pos..index].into()),
-                    leaf: None,
-                    candidates: Candidates(indexset![value]),
-                    children: vec![],
-                });
+                n.children
+                    .push(self.new_node(NodeKind::Static(path[pos..index].into())));
                 n = { n }.children.iter_mut().last().unwrap();
                 pos = index;
             }
         }
 
-        n.set_leaf(value).expect("the leaf should be empty");
+        self.set_leaf(n).expect("the leaf should be empty");
         Ok(())
     }
 
-    fn recognize(
-        &self,
-        path: &[u8],
-        captures: &mut Option<Captures>,
-    ) -> Result<usize, RecognizeError<'_>> {
+    fn set_leaf(&self, n: &mut Node) -> Result<(), Error> {
+        if n.leaf.is_some() {
+            failure::bail!("normal path conflict");
+        }
+        n.leaf = Some(self.index);
+        Ok(())
+    }
+
+    fn new_node(&self, kind: NodeKind) -> Node {
+        Node {
+            kind,
+            candidates: Candidates(indexset![self.index]),
+            leaf: None,
+            children: vec![],
+        }
+    }
+
+    fn visit_tree(&self, tree: &mut Tree) -> Result<(), Error> {
+        if let Some(ref mut root) = tree.root {
+            return self.add_path(root);
+        }
+
+        let pos = find_wildcard_begin(self.path, 0);
+        let root = tree
+            .root
+            .get_or_insert_with(|| self.new_node(NodeKind::Static(self.path[..pos].into())));
+        self.insert_child(root, pos)?;
+
+        Ok(())
+    }
+}
+
+// ===== recognize =====
+
+pub type Recognize<'a> = Result<usize, RecognizeError<'a>>;
+
+#[derive(Debug, PartialEq)]
+pub enum RecognizeError<'a> {
+    NotMatched,
+    PartiallyMatched(&'a Candidates),
+}
+
+#[derive(Debug)]
+struct RecognizeContext<'a> {
+    path: &'a [u8],
+    captures: &'a mut Option<Captures>,
+}
+
+impl<'a> RecognizeContext<'a> {
+    fn recognize<'t>(&mut self, mut n: &'t Node) -> Recognize<'t> {
         let mut offset = 0;
-        let mut n = self;
-
         loop {
-            log::trace!("n = {:?}", n);
-            log::trace!("captures = {:?}", captures);
-            log::trace!("offset = {}", offset);
-
             match n.kind {
-                NodeKind::Static(ref s) => match compare_length(&s[..], &path[offset..]) {
-                    Ordering::Less if path[offset..].starts_with(&s[..]) => offset += s.len(),
-                    Ordering::Greater if s[..].starts_with(&path[offset..]) => offset = path.len(),
-                    Ordering::Equal if s[..] == path[offset..] => {
-                        offset = path.len();
+                NodeKind::Static(ref s) => match compare_length(&s[..], &self.path[offset..]) {
+                    Ordering::Less if self.path[offset..].starts_with(&s[..]) => offset += s.len(),
+                    Ordering::Greater if s[..].starts_with(&self.path[offset..]) => {
+                        offset = self.path.len()
+                    }
+                    Ordering::Equal if s[..] == self.path[offset..] => {
+                        offset = self.path.len();
                         if let Some(i) = n.leaf {
                             return Ok(i);
                         }
@@ -298,25 +329,25 @@ impl Node {
                     _ => return Err(RecognizeError::NotMatched),
                 },
                 NodeKind::Param => {
-                    let span = path[offset..]
+                    let span = self.path[offset..]
                         .into_iter()
                         .position(|&b| b == b'/')
-                        .unwrap_or(path.len() - offset);
-                    captures
+                        .unwrap_or(self.path.len() - offset);
+                    self.captures
                         .get_or_insert_with(Default::default)
                         .params
                         .push((offset, offset + span));
                     offset += span;
 
-                    if offset >= path.len() {
+                    if offset >= self.path.len() {
                         return n
                             .leaf //
                             .ok_or_else(|| RecognizeError::PartiallyMatched(&n.candidates));
                     }
                 }
                 NodeKind::CatchAll => {
-                    captures.get_or_insert_with(Default::default).wildcard =
-                        Some((offset, path.len()));
+                    self.captures.get_or_insert_with(Default::default).wildcard =
+                        Some((offset, self.path.len()));
                     return n
                         .leaf //
                         .ok_or_else(|| RecognizeError::PartiallyMatched(&n.candidates));
@@ -327,55 +358,19 @@ impl Node {
                 .children
                 .iter()
                 .find(|ch| match ch.kind {
-                    NodeKind::Static(ref s) => path.get(offset).map_or(false, |&c| s[0] == c),
+                    NodeKind::Static(ref s) => self.path.get(offset).map_or(false, |&c| s[0] == c),
                     NodeKind::Param | NodeKind::CatchAll => true,
                 }) //
                 .ok_or_else(|| RecognizeError::PartiallyMatched(&n.candidates))?;
         }
     }
 
-    fn set_leaf(&mut self, value: usize) -> Result<(), Error> {
-        if self.leaf.is_some() {
-            failure::bail!("normal path conflict");
-        }
-        self.leaf = Some(value);
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default)]
-struct Tree {
-    root: Option<Node>,
-}
-
-impl Tree {
-    fn insert(&mut self, path: &[u8], index: usize) -> Result<(), Error> {
-        if let Some(ref mut root) = self.root {
-            root.add_path(path, index)?;
-            return Ok(());
-        }
-
-        let pos = find_wildcard_begin(path, 0);
-        self.root
-            .get_or_insert(Node {
-                kind: NodeKind::Static(path[..pos].into()),
-                candidates: Candidates(indexset![index]),
-                leaf: None,
-                children: vec![],
-            }).insert_child(&path[pos..], index)?;
-
-        Ok(())
-    }
-
-    fn recognize(
-        &self,
-        path: &[u8],
-        captures: &mut Option<Captures>,
-    ) -> Result<usize, RecognizeError<'_>> {
-        self.root
+    fn visit_tree<'t>(&mut self, tree: &'t Tree) -> Result<usize, RecognizeError<'t>> {
+        let root = tree
+            .root
             .as_ref()
-            .ok_or_else(|| RecognizeError::NotMatched)?
-            .recognize(path, captures)
+            .ok_or_else(|| RecognizeError::NotMatched)?;
+        self.recognize(root)
     }
 }
 
@@ -433,7 +428,9 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/").unwrap();
 
-        assert_eq!(recognizer.recognize("/"), Ok((0, None)));
+        let mut captures = None;
+        assert_eq!(recognizer.recognize("/", &mut captures), Ok(0));
+        assert_eq!(captures, None);
     }
 
     #[test]
@@ -441,15 +438,17 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/files/:name/:id").unwrap();
 
+        let mut captures = None;
         assert_eq!(
-            recognizer.recognize("/files/readme/0"),
-            Ok((
-                0,
-                Some(Captures {
-                    params: vec![(7, 13), (14, 15)],
-                    wildcard: None,
-                })
-            ))
+            recognizer.recognize("/files/readme/0", &mut captures),
+            Ok(0)
+        );
+        assert_eq!(
+            captures,
+            Some(Captures {
+                params: vec![(7, 13), (14, 15)],
+                wildcard: None,
+            })
         );
     }
 
@@ -458,15 +457,17 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/*path").unwrap();
 
+        let mut captures = None;
         assert_eq!(
-            recognizer.recognize("/path/to/readme.txt"),
-            Ok((
-                0,
-                Some(Captures {
-                    params: vec![],
-                    wildcard: Some((1, 19)),
-                })
-            ))
+            recognizer.recognize("/path/to/readme.txt", &mut captures),
+            Ok(0)
+        );
+        assert_eq!(
+            captures,
+            Some(Captures {
+                params: vec![],
+                wildcard: Some((1, 19)),
+            })
         );
     }
 
@@ -475,15 +476,17 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/path/to/*path").unwrap();
 
+        let mut captures = None;
         assert_eq!(
-            recognizer.recognize("/path/to/readme.txt"),
-            Ok((
-                0,
-                Some(Captures {
-                    params: vec![],
-                    wildcard: Some((9, 19)),
-                })
-            ))
+            recognizer.recognize("/path/to/readme.txt", &mut captures),
+            Ok(0)
+        );
+        assert_eq!(
+            captures,
+            Some(Captures {
+                params: vec![],
+                wildcard: Some((9, 19)),
+            })
         );
     }
 
@@ -492,15 +495,14 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/*path").unwrap();
 
+        let mut captures = None;
+        assert_eq!(recognizer.recognize("/", &mut captures), Ok(0));
         assert_eq!(
-            recognizer.recognize("/"),
-            Ok((
-                0,
-                Some(Captures {
-                    params: vec![],
-                    wildcard: Some((1, 1)),
-                })
-            ))
+            captures,
+            Some(Captures {
+                params: vec![],
+                wildcard: Some((1, 1)),
+            })
         );
     }
 
@@ -509,15 +511,14 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/path/to/*path").unwrap();
 
+        let mut captures = None;
+        assert_eq!(recognizer.recognize("/path/to/", &mut captures), Ok(0));
         assert_eq!(
-            recognizer.recognize("/path/to/"),
-            Ok((
-                0,
-                Some(Captures {
-                    params: vec![],
-                    wildcard: Some((9, 9)),
-                })
-            ))
+            captures,
+            Some(Captures {
+                params: vec![],
+                wildcard: Some((9, 9)),
+            })
         );
     }
 
@@ -526,15 +527,14 @@ mod tests {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/path/to/:id/*path").unwrap();
 
+        let mut captures = None;
+        assert_eq!(recognizer.recognize("/path/to/10/", &mut captures), Ok(0));
         assert_eq!(
-            recognizer.recognize("/path/to/10/"),
-            Ok((
-                0,
-                Some(Captures {
-                    params: vec![(9, 11)],
-                    wildcard: Some((12, 12)),
-                })
-            ))
+            captures,
+            Some(Captures {
+                params: vec![(9, 11)],
+                wildcard: Some((12, 12)),
+            })
         );
     }
 
@@ -546,7 +546,7 @@ mod tests {
 
         // too short path
         assert_eq!(
-            recognizer.recognize("/path/to/"),
+            recognizer.recognize("/path/to/", &mut None),
             Err(RecognizeError::PartiallyMatched(&Candidates(indexset![
                 0, 1
             ])))
@@ -554,7 +554,7 @@ mod tests {
 
         // too long path
         assert_eq!(
-            recognizer.recognize("/path/to/foo/baz"),
+            recognizer.recognize("/path/to/foo/baz", &mut None),
             Err(RecognizeError::PartiallyMatched(&Candidates(indexset![0])))
         );
     }
@@ -566,7 +566,7 @@ mod tests {
 
         // the suffix is different
         assert_eq!(
-            recognizer.recognize("/path/to/baz"),
+            recognizer.recognize("/path/to/baz", &mut None),
             Err(RecognizeError::NotMatched)
         );
     }
@@ -575,21 +575,28 @@ mod tests {
     fn case10_asterisk() {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("*").unwrap();
-        assert_eq!(recognizer.recognize("*"), Ok((0, None)));
+
+        let mut captures = None;
+        assert_eq!(recognizer.recognize("*", &mut captures), Ok(0));
+        assert_eq!(captures, None);
     }
 
     #[test]
     fn case11_no_asterisk() {
         let mut recognizer = Recognizer::default();
         recognizer.add_path("/foo").unwrap();
-        assert_eq!(recognizer.recognize("*"), Err(RecognizeError::NotMatched));
+
+        assert_eq!(
+            recognizer.recognize("*", &mut None),
+            Err(RecognizeError::NotMatched)
+        );
     }
 }
 
 #[cfg(test)]
 mod tests_tree {
     use {
-        super::{Candidates, Node, NodeKind, Tree},
+        super::{Candidates, Node, NodeKind, Recognizer},
         indexmap::indexset,
     };
 
@@ -597,11 +604,11 @@ mod tests_tree {
         ($test:ident, [$($path:expr),*], $expected:expr) => {
             #[test]
             fn $test() {
-                let mut tree = Tree::default();
-                for (i, path) in [$($path),*].iter().enumerate() {
-                    tree.insert(path.as_bytes(), i).unwrap();
+                let mut recognizer = Recognizer::default();
+                for path in &[$($path),*] {
+                    recognizer.add_path(path).unwrap();
                 }
-                assert_eq!(tree.root, Some($expected));
+                assert_eq!(recognizer.tree.root, Some($expected));
             }
         };
         ($test:ident, [$($path:expr,)+], $expected:expr) => {
@@ -611,8 +618,8 @@ mod tests_tree {
 
     #[test]
     fn case0() {
-        let tree = Tree::default();
-        assert_eq!(tree.root, None);
+        let recognizer = Recognizer::default();
+        assert_eq!(recognizer.tree.root, None);
     }
 
     t!(
@@ -763,57 +770,57 @@ mod tests_tree {
 
     #[test]
     fn failcase1() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/foo", 0).is_ok());
-        assert!(tree.insert(b"/:id", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/foo").is_ok());
+        assert!(recognizer.add_path("/:id").is_err());
     }
 
     #[test]
     fn failcase2() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/foo/", 0).is_ok());
-        assert!(tree.insert(b"/foo/*path", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/foo/").is_ok());
+        assert!(recognizer.add_path("/foo/*path").is_err());
     }
 
     #[test]
     fn failcase3() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/:id", 0).is_ok());
-        assert!(tree.insert(b"/foo", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/:id").is_ok());
+        assert!(recognizer.add_path("/foo").is_err());
     }
 
     #[test]
     fn failcase4() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/foo/*path", 0).is_ok());
-        assert!(tree.insert(b"/foo/", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/foo/*path").is_ok());
+        assert!(recognizer.add_path("/foo/").is_err());
     }
 
     #[test]
     fn failcase5() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/:id", 0).is_ok());
-        assert!(tree.insert(b"/:name", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/:id").is_ok());
+        assert!(recognizer.add_path("/:name").is_err());
     }
 
     #[test]
     fn failcase6() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/:id", 0).is_ok());
-        assert!(tree.insert(b"/*id", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/:id").is_ok());
+        assert!(recognizer.add_path("/*id").is_err());
     }
 
     #[test]
     fn failcase7() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/*id", 0).is_ok());
-        assert!(tree.insert(b"/:id", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/*id").is_ok());
+        assert!(recognizer.add_path("/:id").is_err());
     }
 
     #[test]
     fn failcase8() {
-        let mut tree = Tree::default();
-        assert!(tree.insert(b"/path/to", 0).is_ok());
-        assert!(tree.insert(b"/path/to", 1).is_err());
+        let mut recognizer = Recognizer::default();
+        assert!(recognizer.add_path("/path/to").is_ok());
+        assert!(recognizer.add_path("/path/to").is_err());
     }
 }
