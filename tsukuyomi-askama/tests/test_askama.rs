@@ -1,15 +1,15 @@
 extern crate askama;
-extern crate cargo_version_sync;
 extern crate tsukuyomi;
 extern crate tsukuyomi_askama;
+extern crate version_sync;
 
 use askama::Template;
 use tsukuyomi::output::Responder;
 use tsukuyomi::test::ResponseExt;
 
 #[test]
-fn version_sync() {
-    cargo_version_sync::assert_version_sync();
+fn test_version_sync() {
+    version_sync::assert_html_root_url_updated!("src/lib.rs");
 }
 
 #[inline]

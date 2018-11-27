@@ -1,4 +1,4 @@
-//! Components for integrating the Askama template engine into Tsukuyomi.
+//! Askama integration for Tsukuyomi.
 //!
 //! ```
 //! extern crate askama;
@@ -6,11 +6,9 @@
 //! extern crate tsukuyomi_askama;
 //!
 //! use askama::Template;
+//! use tsukuyomi::output::Responder;
 //!
-//! #[derive(
-//!     askama::Template,
-//!     tsukuyomi::output::Responder,
-//! )]
+//! #[derive(Template, Responder)]
 //! #[template(source = "Hello, {{name}}!", ext = "html")]
 //! #[responder(respond_to = "tsukuyomi_askama::respond_to")]
 //! struct Index {
