@@ -7,7 +7,7 @@ version = "0.4.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
-readme = "README.md"
+readme = "../README.md"
 keywords = ["web", "framework", "futures", "hyper", "tokio"]
 categories = ["web-programming::http-server"]
 
@@ -84,7 +84,6 @@ either = "1"
 matches = "0.1"
 time = "0.1"
 serde = { version = "1", features = ["derive"] }
-cargo-version-sync = { version = "0.0.5", default-features = false }
 
 [features]
 default = []
@@ -93,25 +92,3 @@ use-native-tls = ["native-tls", "tokio-tls"]
 use-rustls = ["rustls", "tokio-rustls"]
 use-openssl = ["openssl", "tokio-openssl"]
 tower-middleware = ["tower-web"]
-
-# ==== START cargo-version-sync ====
-
-[[package.metadata.version-sync.replacements]]
-file = "Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "internal/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "macros/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-# ==== END cargo-version-sync ====

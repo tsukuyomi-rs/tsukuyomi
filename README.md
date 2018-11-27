@@ -22,11 +22,6 @@
 
 ## Usage
 
-```toml
-[dependencies]
-tsukuyomi = "0.4.0-dev"
-```
-
 ```rust,no_run
 extern crate tsukuyomi;
 
@@ -70,14 +65,14 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
-[deps-rs]: https://deps.rs/crate/tsukuyomi/0.4.0-dev
+[deps-rs]: https://deps.rs/crate/tsukuyomi/0.4.0
 [azure-pipelines]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_build/latest?definitionId=1
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
 [rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
-[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0-dev/status.svg
+[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
 

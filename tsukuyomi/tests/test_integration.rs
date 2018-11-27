@@ -1,4 +1,3 @@
-extern crate cargo_version_sync;
 extern crate cookie;
 extern crate either;
 extern crate futures;
@@ -8,11 +7,6 @@ extern crate time;
 extern crate tsukuyomi;
 
 mod integration_tests;
-
-#[test]
-fn test_version_sync() {
-    cargo_version_sync::assert_version_sync();
-}
 
 #[test]
 #[should_panic]
