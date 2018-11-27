@@ -126,11 +126,11 @@ where
     }
 
     /// Set the prefix URL of this scope.
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = S::Error>> {
+    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
-                self.scope.configure(cx)?;
-                cx.set_prefix(prefix);
+                cx.set_prefix(prefix)?;
+                self.scope.configure(cx).map_err(Into::into)?;
                 Ok(())
             }),
         }
@@ -193,7 +193,7 @@ impl<'a> Context<'a> {
         self.cx.add_modifier(modifier, self.id)
     }
 
-    pub fn set_prefix(&mut self, prefix: Uri) {
+    pub fn set_prefix(&mut self, prefix: Uri) -> super::Result<()> {
         self.cx.set_prefix(self.id, prefix)
     }
 }

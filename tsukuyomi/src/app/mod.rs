@@ -26,7 +26,7 @@ use {
         input::RequestBody,
         modifier::Modifier,
         output::ResponseBody,
-        recognizer::{Captures, Recognizer},
+        recognizer::{Candidates, Captures, RecognizeError, Recognizer},
         scoped_map::{ScopeId, ScopedContainer},
         uri::Uri,
     },
@@ -112,10 +112,50 @@ impl AppData {
         }
     }
 
+    /// Infers the scope ID where the input path belongs from the extract candidates of endpoint indices.
+    fn infer_scope_id(&self, path: &str, candidates: &Candidates) -> Option<ScopeId> {
+        // First, extract a series of common ancestors of candidates.
+        let ancestors = {
+            let mut ancestors: Option<&[ScopeId]> = None;
+            for (_, endpoint) in candidates
+                .iter()
+                .filter_map(|i| self.endpoints.get_index(i))
+            {
+                let ancestors = ancestors.get_or_insert(&endpoint.parents);
+                let n = (*ancestors)
+                    .iter()
+                    .zip(&endpoint.parents)
+                    .position(|(a, b)| a != b)
+                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), endpoint.parents.len()));
+                *ancestors = &ancestors[..n];
+            }
+            ancestors?
+        };
+
+        // Then, find the oldest ancestor that with the input path as the prefix of URI.
+        ancestors
+            .into_iter()
+            .find(|&&scope| {
+                self.scope(scope)
+                    .uri
+                    .as_ref()
+                    .map_or(false, |uri| uri.as_str().starts_with(path))
+            }) //
+            .or_else(|| ancestors.last())
+            .cloned()
+    }
+
     fn recognize(&self, path: &str, method: &Method) -> Recognize<'_> {
-        let (i, captures) = match self.recognizer.recognize(path) {
-            Some(result) => result,
-            None => return Recognize::NotFound,
+        let mut captures = None;
+        let i = match self.recognizer.recognize(path, &mut captures) {
+            Ok(i) => i,
+            Err(RecognizeError::NotMatched) => return Recognize::NotFound(ScopeId::Global),
+            Err(RecognizeError::PartiallyMatched(candidates)) => {
+                return Recognize::NotFound(
+                    self.infer_scope_id(path, candidates)
+                        .unwrap_or(ScopeId::Global),
+                )
+            }
         };
 
         let (_, endpoint) = &self
@@ -156,6 +196,7 @@ struct ScopeData {
     id: ScopeId,
     parents: Vec<ScopeId>,
     prefix: Option<Uri>,
+    uri: Option<Uri>,
     modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
@@ -166,6 +207,7 @@ impl fmt::Debug for ScopeData {
             .field("id", &self.id)
             .field("parents", &self.parents)
             .field("prefix", &self.prefix)
+            .field("uri", &self.uri)
             .finish()
     }
 }
@@ -179,6 +221,7 @@ struct EndpointData {
     uri: Uri,
     route_ids: IndexMap<Method, RouteId>,
     allowed_methods_value: HeaderValue,
+    parents: Vec<ScopeId>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -212,9 +255,9 @@ enum Recognize<'a> {
     },
 
     /// The URI is not matched to any endpoints.
-    NotFound,
+    NotFound(ScopeId),
 
-    /// the URI is matched, but
+    /// the URI is matched, but the method is disallowed.
     MethodNotAllowed {
         endpoint: &'a EndpointData,
         captures: Option<Captures>,
