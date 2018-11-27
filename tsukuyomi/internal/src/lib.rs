@@ -1,3 +1,5 @@
+//! The internal crate used by Tsukuyomi (not public).
+
 #![warn(
     missing_debug_implementations,
     nonstandard_style,
@@ -14,4 +16,5 @@ extern crate failure;
 #[cfg_attr(test, macro_use)]
 extern crate indexmap;
 
+pub mod localmap;
 pub mod uri;

@@ -10,7 +10,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.4.0-dev"
+tsukuyomi = "0.4.0"
 tsukuyomi-juniper = "0.2.0-dev"
 juniper = "0.10"
 futures = "0.1"

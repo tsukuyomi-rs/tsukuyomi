@@ -10,6 +10,6 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.4.0-dev"
+tsukuyomi = "0.4.0"
 tsukuyomi-cors = "0.1.0"
 serde = { version = "1", features = ["derive"] }

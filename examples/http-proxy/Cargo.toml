@@ -10,7 +10,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.4.0-dev"
+tsukuyomi = "0.4.0"
 
 futures = "0.1"
 http = "0.1"

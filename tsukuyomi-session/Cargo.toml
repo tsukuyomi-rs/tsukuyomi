@@ -8,7 +8,7 @@ Session support for Tsukuyomi Web framework
 build = "build.rs"
 
 [dependencies]
-tsukuyomi = { version = "0.4.0-dev", path = "../tsukuyomi" }
+tsukuyomi = { version = "0.4.0", path = "../tsukuyomi" }
 cookie = "0.11"
 
 # for Redis session backend

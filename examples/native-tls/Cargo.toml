@@ -10,7 +10,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = { version = "0.4.0-dev", features = ["use-native-tls"] }
+tsukuyomi = { version = "0.4.0", features = ["use-native-tls"] }
 native-tls = "0.2"
 tokio-tls = "0.2"
 failure = "0.1.3"

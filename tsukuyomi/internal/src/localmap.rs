@@ -1,25 +1,16 @@
-//! An implementation of typed map for managing request-local data.
+//! An implementation of typemap for managing request-local data.
 
-#![warn(
-    missing_debug_implementations,
-    nonstandard_style,
-    rust_2018_idioms,
-    rust_2018_compatibility,
-    unused
-)]
-#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
-#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
-#![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
-#![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
+#![cfg(feature = "localmap")]
 
 use std::{
+    any::TypeId,
     collections::{hash_map, HashMap},
     fmt,
     hash::{BuildHasherDefault, Hasher},
+    marker::PhantomData,
 };
 
-#[doc(hidden)]
-pub use std::{any::TypeId, marker::PhantomData};
+pub use crate::local_key;
 
 /// A macro to create a `LocalKey<T>`.
 #[macro_export]
@@ -38,14 +29,14 @@ macro_rules! local_key {
 
     (@declare $(#[$m:meta])* ($($vis:tt)*) $kw:tt $NAME:ident : $t:ty) => {
         $(#[$m])*
-        $($vis)* $kw $NAME: $crate::LocalKey<$t> = {
-            fn __type_id() -> $crate::TypeId {
+        $($vis)* $kw $NAME: $crate::localmap::LocalKey<$t> = {
+            fn __type_id() -> std::any::TypeId {
                 struct __A;
-                $crate::TypeId::of::<__A>()
+                std::any::TypeId::of::<__A>()
             }
-            $crate::LocalKey {
+            $crate::localmap::LocalKey {
                 __type_id,
-                __marker: $crate::PhantomData,
+                __marker: std::marker::PhantomData,
             }
         };
     };
@@ -222,7 +213,10 @@ where
     }
 
     #[allow(missing_docs)]
-    pub fn or_insert_with(self, default: impl FnOnce() -> T) -> &'a mut T {
+    pub fn or_insert_with<F>(self, default: F) -> &'a mut T
+    where
+        F: FnOnce() -> T,
+    {
         match self {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => entry.insert(default()),
@@ -230,7 +224,10 @@ where
     }
 
     #[allow(missing_docs)]
-    pub fn and_modify(self, f: impl FnOnce(&mut T)) -> Entry<'a, T> {
+    pub fn and_modify<F>(self, f: F) -> Entry<'a, T>
+    where
+        F: FnOnce(&mut T),
+    {
         match self {
             Entry::Occupied(mut entry) => {
                 f(entry.get_mut());

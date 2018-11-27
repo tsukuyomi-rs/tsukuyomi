@@ -14,7 +14,6 @@
 #![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
 
 extern crate tsukuyomi_internal;
-pub extern crate tsukuyomi_localmap as localmap;
 extern crate tsukuyomi_macros;
 
 extern crate bytes;
@@ -92,6 +91,7 @@ pub use crate::{
         Output, //
         Responder,
     },
+    tsukuyomi_internal::localmap,
 };
 
 #[doc(hidden)]

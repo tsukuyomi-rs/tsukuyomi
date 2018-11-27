@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 Asynchronous Web framework for Rust
 """
-version = "0.4.0-dev"
+version = "0.4.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
@@ -70,16 +70,13 @@ tokio-openssl = { version = "0.3", optional = true }
 tower-web = { version = "0.3", default-features = false, optional = true }
 
 [dependencies.tsukuyomi-internal]
-version = "0.4.0-dev" # <cargo-version-sync>
+version = "0.4.0" # <cargo-version-sync>
 path = "./internal"
+features = ["localmap"]
 
 [dependencies.tsukuyomi-macros]
-version = "0.4.0-dev" # <cargo-version-sync>
+version = "0.4.0" # <cargo-version-sync>
 path = "./macros"
-
-[dependencies.tsukuyomi-localmap]
-version = "0.4.0-dev" # <cargo-version-sync>
-path = "./localmap"
 
 [dev-dependencies]
 cookie = "0.11"
@@ -113,12 +110,6 @@ replacers = [
 
 [[package.metadata.version-sync.replacements]]
 file = "macros/Cargo.toml"
-replacers = [
-  { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
-]
-
-[[package.metadata.version-sync.replacements]]
-file = "localmap/Cargo.toml"
 replacers = [
   { type = "regex", search = "version = \"[0-9a-z\\.-]+\" # <cargo-version-sync>", replace = "version = \"{{version}}\" # <cargo-version-sync>" }
 ]

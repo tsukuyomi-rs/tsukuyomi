@@ -1,8 +1,0 @@
-[package]
-name = "tsukuyomi-localmap"
-version = "0.4.0-dev" # <cargo-version-sync>
-authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
-build = "build.rs"
-publish = false
-
-[dependencies]

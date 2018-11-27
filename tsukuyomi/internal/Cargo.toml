@@ -1,10 +1,16 @@
 [package]
 name = "tsukuyomi-internal"
-version = "0.4.0-dev" # <cargo-version-sync>
+description = "internal crate for Tsukuyomi."
+version = "0.4.0" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
+
 build = "build.rs"
-publish = false
 
 [dependencies]
 failure = "0.1.3"
 indexmap = "1"
+
+[features]
+localmap = []

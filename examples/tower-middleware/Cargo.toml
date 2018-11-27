@@ -10,7 +10,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = { version = "0.4.0-dev", features = ["tower-middleware"] }
+tsukuyomi = { version = "0.4.0", features = ["tower-middleware"] }
 tower-web = { version = "0.3", default-features = false }
 pretty_env_logger = "0.2"
 log = "0.4.6"

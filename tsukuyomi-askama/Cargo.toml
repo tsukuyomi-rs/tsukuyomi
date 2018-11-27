@@ -6,7 +6,7 @@ publish = false
 build = "build.rs"
 
 [dependencies]
-tsukuyomi = { version = "0.4.0-dev", path = "../tsukuyomi" }
+tsukuyomi = { version = "0.4.0", path = "../tsukuyomi" }
 askama = "0.7"
 mime_guess = "2.0.0-alpha.6"
 http = "0.1"

@@ -10,6 +10,6 @@ repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 build = "build.rs"
 
 [dependencies]
-tsukuyomi = "0.4.0-dev"
+tsukuyomi = "0.4.0"
 http = "0.1"
 failure = "0.1.3"
