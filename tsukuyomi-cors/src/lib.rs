@@ -44,8 +44,7 @@ use {
             scope,
             scope::Scope,
         },
-        extractor::{Extract, ExtractStatus, Extractor}, //
-        handler::AsyncResult,
+        handler::AsyncResult, //
         HttpError,
         Input,
         Modifier,
@@ -273,30 +272,6 @@ impl Fallback for CORS {
         }
 
         tsukuyomi::app::fallback::default(cx)
-    }
-}
-
-/// The implementation of `Extractor` for processing the CORS requests.
-///
-/// This extractor is used in a route to enable CORS explicitly, and behaves as follows:
-///
-/// * When the method is `OPTIONS`, it handles the request as a CORS preflight
-///   and cancels subsequent processes remaining in the handler.
-/// * Otherwise, it handles the request as a simple CORS, registers the CORS response
-///   headers in the current context and continue subsequent processes.
-///
-/// Note that the processing of preflight requests are enabled only if the route
-/// accepts `OPTIONS` explicitly.
-impl Extractor for CORS {
-    type Output = ();
-    type Error = CORSError;
-    type Future = tsukuyomi::extractor::Placeholder<Self::Output, Self::Error>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
-        match self.inner.process_request(input)? {
-            Some(output) => Ok(ExtractStatus::Canceled(output)),
-            None => Ok(ExtractStatus::Ready(())),
-        }
     }
 }
 

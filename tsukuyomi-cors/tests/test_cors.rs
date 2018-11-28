@@ -338,13 +338,13 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn as_extractor() -> tsukuyomi::test::Result<()> {
+fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let mut server = tsukuyomi::app!()
         .route(
             tsukuyomi::route!("/cors", methods = [GET, OPTIONS])
-                .extract(cors.clone())
+                .modify(cors.clone())
                 .reply(|| "cors"),
         ) //
         .route(
@@ -353,7 +353,7 @@ fn as_extractor() -> tsukuyomi::test::Result<()> {
         ) //
         .route(
             tsukuyomi::route!("*", method = OPTIONS)
-                .extract(cors)
+                .modify(cors)
                 .reply(|| ()),
         ) //
         .build_server()?
@@ -406,8 +406,7 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
                 .reply(|| "nocors"),
         ) //
         .route(
-            tsukuyomi::route!("*", method = OPTIONS)
-                .extract(cors)
+            tsukuyomi::route!("*", method = OPTIONS) //
                 .reply(|| ()),
         ) //
         .build_server()?
@@ -429,17 +428,17 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
 
     let response = server.perform(
+        Request::get("/nocors") //
+            .header(ORIGIN, "http://example.com"),
+    )?;
+    assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+
+    let response = server.perform(
         Request::options("*")
             .header(ORIGIN, "http://example.com")
             .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
     )?;
     assert_eq!(response.status(), 204);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
-
-    let response = server.perform(
-        Request::get("/nocors") //
-            .header(ORIGIN, "http://example.com"),
-    )?;
     assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
 
     Ok(())
