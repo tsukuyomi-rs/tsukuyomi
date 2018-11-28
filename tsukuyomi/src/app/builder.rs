@@ -72,6 +72,11 @@ where
     }
 
     /// Registers a shared state into the global scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "use Builder::with(state(scope)) instead"
+    )]
+    #[allow(deprecated)]
     pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
     where
         T: Send + Sync + 'static,
@@ -83,6 +88,11 @@ where
     }
 
     /// Registers a `Modifier` into the global scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "use Builder::with(state(scope)) instead"
+    )]
+    #[allow(deprecated)]
     pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>>
     where
         M: Modifier + Send + Sync + 'static,
@@ -94,6 +104,11 @@ where
     }
 
     /// Registers a `Fallback` into the global scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "use Builder::with(state(scope)) instead"
+    )]
+    #[allow(deprecated)]
     pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = S::Error>>
     where
         F: Fallback + Send + Sync + 'static,

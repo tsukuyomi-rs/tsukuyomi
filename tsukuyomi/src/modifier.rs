@@ -27,8 +27,8 @@
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
 //! tsukuyomi::app!()
-//!     .route(route!().reply(|| "Hello"))
-//!     .modifier(RequestCounter::default())
+//!     .with(route!().reply(|| "Hello"))
+//!     .with(tsukuyomi::app::modifier(RequestCounter::default()))
 //!     .build()
 //! #   .map(drop)
 //! # }

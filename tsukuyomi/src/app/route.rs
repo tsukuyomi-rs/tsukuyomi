@@ -182,6 +182,7 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The result of provided function is returned by `Future`.
+    #[allow(deprecated)]
     pub fn call<F, R>(self, f: F) -> impl Route<Error = Never> + Scope<Error = super::Error>
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,

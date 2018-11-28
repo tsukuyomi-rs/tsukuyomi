@@ -178,7 +178,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
 #[test]
 fn scope_variables() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
-        .state(String::from("foo"))
+        .with(tsukuyomi::app::state(String::from("foo")))
         .with(tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
             AsyncResult::ready(|input| {
                 assert_eq!(input.states.get::<String>(), "foo");
@@ -187,7 +187,7 @@ fn scope_variables() -> tsukuyomi::test::Result<()> {
         }))) //
         .mount(
             tsukuyomi::scope!("/sub")
-                .state(String::from("bar")) //
+                .with(tsukuyomi::app::state(String::from("bar"))) //
                 .with(
                     tsukuyomi::route!("/") //
                         .raw(tsukuyomi::handler::raw(|| {
@@ -219,8 +219,8 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = tsukuyomi::app!()
-        .state(String::from("foo"))
-        .modifier(MyModifier)
+        .with(tsukuyomi::app::state(String::from("foo")))
+        .with(tsukuyomi::app::modifier(MyModifier))
         .with(
             tsukuyomi::route!("/") //
                 .raw(tsukuyomi::handler::raw(|| {
@@ -232,8 +232,8 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
         ) //
         .mount(
             tsukuyomi::scope!("/sub")
-                .state(String::from("bar"))
-                .modifier(MyModifier)
+                .with(tsukuyomi::app::state(String::from("bar")))
+                .with(tsukuyomi::app::modifier(MyModifier))
                 .with(
                     tsukuyomi::route!("/") //
                         .raw(tsukuyomi::handler::raw(|| {

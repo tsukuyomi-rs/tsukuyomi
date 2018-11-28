@@ -223,7 +223,7 @@ fn scope_nested() {
 #[test]
 fn scope_variable() {
     let app = crate::app::app()
-        .state::<String>("G".into())
+        .with(crate::app::state::<String>("G".into()))
         .with(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .mount(
             scope()
@@ -232,19 +232,19 @@ fn scope_variable() {
                 .mount(
                     scope()
                         .prefix("/s1".parse().unwrap())
-                        .state::<String>("A".into())
+                        .with(crate::app::state::<String>("A".into()))
                         .with(route().uri("/r1".parse().unwrap()).reply(|| "")),
                 ),
         ) //
         .mount(
             scope()
                 .prefix("/s2".parse().unwrap())
-                .state::<String>("B".into())
+                .with(crate::app::state::<String>("B".into()))
                 .with(route().uri("/r2".parse().unwrap()).reply(|| ""))
                 .mount(
                     scope()
                         .prefix("/s3".parse().unwrap())
-                        .state::<String>("C".into())
+                        .with(crate::app::state::<String>("C".into()))
                         .with(route().uri("/r3".parse().unwrap()).reply(|| ""))
                         .mount(
                             scope()

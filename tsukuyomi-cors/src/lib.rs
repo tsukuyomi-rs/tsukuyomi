@@ -244,12 +244,12 @@ impl CORS {
 /// The implementation of `Scope` for registering itself as `Modifier` and `Fallback`
 /// into a specific scope.
 impl Scope for CORS {
-    type Error = tsukuyomi::Never;
+    type Error = tsukuyomi::app::Error;
 
     fn configure(self, cx: &mut scope::Context<'_>) -> Result<(), Self::Error> {
         scope()
-            .fallback(self.clone()) // <-- handles the fallback preflight request
-            .modifier(self) // <-- handle explicit preflight/simple request
+            .with(tsukuyomi::app::fallback(self.clone())) // <-- handles the fallback preflight request
+            .with(tsukuyomi::app::modifier(self)) // <-- handle explicit preflight/simple request
             .configure(cx)
     }
 }

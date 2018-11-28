@@ -16,7 +16,7 @@ pub use {
     self::{
         builder::Builder,
         error::{Error, Result},
-        scope::Scope,
+        scope::{fallback, modifier, state, Scope},
     },
     crate::{route, scope},
 };

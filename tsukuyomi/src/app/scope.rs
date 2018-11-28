@@ -24,6 +24,36 @@ impl Scope for () {
     }
 }
 
+/// Creates a `Scope` that registers the specified state to be shared into the scope.
+pub fn state<T>(state: T) -> impl Scope<Error = Never>
+where
+    T: Send + Sync + 'static,
+{
+    self::raw(move |cx| {
+        cx.set_state(state);
+        Ok(())
+    })
+}
+
+/// Creates a `Scope` that registers the specified `Modifier` into the scope.
+pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
+where
+    M: Modifier + Send + Sync + 'static,
+{
+    self::raw(move |cx| {
+        cx.add_modifier(modifier);
+        Ok(())
+    })
+}
+
+/// Creates a `Scope` that registers the specified `Fallback` into the scope.
+pub fn fallback<F>(fallback: F) -> impl Scope<Error = Never>
+where
+    F: Fallback + Send + Sync + 'static,
+{
+    state(FallbackInstance::from(fallback))
+}
+
 pub(super) fn raw<F, E>(f: F) -> impl Scope<Error = E>
 where
     F: FnOnce(&mut Context<'_>) -> std::result::Result<(), E>,
@@ -94,6 +124,10 @@ where
     }
 
     /// Registers a shared variable into this scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "use Builder::with(state(scope)) instead"
+    )]
     pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
     where
         T: Send + Sync + 'static,
@@ -108,6 +142,10 @@ where
     }
 
     /// Registers a `Modifier` into this scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "use Builder::with(modifier(scope)) instead"
+    )]
     pub fn modifier(
         self,
         modifier: impl Modifier + Send + Sync + 'static,
@@ -122,6 +160,11 @@ where
     }
 
     /// Registers a `Fallback` into this scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "use Builder::with(fallback(scope)) instead"
+    )]
+    #[allow(deprecated)]
     pub fn fallback(
         self,
         fallback: impl Fallback + Send + Sync + 'static,
