@@ -1,7 +1,8 @@
-//! Components for supporting WebSocket feature.
+//! The basic WebSocket support for Tsukuyomi, powered by tungstenite.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-websocket/0.1.0")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.1.0")]
 #![warn(
+    missing_docs,
     missing_debug_implementations,
     nonstandard_style,
     rust_2018_idioms,
@@ -13,25 +14,30 @@
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 #![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
 
-extern crate tsukuyomi;
-
 extern crate base64;
 extern crate failure;
 extern crate futures;
 extern crate http;
 extern crate sha1;
 extern crate tokio_tungstenite;
+extern crate tsukuyomi;
 extern crate tungstenite;
 
 use {
     futures::IntoFuture,
     http::{
-        header::{self, HeaderMap},
+        header::{
+            CONNECTION, //
+            SEC_WEBSOCKET_ACCEPT,
+            SEC_WEBSOCKET_KEY,
+            SEC_WEBSOCKET_VERSION,
+            UPGRADE,
+        },
         Response, StatusCode,
     },
     sha1::{Digest, Sha1},
     tsukuyomi::{
-        error::Error,
+        error::{Error, HttpError},
         extractor::Extractor,
         input::{body::UpgradedIo, Input},
         output::Responder,
@@ -40,13 +46,10 @@ use {
 };
 
 #[doc(no_inline)]
-pub use {
-    tokio_tungstenite::WebSocketStream,
-    tungstenite::protocol::{Message, WebSocketConfig},
-};
+pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 /// A transport for exchanging data frames with the peer.
-pub type Transport = WebSocketStream<UpgradedIo>;
+pub type WebSocketStream = tokio_tungstenite::WebSocketStream<UpgradedIo>;
 
 #[allow(missing_docs)]
 #[derive(Debug, failure::Fail)]
@@ -64,28 +67,40 @@ pub enum HandshakeError {
     InvalidSecWebSocketVersion,
 }
 
-fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
-    match input.request.headers().get(header::UPGRADE) {
-        Some(h) if h == "Websocket" || h == "websocket" => (),
+impl HttpError for HandshakeError {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
+    }
+}
+
+fn handshake(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
+    match input.request.headers().get(UPGRADE) {
+        Some(h) if h.as_bytes().eq_ignore_ascii_case(b"websocket") => (),
         Some(..) => Err(HandshakeError::InvalidHeader { name: "Upgrade" })?,
         None => Err(HandshakeError::MissingHeader { name: "Upgrade" })?,
     }
 
-    match input.request.headers().get(header::CONNECTION) {
-        Some(h) if h == "Upgrade" || h == "upgrade" => (),
+    match input.request.headers().get(CONNECTION) {
+        Some(h) if h.as_bytes().eq_ignore_ascii_case(b"upgrade") => (),
         Some(..) => Err(HandshakeError::InvalidHeader { name: "Connection" })?,
         None => Err(HandshakeError::MissingHeader { name: "Connection" })?,
     }
 
-    match input.request.headers().get(header::SEC_WEBSOCKET_VERSION) {
+    match input.request.headers().get(SEC_WEBSOCKET_VERSION) {
         Some(h) if h == "13" => {}
-        _ => Err(HandshakeError::InvalidSecWebSocketVersion)?,
+        Some(..) => Err(HandshakeError::InvalidSecWebSocketVersion)?,
+        None => Err(HandshakeError::MissingHeader {
+            name: "Sec-WebSocket-Version",
+        })?,
     }
 
-    let accept_hash = match input.request.headers().get(header::SEC_WEBSOCKET_KEY) {
+    let accept_hash = match input.request.headers().get(SEC_WEBSOCKET_KEY) {
         Some(h) => {
-            let decoded = base64::decode(h).map_err(|_| HandshakeError::InvalidSecWebSocketKey)?;
-            if decoded.len() != 16 {
+            if h.len() != 24 || {
+                h.as_bytes()
+                    .into_iter()
+                    .any(|&b| !b.is_ascii_alphanumeric() && b != b'+' && b != b'/' && b != b'=')
+            } {
                 Err(HandshakeError::InvalidSecWebSocketKey)?;
             }
 
@@ -104,14 +119,12 @@ fn handshake2(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
     Ok(Ws {
         accept_hash,
         config: None,
-        extra_headers: None,
     })
 }
 
-pub fn extractor() -> impl Extractor<Output = (Ws,), Error = Error> {
-    tsukuyomi::extractor::ready(|input| {
-        self::handshake2(input).map_err(tsukuyomi::error::bad_request)
-    })
+/// Create an `Extractor` that handles the WebSocket handshake process and returns a `Ws`.
+pub fn ws() -> impl Extractor<Output = (Ws,), Error = HandshakeError> {
+    tsukuyomi::extractor::ready(|input| self::handshake(input))
 }
 
 /// The builder for constructing WebSocket response.
@@ -119,7 +132,6 @@ pub fn extractor() -> impl Extractor<Output = (Ws,), Error = Error> {
 pub struct Ws {
     accept_hash: String,
     config: Option<WebSocketConfig>,
-    extra_headers: Option<HeaderMap>,
 }
 
 impl Ws {
@@ -131,33 +143,31 @@ impl Ws {
         }
     }
 
-    /// Appends a header field to be inserted into the handshake response.
-    pub fn with_header(mut self, name: header::HeaderName, value: header::HeaderValue) -> Self {
-        self.extra_headers
-            .get_or_insert_with(Default::default)
-            .append(name, value);
-        self
-    }
-
     /// Creates the instance of `Responder` for creating the handshake response.
     ///
     /// This method takes a function to construct the task used after upgrading the protocol.
-    pub fn finish<F, R>(self, f: F) -> impl Responder
+    pub fn finish<F, R>(self, on_upgrade: F) -> impl Responder
     where
-        F: FnOnce(Transport) -> R + Send + 'static,
+        F: FnOnce(WebSocketStream) -> R + Send + 'static,
         R: IntoFuture<Item = (), Error = ()>,
         R::Future: Send + 'static,
     {
-        WsOutput(self, f)
+        WsOutput {
+            ws: self,
+            on_upgrade,
+        }
     }
 }
 
 #[allow(missing_debug_implementations)]
-struct WsOutput<F>(Ws, F);
+struct WsOutput<F> {
+    ws: Ws,
+    on_upgrade: F,
+}
 
 impl<F, R> Responder for WsOutput<F>
 where
-    F: FnOnce(Transport) -> R + Send + 'static,
+    F: FnOnce(WebSocketStream) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
@@ -166,13 +176,11 @@ where
 
     fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let Self {
-            0:
-                Ws {
-                    accept_hash,
-                    config,
-                    extra_headers,
-                },
-            1: on_upgrade,
+            ws: Ws {
+                accept_hash,
+                config,
+            },
+            on_upgrade,
         } = self;
 
         input
@@ -183,18 +191,12 @@ where
                 tsukuyomi::error::internal_server_error("failed to spawn WebSocket task")
             })?;
 
-        let mut response = Response::builder()
+        Ok(Response::builder()
             .status(StatusCode::SWITCHING_PROTOCOLS)
-            .header(header::UPGRADE, "websocket")
-            .header(header::CONNECTION, "upgrade")
-            .header(header::SEC_WEBSOCKET_ACCEPT, &*accept_hash)
+            .header(UPGRADE, "websocket")
+            .header(CONNECTION, "upgrade")
+            .header(SEC_WEBSOCKET_ACCEPT, &*accept_hash)
             .body(())
-            .expect("should be a valid response");
-
-        if let Some(hdrs) = extra_headers {
-            response.headers_mut().extend(hdrs);
-        }
-
-        Ok(response)
+            .expect("should be a valid response"))
     }
 }

@@ -1,8 +1,11 @@
 [package]
-name = "tsukuyomi-websocket"
+name = "tsukuyomi-tungstenite"
+description = "The basic WebSocket support for Tsukuyomi, powered by tungstenite"
 version = "0.1.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
-publish = false
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
+
 build = "build.rs"
 
 [dependencies]
@@ -17,4 +20,4 @@ tokio-tungstenite = "0.6"
 tungstenite = "0.6"
 
 [dev-dependencies]
-cargo-version-sync = { version = "0.0.5", default-features = false }
+version-sync = "0.6"
