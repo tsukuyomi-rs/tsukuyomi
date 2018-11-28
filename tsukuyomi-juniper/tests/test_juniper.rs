@@ -1,56 +1,51 @@
-extern crate cargo_version_sync;
+extern crate futures;
 extern crate http;
 extern crate juniper;
 extern crate percent_encoding;
 extern crate tsukuyomi;
 extern crate tsukuyomi_juniper;
+extern crate version_sync;
 
 #[test]
 fn test_version_sync() {
-    cargo_version_sync::assert_version_sync();
+    version_sync::assert_html_root_url_updated!("src/lib.rs");
 }
 
 use {
+    futures::prelude::*,
     http::{Request, Response},
-    juniper::{
-        http::tests as http_tests, //
-        tests::model::Database,
-        EmptyMutation,
-        RootNode,
-    },
-    percent_encoding::{
-        define_encode_set, //
-        utf8_percent_encode,
-        QUERY_ENCODE_SET,
-    },
+    juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
+    percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{
-        app::directives::*, //
-        test::{
-            Output as TestOutput, //
-            Server as TestServer,
-        },
+        app::directives::*,
+        test::{Output as TestOutput, Server as TestServer},
     },
-    tsukuyomi_juniper::Executor,
+    tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
 };
 
 #[test]
 fn integration_test() -> tsukuyomi::test::Result<()> {
     let database = Arc::new(Database::new());
-    let schema = RootNode::new(Database::new(), EmptyMutation::<Database>::new());
-    let executor = tsukuyomi_juniper::executor(schema);
-    let executor = std::sync::Arc::new(executor);
+    let schema = Arc::new(RootNode::new(
+        Database::new(),
+        EmptyMutation::<Database>::new(),
+    ));
 
     let test_server = App::builder()
-        .with(
+        .with({
+            let database = database.clone();
             route!("/")
                 .methods("GET, POST")?
-                .extract(executor.clone())
-                .call({
+                .extract(tsukuyomi_juniper::request())
+                .extract(tsukuyomi::extractor::value(schema))
+                .modify(GraphQLModifier::default())
+                .call(move |request: GraphQLRequest, schema: Arc<_>| {
                     let database = database.clone();
-                    move |exec: Executor<_>| exec.execute(database.clone())
-                }),
-        ) //
+                    tsukuyomi::rt::blocking(move || request.execute(&schema, &*database))
+                        .map_err(tsukuyomi::error::internal_server_error)
+                })
+        }) //
         .build_server()?
         .into_test_server()?;
 

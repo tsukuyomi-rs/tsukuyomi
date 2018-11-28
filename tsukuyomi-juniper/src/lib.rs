@@ -20,13 +20,81 @@ extern crate futures;
 extern crate http;
 extern crate juniper;
 extern crate percent_encoding;
+extern crate serde_json;
 extern crate tsukuyomi;
 
-mod executor;
+mod error;
 mod graphiql;
 mod request;
 
 pub use crate::{
-    executor::{executor, Executor, Schema},
+    error::GraphQLModifier,
     graphiql::graphiql_source,
+    request::{request, GraphQLRequest, GraphQLResponse},
 };
+
+use {
+    juniper::{GraphQLType, RootNode},
+    std::sync::Arc,
+};
+
+/// A marker trait representing a root node of GraphQL schema.
+#[allow(missing_docs)]
+pub trait Schema {
+    type Query: GraphQLType<Context = Self::Context, TypeInfo = Self::QueryInfo>;
+    type QueryInfo;
+    type Mutation: GraphQLType<Context = Self::Context, TypeInfo = Self::MutationInfo>;
+    type MutationInfo;
+    type Context;
+
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation>;
+}
+
+impl<QueryT, MutationT, CtxT> Schema for RootNode<'static, QueryT, MutationT>
+where
+    QueryT: GraphQLType<Context = CtxT>,
+    MutationT: GraphQLType<Context = CtxT>,
+{
+    type Query = QueryT;
+    type QueryInfo = QueryT::TypeInfo;
+    type Mutation = MutationT;
+    type MutationInfo = MutationT::TypeInfo;
+    type Context = CtxT;
+
+    #[inline]
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation> {
+        self
+    }
+}
+
+impl<S> Schema for Box<S>
+where
+    S: Schema,
+{
+    type Query = S::Query;
+    type QueryInfo = S::QueryInfo;
+    type Mutation = S::Mutation;
+    type MutationInfo = S::MutationInfo;
+    type Context = S::Context;
+
+    #[inline]
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation> {
+        (**self).as_root_node()
+    }
+}
+
+impl<S> Schema for Arc<S>
+where
+    S: Schema,
+{
+    type Query = S::Query;
+    type QueryInfo = S::QueryInfo;
+    type Mutation = S::Mutation;
+    type MutationInfo = S::MutationInfo;
+    type Context = S::Context;
+
+    #[inline]
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation> {
+        (**self).as_root_node()
+    }
+}
