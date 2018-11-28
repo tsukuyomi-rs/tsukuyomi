@@ -13,18 +13,6 @@
 //! [`Error`]: ./struct.Error.html
 //! [`Fail`]: https://docs.rs/failure/0.1/failure/trait.Fail.html
 //! [`HttpError`]: ./trait.HttpError.html
-//!
-//! # Error Handling
-//!
-//! The best way to specify the error responses is usually to return a value which implements
-//! `HttpError`. However, The error values after being converted to `Error` can be modified
-//! by using the following components:
-//!
-//! * [`ErrorHandler`] - It modifies the all kinds of errors which occurred during handling.
-//! * [`Modifier`] - It modifies errors occurred within a certain scope.
-//!
-//! [`Modifier`]: ../app/scope/trait.Modifier.html
-//! [`ErrorHandler`]: ../app/global/trait.ErrorHandler.html
 
 use {
     crate::{
