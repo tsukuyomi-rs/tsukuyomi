@@ -2,7 +2,6 @@ use {
     super::{
         error::{Error, Result},
         fallback::{Fallback, FallbackInstance},
-        route::{Context as RouteContext, Route},
         scope::{Context as ScopeContext, Scope},
         App, AppData, Config, EndpointData, EndpointId, RouteData, RouteId, ScopeData,
     },
@@ -17,6 +16,9 @@ use {
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
 };
+
+#[allow(deprecated)]
+use super::route::{Context as RouteContext, Route};
 
 /// A builder object for constructing an instance of `App`.
 #[derive(Default)]
@@ -44,6 +46,8 @@ where
     S: Scope,
 {
     /// Adds a route into the global scope.
+    #[deprecated(since = "0.4.1", note = "use Builder::with(route) instead.")]
+    #[allow(deprecated)]
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         Builder {
             config: self.config,
@@ -209,6 +213,7 @@ pub(super) struct AppContext {
 }
 
 impl AppContext {
+    #[allow(deprecated)]
     pub(super) fn new_route(&mut self, scope_id: ScopeId, route: impl Route) -> Result<()> {
         let mut cx = RouteContext {
             uri: Uri::root(),

@@ -23,7 +23,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     tsukuyomi::app!()
         .with(cors)
-        .route(
+        .with(
             tsukuyomi::route!("/user/info", method = POST) //
                 .extract(tsukuyomi::extractor::body::json())
                 .call(|info: UserInfo| -> tsukuyomi::Result<_> {

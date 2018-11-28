@@ -437,6 +437,7 @@ where
 {
     type Error = crate::app::Error;
 
+    #[allow(deprecated)]
     fn configure(self, cx: &mut crate::app::scope::Context<'_>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 

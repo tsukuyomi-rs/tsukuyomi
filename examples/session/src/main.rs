@@ -18,7 +18,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     tsukuyomi::app!()
         .modifier(storage)
-        .route(
+        .with(
             route!("/") //
                 .extract(tsukuyomi_session::session())
                 .call(|session: Session| -> tsukuyomi::Result<_> {
@@ -38,7 +38,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     Ok(session.finish(output))
                 }),
         ) //
-        .route(
+        .with(
             route!("/login") //
                 .extract(tsukuyomi_session::session())
                 .reply(|session: Session| {
@@ -56,7 +56,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     session.finish(output)
                 }),
         ) //
-        .route({
+        .with({
             #[derive(Debug, serde::Deserialize)]
             struct Form {
                 username: String,
@@ -71,7 +71,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     },
                 )
         }) //
-        .route(
+        .with(
             route!("/logout") //
                 .extract(tsukuyomi_session::session())
                 .reply(|mut session: Session| {

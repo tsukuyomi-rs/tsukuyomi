@@ -1,6 +1,9 @@
+#![allow(deprecated)]
+
 #[doc(hidden)]
 pub use http::Method;
 use {
+    super::scope::Scope,
     crate::{
         error::Error,
         extractor::{Combine, ExtractStatus, Extractor, Func},
@@ -114,7 +117,7 @@ where
         }
     }
 
-    fn finish<F, H, R>(self, f: F) -> impl Route<Error = R>
+    fn finish<F, H, R>(self, f: F) -> impl Route<Error = R> + Scope<Error = super::Error>
     where
         F: FnOnce(E) -> Result<H, R>,
         H: Handler + Send + Sync + 'static,
@@ -133,7 +136,8 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The provided function always succeeds and immediately returns a value of `Responder`.
-    pub fn reply<F>(self, f: F) -> impl Route<Error = Never>
+    #[allow(deprecated)]
+    pub fn reply<F>(self, f: F) -> impl Route<Error = Never> + Scope<Error = super::Error>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
@@ -178,7 +182,7 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The result of provided function is returned by `Future`.
-    pub fn call<F, R>(self, f: F) -> impl Route<Error = Never>
+    pub fn call<F, R>(self, f: F) -> impl Route<Error = Never> + Scope<Error = super::Error>
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
         R: IntoFuture<Error = Error>,
@@ -227,7 +231,7 @@ where
 
 impl Builder<()> {
     /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(self, handler: H) -> impl Route<Error = Never>
+    pub fn raw<H>(self, handler: H) -> impl Route<Error = Never> + Scope<Error = super::Error>
     where
         H: Handler + Send + Sync + 'static,
     {
@@ -240,7 +244,7 @@ where
     E: Extractor<Output = ()>,
 {
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<T>(self, output: T) -> impl Route<Error = Never>
+    pub fn say<T>(self, output: T) -> impl Route<Error = Never> + Scope<Error = super::Error>
     where
         T: Responder + Clone + Send + Sync + 'static,
     {
@@ -252,7 +256,7 @@ where
         self,
         location: impl Into<Cow<'static, str>>,
         status: StatusCode,
-    ) -> impl Route<Error = Never> {
+    ) -> impl Route<Error = Never> + Scope<Error = super::Error> {
         self.say(Redirect::new(status, location))
     }
 
@@ -261,7 +265,7 @@ where
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
-    ) -> impl Route<Error = Never> {
+    ) -> impl Route<Error = Never> + Scope<Error = super::Error> {
         let path = {
             #[derive(Clone)]
             #[allow(missing_debug_implementations)]
@@ -284,13 +288,17 @@ where
 }
 
 /// A trait representing the types for constructing a route in `App`.
+#[deprecated(
+    since = "0.4.1",
+    note = "the trait Route will be removed in the next version."
+)]
 pub trait Route {
     type Error: Into<super::Error>;
 
     fn configure(self, cx: &mut Context) -> Result<(), Self::Error>;
 }
 
-fn raw<F, E>(f: F) -> impl Route<Error = E>
+fn raw<F, E>(f: F) -> impl Route<Error = E> + Scope<Error = super::Error>
 where
     F: FnOnce(&mut Context) -> Result<(), E>,
     E: Into<super::Error>,
@@ -310,9 +318,25 @@ where
         }
     }
 
+    impl<F, E> Scope for Raw<F>
+    where
+        F: FnOnce(&mut Context) -> Result<(), E>,
+        E: Into<super::Error>,
+    {
+        type Error = super::Error;
+
+        fn configure(self, cx: &mut super::scope::Context<'_>) -> Result<(), Self::Error> {
+            cx.add_route(self)
+        }
+    }
+
     Raw(f)
 }
 
+#[deprecated(
+    since = "0.4.1",
+    note = "the trait Route will be removed in the next version."
+)]
 #[allow(missing_debug_implementations)]
 pub struct Context {
     pub(super) uri: Uri,
@@ -356,7 +380,7 @@ mod tests {
     fn compiletest1() {
         drop(
             crate::app::app()
-                .route(
+                .with(
                     generated() //
                         .reply(|id: u32, name: String| {
                             drop((id, name));
@@ -373,7 +397,7 @@ mod tests {
     fn compiletest2() {
         drop(
             crate::app::app()
-                .route(
+                .with(
                     generated() //
                         .extract(crate::extractor::body::plain())
                         .reply(|id: u32, name: String, body: String| {

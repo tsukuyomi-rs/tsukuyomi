@@ -18,7 +18,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .modifier(storage)
-        .route(
+        .with(
             tsukuyomi::route!("/counter", method = GET)
                 .extract(tsukuyomi_session::session())
                 .call(|sess: Session| -> tsukuyomi::Result<_> {
@@ -26,7 +26,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
                     Ok(sess.finish(format!("{:?}", counter)))
                 }),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/counter", method = PUT)
                 .extract(tsukuyomi_session::session())
                 .call(|mut sess: Session| -> tsukuyomi::Result<_> {
@@ -35,7 +35,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
                     Ok(sess.finish(format!("{}", counter)))
                 }),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/counter", method = DELETE)
                 .extract(tsukuyomi_session::session())
                 .reply(|mut sess: Session| {
@@ -43,7 +43,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
                     sess.finish("removed")
                 }),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/clear", method = PUT)
                 .extract(tsukuyomi_session::session())
                 .reply(|mut sess: Session| {

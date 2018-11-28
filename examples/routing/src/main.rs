@@ -4,7 +4,7 @@ use tsukuyomi::app::{route, scope};
 
 fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
-        .route(
+        .with(
             route!() //
                 .say("Hello, world\n"),
         ) //
@@ -12,16 +12,16 @@ fn main() -> tsukuyomi::server::Result<()> {
             scope!("/api/v1/")
                 .mount(
                     scope!("/posts")
-                        .route(route!("/").say("list_posts"))
-                        .route(route!("/:id").reply(|id: i32| format!("get_post(id = {})", id)))
-                        .route(route!("/", method = POST).say("add_post")),
+                        .with(route!("/").say("list_posts"))
+                        .with(route!("/:id").reply(|id: i32| format!("get_post(id = {})", id)))
+                        .with(route!("/", method = POST).say("add_post")),
                 ) //
                 .mount(
                     scope!("/user") //
-                        .route(route!("/auth").say("Authentication")),
+                        .with(route!("/auth").say("Authentication")),
                 ),
         ) //
-        .route(
+        .with(
             route!("/static/*path")
                 .reply(|path: std::path::PathBuf| format!("path = {}\n", path.display())),
         ) //

@@ -13,7 +13,7 @@ mod integration_tests;
 fn test_catch_unwind() {
     fn inner() -> tsukuyomi::test::Result<()> {
         let mut server = tsukuyomi::app!()
-            .route(
+            .with(
                 tsukuyomi::route!("/") //
                     .reply(|| -> &'static str { panic!("explicit panic") }),
             ) //

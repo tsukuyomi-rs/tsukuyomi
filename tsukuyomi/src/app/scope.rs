@@ -3,10 +3,12 @@ use {
         builder::AppContext,
         error::{Error, Result},
         fallback::{Fallback, FallbackInstance},
-        route::Route,
     },
     crate::{common::Never, modifier::Modifier, scoped_map::ScopeId, uri::Uri},
 };
+
+#[allow(deprecated)]
+use super::route::Route;
 
 pub trait Scope {
     type Error: Into<Error>;
@@ -56,6 +58,8 @@ where
     S: Scope,
 {
     /// Adds a route into this scope.
+    #[deprecated(since = "0.4.1", note = "use Builder::with(route) instead.")]
+    #[allow(deprecated)]
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
@@ -162,6 +166,16 @@ impl<'a> Context<'a> {
     }
 
     /// Adds a route into the current scope.
+    // note:
+    // Currently, this method is only called in `fs::Staticfiles`
+    // to add routes. In order to provide the implementors of `Scope`
+    // that adds some route(s) dynamically, the context need to provide
+    // the similar API.
+    #[deprecated(
+        since = "0.4.1",
+        note = "This method will be removed in the next version."
+    )]
+    #[allow(deprecated)]
     pub fn add_route<R>(&mut self, route: R) -> Result<()>
     where
         R: Route,

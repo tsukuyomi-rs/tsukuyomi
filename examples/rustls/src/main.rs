@@ -9,7 +9,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
     tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::app::route!() //
                 .say("Hello, Tsukuyomi.\n"),
         ) //

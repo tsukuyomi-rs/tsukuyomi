@@ -13,7 +13,7 @@ struct Index {
 
 fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),
         ) //

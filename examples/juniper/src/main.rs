@@ -21,11 +21,11 @@ fn main() -> tsukuyomi::server::Result<()> {
     };
 
     tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::app::route!("/") //
                 .say(tsukuyomi_juniper::graphiql_source("/graphql")),
         ) //
-        .route(
+        .with(
             tsukuyomi::app::route!("/graphql", methods = [GET, POST])
                 .extract(extract_graphql_executor)
                 .extract(fetch_graphql_context)

@@ -3,7 +3,7 @@
 fn compiletest() {
     drop(
         tsukuyomi::app!()
-            .route(
+            .with(
                 tsukuyomi::route!("/index.html") //
                     .send_file("/path/to/index.html", None),
             ) //

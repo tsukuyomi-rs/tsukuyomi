@@ -93,7 +93,7 @@ mod responder {
         }
 
         let mut server = tsukuyomi::app!()
-            .route(
+            .with(
                 tsukuyomi::route!() //
                     .reply(|| Foo("Foo".into())),
             ) //

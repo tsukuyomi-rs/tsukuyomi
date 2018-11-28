@@ -23,7 +23,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     tsukuyomi::app!()
         .state(engine)
-        .route(
+        .with(
             tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),
         ) //

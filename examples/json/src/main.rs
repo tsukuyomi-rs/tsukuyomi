@@ -12,14 +12,14 @@ struct User {
 
 fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()
-        .route(
+        .with(
             route!("/") //
                 .say(User {
                     name: "Sakura Kinomoto".into(),
                     age: 13,
                 }),
         ) //
-        .route(
+        .with(
             route!("/", method = POST)
                 .extract(extractor::body::json())
                 .reply(|user: User| user),

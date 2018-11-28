@@ -16,7 +16,7 @@ fn empty() {
 #[test]
 fn route_single_method() {
     let app = crate::app::app() //
-        .route(route().reply(|| ""))
+        .with(route().reply(|| ""))
         .build()
         .unwrap();
 
@@ -38,8 +38,8 @@ fn route_single_method() {
 #[test]
 fn route_multiple_method() {
     let app = crate::app::app()
-        .route(route().reply(|| ""))
-        .route(route().method(Method::POST).reply(|| ""))
+        .with(route().reply(|| ""))
+        .with(route().method(Method::POST).reply(|| ""))
         .build()
         .unwrap();
 
@@ -61,7 +61,7 @@ fn route_multiple_method() {
 #[test]
 fn route_fallback_head_enabled() {
     let app = crate::app::app() //
-        .route(route().reply(|| ""))
+        .with(route().reply(|| ""))
         .build()
         .unwrap();
 
@@ -74,7 +74,7 @@ fn route_fallback_head_enabled() {
 #[test]
 fn route_fallback_head_disabled() {
     let app = crate::app::app() //
-        .route(route().reply(|| ""))
+        .with(route().reply(|| ""))
         .fallback_head(false)
         .build()
         .unwrap();
@@ -88,7 +88,7 @@ fn route_fallback_head_disabled() {
 #[test]
 fn asterisk_route() {
     let app = crate::app::app()
-        .route(
+        .with(
             route()
                 .uri("*".parse().unwrap())
                 .method(Method::OPTIONS)
@@ -106,14 +106,14 @@ fn asterisk_route() {
 #[test]
 fn asterisk_route_with_normal_routes() {
     let app = crate::app::app()
-        .route(route().uri("/".parse().unwrap()).reply(|| ""))
+        .with(route().uri("/".parse().unwrap()).reply(|| ""))
         .mount(
             scope()
                 .prefix("/api".parse().unwrap())
-                .route(route().uri("/posts".parse().unwrap()).reply(|| "")) //
-                .route(route().uri("/events".parse().unwrap()).reply(|| "")),
+                .with(route().uri("/posts".parse().unwrap()).reply(|| "")) //
+                .with(route().uri("/events".parse().unwrap()).reply(|| "")),
         ) //
-        .route(
+        .with(
             route()
                 .uri("*".parse().unwrap())
                 .method(Method::OPTIONS)
@@ -133,15 +133,15 @@ fn scope_simple() {
     let app = crate::app::app() //
         .mount(
             scope()
-                .route(route().uri("/a".parse().unwrap()).reply(|| ""))
-                .route(route().uri("/b".parse().unwrap()).reply(|| "")),
+                .with(route().uri("/a".parse().unwrap()).reply(|| ""))
+                .with(route().uri("/b".parse().unwrap()).reply(|| "")),
         ) //
-        .route(route().uri("/foo".parse().unwrap()).reply(|| ""))
+        .with(route().uri("/foo".parse().unwrap()).reply(|| ""))
         .mount(
             scope()
                 .prefix("/c".parse().unwrap())
-                .route(route().uri("/d".parse().unwrap()).reply(|| ""))
-                .route(route().uri("/e".parse().unwrap()).reply(|| "")),
+                .with(route().uri("/d".parse().unwrap()).reply(|| ""))
+                .with(route().uri("/e".parse().unwrap()).reply(|| "")),
         ) //
         .build()
         .unwrap();
@@ -173,23 +173,23 @@ fn scope_nested() {
     let app = crate::app::app()
         .mount(
             scope() // 0
-                .route(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
-                .route(route().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
+                .with(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
+                .with(route().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
         ) //
         .mount(
             scope() // 1
                 .prefix("/baz".parse().unwrap())
-                .route(route().reply(|| "")) // /baz
+                .with(route().reply(|| "")) // /baz
                 .mount(
                     scope() // 2
-                        .route(
+                        .with(
                             route()
                                 .uri("/foobar".parse().unwrap()) // /baz/foobar
                                 .reply(|| ""),
                         ),
                 ), //
         ) //
-        .route(route().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
+        .with(route().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
         .build()
         .unwrap();
 
@@ -224,42 +224,42 @@ fn scope_nested() {
 fn scope_variable() {
     let app = crate::app::app()
         .state::<String>("G".into())
-        .route(route().uri("/rg".parse().unwrap()).reply(|| ""))
+        .with(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .mount(
             scope()
                 .prefix("/s0".parse().unwrap())
-                .route(route().uri("/r0".parse().unwrap()).reply(|| ""))
+                .with(route().uri("/r0".parse().unwrap()).reply(|| ""))
                 .mount(
                     scope()
                         .prefix("/s1".parse().unwrap())
                         .state::<String>("A".into())
-                        .route(route().uri("/r1".parse().unwrap()).reply(|| "")),
+                        .with(route().uri("/r1".parse().unwrap()).reply(|| "")),
                 ),
         ) //
         .mount(
             scope()
                 .prefix("/s2".parse().unwrap())
                 .state::<String>("B".into())
-                .route(route().uri("/r2".parse().unwrap()).reply(|| ""))
+                .with(route().uri("/r2".parse().unwrap()).reply(|| ""))
                 .mount(
                     scope()
                         .prefix("/s3".parse().unwrap())
                         .state::<String>("C".into())
-                        .route(route().uri("/r3".parse().unwrap()).reply(|| ""))
+                        .with(route().uri("/r3".parse().unwrap()).reply(|| ""))
                         .mount(
                             scope()
                                 .prefix("/s4".parse().unwrap())
-                                .route(route().uri("/r4".parse().unwrap()).reply(|| "")),
+                                .with(route().uri("/r4".parse().unwrap()).reply(|| "")),
                         ),
                 ) //
                 .mount(
                     scope()
                         .prefix("/s5".parse().unwrap())
-                        .route(route().uri("/r5".parse().unwrap()).reply(|| ""))
+                        .with(route().uri("/r5".parse().unwrap()).reply(|| ""))
                         .mount(
                             scope()
                                 .prefix("/s6".parse().unwrap())
-                                .route(route().uri("/r6".parse().unwrap()).reply(|| "")),
+                                .with(route().uri("/r6".parse().unwrap()).reply(|| "")),
                         ),
                 ), //
         ) //
@@ -312,15 +312,15 @@ fn scope_candidates() {
                         .mount(
                             scope() // 2
                                 .prefix("/s2".parse().unwrap())
-                                .route(route().uri("/r0".parse().unwrap()).say(""))
-                                .route(route().uri("/r1".parse().unwrap()).say("")),
+                                .with(route().uri("/r0".parse().unwrap()).say(""))
+                                .with(route().uri("/r1".parse().unwrap()).say("")),
                         ),
                 ) //
-                .route(route().uri("/r2".parse().unwrap()).say("")),
+                .with(route().uri("/r2".parse().unwrap()).say("")),
         ) //
         .mount(
             scope() // 3
-                .route(route().uri("/r3".parse().unwrap()).say("")),
+                .with(route().uri("/r3".parse().unwrap()).say("")),
         ) //
         .build()
         .unwrap();
@@ -359,8 +359,8 @@ fn scope_candidates() {
 #[test]
 fn failcase_duplicate_uri_and_method() {
     let app = crate::app::app()
-        .route(route().uri("/path".parse().unwrap()).reply(|| ""))
-        .route(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .with(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .with(route().uri("/path".parse().unwrap()).reply(|| ""))
         .build();
     assert!(app.is_err());
 }
@@ -368,8 +368,8 @@ fn failcase_duplicate_uri_and_method() {
 #[test]
 fn failcase_different_scope_at_the_same_uri() {
     let app = crate::app::app()
-        .route(route().uri("/path".parse().unwrap()).reply(|| ""))
-        .mount(scope().route(route().uri("/path".parse().unwrap()).reply(|| ""))) //
+        .with(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .mount(scope().with(route().uri("/path".parse().unwrap()).reply(|| ""))) //
         .build();
     assert!(app.is_err());
 }
@@ -378,7 +378,7 @@ fn failcase_different_scope_at_the_same_uri() {
 fn failcase_asterisk_with_prefix() {
     let app = crate::app::app()
         .prefix("/api/v1".parse().unwrap())
-        .route(route().uri("*".parse().unwrap()).reply(|| ""))
+        .with(route().uri("*".parse().unwrap()).reply(|| ""))
         .build();
     assert!(app.is_err());
 }
@@ -386,7 +386,7 @@ fn failcase_asterisk_with_prefix() {
 #[test]
 fn failcase_asterisk_without_explicit_options() {
     let app = crate::app::app()
-        .route(route().uri("*".parse().unwrap()).reply(|| ""))
+        .with(route().uri("*".parse().unwrap()).reply(|| ""))
         .build();
     assert!(app.is_err());
 }
@@ -394,7 +394,7 @@ fn failcase_asterisk_without_explicit_options() {
 #[test]
 fn failcase_asterisk_with_explicit_get_handler() {
     let app = crate::app::app()
-        .route(
+        .with(
             route() //
                 .uri("*".parse().unwrap())
                 .methods(vec![Method::GET, Method::OPTIONS])

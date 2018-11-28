@@ -27,7 +27,7 @@ fn test_template() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::app::route!("/") //
                 .reply(|| assert_impl(Index { name: "Alice" })),
         ) //

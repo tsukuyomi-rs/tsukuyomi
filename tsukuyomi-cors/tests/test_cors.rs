@@ -27,7 +27,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let mut server = tsukuyomi::app!()
-        .route(tsukuyomi::route!("/").reply(|| "hello"))
+        .with(tsukuyomi::route!("/").reply(|| "hello"))
         .with(cors)
         .build_server()?
         .into_test_server()?;
@@ -58,7 +58,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let mut server = tsukuyomi::app!()
-        .route(tsukuyomi::route!("/").reply(|| "hello"))
+        .with(tsukuyomi::route!("/").reply(|| "hello"))
         .with(cors)
         .build_server()?
         .into_test_server()?;
@@ -93,7 +93,7 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let mut server = tsukuyomi::app!()
-        .route(tsukuyomi::route!("/", methods = [GET, DELETE]).reply(|| "hello"))
+        .with(tsukuyomi::route!("/", methods = [GET, DELETE]).reply(|| "hello"))
         .with(cors)
         .build_server()?
         .into_test_server()?;
@@ -125,7 +125,7 @@ fn simple_request_with_allow_credentials() -> tsukuyomi::test::Result<()> {
         .build();
 
     let mut server = tsukuyomi::app!()
-        .route(tsukuyomi::route!("/").reply(|| "hello"))
+        .with(tsukuyomi::route!("/").reply(|| "hello"))
         .with(cors)
         .build_server()?
         .into_test_server()?;
@@ -176,7 +176,7 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
@@ -205,7 +205,7 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
@@ -239,7 +239,7 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
@@ -275,7 +275,7 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
         .build();
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/") //
                 .reply(|| "hello"),
         ) //
@@ -317,7 +317,7 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
         .build();
 
     let mut server = tsukuyomi::app!()
-        .route(tsukuyomi::route!("/").reply(|| "hello"))
+        .with(tsukuyomi::route!("/").reply(|| "hello"))
         .with(cors)
         .build_server()?
         .into_test_server()?;
@@ -342,16 +342,16 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/cors", methods = [GET, OPTIONS])
                 .modify(cors.clone())
                 .reply(|| "cors"),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/nocors") //
                 .reply(|| "nocors"),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("*", method = OPTIONS)
                 .modify(cors)
                 .reply(|| ()),
@@ -399,13 +399,13 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
         .mount(
             tsukuyomi::scope!("/cors")
                 .with(cors.clone())
-                .route(tsukuyomi::route!("/").reply(|| "cors")),
+                .with(tsukuyomi::route!("/").reply(|| "cors")),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/nocors") //
                 .reply(|| "nocors"),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("*", method = OPTIONS) //
                 .reply(|| ()),
         ) //

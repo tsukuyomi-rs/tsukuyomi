@@ -14,7 +14,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::async::Client::new()));
 
     tsukuyomi::app!()
-        .route(
+        .with(
             route!("/")
                 .extract(proxy_client.clone())
                 .call(|client: Client| {
@@ -23,7 +23,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                         .and_then(|resp| resp.receive_all())
                 }),
         ) //
-        .route(
+        .with(
             route!("/streaming")
                 .extract(proxy_client)
                 .call(|client: Client| {

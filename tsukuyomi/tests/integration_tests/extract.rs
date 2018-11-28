@@ -9,7 +9,7 @@ use {
 #[test]
 fn unit_input() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
-        .route(route!().reply(|| "dummy"))
+        .with(route!().reply(|| "dummy"))
         .build_server()?
         .into_test_server()?;
     let response = server.perform("/")?;
@@ -20,7 +20,7 @@ fn unit_input() -> tsukuyomi::test::Result<()> {
 #[test]
 fn params() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!("/:id/:name/*path")
                 .reply(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)),
         ) //
@@ -40,12 +40,17 @@ fn params() -> tsukuyomi::test::Result<()> {
 fn route_macros() -> tsukuyomi::test::Result<()> {
     drop(
         tsukuyomi::app!()
-            .route(route!("/index").reply(|| "index"))
-            .route(route!("/params/:id/:name").reply(|id: i32, name: String| {
-                drop((id, name));
-                "dummy"
-            })) //
-            .route(
+            .with(
+                route!("/index") //
+                    .reply(|| "index"),
+            ).with(
+                route!("/params/:id/:name") //
+                    .reply(|id: i32, name: String| {
+                        drop((id, name));
+                        "dummy"
+                    }),
+            ) //
+            .with(
                 route!("/posts/:id/edit", method = PUT)
                     .extract(extractor::body::plain::<String>())
                     .reply(|id: u32, body: String| {
@@ -53,10 +58,13 @@ fn route_macros() -> tsukuyomi::test::Result<()> {
                         "dummy"
                     }),
             ) //
-            .route(route!("/static/*path").reply(|path: String| {
-                drop(path);
-                "dummy"
-            })).build()?,
+            .with(
+                route!("/static/*path") //
+                    .reply(|path: String| {
+                        drop(path);
+                        "dummy"
+                    }),
+            ).build()?,
     );
 
     Ok(())
@@ -65,7 +73,7 @@ fn route_macros() -> tsukuyomi::test::Result<()> {
 #[test]
 fn plain_body() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!("/", method = POST)
                 .extract(extractor::body::plain())
                 .reply(|body: String| body),
@@ -114,7 +122,7 @@ fn json_body() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!("/", method = POST)
                 .extract(extractor::body::json())
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
@@ -161,7 +169,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!("/", method = POST)
                 .extract(extractor::body::urlencoded())
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),
@@ -230,7 +238,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .modifier(MyModifier)
-        .route(
+        .with(
             route!()
                 .extract(extractor::local::remove(&MyData::KEY))
                 .reply(|x: MyData| x.0),
@@ -258,7 +266,7 @@ fn missing_local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!()
                 .extract(extractor::local::remove(&MyData::KEY))
                 .reply(|x: MyData| x.0),
@@ -283,7 +291,7 @@ fn optional() -> tsukuyomi::test::Result<()> {
     let extractor = extractor::Builder::new(extractor::body::json()).optional();
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!("/", method = POST)
                 .extract(extractor) //
                 .call(|params: Option<Params>| {
@@ -330,7 +338,7 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         .or(extractor::verb::post(extractor::body::urlencoded()));
 
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             route!("/", method = POST)
                 .extract(params_extractor)
                 .reply(|params: Params| format!("{},{}", params.id, params.name)),

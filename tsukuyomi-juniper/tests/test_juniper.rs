@@ -27,7 +27,7 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
     let executor = std::sync::Arc::new(executor);
 
     let test_server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::app::route!("/", methods = [GET, POST])
                 .extract(executor.clone())
                 .call({

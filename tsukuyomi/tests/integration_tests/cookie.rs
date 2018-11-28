@@ -6,7 +6,7 @@ use {
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/first") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
@@ -15,7 +15,7 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
                     })
                 }),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/second") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
@@ -37,7 +37,7 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 #[test]
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::route!("/first") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
@@ -46,7 +46,7 @@ fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
                     })
                 }),
         ) //
-        .route(
+        .with(
             tsukuyomi::route!("/second") //
                 .raw(|| {
                     AsyncResult::ready(|input| {

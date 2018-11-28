@@ -103,9 +103,9 @@ fn main() -> tsukuyomi::server::Result<()> {
         });
 
     let server = tsukuyomi::app!("/api/v1/posts")
-        .route(get_posts)
-        .route(create_post)
-        .route(get_post)
+        .with(get_posts)
+        .with(create_post)
+        .with(get_post)
         .build_server()?;
 
     server.run()

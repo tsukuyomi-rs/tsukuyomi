@@ -2,7 +2,7 @@ extern crate tsukuyomi;
 
 fn main() -> tsukuyomi::server::Result<()> {
     let server = tsukuyomi::app!()
-        .route(
+        .with(
             tsukuyomi::app::route!() //
                 .say("Hello, world!\n"),
         ) //
