@@ -1,17 +1,17 @@
 extern crate futures;
 extern crate tsukuyomi;
-extern crate tsukuyomi_websocket;
+extern crate tsukuyomi_tungstenite;
 
 use {
     futures::prelude::*,
-    tsukuyomi_websocket::{Message, Ws},
+    tsukuyomi_tungstenite::{Message, Ws},
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!() //
         .route(
             tsukuyomi::app::route!("/ws")
-                .extract(tsukuyomi_websocket::extractor())
+                .extract(tsukuyomi_tungstenite::ws())
                 .reply(|ws: Ws| {
                     ws.finish(|stream| {
                         let (tx, rx) = stream.split();

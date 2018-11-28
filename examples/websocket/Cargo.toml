@@ -11,5 +11,5 @@ doc = false
 
 [dependencies]
 tsukuyomi = "0.4.0"
-tsukuyomi-websocket = "0.1.0"
+tsukuyomi-tungstenite = "0.1.0"
 futures = "0.1.21"

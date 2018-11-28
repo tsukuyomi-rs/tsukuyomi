@@ -29,7 +29,7 @@ members = [
   "tsukuyomi-cors",
   "tsukuyomi-juniper",
   "tsukuyomi-session",
-  "tsukuyomi-websocket",
+  "tsukuyomi-tungstenite",
 
   "testcrates/doctest",
 
@@ -58,4 +58,4 @@ tsukuyomi-askama = { version = "0.1.0", path = "tsukuyomi-askama" }
 tsukuyomi-cors = { version = "0.1.0", path = "tsukuyomi-cors" }
 tsukuyomi-juniper = { version = "0.2.0-dev", path = "tsukuyomi-juniper" }
 tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
-tsukuyomi-websocket = { version = "0.1.0", path = "tsukuyomi-websocket" }
+tsukuyomi-tungstenite = { version = "0.1.0", path = "tsukuyomi-tungstenite" }
