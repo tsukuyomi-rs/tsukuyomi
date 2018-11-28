@@ -29,11 +29,7 @@ include = [
 maintenance = { status = "actively-developed" }
 
 [package.metadata.docs.rs]
-features = [
-  "secure",
-  "tls",
-  "websocket",
-]
+features = ["full"]
 
 [dependencies]
 bytes = "0.4"
@@ -87,8 +83,21 @@ serde = { version = "1", features = ["derive"] }
 
 [features]
 default = []
+full = [
+  "secure",
+  "tower-middleware",
+  "use-native-tls",
+  "use-rustls",
+  "use-openssl",
+]
+
+# Enables the features around signing/encryption, depending on 'ring'.
 secure = ["cookie/secure"]
+
+# Enables the support for middlewares in tower-web.
+tower-middleware = ["tower-web"]
+
+# Enables the support for TLS acceptors.
 use-native-tls = ["native-tls", "tokio-tls"]
 use-rustls = ["rustls", "tokio-rustls"]
 use-openssl = ["openssl", "tokio-openssl"]
-tower-middleware = ["tower-web"]
