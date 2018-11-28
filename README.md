@@ -52,7 +52,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 - [`tsukuyomi-cors`] - CORS support
 - [`tsukuyomi-juniper`] - GraphQL integration using [`juniper`]
 - [`tsukuyomi-session`] - session management
-- [`tsukuyomi-websocket`] - WebSocket support using [`tungstenite`]
+- [`tsukuyomi-tungstenite`] - WebSocket support using [`tungstenite`]
 
 ## License
 Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE) at your option.
@@ -84,4 +84,4 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [`tsukuyomi-cors`]: ./tsukuyomi-cors
 [`tsukuyomi-juniper`]: ./tsukuyomi-juniper
 [`tsukuyomi-session`]: ./tsukuyomi-session
-[`tsukuyomi-websocket`]: ./tsukuyomi-websocket
+[`tsukuyomi-tungstenite`]: ./tsukuyomi-tungstenite
