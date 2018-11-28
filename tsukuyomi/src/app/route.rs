@@ -6,6 +6,7 @@ use {
         extractor::{Combine, ExtractStatus, Extractor, Func},
         fs::NamedFile,
         handler::{raw as raw_handler, AsyncResult, Handler},
+        modifier::{Chain, Modifier},
         output::{redirect::Redirect, Responder},
         uri::Uri,
         Never,
@@ -22,8 +23,9 @@ use {
 
 /// A builder of `Route`.
 #[derive(Debug)]
-pub struct Builder<E: Extractor = ()> {
+pub struct Builder<E: Extractor = (), M: Modifier = ()> {
     extractor: E,
+    modifier: M,
     methods: IndexSet<Method>,
     uri: Uri,
 }
@@ -32,6 +34,7 @@ impl Default for Builder {
     fn default() -> Self {
         Self {
             extractor: (),
+            modifier: (),
             methods: IndexSet::new(),
             uri: Uri::root(),
         }
@@ -39,9 +42,10 @@ impl Default for Builder {
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<E> Builder<E>
+impl<E, M> Builder<E, M>
 where
     E: Extractor,
+    M: Modifier + Send + Sync + 'static,
 {
     /// Sets the URI of this route.
     pub fn uri(self, uri: Uri) -> Self {
@@ -79,7 +83,7 @@ where
     pub fn extract<U>(
         self,
         other: U,
-    ) -> Builder<impl Extractor<Output = <E::Output as Combine<U::Output>>::Out, Error = Error>>
+    ) -> Builder<impl Extractor<Output = <E::Output as Combine<U::Output>>::Out, Error = Error>, M>
     where
         U: Extractor,
         E::Output: Combine<U::Output> + Send + 'static,
@@ -91,6 +95,20 @@ where
                 .into_builder() //
                 .and(other)
                 .into_inner(),
+            modifier: self.modifier,
+            methods: self.methods,
+            uri: self.uri,
+        }
+    }
+
+    /// Appends a `Modifier` to this builder.
+    pub fn modify<M2>(self, modifier: M2) -> Builder<E, Chain<M, M2>>
+    where
+        M2: Modifier + Send + Sync + 'static,
+    {
+        Builder {
+            extractor: self.extractor,
+            modifier: self.modifier.chain(modifier),
             methods: self.methods,
             uri: self.uri,
         }
@@ -104,9 +122,10 @@ where
     {
         raw(move |cx| {
             let handler = f(self.extractor)?;
+            let modifier = self.modifier;
             cx.methods(self.methods);
             cx.uri(self.uri);
-            cx.handler(handler);
+            cx.handler(raw_handler(move || modifier.modify(handler.handle())));
             Ok(())
         })
     }
