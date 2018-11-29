@@ -22,6 +22,7 @@ pub use {
 };
 use {
     crate::{
+        common::TryFrom,
         error::Critical,
         handler::Handler,
         input::RequestBody,
@@ -50,6 +51,7 @@ pub fn scope() -> self::scope::Builder<()> {
 }
 
 #[deprecated(since = "0.4.2", note = "use `scope::route` instead")]
+#[allow(deprecated)]
 pub fn route() -> self::route::Builder<()> {
     self::route::Builder::<()>::default()
 }
@@ -282,8 +284,11 @@ impl App {
     }
 
     /// Create a `Builder` with the specified prefix.
-    pub fn with_prefix(prefix: Uri) -> Builder<()> {
-        Self::builder().prefix(prefix)
+    pub fn with_prefix<T>(prefix: T) -> Result<Builder<()>>
+    where
+        Uri: TryFrom<T>,
+    {
+        Ok(Self::builder().prefix(Uri::try_from(prefix)?))
     }
 }
 

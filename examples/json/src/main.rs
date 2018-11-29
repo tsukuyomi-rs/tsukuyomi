@@ -23,7 +23,8 @@ fn main() -> tsukuyomi::server::Result<()> {
                 }),
         ) //
         .with(
-            route!("/", method = POST)
+            route!("/")
+                .methods("POST")?
                 .extract(extractor::body::json())
                 .reply(|user: User| user),
         ) //

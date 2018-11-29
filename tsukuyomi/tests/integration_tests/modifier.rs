@@ -7,7 +7,7 @@ use {
         },
         handler::AsyncResult,
         output::Output,
-        uri, Modifier,
+        Modifier,
     },
 };
 
@@ -93,7 +93,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
             name: "M1",
         }) //
         .with(
-            mount(uri!("/path1"))
+            mount("/path1")?
                 .with(MockModifier {
                     marker: marker.clone(),
                     name: "M2",
@@ -120,20 +120,20 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            mount(uri!("/path"))
+            mount("/path")?
                 .with(MockModifier {
                     marker: marker.clone(),
                     name: "M1",
                 }) //
                 .with(
-                    mount(uri!("/to"))
+                    mount("/to")?
                         .with(MockModifier {
                             marker: marker.clone(),
                             name: "M2",
                         }) //
                         .with(route!().reply(|| ""))
                         .with(
-                            mount(uri!("/a"))
+                            mount("/a")?
                                 .with(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",

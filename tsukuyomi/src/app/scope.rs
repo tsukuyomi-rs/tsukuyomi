@@ -9,7 +9,7 @@ use {
         fallback::{Fallback, FallbackInstance},
     },
     crate::{
-        common::Never,
+        common::{Never, TryFrom},
         extractor::{Combine, ExtractStatus, Extractor, Func},
         fs::NamedFile,
         handler::{AsyncResult, Handler},
@@ -19,8 +19,8 @@ use {
         uri::Uri,
     },
     futures::{Async, Future, IntoFuture},
-    http::{Method, StatusCode},
-    indexmap::IndexSet,
+    http::{HttpTryFrom, Method, StatusCode},
+    indexmap::{indexset, IndexSet},
     std::{
         borrow::Cow,
         fmt,
@@ -266,8 +266,11 @@ where
 }
 
 /// A function that creates a `Mount` with the empty scope items.
-pub fn mount(prefix: Uri) -> Mount<()> {
-    Mount::new((), prefix)
+pub fn mount<T>(prefix: T) -> Result<Mount<()>>
+where
+    Uri: TryFrom<T>,
+{
+    Ok(Mount::new((), Uri::try_from(prefix)?))
 }
 
 /// An instance of `Scope` that represents a sub-scope with a specific prefix.
@@ -322,8 +325,14 @@ where
     }
 
     /// Sets the prefix of the URL appended to the all routes in the inner scope.
-    pub fn prefix(self, prefix: Uri) -> Self {
-        Self { prefix, ..self }
+    pub fn prefix<T>(self, prefix: T) -> Result<Self>
+    where
+        Uri: TryFrom<T>,
+    {
+        Ok(Self {
+            prefix: Uri::try_from(prefix)?,
+            ..self
+        })
     }
 }
 
@@ -409,9 +418,67 @@ impl<'a> Context<'a> {
     }
 }
 
+// ==== Route ====
+
+/// A set of request methods that a route accepts.
+#[derive(Debug)]
+pub struct Methods(IndexSet<Method>);
+
+impl TryFrom<Self> for Methods {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(methods: Self) -> std::result::Result<Self, Self::Error> {
+        Ok(methods)
+    }
+}
+
+impl TryFrom<Method> for Methods {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(method: Method) -> std::result::Result<Self, Self::Error> {
+        Ok(Methods(indexset!{ method }))
+    }
+}
+
+impl<M> TryFrom<Vec<M>> for Methods
+where
+    Method: HttpTryFrom<M>,
+{
+    type Error = http::Error;
+
+    #[inline]
+    fn try_from(methods: Vec<M>) -> std::result::Result<Self, Self::Error> {
+        let methods = methods
+            .into_iter()
+            .map(Method::try_from)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(Into::into)?;
+        Ok(Methods(methods))
+    }
+}
+
+impl<'a> TryFrom<&'a str> for Methods {
+    type Error = failure::Error;
+
+    #[inline]
+    fn try_from(methods: &'a str) -> std::result::Result<Self, Self::Error> {
+        let methods = methods
+            .split(',')
+            .map(|s| Method::try_from(s.trim()).map_err(Into::into))
+            .collect::<http::Result<_>>()?;
+        Ok(Methods(methods))
+    }
+}
+
 /// Creates a `Route` for building a `Scope` that registers a route within the scope.
-pub fn route() -> Route<()> {
-    Route::<()>::default()
+pub fn route<T>(uri: T) -> Result<Route<(), ()>>
+where
+    Uri: TryFrom<T>,
+{
+    let uri = Uri::try_from(uri)?;
+    Ok(Route::new((), (), uri))
 }
 
 /// A builder of `Scope` to register a route, which is matched to the requests
@@ -420,18 +487,13 @@ pub fn route() -> Route<()> {
 pub struct Route<E: Extractor = (), M: Modifier = ()> {
     extractor: E,
     modifier: M,
-    methods: IndexSet<Method>,
     uri: Uri,
+    methods: Methods,
 }
 
 impl Default for Route {
     fn default() -> Self {
-        Self {
-            extractor: (),
-            modifier: (),
-            methods: IndexSet::new(),
-            uri: Uri::root(),
-        }
+        Self::new((), (), Uri::root())
     }
 }
 
@@ -441,36 +503,35 @@ where
     E: Extractor,
     M: Modifier + Send + Sync + 'static,
 {
+    pub fn new(extractor: E, modifier: M, uri: Uri) -> Self {
+        Self {
+            extractor,
+            modifier,
+            uri,
+            methods: Methods(IndexSet::new()),
+        }
+    }
+
     /// Sets the URI of this route.
-    pub fn uri(self, uri: Uri) -> Self {
-        Self { uri, ..self }
-    }
-
-    /// Sets the method of this route.
-    pub fn method(self, method: Method) -> Self {
-        Self {
-            methods: {
-                let mut methods = self.methods;
-                methods.insert(method);
-                methods
-            },
-            ..self
-        }
-    }
-
-    /// Sets the HTTP methods of this route.
-    pub fn methods<I>(self, methods: I) -> Self
+    pub fn uri<T>(self, uri: T) -> Result<Self>
     where
-        I: IntoIterator<Item = Method>,
+        Uri: TryFrom<T>,
     {
-        Self {
-            methods: {
-                let mut orig_methods = self.methods;
-                orig_methods.extend(methods);
-                orig_methods
-            },
+        Ok(Self {
+            uri: Uri::try_from(uri)?,
             ..self
-        }
+        })
+    }
+
+    /// Sets the HTTP methods that this route accepts.
+    pub fn methods<M2>(self, methods: M2) -> Result<Self>
+    where
+        Methods: TryFrom<M2>,
+    {
+        Ok(Self {
+            methods: Methods::try_from(methods).map_err(Into::into)?,
+            ..self
+        })
     }
 
     /// Appends an `Extractor` to this builder.
@@ -493,8 +554,8 @@ where
                 .and(other)
                 .into_inner(),
             modifier: self.modifier,
-            methods: self.methods,
             uri: self.uri,
+            methods: self.methods,
         }
     }
 
@@ -506,15 +567,12 @@ where
         Route {
             extractor: self.extractor,
             modifier: self.modifier.chain(modifier),
-            methods: self.methods,
             uri: self.uri,
+            methods: self.methods,
         }
     }
 
-    fn finish<F, H, R>(
-        self,
-        f: F,
-    ) -> impl super::route::Route<Error = R> + Scope<Error = super::Error>
+    fn finish<F, H, R>(self, f: F) -> impl Scope<Error = super::Error>
     where
         F: FnOnce(E) -> std::result::Result<H, R>,
         H: Handler + Send + Sync + 'static,
@@ -550,10 +608,10 @@ where
             }
         }
 
-        Raw(move |cx: &mut super::route::Context| {
-            let handler = f(self.extractor)?;
+        Raw(move |cx: &mut super::route::Context| -> super::Result<_> {
+            let handler = f(self.extractor).map_err(Into::into)?;
             let modifier = self.modifier;
-            cx.methods(self.methods);
+            cx.methods(self.methods.0);
             cx.uri(self.uri);
             cx.handler(crate::handler::raw(move || {
                 modifier.modify(handler.handle())
@@ -566,15 +624,12 @@ where
     ///
     /// The provided function always succeeds and immediately returns a value of `Responder`.
     #[allow(deprecated)]
-    pub fn reply<F>(
-        self,
-        f: F,
-    ) -> impl super::route::Route<Error = Never> + Scope<Error = super::Error>
+    pub fn reply<F>(self, f: F) -> impl Scope<Error = super::Error>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
     {
-        self.finish(move |extractor| {
+        self.finish(move |extractor| -> super::Result<_> {
             let extractor = std::sync::Arc::new(extractor);
 
             Ok(crate::handler::raw(move || {
@@ -615,17 +670,14 @@ where
     ///
     /// The result of provided function is returned by `Future`.
     #[allow(deprecated)]
-    pub fn call<F, R>(
-        self,
-        f: F,
-    ) -> impl super::route::Route<Error = Never> + Scope<Error = super::Error>
+    pub fn call<F, R>(self, f: F) -> impl Scope<Error = super::Error>
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
         R: IntoFuture<Error = crate::Error>,
         R::Future: Send + 'static,
         R::Item: Responder,
     {
-        self.finish(move |extractor| {
+        self.finish(move |extractor| -> super::Result<_> {
             let extractor = std::sync::Arc::new(extractor);
             Ok(crate::handler::raw(move || {
                 enum Status<F1, F2> {
@@ -665,28 +717,26 @@ where
     }
 }
 
-impl Route<()> {
+impl<M> Route<(), M>
+where
+    M: Modifier + Send + Sync + 'static,
+{
     /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(
-        self,
-        handler: H,
-    ) -> impl super::route::Route<Error = Never> + Scope<Error = super::Error>
+    pub fn raw<H>(self, handler: H) -> impl Scope<Error = super::Error>
     where
         H: Handler + Send + Sync + 'static,
     {
-        self.finish(move |()| Ok(handler))
+        self.finish(move |()| -> super::Result<_> { Ok(handler) })
     }
 }
 
-impl<E> Route<E>
+impl<E, M> Route<E, M>
 where
     E: Extractor<Output = ()>,
+    M: Modifier + Send + Sync + 'static,
 {
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<T>(
-        self,
-        output: T,
-    ) -> impl super::route::Route<Error = Never> + Scope<Error = super::Error>
+    pub fn say<T>(self, output: T) -> impl Scope<Error = super::Error>
     where
         T: Responder + Clone + Send + Sync + 'static,
     {
@@ -698,7 +748,7 @@ where
         self,
         location: impl Into<Cow<'static, str>>,
         status: StatusCode,
-    ) -> impl super::route::Route<Error = Never> + Scope<Error = super::Error> {
+    ) -> impl Scope<Error = super::Error> {
         self.say(Redirect::new(status, location))
     }
 
@@ -707,7 +757,7 @@ where
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
-    ) -> impl super::route::Route<Error = Never> + Scope<Error = super::Error> {
+    ) -> impl Scope<Error = super::Error> {
         let path = {
             #[derive(Clone)]
             #[allow(missing_debug_implementations)]
@@ -726,5 +776,39 @@ where
                 None => NamedFile::open(path.clone()),
             }.map_err(Into::into)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_methods_try_from() {
+        assert_eq!(
+            Methods::try_from(Methods(indexset!{ Method::GET }))
+                .unwrap()
+                .0,
+            indexset!{ Method::GET }
+        );
+        assert_eq!(
+            Methods::try_from(Method::GET).unwrap().0,
+            indexset!{ Method::GET }
+        );
+        assert_eq!(
+            Methods::try_from(vec![Method::GET, Method::POST])
+                .unwrap()
+                .0,
+            indexset! { Method::GET, Method::POST }
+        );
+        assert_eq!(
+            Methods::try_from("GET").unwrap().0,
+            indexset!{ Method::GET }
+        );
+        assert_eq!(
+            Methods::try_from("GET, POST").unwrap().0,
+            indexset!{ Method::GET , Method::POST }
+        );
+        assert!(Methods::try_from("").is_err());
     }
 }

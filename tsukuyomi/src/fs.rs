@@ -454,16 +454,12 @@ where
             let config = config.clone();
 
             if file_type.is_file() {
-                let uri = format!("/{}", name).parse()?;
-                crate::app::scope::route() //
-                    .uri(uri)
+                crate::app::scope::route(format!("/{}", name))?
                     .send_file(path, config)
                     .configure(cx)?;
             } else if file_type.is_dir() {
-                let uri = format!("/{}/*path", name).parse()?;
                 let root_dir = path;
-                crate::app::scope::route()
-                    .uri(uri)
+                crate::app::scope::route(format!("/{}/*path", name))?
                     .extract(crate::extractor::param::wildcard())
                     .call(move |suffix: PathBuf| {
                         let path = root_dir.join(suffix);

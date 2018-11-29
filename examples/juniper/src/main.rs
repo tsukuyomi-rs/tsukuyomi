@@ -1,4 +1,3 @@
-#![warn(unused)]
 #![cfg_attr(feature = "cargo-clippy", allow(double_parens))]
 
 extern crate juniper;
@@ -26,7 +25,8 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .say(tsukuyomi_juniper::graphiql_source("/graphql")),
         ) //
         .with(
-            tsukuyomi::app::route!("/graphql", methods = [GET, POST])
+            tsukuyomi::app::route!("/graphql")
+                .methods("GET, POST")?
                 .extract(extract_graphql_executor)
                 .extract(fetch_graphql_context)
                 .call(move |exec: Executor<_>, context| exec.execute(context)),

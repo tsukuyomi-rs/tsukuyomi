@@ -55,14 +55,13 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
     let Error = quote!(tsukuyomi::error::Error);
     let route = quote!(tsukuyomi::app::scope::route);
-    let Builder = quote!(tsukuyomi::app::route::Builder);
+    let Route = quote!(tsukuyomi::app::scope::Route);
     let uri = &input.uri_lit;
 
     if input.params.is_empty() {
         quote! {
-            fn #name() -> #Builder<()> {
-                #route()
-                    .uri(#uri.parse().expect("this is a bug"))
+            fn #name() -> #Route<()> {
+                #route(#uri).expect("this is a bug")
             }
         }
     } else {
@@ -77,14 +76,13 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
         });
 
         quote!(
-            fn #name<#(#type_params),*>() -> #Builder<
+            fn #name<#(#type_params),*>() -> #Route<
                 impl #Extractor<Output = (#(#return_types,)*), Error = #Error>,
             >
             where
                 #( #bounds )*
             {
-                #route()
-                    .uri(#uri.parse().expect("this is a bug"))
+                #route(#uri).expect("this is a bug")
                     #( .extract(#extractors) )*
             }
         )
@@ -124,9 +122,8 @@ t! {
     name: index,
     source: ("/"),
     expected: {
-        fn route() -> tsukuyomi::app::route::Builder<()> {
-            tsukuyomi::app::scope::route()
-                .uri("/".parse().expect("this is a bug"))
+        fn route() -> tsukuyomi::app::scope::Route<()> {
+            tsukuyomi::app::scope::route("/").expect("this is a bug")
         }
     },
 }
@@ -135,14 +132,13 @@ t! {
     name: single_param,
     source: ("/:id"),
     expected: {
-        fn route<T0>() -> tsukuyomi::app::route::Builder<
+        fn route<T0>() -> tsukuyomi::app::scope::Route<
             impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
         >
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::app::scope::route()
-                .uri("/:id".parse().expect("this is a bug"))
+            tsukuyomi::app::scope::route("/:id").expect("this is a bug")
                 .extract(tsukuyomi::extractor::param::pos(0usize))
         }
     },
@@ -152,14 +148,13 @@ t! {
     name: wildcard_param,
     source: ("/*path"),
     expected: {
-        fn route<T0>() -> tsukuyomi::app::route::Builder<
+        fn route<T0>() -> tsukuyomi::app::scope::Route<
             impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
         >
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::app::scope::route()
-                .uri("/*path".parse().expect("this is a bug"))
+            tsukuyomi::app::scope::route("/*path").expect("this is a bug")
                 .extract(tsukuyomi::extractor::param::wildcard())
         }
     },
@@ -169,7 +164,7 @@ t! {
     name: compound_params,
     source: ("/:id/people/:name/*path"),
     expected: {
-        fn route<T0, T1, T2>() -> tsukuyomi::app::route::Builder<
+        fn route<T0, T1, T2>() -> tsukuyomi::app::scope::Route<
             impl tsukuyomi::extractor::Extractor<Output = (T0, T1, T2,), Error = tsukuyomi::error::Error>,
         >
         where
@@ -177,8 +172,7 @@ t! {
             T1: tsukuyomi::extractor::param::FromParam,
             T2: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::app::scope::route()
-                .uri("/:id/people/:name/*path".parse().expect("this is a bug"))
+            tsukuyomi::app::scope::route("/:id/people/:name/*path").expect("this is a bug")
                 .extract(tsukuyomi::extractor::param::pos(0usize))
                 .extract(tsukuyomi::extractor::param::pos(1usize))
                 .extract(tsukuyomi::extractor::param::wildcard())
@@ -190,9 +184,8 @@ t! {
     name: asterisk,
     source: ("*"),
     expected: {
-        fn route() -> tsukuyomi::app::route::Builder<()> {
-            tsukuyomi::app::scope::route()
-                .uri("*".parse().expect("this is a bug"))
+        fn route() -> tsukuyomi::app::scope::Route<()> {
+            tsukuyomi::app::scope::route("*").expect("this is a bug")
         }
     },
 }

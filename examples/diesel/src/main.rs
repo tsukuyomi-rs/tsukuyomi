@@ -47,7 +47,8 @@ fn main() -> tsukuyomi::server::Result<()> {
             .optional()
             .map(|param: Option<Param>| param.unwrap_or_else(|| Param { count: 20 }));
 
-        route!("/", method = GET)
+        route!("/")
+            .methods("GET")?
             .extract(parse_query)
             .extract(db_conn.clone())
             .call(|param: Param, conn: Conn| {
@@ -69,7 +70,8 @@ fn main() -> tsukuyomi::server::Result<()> {
             body: String,
         }
 
-        route!("/", method = POST)
+        route!("/")
+            .methods("POST")?
             .extract(extractor::body::json())
             .extract(db_conn.clone())
             .call(|param: Param, conn: Conn| {
@@ -88,7 +90,8 @@ fn main() -> tsukuyomi::server::Result<()> {
             })
     };
 
-    let get_post = route!("/:id", method = GET) //
+    let get_post = route!("/:id")
+        .methods("GET")?
         .extract(db_conn)
         .call(|id: i32, conn: Conn| {
             blocking_section(move || {
@@ -102,7 +105,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             }).map(|post_opt| post_opt.map(tsukuyomi::output::json))
         });
 
-    let server = tsukuyomi::App::with_prefix(tsukuyomi::uri!("/api/v1/posts"))
+    let server = tsukuyomi::App::with_prefix("/api/v1/posts")?
         .with(get_posts)
         .with(create_post)
         .with(get_post)

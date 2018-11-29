@@ -1,28 +1,27 @@
 use {
     super::{
         scope::{mount, route, state},
-        App, Recognize, ScopeId,
+        App, Recognize, Result, ScopeId,
     },
     http::Method,
     matches::assert_matches,
 };
 
 #[test]
-fn empty() {
-    let app = App::builder().build().unwrap();
+fn empty() -> Result<()> {
+    let app = App::builder().build()?;
     assert_matches!(
         app.data.recognize("/", &Method::GET),
         Recognize::NotFound(ScopeId::Global)
     );
+    Ok(())
 }
 
 #[test]
-fn route_single_method() {
+fn route_single_method() -> Result<()> {
     let app = App::builder() //
-        .with(route().reply(|| ""))
-        .build()
-        .unwrap();
-    eprintln!("[dbg] app = {:#?}", app);
+        .with(route("/")?.reply(|| ""))
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/", &Method::GET),
@@ -37,15 +36,16 @@ fn route_single_method() {
         app.data.recognize("/", &Method::POST),
         Recognize::MethodNotAllowed { .. }
     );
+
+    Ok(())
 }
 
 #[test]
-fn route_multiple_method() {
+fn route_multiple_method() -> Result<()> {
     let app = App::builder()
-        .with(route().reply(|| ""))
-        .with(route().method(Method::POST).reply(|| ""))
-        .build()
-        .unwrap();
+        .with(route("/")?.reply(|| ""))
+        .with(route("/")?.methods(Method::POST)?.reply(|| ""))
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/", &Method::GET),
@@ -60,94 +60,96 @@ fn route_multiple_method() {
         app.data.recognize("/", &Method::PUT),
         Recognize::MethodNotAllowed { .. }
     );
+
+    Ok(())
 }
 
 #[test]
-fn route_fallback_head_enabled() {
+fn route_fallback_head_enabled() -> Result<()> {
     let app = App::builder() //
-        .with(route().reply(|| ""))
-        .build()
-        .unwrap();
+        .with(route("/")?.reply(|| ""))
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/", &Method::HEAD),
         Recognize::Matched { route, fallback_head: true, .. } if route.id.1 == 0
     );
+
+    Ok(())
 }
 
 #[test]
-fn route_fallback_head_disabled() {
+fn route_fallback_head_disabled() -> Result<()> {
     let app = App::builder() //
-        .with(route().reply(|| ""))
+        .with(route("/")?.reply(|| ""))
         .fallback_head(false)
-        .build()
-        .unwrap();
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/", &Method::HEAD),
         Recognize::MethodNotAllowed { .. }
     );
+
+    Ok(())
 }
 
 #[test]
-fn asterisk_route() {
+fn asterisk_route() -> Result<()> {
     let app = App::builder()
         .with(
-            route()
-                .uri("*".parse().unwrap())
-                .method(Method::OPTIONS)
-                .reply(|| "explciit OPTIONS handler"),
+            route("*")?
+                .methods(Method::OPTIONS)?
+                .reply(|| "explicit OPTIONS handler"),
         ) //
-        .build()
-        .unwrap();
+        .build()?;
 
     assert_matches!(
         app.data.recognize("*", &Method::OPTIONS),
         Recognize::Matched { route, .. } if route.id.1 == 0
     );
+
+    Ok(())
 }
 
 #[test]
-fn asterisk_route_with_normal_routes() {
+fn asterisk_route_with_normal_routes() -> Result<()> {
     let app = App::builder()
-        .with(route().uri("/".parse().unwrap()).reply(|| ""))
+        .with(route("/")?.reply(|| ""))
         .with(
-            mount("/api".parse().unwrap())
-                .with(route().uri("/posts".parse().unwrap()).reply(|| ""))
-                .with(route().uri("/events".parse().unwrap()).reply(|| "")),
+            mount("/api")?
+                .with(route("/posts")?.reply(|| ""))
+                .with(route("/events")?.reply(|| "")),
         ) //
         .with(
-            route()
-                .uri("*".parse().unwrap())
-                .method(Method::OPTIONS)
-                .reply(|| "explciit OPTIONS handler"),
+            route("*")?
+                .methods(Method::OPTIONS)?
+                .reply(|| "explicit OPTIONS handler"),
         ) //
-        .build()
-        .unwrap();
+        .build()?;
 
     assert_matches!(
         app.data.recognize("*", &Method::OPTIONS),
         Recognize::Matched { route, .. } if route.id.1 == 3
     );
+
+    Ok(())
 }
 
 #[test]
-fn scope_simple() {
+fn scope_simple() -> Result<()> {
     let app = App::builder() //
         .with(
-            mount("/".parse().unwrap())
-                .with(route().uri("/a".parse().unwrap()).reply(|| ""))
-                .with(route().uri("/b".parse().unwrap()).reply(|| "")),
+            mount("/")?
+                .with(route("/a")?.reply(|| ""))
+                .with(route("/b")?.reply(|| "")),
         ) //
-        .with(route().uri("/foo".parse().unwrap()).reply(|| ""))
+        .with(route("/foo")?.reply(|| ""))
         .with(
-            mount("/".parse().unwrap())
-                .prefix("/c".parse().unwrap())
-                .with(route().uri("/d".parse().unwrap()).reply(|| ""))
-                .with(route().uri("/e".parse().unwrap()).reply(|| "")),
+            mount("/c")?
+                .with(route("/d")?.reply(|| ""))
+                .with(route("/e")?.reply(|| "")),
         ) //
-        .build()
-        .unwrap();
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/a", &Method::GET),
@@ -169,31 +171,28 @@ fn scope_simple() {
         app.data.recognize("/c/e", &Method::GET),
         Recognize::Matched { route, .. } if route.id.1 == 4
     );
+
+    Ok(())
 }
 
 #[test]
-fn scope_nested() {
+fn scope_nested() -> Result<()> {
     let app = App::builder()
         .with(
-            mount("/".parse().unwrap()) // 0
-                .with(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
-                .with(route().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
+            mount("/")? // 0
+                .with(route("/foo")?.reply(|| "")) // /foo
+                .with(route("/bar")?.reply(|| "")), // /bar
         ) //
         .with(
-            mount("/baz".parse().unwrap()) // 1
-                .with(route().reply(|| "")) // /baz
+            mount("/baz")? // 1
+                .with(route("/")?.reply(|| "")) // /baz
                 .with(
-                    mount("/".parse().unwrap()) // 2
-                        .with(
-                            route()
-                                .uri("/foobar".parse().unwrap()) // /baz/foobar
-                                .reply(|| ""),
-                        ),
+                    mount("/")? // 2
+                        .with(route("/foobar")?.reply(|| "")), // /baz/foobar
                 ), //
         ) //
-        .with(route().uri("/hoge".parse().unwrap()).reply(|| "")) // /hoge
-        .build()
-        .unwrap();
+        .with(route("/hoge")?.reply(|| "")) // /hoge
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/foo", &Method::GET),
@@ -220,46 +219,39 @@ fn scope_nested() {
         app.data.recognize("/baz/", &Method::GET),
         Recognize::NotFound(ScopeId::Local(2))
     );
+
+    Ok(())
 }
 
 #[test]
-fn scope_variable() {
+fn scope_variable() -> Result<()> {
     let app = App::builder()
         .with(state::<String>("G".into()))
-        .with(route().uri("/rg".parse().unwrap()).reply(|| ""))
+        .with(route("/rg")?.reply(|| ""))
         .with(
-            mount("/s0".parse().unwrap())
-                .with(route().uri("/r0".parse().unwrap()).reply(|| ""))
-                .with(
-                    (mount("/s1".parse().unwrap()))
-                        .with(state::<String>("A".into()))
-                        .with(route().uri("/r1".parse().unwrap()).reply(|| "")),
-                ),
+            mount("/s0")?.with(route("/r0")?.reply(|| "")).with(
+                mount("/s1")?
+                    .with(state::<String>("A".into()))
+                    .with(route("/r1")?.reply(|| "")),
+            ),
         ) //
         .with(
-            mount("/s2".parse().unwrap())
+            mount("/s2")?
                 .with(state::<String>("B".into()))
-                .with(route().uri("/r2".parse().unwrap()).reply(|| ""))
+                .with(route("/r2")?.reply(|| ""))
                 .with(
-                    mount("/s3".parse().unwrap())
+                    mount("/s3")?
                         .with(state::<String>("C".into()))
-                        .with(route().uri("/r3".parse().unwrap()).reply(|| ""))
-                        .with(
-                            mount("/s4".parse().unwrap())
-                                .with(route().uri("/r4".parse().unwrap()).reply(|| "")),
-                        ),
+                        .with(route("/r3")?.reply(|| ""))
+                        .with(mount("/s4")?.with(route("/r4")?.reply(|| ""))),
                 ) //
                 .with(
-                    mount("/s5".parse().unwrap())
-                        .with(route().uri("/r5".parse().unwrap()).reply(|| ""))
-                        .with(
-                            mount("/s6".parse().unwrap())
-                                .with(route().uri("/r6".parse().unwrap()).reply(|| "")),
-                        ),
+                    mount("/s5")?
+                        .with(route("/r5")?.reply(|| ""))
+                        .with(mount("/s6")?.with(route("/r6")?.reply(|| ""))),
                 ), //
         ) //
-        .build()
-        .unwrap();
+        .build()?;
 
     assert_eq!(
         app.data.get_state(ScopeId::Global).map(String::as_str),
@@ -293,29 +285,30 @@ fn scope_variable() {
         app.data.get_state(ScopeId::Local(6)).map(String::as_str),
         Some("B")
     );
+
+    Ok(())
 }
 
 #[test]
-fn scope_candidates() {
+fn scope_candidates() -> Result<()> {
     let app = App::builder()
         .with(
-            mount("/s0".parse().unwrap()) // 0
+            mount("/s0")? // 0
                 .with(
-                    mount("/s1".parse().unwrap()) // 1
+                    mount("/s1")? // 1
                         .with(
-                            mount("/s2".parse().unwrap()) // 2
-                                .with(route().uri("/r0".parse().unwrap()).say(""))
-                                .with(route().uri("/r1".parse().unwrap()).say("")),
+                            mount("/s2")? // 2
+                                .with(route("/r0")?.say(""))
+                                .with(route("/r1")?.say("")),
                         ),
                 ) //
-                .with(route().uri("/r2".parse().unwrap()).say("")),
+                .with(route("/r2")?.say("")),
         ) //
         .with(
-            mount("/".parse().unwrap()) // 3
-                .with(route().uri("/r3".parse().unwrap()).say("")),
+            mount("/")? // 3
+                .with(route("/r3")?.say("")),
         ) //
-        .build()
-        .unwrap();
+        .build()?;
 
     assert_matches!(
         app.data.recognize("/s0", &Method::GET),
@@ -346,69 +339,72 @@ fn scope_candidates() {
         app.data.recognize("/noroute", &Method::GET),
         Recognize::NotFound(ScopeId::Global)
     );
+
+    Ok(())
 }
 
 #[test]
-fn failcase_duplicate_uri_and_method() {
+fn failcase_duplicate_uri_and_method() -> Result<()> {
     let app = App::builder()
-        .with(route().uri("/path".parse().unwrap()).reply(|| ""))
-        .with(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .with(route("/path")?.reply(|| ""))
+        .with(route("/path")?.reply(|| ""))
         .build();
     assert!(app.is_err());
+    Ok(())
 }
 
 #[test]
-fn failcase_different_scope_at_the_same_uri() {
+fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::builder()
-        .with(route().uri("/path".parse().unwrap()).reply(|| ""))
+        .with(route("/path")?.reply(|| ""))
         .with(
-            mount("/".parse().unwrap()) //
-                .with(route().uri("/path".parse().unwrap()).reply(|| "")),
+            mount("/")? //
+                .with(route("/path")?.reply(|| "")),
         ) //
         .build();
     assert!(app.is_err());
+    Ok(())
 }
 
 #[test]
-fn failcase_asterisk_with_prefix() {
-    let app = (App::builder().prefix("/api/v1".parse().unwrap()))
-        .with(route().uri("*".parse().unwrap()).reply(|| ""))
+fn failcase_asterisk_with_prefix() -> Result<()> {
+    let app = App::with_prefix("/api/v1")?
+        .with(route("*")?.reply(|| ""))
         .build();
     assert!(app.is_err());
+    Ok(())
 }
 
 #[test]
-fn failcase_asterisk_without_explicit_options() {
-    let app = App::builder()
-        .with(route().uri("*".parse().unwrap()).reply(|| ""))
-        .build();
+fn failcase_asterisk_without_explicit_options() -> Result<()> {
+    let app = App::builder().with(route("*")?.reply(|| "")).build();
     assert!(app.is_err());
+    Ok(())
 }
 
 #[test]
-fn failcase_asterisk_with_explicit_get_handler() {
+fn failcase_asterisk_with_explicit_get_handler() -> Result<()> {
     let app = App::builder()
         .with(
-            route() //
-                .uri("*".parse().unwrap())
-                .methods(vec![Method::GET, Method::OPTIONS])
+            route("*")? //
+                .methods(vec![Method::GET, Method::OPTIONS])?
                 .reply(|| ""),
         ).build();
     assert!(app.is_err());
+    Ok(())
 }
 
 #[allow(deprecated)]
 #[test]
-fn test_deprecated() {
-    let app = App::builder()
-        .route(route().uri("/".parse().unwrap()).say(""))
+fn test_deprecated() -> Result<()> {
+    let app = crate::app::app()
+        .route(crate::app::route().uri("/".parse()?).say(""))
         .mount(
             crate::app::scope()
-                .prefix("/s1".parse().unwrap())
-                .route(route().uri("/".parse().unwrap()).say(""))
-                .mount(crate::app::scope().route(route().uri("/a".parse().unwrap()).say(""))),
-        ).build()
-        .unwrap();
+                .prefix("/s1".parse()?)
+                .route(crate::app::route().uri("/".parse()?).say(""))
+                .mount(crate::app::scope().route(crate::app::route().uri("/a".parse()?).say(""))),
+        ).build()?;
 
     assert_matches!(
         app.data.recognize("/", &Method::GET),
@@ -422,4 +418,6 @@ fn test_deprecated() {
         app.data.recognize("/s1/a", &Method::GET),
         Recognize::Matched { route, .. } if (route.id.0).0 == ScopeId::Local(1) && route.id.1 == 2
     );
+
+    Ok(())
 }

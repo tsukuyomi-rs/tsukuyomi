@@ -24,7 +24,8 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::App::builder()
         .with(cors)
         .with(
-            tsukuyomi::route!("/user/info", method = POST) //
+            tsukuyomi::route!("/user/info")
+                .methods("POST")?
                 .extract(tsukuyomi::extractor::body::json())
                 .call(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {

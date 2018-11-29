@@ -1,6 +1,6 @@
 use {
     http::{header, Method, Request, Response, StatusCode},
-    tsukuyomi::{app::App, extractor, handler::AsyncResult, route, test::ResponseExt, uri, Output},
+    tsukuyomi::{app::App, extractor, handler::AsyncResult, route, test::ResponseExt, Output},
 };
 
 #[test]
@@ -37,7 +37,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
-    let mut server = App::with_prefix(uri!("/api/v1"))
+    let mut server = App::with_prefix("/api/v1")?
         .with(route!("/hello").reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
@@ -52,7 +52,8 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            route!("/hello", method = POST)
+            route!("/hello")
+                .methods("POST")?
                 .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body),
         ) //
@@ -135,7 +136,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 fn default_options() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(route!("/path").reply(|| "get"))
-        .with(route!("/path", method = POST).reply(|| "post"))
+        .with(route!("/path").methods("POST")?.reply(|| "post"))
         .build_server()?
         .into_test_server()?;
 
@@ -152,7 +153,8 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 fn test_canceled() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            route!("/", methods = [GET, POST])
+            route!("/")
+                .methods("GET, POST")?
                 .extract(tsukuyomi::extractor::guard(
                     |input| -> tsukuyomi::error::Result<_> {
                         if input.request.method() == Method::GET {
@@ -186,7 +188,7 @@ fn scope_variables() -> tsukuyomi::test::Result<()> {
             })
         }))) //
         .with(
-            tsukuyomi::app::scope::mount(tsukuyomi::uri!("/sub"))
+            tsukuyomi::app::scope::mount("/sub")?
                 .with(tsukuyomi::app::scope::state(String::from("bar"))) //
                 .with(
                     tsukuyomi::route!("/") //
@@ -231,7 +233,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
                 })),
         ) //
         .with(
-            tsukuyomi::app::scope::mount(tsukuyomi::uri!("/sub"))
+            tsukuyomi::app::scope::mount("/sub")?
                 .with(tsukuyomi::app::scope::state(String::from("bar")))
                 .with(tsukuyomi::app::scope::modifier(MyModifier))
                 .with(
