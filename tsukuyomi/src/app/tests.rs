@@ -1,5 +1,9 @@
 use {
-    super::{mount, route, Recognize, ScopeId},
+    super::{
+        route,
+        scope::{mount, state},
+        Recognize, ScopeId,
+    },
     http::Method,
     matches::assert_matches,
 };
@@ -109,7 +113,7 @@ fn asterisk_route_with_normal_routes() {
     let app = crate::app::app()
         .with(route().uri("/".parse().unwrap()).reply(|| ""))
         .with(
-            (mount().prefix("/api".parse().unwrap()))
+            mount("/api".parse().unwrap())
                 .with(route().uri("/posts".parse().unwrap()).reply(|| ""))
                 .with(route().uri("/events".parse().unwrap()).reply(|| "")),
         ) //
@@ -132,13 +136,13 @@ fn asterisk_route_with_normal_routes() {
 fn scope_simple() {
     let app = crate::app::app() //
         .with(
-            mount()
+            mount("/".parse().unwrap())
                 .with(route().uri("/a".parse().unwrap()).reply(|| ""))
                 .with(route().uri("/b".parse().unwrap()).reply(|| "")),
         ) //
         .with(route().uri("/foo".parse().unwrap()).reply(|| ""))
         .with(
-            mount()
+            mount("/".parse().unwrap())
                 .prefix("/c".parse().unwrap())
                 .with(route().uri("/d".parse().unwrap()).reply(|| ""))
                 .with(route().uri("/e".parse().unwrap()).reply(|| "")),
@@ -172,15 +176,15 @@ fn scope_simple() {
 fn scope_nested() {
     let app = crate::app::app()
         .with(
-            mount() // 0
+            mount("/".parse().unwrap()) // 0
                 .with(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
                 .with(route().uri("/bar".parse().unwrap()).reply(|| "")), // /bar
         ) //
         .with(
-            (mount().prefix("/baz".parse().unwrap())) // 1
+            mount("/baz".parse().unwrap()) // 1
                 .with(route().reply(|| "")) // /baz
                 .with(
-                    mount() // 2
+                    mount("/".parse().unwrap()) // 2
                         .with(
                             route()
                                 .uri("/foobar".parse().unwrap()) // /baz/foobar
@@ -222,35 +226,35 @@ fn scope_nested() {
 #[test]
 fn scope_variable() {
     let app = crate::app::app()
-        .with(crate::app::state::<String>("G".into()))
+        .with(state::<String>("G".into()))
         .with(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .with(
-            (mount().prefix("/s0".parse().unwrap()))
+            mount("/s0".parse().unwrap())
                 .with(route().uri("/r0".parse().unwrap()).reply(|| ""))
                 .with(
-                    (mount().prefix("/s1".parse().unwrap()))
-                        .with(crate::app::state::<String>("A".into()))
+                    (mount("/s1".parse().unwrap()))
+                        .with(state::<String>("A".into()))
                         .with(route().uri("/r1".parse().unwrap()).reply(|| "")),
                 ),
         ) //
         .with(
-            (mount().prefix("/s2".parse().unwrap()))
-                .with(crate::app::state::<String>("B".into()))
+            mount("/s2".parse().unwrap())
+                .with(state::<String>("B".into()))
                 .with(route().uri("/r2".parse().unwrap()).reply(|| ""))
                 .with(
-                    (mount().prefix("/s3".parse().unwrap()))
-                        .with(crate::app::state::<String>("C".into()))
+                    mount("/s3".parse().unwrap())
+                        .with(state::<String>("C".into()))
                         .with(route().uri("/r3".parse().unwrap()).reply(|| ""))
                         .with(
-                            (mount().prefix("/s4".parse().unwrap()))
+                            mount("/s4".parse().unwrap())
                                 .with(route().uri("/r4".parse().unwrap()).reply(|| "")),
                         ),
                 ) //
                 .with(
-                    (mount().prefix("/s5".parse().unwrap()))
+                    mount("/s5".parse().unwrap())
                         .with(route().uri("/r5".parse().unwrap()).reply(|| ""))
                         .with(
-                            (mount().prefix("/s6".parse().unwrap()))
+                            mount("/s6".parse().unwrap())
                                 .with(route().uri("/r6".parse().unwrap()).reply(|| "")),
                         ),
                 ), //
@@ -296,11 +300,11 @@ fn scope_variable() {
 fn scope_candidates() {
     let app = crate::app::app()
         .with(
-            (mount().prefix("/s0".parse().unwrap())) // 0
+            mount("/s0".parse().unwrap()) // 0
                 .with(
-                    (mount().prefix("/s1".parse().unwrap())) // 1
+                    mount("/s1".parse().unwrap()) // 1
                         .with(
-                            (mount().prefix("/s2".parse().unwrap())) // 2
+                            mount("/s2".parse().unwrap()) // 2
                                 .with(route().uri("/r0".parse().unwrap()).say(""))
                                 .with(route().uri("/r1".parse().unwrap()).say("")),
                         ),
@@ -308,7 +312,7 @@ fn scope_candidates() {
                 .with(route().uri("/r2".parse().unwrap()).say("")),
         ) //
         .with(
-            mount() // 3
+            mount("/".parse().unwrap()) // 3
                 .with(route().uri("/r3".parse().unwrap()).say("")),
         ) //
         .build()
@@ -358,7 +362,10 @@ fn failcase_duplicate_uri_and_method() {
 fn failcase_different_scope_at_the_same_uri() {
     let app = crate::app::app()
         .with(route().uri("/path".parse().unwrap()).reply(|| ""))
-        .with(mount().with(route().uri("/path".parse().unwrap()).reply(|| ""))) //
+        .with(
+            mount("/".parse().unwrap()) //
+                .with(route().uri("/path".parse().unwrap()).reply(|| "")),
+        ) //
         .build();
     assert!(app.is_err());
 }

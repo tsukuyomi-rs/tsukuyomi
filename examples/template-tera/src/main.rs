@@ -22,7 +22,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
     tsukuyomi::app!()
-        .with(tsukuyomi::app::state(engine))
+        .with(tsukuyomi::app::scope::state(engine))
         .with(
             tsukuyomi::app::route!("/:name") //
                 .reply(|name| Index { name }),

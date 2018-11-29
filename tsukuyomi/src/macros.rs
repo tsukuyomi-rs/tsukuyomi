@@ -15,7 +15,10 @@ macro_rules! app {
 
 /// A macro to start building a `Scope`.
 #[macro_export(local_inner_macros)]
-#[deprecated(since = "0.4.2", note = "use `mount!()` instead.")]
+#[deprecated(
+    since = "0.4.2",
+    note = "this macro will be removed in the next version."
+)]
 macro_rules! scope {
     () => {
         $crate::app::scope()
@@ -30,19 +33,15 @@ macro_rules! scope {
     }};
 }
 
-/// A macro to start building a `Scope`.
+/// A helper macro that creates an instance of `Uri` from the specified string.
 #[macro_export(local_inner_macros)]
-macro_rules! mount {
-    () => {
-        $crate::app::scope::mount()
-    };
-
-    ($prefix:expr) => {{
+macro_rules! uri {
+    ($uri:expr) => {{
         enum __Dummy {}
         impl __Dummy {
-            validate_prefix!($prefix);
+            validate_prefix!($uri);
         }
-        $crate::app::scope::mount().prefix($prefix.parse().expect("this is a bug"))
+        $uri.parse().expect("this is a bug")
     }};
 }
 

@@ -237,7 +237,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = tsukuyomi::app!()
-        .with(tsukuyomi::app::modifier(MyModifier))
+        .with(tsukuyomi::app::scope::modifier(MyModifier))
         .with(
             route!()
                 .extract(extractor::local::remove(&MyData::KEY))

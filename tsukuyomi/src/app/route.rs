@@ -290,7 +290,7 @@ where
 
 /// A trait representing the types for constructing a route in `App`.
 #[deprecated(
-    since = "0.4.1",
+    since = "0.4.2",
     note = "the trait Route will be removed in the next version."
 )]
 pub trait Route {
@@ -335,7 +335,7 @@ where
 }
 
 #[deprecated(
-    since = "0.4.1",
+    since = "0.4.2",
     note = "the trait Route will be removed in the next version."
 )]
 #[allow(missing_debug_implementations)]

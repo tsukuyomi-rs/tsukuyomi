@@ -16,9 +16,9 @@ pub use {
     self::{
         builder::Builder,
         error::{Error, Result},
-        scope::{fallback, modifier, mount, state, Scope},
+        scope::Scope,
     },
-    crate::{mount, route},
+    crate::route,
 };
 use {
     crate::{
@@ -42,7 +42,7 @@ pub fn app() -> self::builder::Builder<()> {
     self::builder::Builder::default()
 }
 
-#[deprecated(since = "0.4.2", note = "use mount() instead")]
+#[deprecated(since = "0.4.2", note = "use `scope::mount` instead")]
 #[allow(deprecated)]
 pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()

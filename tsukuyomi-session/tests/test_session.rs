@@ -17,7 +17,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
     let storage = SessionStorage::new(backend);
 
     let mut server = tsukuyomi::app!()
-        .with(tsukuyomi::app::modifier(storage))
+        .with(tsukuyomi::app::scope::modifier(storage))
         .with(
             tsukuyomi::route!("/counter", method = GET)
                 .extract(tsukuyomi_session::session())

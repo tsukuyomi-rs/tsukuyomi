@@ -48,14 +48,14 @@ where
     S: Scope,
 {
     /// Adds a route into the global scope.
-    #[deprecated(since = "0.4.1", note = "use Builder::with(route) instead.")]
+    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead.")]
     #[allow(deprecated)]
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         self.with(super::scope::raw(move |cx| cx.add_route(route)))
     }
 
     /// Creates a new subscope onto the global scope.
-    #[deprecated(since = "0.4.1", note = "use `Builder::with` instead")]
+    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
     pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         self.with(super::scope::raw(move |cx| cx.add_scope(new_scope)))
     }
@@ -70,10 +70,7 @@ where
     }
 
     /// Registers a shared state into the global scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "use Builder::with(state(scope)) instead"
-    )]
+    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
     #[allow(deprecated)]
     pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = Error>>
     where
@@ -83,10 +80,7 @@ where
     }
 
     /// Registers a `Modifier` into the global scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "use Builder::with(state(scope)) instead"
-    )]
+    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
     #[allow(deprecated)]
     pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = Error>>
     where
@@ -96,10 +90,7 @@ where
     }
 
     /// Registers a `Fallback` into the global scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "use Builder::with(state(scope)) instead"
-    )]
+    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
     #[allow(deprecated)]
     pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = Error>>
     where

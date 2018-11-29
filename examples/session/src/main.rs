@@ -17,7 +17,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let storage = SessionStorage::new(backend);
 
     tsukuyomi::app!()
-        .with(tsukuyomi::app::modifier(storage))
+        .with(tsukuyomi::app::scope::modifier(storage))
         .with(
             route!("/") //
                 .extract(tsukuyomi_session::session())

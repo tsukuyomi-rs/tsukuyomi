@@ -34,6 +34,7 @@ impl Scope for () {
 }
 
 /// Creates a `Scope` that registers the specified state to be shared into the scope.
+#[allow(deprecated)]
 pub fn state<T>(state: T) -> impl Scope<Error = Never>
 where
     T: Send + Sync + 'static,
@@ -45,6 +46,7 @@ where
 }
 
 /// Creates a `Scope` that registers the specified `Modifier` into the scope.
+#[allow(deprecated)]
 pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
 where
     M: Modifier + Send + Sync + 'static,
@@ -109,6 +111,7 @@ impl<S: Default + Scope> Default for Builder<S> {
     }
 }
 
+#[deprecated(since = "0.4.2", note = "use `Mount` instead.")]
 #[allow(deprecated)]
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S> Builder<S>
@@ -116,8 +119,6 @@ where
     S: Scope,
 {
     /// Adds a route into this scope.
-    #[deprecated(since = "0.4.1", note = "use Builder::with(route) instead.")]
-    #[allow(deprecated)]
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
@@ -152,10 +153,6 @@ where
     }
 
     /// Registers a shared variable into this scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "use Builder::with(state(scope)) instead"
-    )]
     pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
     where
         T: Send + Sync + 'static,
@@ -170,10 +167,6 @@ where
     }
 
     /// Registers a `Modifier` into this scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "use Builder::with(modifier(scope)) instead"
-    )]
     pub fn modifier(
         self,
         modifier: impl Modifier + Send + Sync + 'static,
@@ -188,11 +181,6 @@ where
     }
 
     /// Registers a `Fallback` into this scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "use Builder::with(fallback(scope)) instead"
-    )]
-    #[allow(deprecated)]
     pub fn fallback(
         self,
         fallback: impl Fallback + Send + Sync + 'static,
@@ -201,10 +189,6 @@ where
     }
 
     /// Set the prefix URL of this scope.
-    #[deprecated(
-        since = "0.4.1",
-        note = "this method will be removed in the next version."
-    )]
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
@@ -259,15 +243,27 @@ where
 }
 
 /// A function that creates a `Mount` with the empty scope items.
-pub fn mount() -> Mount<()> {
-    Mount::new((), None)
+pub fn mount(prefix: Uri) -> Mount<()> {
+    Mount::new((), prefix)
 }
 
 /// An instance of `Scope` that represents a scope with a specific prefix.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Mount<S: Scope = ()> {
     scope: S,
-    prefix: Option<Uri>,
+    prefix: Uri,
+}
+
+impl<S> Default for Mount<S>
+where
+    S: Scope + Default,
+{
+    fn default() -> Self {
+        Self {
+            scope: S::default(),
+            prefix: Uri::root(),
+        }
+    }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
@@ -276,7 +272,7 @@ where
     S: Scope,
 {
     /// Create a new `Mount` with the specified components.
-    pub fn new(scope: S, prefix: Option<Uri>) -> Self {
+    pub fn new(scope: S, prefix: Uri) -> Self {
         Mount { scope, prefix }
     }
 
@@ -304,13 +300,11 @@ where
 
     /// Sets the prefix of the URL appended to the all routes in the inner scope.
     pub fn prefix(self, prefix: Uri) -> Self {
-        Self {
-            prefix: Some(prefix),
-            ..self
-        }
+        Self { prefix, ..self }
     }
 }
 
+#[allow(deprecated)]
 impl<S> Scope for Mount<S>
 where
     S: Scope,
@@ -319,16 +313,14 @@ where
 
     fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
         cx.add_scope(raw(move |cx| -> super::Result<()> {
-            if let Some(prefix) = self.prefix {
-                cx.set_prefix(prefix)?;
-            }
+            cx.set_prefix(self.prefix)?;
             self.scope.configure(cx).map_err(Into::into)?;
             Ok(())
         }))
     }
 }
 
-/// A proxy object for configuration of a scope.
+/// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
 pub struct Context<'a> {
     cx: &'a mut AppContext,
@@ -341,13 +333,8 @@ impl<'a> Context<'a> {
     }
 
     /// Adds a route into the current scope.
-    // note:
-    // Currently, this method is only called in `fs::Staticfiles`
-    // to add routes. In order to provide the implementors of `Scope`
-    // that adds some route(s) dynamically, the context need to provide
-    // the similar API.
     #[deprecated(
-        since = "0.4.1",
+        since = "0.4.2",
         note = "This method will be removed in the next version."
     )]
     #[allow(deprecated)]
@@ -368,6 +355,10 @@ impl<'a> Context<'a> {
     }
 
     /// Adds a *scope-local* variable into the application.
+    #[deprecated(
+        since = "0.4.2",
+        note = "this method will be removed in the next version."
+    )]
     pub fn set_state<T>(&mut self, value: T)
     where
         T: Send + Sync + 'static,
@@ -375,6 +366,10 @@ impl<'a> Context<'a> {
         self.cx.set_state(value, self.id)
     }
 
+    #[deprecated(
+        since = "0.4.2",
+        note = "this method will be removed in the next version."
+    )]
     pub fn add_modifier<M>(&mut self, modifier: M)
     where
         M: Modifier + Send + Sync + 'static,
@@ -382,6 +377,10 @@ impl<'a> Context<'a> {
         self.cx.add_modifier(modifier, self.id)
     }
 
+    #[deprecated(
+        since = "0.4.2",
+        note = "this method will be removed in the next version."
+    )]
     pub fn set_prefix(&mut self, prefix: Uri) -> super::Result<()> {
         self.cx.set_prefix(self.id, prefix)
     }

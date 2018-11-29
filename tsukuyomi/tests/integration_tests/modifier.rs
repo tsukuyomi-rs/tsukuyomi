@@ -1,6 +1,6 @@
 use {
     std::sync::{Arc, Mutex},
-    tsukuyomi::{handler::AsyncResult, mount, output::Output, route, Modifier},
+    tsukuyomi::{app::scope::mount, handler::AsyncResult, output::Output, route, uri, Modifier},
 };
 
 #[derive(Clone)]
@@ -16,6 +16,14 @@ impl Modifier for MockModifier {
     }
 }
 
+impl tsukuyomi::app::Scope for MockModifier {
+    type Error = tsukuyomi::Never;
+
+    fn configure(self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> Result<(), Self::Error> {
+        tsukuyomi::app::scope::modifier(self).configure(cx)
+    }
+}
+
 #[test]
 fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
@@ -25,10 +33,10 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
             route!("/") //
                 .reply(|| ""),
         ) //
-        .with(tsukuyomi::app::modifier(MockModifier {
+        .with(MockModifier {
             marker: marker.clone(),
             name: "M",
-        })) //
+        }) //
         .build_server()?
         .into_test_server()?;
 
@@ -50,14 +58,14 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
         .with(
             route!() //
                 .reply(|| ""),
-        ).with(tsukuyomi::app::modifier(MockModifier {
+        ).with(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        })) //
-        .with(tsukuyomi::app::modifier(MockModifier {
+        }) //
+        .with(MockModifier {
             marker: marker.clone(),
             name: "M2",
-        })) //
+        }) //
         .build_server()?
         .into_test_server()?;
 
@@ -72,16 +80,16 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app!()
-        .with(tsukuyomi::app::modifier(MockModifier {
+        .with(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        })) //
+        }) //
         .with(
-            mount!("/path1")
-                .with(tsukuyomi::app::modifier(MockModifier {
+            mount(uri!("/path1"))
+                .with(MockModifier {
                     marker: marker.clone(),
                     name: "M2",
-                })) //
+                }) //
                 .with(route!("/").reply(|| "")),
         ) //
         .with(route!("/path2").reply(|| ""))
@@ -104,24 +112,24 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
 
     let mut server = tsukuyomi::app!()
         .with(
-            mount!("/path")
-                .with(tsukuyomi::app::modifier(MockModifier {
+            mount(uri!("/path"))
+                .with(MockModifier {
                     marker: marker.clone(),
                     name: "M1",
-                })) //
+                }) //
                 .with(
-                    mount!("/to")
-                        .with(tsukuyomi::app::modifier(MockModifier {
+                    mount(uri!("/to"))
+                        .with(MockModifier {
                             marker: marker.clone(),
                             name: "M2",
-                        })) //
+                        }) //
                         .with(route!().reply(|| ""))
                         .with(
-                            mount!("/a")
-                                .with(tsukuyomi::app::modifier(MockModifier {
+                            mount(uri!("/a"))
+                                .with(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
-                                })) //
+                                }) //
                                 .with(route!().reply(|| "")),
                         ),
                 ),
