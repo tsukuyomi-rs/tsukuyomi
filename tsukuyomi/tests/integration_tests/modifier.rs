@@ -3,7 +3,7 @@ use {
     tsukuyomi::{
         app::{
             scope::{mount, route},
-            App,
+            App, Scope,
         },
         handler::AsyncResult,
         output::Output,
@@ -24,7 +24,7 @@ impl Modifier for MockModifier {
     }
 }
 
-impl tsukuyomi::app::Scope for MockModifier {
+impl Scope for MockModifier {
     type Error = tsukuyomi::Never;
 
     fn configure(self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> Result<(), Self::Error> {
