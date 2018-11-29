@@ -9,7 +9,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor =
         tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(
             tsukuyomi::app::route!() //
                 .say("Hello, Tsukuyomi.\n"),

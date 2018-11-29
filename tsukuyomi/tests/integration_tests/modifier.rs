@@ -1,7 +1,10 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        app::scope::{mount, route},
+        app::{
+            scope::{mount, route},
+            App,
+        },
         handler::AsyncResult,
         output::Output,
         uri, Modifier,
@@ -33,7 +36,7 @@ impl tsukuyomi::app::Scope for MockModifier {
 fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             route!("/") //
                 .reply(|| ""),
@@ -59,7 +62,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             route!() //
                 .reply(|| ""),
@@ -84,7 +87,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(MockModifier {
             marker: marker.clone(),
             name: "M1",
@@ -115,7 +118,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             mount(uri!("/path"))
                 .with(MockModifier {

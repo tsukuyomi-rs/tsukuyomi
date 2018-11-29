@@ -21,7 +21,7 @@ impl crate::support_tera::TemplateExt for Index {
 fn main() -> tsukuyomi::server::Result<()> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(tsukuyomi::app::scope::state(engine))
         .with(
             tsukuyomi::app::route!("/:name") //

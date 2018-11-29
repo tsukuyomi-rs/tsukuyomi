@@ -77,6 +77,7 @@ pub mod test;
 
 #[doc(inline)]
 pub use crate::{
+    app::App,
     common::Never,
     error::{
         Error, //

@@ -1,7 +1,7 @@
 use {
     super::{
         scope::{mount, route, state},
-        Recognize, ScopeId,
+        App, Recognize, ScopeId,
     },
     http::Method,
     matches::assert_matches,
@@ -9,7 +9,7 @@ use {
 
 #[test]
 fn empty() {
-    let app = crate::app::app().build().unwrap();
+    let app = App::builder().build().unwrap();
     assert_matches!(
         app.data.recognize("/", &Method::GET),
         Recognize::NotFound(ScopeId::Global)
@@ -18,7 +18,7 @@ fn empty() {
 
 #[test]
 fn route_single_method() {
-    let app = crate::app::app() //
+    let app = App::builder() //
         .with(route().reply(|| ""))
         .build()
         .unwrap();
@@ -41,7 +41,7 @@ fn route_single_method() {
 
 #[test]
 fn route_multiple_method() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(route().reply(|| ""))
         .with(route().method(Method::POST).reply(|| ""))
         .build()
@@ -64,7 +64,7 @@ fn route_multiple_method() {
 
 #[test]
 fn route_fallback_head_enabled() {
-    let app = crate::app::app() //
+    let app = App::builder() //
         .with(route().reply(|| ""))
         .build()
         .unwrap();
@@ -77,7 +77,7 @@ fn route_fallback_head_enabled() {
 
 #[test]
 fn route_fallback_head_disabled() {
-    let app = crate::app::app() //
+    let app = App::builder() //
         .with(route().reply(|| ""))
         .fallback_head(false)
         .build()
@@ -91,7 +91,7 @@ fn route_fallback_head_disabled() {
 
 #[test]
 fn asterisk_route() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(
             route()
                 .uri("*".parse().unwrap())
@@ -109,7 +109,7 @@ fn asterisk_route() {
 
 #[test]
 fn asterisk_route_with_normal_routes() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(route().uri("/".parse().unwrap()).reply(|| ""))
         .with(
             mount("/api".parse().unwrap())
@@ -133,7 +133,7 @@ fn asterisk_route_with_normal_routes() {
 
 #[test]
 fn scope_simple() {
-    let app = crate::app::app() //
+    let app = App::builder() //
         .with(
             mount("/".parse().unwrap())
                 .with(route().uri("/a".parse().unwrap()).reply(|| ""))
@@ -173,7 +173,7 @@ fn scope_simple() {
 
 #[test]
 fn scope_nested() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(
             mount("/".parse().unwrap()) // 0
                 .with(route().uri("/foo".parse().unwrap()).reply(|| "")) // /foo
@@ -224,7 +224,7 @@ fn scope_nested() {
 
 #[test]
 fn scope_variable() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(state::<String>("G".into()))
         .with(route().uri("/rg".parse().unwrap()).reply(|| ""))
         .with(
@@ -297,7 +297,7 @@ fn scope_variable() {
 
 #[test]
 fn scope_candidates() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(
             mount("/s0".parse().unwrap()) // 0
                 .with(
@@ -350,7 +350,7 @@ fn scope_candidates() {
 
 #[test]
 fn failcase_duplicate_uri_and_method() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(route().uri("/path".parse().unwrap()).reply(|| ""))
         .with(route().uri("/path".parse().unwrap()).reply(|| ""))
         .build();
@@ -359,7 +359,7 @@ fn failcase_duplicate_uri_and_method() {
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(route().uri("/path".parse().unwrap()).reply(|| ""))
         .with(
             mount("/".parse().unwrap()) //
@@ -371,7 +371,7 @@ fn failcase_different_scope_at_the_same_uri() {
 
 #[test]
 fn failcase_asterisk_with_prefix() {
-    let app = (crate::app::app().prefix("/api/v1".parse().unwrap()))
+    let app = (App::builder().prefix("/api/v1".parse().unwrap()))
         .with(route().uri("*".parse().unwrap()).reply(|| ""))
         .build();
     assert!(app.is_err());
@@ -379,7 +379,7 @@ fn failcase_asterisk_with_prefix() {
 
 #[test]
 fn failcase_asterisk_without_explicit_options() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(route().uri("*".parse().unwrap()).reply(|| ""))
         .build();
     assert!(app.is_err());
@@ -387,7 +387,7 @@ fn failcase_asterisk_without_explicit_options() {
 
 #[test]
 fn failcase_asterisk_with_explicit_get_handler() {
-    let app = crate::app::app()
+    let app = App::builder()
         .with(
             route() //
                 .uri("*".parse().unwrap())
@@ -400,7 +400,7 @@ fn failcase_asterisk_with_explicit_get_handler() {
 #[allow(deprecated)]
 #[test]
 fn test_deprecated() {
-    let app = crate::app::app()
+    let app = App::builder()
         .route(route().uri("/".parse().unwrap()).say(""))
         .mount(
             crate::app::scope()

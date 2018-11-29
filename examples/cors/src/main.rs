@@ -21,7 +21,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(cors)
         .with(
             tsukuyomi::route!("/user/info", method = POST) //

@@ -1,11 +1,11 @@
 use {
     http::{header, Method, Request, Response, StatusCode},
-    tsukuyomi::{extractor, handler::AsyncResult, route, test::ResponseExt, Output},
+    tsukuyomi::{app::App, extractor, handler::AsyncResult, route, test::ResponseExt, uri, Output},
 };
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!() //
+    let mut server = App::builder() //
         .build_server()?
         .into_test_server()?;
 
@@ -17,7 +17,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(route!("/hello").reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
@@ -37,7 +37,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!("/api/v1")
+    let mut server = App::with_prefix(uri!("/api/v1"))
         .with(route!("/hello").reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
@@ -50,7 +50,7 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             route!("/hello", method = POST)
                 .extract(tsukuyomi::extractor::body::plain())
@@ -82,7 +82,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             route!("/login")
                 .extract(extractor::guard(move |input| {
@@ -133,7 +133,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(route!("/path").reply(|| "get"))
         .with(route!("/path", method = POST).reply(|| "post"))
         .build_server()?
@@ -150,7 +150,7 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn test_canceled() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             route!("/", methods = [GET, POST])
                 .extract(tsukuyomi::extractor::guard(
@@ -177,7 +177,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn scope_variables() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(tsukuyomi::app::scope::state(String::from("foo")))
         .with(tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
             AsyncResult::ready(|input| {
@@ -218,7 +218,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
         }
     }
 
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(tsukuyomi::app::scope::state(String::from("foo")))
         .with(tsukuyomi::app::scope::modifier(MyModifier))
         .with(

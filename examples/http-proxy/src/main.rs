@@ -13,7 +13,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::async::Client::new()));
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(
             route!("/")
                 .extract(proxy_client.clone())

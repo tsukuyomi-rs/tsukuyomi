@@ -20,7 +20,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         tsukuyomi::extractor::value(context)
     };
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(
             tsukuyomi::app::route!("/") //
                 .say(tsukuyomi_juniper::graphiql_source("/graphql")),

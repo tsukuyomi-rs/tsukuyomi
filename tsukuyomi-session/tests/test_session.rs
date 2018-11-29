@@ -16,7 +16,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
     let backend = CookieBackend::plain().cookie_name("session");
     let storage = SessionStorage::new(backend);
 
-    let mut server = tsukuyomi::app!()
+    let mut server = tsukuyomi::App::builder()
         .with(tsukuyomi::app::scope::modifier(storage))
         .with(
             tsukuyomi::route!("/counter", method = GET)

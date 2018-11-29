@@ -1,4 +1,8 @@
 /// A macro to start building an `App`.
+#[deprecated(
+    since = "0.4.2",
+    note = "this macro will be removed in the next version."
+)]
 #[macro_export(local_inner_macros)]
 macro_rules! app {
     () => {

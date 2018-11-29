@@ -26,7 +26,7 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
     let executor = tsukuyomi_juniper::executor(schema);
     let executor = std::sync::Arc::new(executor);
 
-    let test_server = tsukuyomi::app!()
+    let test_server = tsukuyomi::App::builder()
         .with(
             tsukuyomi::app::route!("/", methods = [GET, POST])
                 .extract(executor.clone())
@@ -48,7 +48,7 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
 }
 
 struct TestTsukuyomiIntegration {
-    local_server: RefCell<TestServer<tsukuyomi::app::App>>,
+    local_server: RefCell<TestServer<tsukuyomi::App>>,
 }
 
 impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {

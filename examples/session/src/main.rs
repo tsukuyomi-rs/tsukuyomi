@@ -16,7 +16,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let backend = CookieBackend::plain();
     let storage = SessionStorage::new(backend);
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(tsukuyomi::app::scope::modifier(storage))
         .with(
             route!("/") //

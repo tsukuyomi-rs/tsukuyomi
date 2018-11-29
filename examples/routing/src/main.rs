@@ -3,7 +3,7 @@ extern crate tsukuyomi;
 use tsukuyomi::{app::scope::mount, route, uri};
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(
             route!() //
                 .say("Hello, world\n"),

@@ -12,7 +12,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         .map(Into::into)
         .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(
             tsukuyomi::app::route!("/") //
                 .say("Hello, Tsukuyomi!\n"),

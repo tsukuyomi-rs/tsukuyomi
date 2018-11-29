@@ -102,7 +102,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             }).map(|post_opt| post_opt.map(tsukuyomi::output::json))
         });
 
-    let server = tsukuyomi::app!("/api/v1/posts")
+    let server = tsukuyomi::App::with_prefix(tsukuyomi::uri!("/api/v1/posts"))
         .with(get_posts)
         .with(create_post)
         .with(get_post)

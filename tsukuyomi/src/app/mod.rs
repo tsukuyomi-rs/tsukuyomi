@@ -38,6 +38,7 @@ use {
     tower_service::{NewService, Service},
 };
 
+#[deprecated(since = "0.4.2", note = "use `App::builder` instead")]
 pub fn app() -> self::builder::Builder<()> {
     self::builder::Builder::default()
 }
@@ -275,10 +276,14 @@ pub struct App {
 }
 
 impl App {
-    #[doc(hidden)]
-    #[deprecated(note = "use `tsukuyomi::app` instead.")]
-    pub fn builder() -> Builder {
+    /// Create a `Builder` to configure the instance of `App`.
+    pub fn builder() -> Builder<()> {
         Builder::default()
+    }
+
+    /// Create a `Builder` with the specified prefix.
+    pub fn with_prefix(prefix: Uri) -> Builder<()> {
+        Self::builder().prefix(prefix)
     }
 }
 

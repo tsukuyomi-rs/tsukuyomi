@@ -9,6 +9,7 @@
 //! # extern crate tsukuyomi;
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //! use tsukuyomi::{
+//!     app::App,
 //!     route,
 //!     output::Output,
 //!     handler::AsyncResult,
@@ -26,7 +27,7 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
-//! tsukuyomi::app!()
+//! App::builder()
 //!     .with(route!().reply(|| "Hello"))
 //!     .with(tsukuyomi::app::scope::modifier(RequestCounter::default()))
 //!     .build()

@@ -14,7 +14,7 @@ struct User {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(
             route!("/") //
                 .say(User {

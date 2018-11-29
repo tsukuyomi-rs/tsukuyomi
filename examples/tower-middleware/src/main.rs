@@ -12,7 +12,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     pretty_env_logger::init();
     log::info!("Listening on {}", addr);
 
-    tsukuyomi::app!()
+    tsukuyomi::App::builder()
         .with(tsukuyomi::route!("/").say("Hello"))
         .build_server()?
         .bind(addr)

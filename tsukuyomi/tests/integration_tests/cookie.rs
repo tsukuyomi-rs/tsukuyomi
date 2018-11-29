@@ -1,11 +1,11 @@
 use {
     cookie::Cookie,
-    tsukuyomi::{handler::AsyncResult, Output},
+    tsukuyomi::{app::App, handler::AsyncResult, Output},
 };
 
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             tsukuyomi::route!("/first") //
                 .raw(|| {
@@ -36,7 +36,7 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
+    let mut server = App::builder()
         .with(
             tsukuyomi::route!("/first") //
                 .raw(|| {
