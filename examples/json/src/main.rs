@@ -1,9 +1,12 @@
 extern crate serde;
 extern crate tsukuyomi;
 
-use tsukuyomi::{app::route, extractor};
+use {
+    serde::{Deserialize, Serialize},
+    tsukuyomi::{extractor, route, Responder},
+};
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, tsukuyomi::output::Responder)]
+#[derive(Clone, Debug, Serialize, Deserialize, Responder)]
 #[responder(respond_to = "tsukuyomi::output::responder::json")]
 struct User {
     name: String,

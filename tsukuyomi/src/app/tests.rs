@@ -1,7 +1,6 @@
 use {
     super::{
-        route,
-        scope::{mount, state},
+        scope::{mount, route, state},
         Recognize, ScopeId,
     },
     http::Method,

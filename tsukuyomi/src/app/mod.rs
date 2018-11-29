@@ -48,6 +48,7 @@ pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()
 }
 
+#[deprecated(since = "0.4.2", note = "use `scope::route` instead")]
 pub fn route() -> self::route::Builder<()> {
     self::route::Builder::<()>::default()
 }

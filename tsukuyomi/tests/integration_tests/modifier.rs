@@ -1,6 +1,11 @@
 use {
     std::sync::{Arc, Mutex},
-    tsukuyomi::{app::scope::mount, handler::AsyncResult, output::Output, route, uri, Modifier},
+    tsukuyomi::{
+        app::scope::{mount, route},
+        handler::AsyncResult,
+        output::Output,
+        uri, Modifier,
+    },
 };
 
 #[derive(Clone)]

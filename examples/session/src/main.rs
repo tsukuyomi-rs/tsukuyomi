@@ -6,8 +6,8 @@ extern crate tsukuyomi_session;
 use {
     either::Either,
     tsukuyomi::{
-        app::route,
         output::{html, redirect},
+        route,
     },
     tsukuyomi_session::{backend::CookieBackend, Session, SessionStorage},
 };

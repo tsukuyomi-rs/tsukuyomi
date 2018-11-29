@@ -47,7 +47,7 @@ macro_rules! uri {
 
 pub mod route {
     pub use {
-        crate::app::route, //
+        crate::app::scope::route, //
         http::Method,
     };
 }

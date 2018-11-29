@@ -54,7 +54,7 @@ fn derive(input: &RouteExprImplInput) -> TokenStream {
     let Extractor = quote!(tsukuyomi::extractor::Extractor);
     let FromParam = quote!(tsukuyomi::extractor::param::FromParam);
     let Error = quote!(tsukuyomi::error::Error);
-    let route = quote!(tsukuyomi::app::route);
+    let route = quote!(tsukuyomi::app::scope::route);
     let Builder = quote!(tsukuyomi::app::route::Builder);
     let uri = &input.uri_lit;
 
@@ -125,7 +125,7 @@ t! {
     source: ("/"),
     expected: {
         fn route() -> tsukuyomi::app::route::Builder<()> {
-            tsukuyomi::app::route()
+            tsukuyomi::app::scope::route()
                 .uri("/".parse().expect("this is a bug"))
         }
     },
@@ -141,7 +141,7 @@ t! {
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::app::route()
+            tsukuyomi::app::scope::route()
                 .uri("/:id".parse().expect("this is a bug"))
                 .extract(tsukuyomi::extractor::param::pos(0usize))
         }
@@ -158,7 +158,7 @@ t! {
         where
             T0: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::app::route()
+            tsukuyomi::app::scope::route()
                 .uri("/*path".parse().expect("this is a bug"))
                 .extract(tsukuyomi::extractor::param::wildcard())
         }
@@ -177,7 +177,7 @@ t! {
             T1: tsukuyomi::extractor::param::FromParam,
             T2: tsukuyomi::extractor::param::FromParam,
         {
-            tsukuyomi::app::route()
+            tsukuyomi::app::scope::route()
                 .uri("/:id/people/:name/*path".parse().expect("this is a bug"))
                 .extract(tsukuyomi::extractor::param::pos(0usize))
                 .extract(tsukuyomi::extractor::param::pos(1usize))
@@ -191,7 +191,7 @@ t! {
     source: ("*"),
     expected: {
         fn route() -> tsukuyomi::app::route::Builder<()> {
-            tsukuyomi::app::route()
+            tsukuyomi::app::scope::route()
                 .uri("*".parse().expect("this is a bug"))
         }
     },

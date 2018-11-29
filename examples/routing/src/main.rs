@@ -1,9 +1,6 @@
 extern crate tsukuyomi;
 
-use tsukuyomi::{
-    app::{route, scope::mount},
-    uri,
-};
+use tsukuyomi::{app::scope::mount, route, uri};
 
 fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::app!()

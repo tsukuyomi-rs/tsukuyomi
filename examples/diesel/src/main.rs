@@ -21,7 +21,7 @@ use {
     dotenv::dotenv,
     std::{env, sync::Arc},
     tsukuyomi::{
-        app::route,
+        app::scope::route,
         error::Error,
         extractor::{self, Extractor},
         rt::Future,

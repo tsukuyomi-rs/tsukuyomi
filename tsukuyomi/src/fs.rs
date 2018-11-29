@@ -455,14 +455,14 @@ where
 
             if file_type.is_file() {
                 let uri = format!("/{}", name).parse()?;
-                crate::app::route() //
+                crate::app::scope::route() //
                     .uri(uri)
                     .send_file(path, config)
                     .configure(cx)?;
             } else if file_type.is_dir() {
                 let uri = format!("/{}/*path", name).parse()?;
                 let root_dir = path;
-                crate::app::route()
+                crate::app::scope::route()
                     .uri(uri)
                     .extract(crate::extractor::param::wildcard())
                     .call(move |suffix: PathBuf| {
