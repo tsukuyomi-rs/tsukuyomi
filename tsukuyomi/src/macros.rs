@@ -15,6 +15,7 @@ macro_rules! app {
 
 /// A macro to start building a `Scope`.
 #[macro_export(local_inner_macros)]
+#[deprecated(since = "0.4.2", note = "use `mount!()` instead.")]
 macro_rules! scope {
     () => {
         $crate::app::scope()
@@ -26,6 +27,22 @@ macro_rules! scope {
             validate_prefix!($prefix);
         }
         $crate::app::scope().prefix($prefix.parse().expect("this is a bug"))
+    }};
+}
+
+/// A macro to start building a `Scope`.
+#[macro_export(local_inner_macros)]
+macro_rules! mount {
+    () => {
+        $crate::app::scope::mount()
+    };
+
+    ($prefix:expr) => {{
+        enum __Dummy {}
+        impl __Dummy {
+            validate_prefix!($prefix);
+        }
+        $crate::app::scope::mount().prefix($prefix.parse().expect("this is a bug"))
     }};
 }
 

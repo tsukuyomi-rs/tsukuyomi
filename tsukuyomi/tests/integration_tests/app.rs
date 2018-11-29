@@ -185,8 +185,8 @@ fn scope_variables() -> tsukuyomi::test::Result<()> {
                 Ok(Output::default())
             })
         }))) //
-        .mount(
-            tsukuyomi::scope!("/sub")
+        .with(
+            tsukuyomi::app::mount!("/sub")
                 .with(tsukuyomi::app::state(String::from("bar"))) //
                 .with(
                     tsukuyomi::route!("/") //
@@ -230,8 +230,8 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
                     })
                 })),
         ) //
-        .mount(
-            tsukuyomi::scope!("/sub")
+        .with(
+            tsukuyomi::app::mount!("/sub")
                 .with(tsukuyomi::app::state(String::from("bar")))
                 .with(tsukuyomi::app::modifier(MyModifier))
                 .with(

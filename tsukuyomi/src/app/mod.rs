@@ -11,14 +11,14 @@ pub(crate) mod imp;
 mod tests;
 
 #[allow(deprecated)]
-pub use self::route::Route;
+pub use {self::route::Route, crate::scope};
 pub use {
     self::{
         builder::Builder,
         error::{Error, Result},
-        scope::{fallback, modifier, state, Scope},
+        scope::{fallback, modifier, mount, state, Scope},
     },
-    crate::{route, scope},
+    crate::{mount, route},
 };
 use {
     crate::{
@@ -42,6 +42,8 @@ pub fn app() -> self::builder::Builder<()> {
     self::builder::Builder::default()
 }
 
+#[deprecated(since = "0.4.2", note = "use mount() instead")]
+#[allow(deprecated)]
 pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()
 }

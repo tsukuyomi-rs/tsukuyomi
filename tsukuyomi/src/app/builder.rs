@@ -23,7 +23,8 @@ use super::route::{Context as RouteContext, Route};
 /// A builder object for constructing an instance of `App`.
 #[derive(Default)]
 pub struct Builder<S: Scope = ()> {
-    scope: super::scope::Builder<S>,
+    scope: S,
+    prefix: Option<Uri>,
     config: Config,
 }
 
@@ -35,6 +36,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder")
             .field("scope", &self.scope)
+            .field("prefix", &self.prefix)
             .field("config", &self.config)
             .finish()
     }
@@ -49,25 +51,21 @@ where
     #[deprecated(since = "0.4.1", note = "use Builder::with(route) instead.")]
     #[allow(deprecated)]
     pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            config: self.config,
-            scope: self.scope.route(route),
-        }
+        self.with(super::scope::raw(move |cx| cx.add_route(route)))
     }
 
     /// Creates a new subscope onto the global scope.
+    #[deprecated(since = "0.4.1", note = "use `Builder::with` instead")]
     pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            config: self.config,
-            scope: self.scope.mount(new_scope),
-        }
+        self.with(super::scope::raw(move |cx| cx.add_scope(new_scope)))
     }
 
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
-    pub fn with(self, scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
+    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             config: self.config,
-            scope: self.scope.with(scope),
+            prefix: self.prefix,
+            scope: self.scope.chain(next_scope),
         }
     }
 
@@ -77,14 +75,11 @@ where
         note = "use Builder::with(state(scope)) instead"
     )]
     #[allow(deprecated)]
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
+    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = Error>>
     where
         T: Send + Sync + 'static,
     {
-        Builder {
-            config: self.config,
-            scope: self.scope.state(state),
-        }
+        self.with(super::scope::state(state))
     }
 
     /// Registers a `Modifier` into the global scope.
@@ -93,14 +88,11 @@ where
         note = "use Builder::with(state(scope)) instead"
     )]
     #[allow(deprecated)]
-    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = S::Error>>
+    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = Error>>
     where
         M: Modifier + Send + Sync + 'static,
     {
-        Builder {
-            config: self.config,
-            scope: self.scope.modifier(modifier),
-        }
+        self.with(super::scope::modifier(modifier))
     }
 
     /// Registers a `Fallback` into the global scope.
@@ -109,7 +101,7 @@ where
         note = "use Builder::with(state(scope)) instead"
     )]
     #[allow(deprecated)]
-    pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = S::Error>>
+    pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = Error>>
     where
         F: Fallback + Send + Sync + 'static,
     {
@@ -117,10 +109,10 @@ where
     }
 
     /// Sets the prefix URI of the global scope.
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            config: self.config,
-            scope: self.scope.prefix(prefix),
+    pub fn prefix(self, prefix: Uri) -> Builder<S> {
+        Self {
+            prefix: Some(prefix),
+            ..self
         }
     }
 
@@ -134,7 +126,7 @@ where
 
     /// Creates an `App` using the current configuration.
     pub fn build(self) -> Result<App> {
-        build(self.scope, self.config)
+        build(self.scope, self.prefix, self.config)
     }
 
     /// Creates a builder of HTTP server using the current configuration.
@@ -143,7 +135,7 @@ where
     }
 }
 
-fn build(scope: impl Scope, config: Config) -> Result<App> {
+fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> {
     let mut cx = AppContext {
         endpoints: IndexMap::new(),
         routes: vec![],
@@ -151,8 +143,8 @@ fn build(scope: impl Scope, config: Config) -> Result<App> {
         global_scope: ScopeData {
             id: ScopeId::Global,
             parents: vec![],
-            prefix: None,
-            uri: None,
+            prefix: prefix.clone(),
+            uri: prefix,
             modifiers: vec![],
         },
         states: ScopedContainerBuilder::default(),

@@ -396,8 +396,8 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let mut server = tsukuyomi::app!()
-        .mount(
-            tsukuyomi::scope!("/cors")
+        .with(
+            tsukuyomi::app::mount!("/cors")
                 .with(cors.clone())
                 .with(tsukuyomi::route!("/").reply(|| "cors")),
         ) //

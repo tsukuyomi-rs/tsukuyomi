@@ -5,6 +5,7 @@ use {
         fallback::{Fallback, FallbackInstance},
     },
     crate::{common::Never, modifier::Modifier, scoped_map::ScopeId, uri::Uri},
+    std::fmt,
 };
 
 #[allow(deprecated)]
@@ -14,6 +15,14 @@ pub trait Scope {
     type Error: Into<Error>;
 
     fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error>;
+
+    fn chain<S>(self, next: S) -> Chain<Self, S>
+    where
+        Self: Sized,
+        S: Scope,
+    {
+        Chain::new(self, next)
+    }
 }
 
 impl Scope for () {
@@ -77,11 +86,30 @@ where
     Raw(f)
 }
 
-#[derive(Debug, Default)]
+#[deprecated(since = "0.4.2", note = "use `Mount` instead.")]
 pub struct Builder<S: Scope = ()> {
     pub(super) scope: S,
 }
 
+#[allow(deprecated)]
+impl<S: fmt::Debug + Scope> fmt::Debug for Builder<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Builder")
+            .field("scope", &self.scope)
+            .finish()
+    }
+}
+
+#[allow(deprecated)]
+impl<S: Default + Scope> Default for Builder<S> {
+    fn default() -> Self {
+        Self {
+            scope: S::default(),
+        }
+    }
+}
+
+#[allow(deprecated)]
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S> Builder<S>
 where
@@ -173,6 +201,10 @@ where
     }
 
     /// Set the prefix URL of this scope.
+    #[deprecated(
+        since = "0.4.1",
+        note = "this method will be removed in the next version."
+    )]
     pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = Error>> {
         Builder {
             scope: raw(move |cx| {
@@ -184,6 +216,7 @@ where
     }
 }
 
+#[allow(deprecated)]
 impl<S> Scope for Builder<S>
 where
     S: Scope,
@@ -193,6 +226,105 @@ where
     #[inline]
     fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
         self.scope.configure(cx)
+    }
+}
+
+/// A pair representing a chain of `Scope`.
+#[derive(Debug)]
+pub struct Chain<S1, S2>(S1, S2);
+
+impl<S1, S2> Chain<S1, S2>
+where
+    S1: Scope,
+    S2: Scope,
+{
+    /// Create a new `Chain` from the specified `Scope`s.
+    pub fn new(s1: S1, s2: S2) -> Self {
+        Chain(s1, s2)
+    }
+}
+
+impl<S1, S2> Scope for Chain<S1, S2>
+where
+    S1: Scope,
+    S2: Scope,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
+        self.0.configure(cx).map_err(Into::into)?;
+        self.1.configure(cx).map_err(Into::into)?;
+        Ok(())
+    }
+}
+
+/// A function that creates a `Mount` with the empty scope items.
+pub fn mount() -> Mount<()> {
+    Mount::new((), None)
+}
+
+/// An instance of `Scope` that represents a scope with a specific prefix.
+#[derive(Debug, Default)]
+pub struct Mount<S: Scope = ()> {
+    scope: S,
+    prefix: Option<Uri>,
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
+impl<S> Mount<S>
+where
+    S: Scope,
+{
+    /// Create a new `Mount` with the specified components.
+    pub fn new(scope: S, prefix: Option<Uri>) -> Self {
+        Mount { scope, prefix }
+    }
+
+    /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
+    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>>
+    where
+        S2: Scope,
+    {
+        Mount {
+            scope: Chain::new(self.scope, next_scope),
+            prefix: self.prefix,
+        }
+    }
+
+    /// Replaces the inner `Scope` with the specified value.
+    pub fn scope<S2>(self, scope: S2) -> Mount<S2>
+    where
+        S2: Scope,
+    {
+        Mount {
+            scope,
+            prefix: self.prefix,
+        }
+    }
+
+    /// Sets the prefix of the URL appended to the all routes in the inner scope.
+    pub fn prefix(self, prefix: Uri) -> Self {
+        Self {
+            prefix: Some(prefix),
+            ..self
+        }
+    }
+}
+
+impl<S> Scope for Mount<S>
+where
+    S: Scope,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
+        cx.add_scope(raw(move |cx| -> super::Result<()> {
+            if let Some(prefix) = self.prefix {
+                cx.set_prefix(prefix)?;
+            }
+            self.scope.configure(cx).map_err(Into::into)?;
+            Ok(())
+        }))
     }
 }
 
@@ -228,7 +360,7 @@ impl<'a> Context<'a> {
 
     /// Create a new scope mounted to the certain URI.
     #[inline]
-    fn add_scope<S>(&mut self, new_scope: S) -> Result<()>
+    pub(super) fn add_scope<S>(&mut self, new_scope: S) -> Result<()>
     where
         S: Scope,
     {

@@ -1,6 +1,6 @@
 use {
     std::sync::{Arc, Mutex},
-    tsukuyomi::{handler::AsyncResult, output::Output, route, scope, Modifier},
+    tsukuyomi::{handler::AsyncResult, mount, output::Output, route, Modifier},
 };
 
 #[derive(Clone)]
@@ -76,8 +76,8 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
             marker: marker.clone(),
             name: "M1",
         })) //
-        .mount(
-            scope!("/path1")
+        .with(
+            mount!("/path1")
                 .with(tsukuyomi::app::modifier(MockModifier {
                     marker: marker.clone(),
                     name: "M2",
@@ -103,21 +103,21 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = tsukuyomi::app!()
-        .mount(
-            scope!("/path")
+        .with(
+            mount!("/path")
                 .with(tsukuyomi::app::modifier(MockModifier {
                     marker: marker.clone(),
                     name: "M1",
                 })) //
-                .mount(
-                    scope!("/to")
+                .with(
+                    mount!("/to")
                         .with(tsukuyomi::app::modifier(MockModifier {
                             marker: marker.clone(),
                             name: "M2",
                         })) //
                         .with(route!().reply(|| ""))
-                        .mount(
-                            scope!("/a")
+                        .with(
+                            mount!("/a")
                                 .with(tsukuyomi::app::modifier(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
