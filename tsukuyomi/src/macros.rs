@@ -1,4 +1,4 @@
-/// A macro to start building an `App`.
+#[doc(hidden)]
 #[deprecated(
     since = "0.4.2",
     note = "this macro will be removed in the next version."
@@ -17,7 +17,7 @@ macro_rules! app {
     }};
 }
 
-/// A macro to start building a `Scope`.
+#[doc(hidden)]
 #[macro_export(local_inner_macros)]
 #[deprecated(
     since = "0.4.2",
@@ -45,7 +45,7 @@ pub mod route {
     };
 }
 
-/// A macro to start building a `Route`.
+#[doc(hidden)]
 #[deprecated(since = "0.4.2", note = "use `route2!()` instead")]
 #[macro_export(local_inner_macros)]
 macro_rules! route {

@@ -111,6 +111,7 @@ where
     Raw(f)
 }
 
+#[doc(hidden)]
 #[deprecated(since = "0.4.2", note = "use `Mount` instead.")]
 pub struct Builder<S: Scope = ()> {
     pub(super) scope: S,
@@ -364,7 +365,7 @@ impl<'a> Context<'a> {
         Self { cx, id }
     }
 
-    /// Adds a route into the current scope.
+    #[doc(hidden)]
     #[deprecated(
         since = "0.4.2",
         note = "This method will be removed in the next version."
@@ -386,7 +387,7 @@ impl<'a> Context<'a> {
         self.cx.new_scope(self.id, new_scope)
     }
 
-    /// Adds a *scope-local* variable into the application.
+    #[doc(hidden)]
     #[deprecated(
         since = "0.4.2",
         note = "this method will be removed in the next version."
@@ -398,6 +399,7 @@ impl<'a> Context<'a> {
         self.cx.set_state(value, self.id)
     }
 
+    #[doc(hidden)]
     #[deprecated(
         since = "0.4.2",
         note = "this method will be removed in the next version."
@@ -409,6 +411,7 @@ impl<'a> Context<'a> {
         self.cx.add_modifier(modifier, self.id)
     }
 
+    #[doc(hidden)]
     #[deprecated(
         since = "0.4.2",
         note = "this method will be removed in the next version."

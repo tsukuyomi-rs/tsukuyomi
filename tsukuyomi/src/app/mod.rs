@@ -10,15 +10,17 @@ pub(crate) mod imp;
 #[cfg(test)]
 mod tests;
 
-pub use self::{
-    builder::Builder,
-    error::{Error, Result},
-    scope::Scope,
-};
+#[doc(hidden)]
 #[allow(deprecated)]
 pub use {
     self::route::Route,
     crate::{route, scope},
+};
+
+pub use self::{
+    builder::Builder,
+    error::{Error, Result},
+    scope::Scope,
 };
 use {
     crate::{
@@ -39,17 +41,20 @@ use {
     tower_service::{NewService, Service},
 };
 
+#[doc(hidden)]
 #[deprecated(since = "0.4.2", note = "use `App::builder` instead")]
 pub fn app() -> self::builder::Builder<()> {
     self::builder::Builder::default()
 }
 
+#[doc(hidden)]
 #[deprecated(since = "0.4.2", note = "use `scope::mount` instead")]
 #[allow(deprecated)]
 pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()
 }
 
+#[doc(hidden)]
 #[deprecated(since = "0.4.2", note = "use `scope::route` instead")]
 #[allow(deprecated)]
 pub fn route() -> self::route::Builder<()> {

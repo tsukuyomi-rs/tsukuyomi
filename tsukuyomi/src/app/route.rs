@@ -1,4 +1,5 @@
 #![allow(deprecated)]
+#![doc(hidden)]
 #![deprecated(
     since = "0.4.2",
     note = "the module `app::route` will be removed in the next version."
