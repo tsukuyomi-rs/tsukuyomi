@@ -504,7 +504,7 @@ dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "juniper 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.4.3",
- "tsukuyomi-juniper 0.2.0-dev",
+ "tsukuyomi-juniper 0.2.0",
 ]
 
 [[package]]
@@ -2220,7 +2220,7 @@ dependencies = [
 
 [[package]]
 name = "tsukuyomi-juniper"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "bytes 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
