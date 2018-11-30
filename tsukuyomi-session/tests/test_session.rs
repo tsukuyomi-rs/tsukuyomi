@@ -1,7 +1,7 @@
-extern crate cargo_version_sync;
 extern crate http;
 extern crate tsukuyomi;
 extern crate tsukuyomi_session;
+extern crate version_sync;
 
 use {
     http::Request,
@@ -16,7 +16,7 @@ use {
 
 #[test]
 fn test_version_sync() {
-    cargo_version_sync::assert_version_sync();
+    version_sync::assert_html_root_url_updated!("src/lib.rs");
 }
 
 #[test]

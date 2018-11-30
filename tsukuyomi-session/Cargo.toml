@@ -3,8 +3,9 @@ name = "tsukuyomi-session"
 version = "0.1.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 description = """
-Session support for Tsukuyomi Web framework
+Session support for Tsukuyomi.
 """
+
 build = "build.rs"
 
 [dependencies]
@@ -20,10 +21,7 @@ serde = "1"
 
 [dev-dependencies]
 http = "0.1"
-
-[dev-dependencies.cargo-version-sync]
-version = "0.0.5"
-default-features = false
+version-sync = "0.6"
 
 [features]
 default = ["secure"]

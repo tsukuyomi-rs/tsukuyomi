@@ -1,4 +1,4 @@
-//! Modifiers for supporting session management.
+//! Session support for Tsukuyomi.
 
 #![doc(html_root_url = "https://docs.rs/tsukuyomi-session/0.1.0")]
 #![warn(
