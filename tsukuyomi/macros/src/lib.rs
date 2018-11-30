@@ -22,6 +22,7 @@ extern crate tsukuyomi_internal;
 
 mod derive_responder;
 mod route_expr_impl;
+mod route_impl;
 mod validate_prefix;
 use tsukuyomi_internal::uri;
 
@@ -37,6 +38,14 @@ fn to_compile_error(err: syn::parse::Error) -> proc_macro2::TokenStream {
 #[cfg_attr(tarpaulin, skip)]
 pub fn route_expr_impl(input: TokenStream) -> TokenStream {
     crate::route_expr_impl::route_expr_impl(input)
+        .unwrap_or_else(to_compile_error)
+        .into()
+}
+
+#[proc_macro]
+#[cfg_attr(tarpaulin, skip)]
+pub fn route_impl(input: TokenStream) -> TokenStream {
+    crate::route_impl::route_impl(input)
         .unwrap_or_else(to_compile_error)
         .into()
 }

@@ -1,10 +1,15 @@
+use tsukuyomi::{
+    app::directives::*, //
+    fs::Staticfiles,
+};
+
 #[test]
 #[ignore]
 fn compiletest() {
     drop(
-        tsukuyomi::app!()
-            .route(
-                tsukuyomi::route!("/index.html") //
+        App::builder()
+            .with(
+                route!("/index.html") //
                     .send_file("/path/to/index.html", None),
             ) //
             .build()
@@ -16,8 +21,8 @@ fn compiletest() {
 #[ignore]
 fn compiletest_staticfiles() {
     drop(
-        tsukuyomi::app!()
-            .with(tsukuyomi::fs::Staticfiles::new("./public")) //
+        App::builder()
+            .with(Staticfiles::new("./public")) //
             .build()
             .unwrap(),
     );

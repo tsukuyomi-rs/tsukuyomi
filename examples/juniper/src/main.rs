@@ -1,4 +1,3 @@
-#![warn(unused)]
 #![cfg_attr(feature = "cargo-clippy", allow(double_parens))]
 
 extern crate juniper;
@@ -8,7 +7,7 @@ extern crate tsukuyomi_juniper;
 mod context;
 mod schema;
 
-use {std::sync::Arc, tsukuyomi_juniper::Executor};
+use {std::sync::Arc, tsukuyomi::app::directives::*, tsukuyomi_juniper::Executor};
 
 fn main() -> tsukuyomi::server::Result<()> {
     // Extractor for extracting `Executor` for executing a GraphQL request from client.
@@ -20,13 +19,14 @@ fn main() -> tsukuyomi::server::Result<()> {
         tsukuyomi::extractor::value(context)
     };
 
-    tsukuyomi::app!()
-        .route(
-            tsukuyomi::app::route!("/") //
+    App::builder()
+        .with(
+            route!("/") //
                 .say(tsukuyomi_juniper::graphiql_source("/graphql")),
         ) //
-        .route(
-            tsukuyomi::app::route!("/graphql", methods = [GET, POST])
+        .with(
+            route!("/graphql")
+                .methods("GET, POST")?
                 .extract(extract_graphql_executor)
                 .extract(fetch_graphql_context)
                 .call(move |exec: Executor<_>, context| exec.execute(context)),

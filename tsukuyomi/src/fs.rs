@@ -454,31 +454,22 @@ where
             let config = config.clone();
 
             if file_type.is_file() {
-                let uri = format!("/{}", name).parse()?;
-
-                cx.add_route(
-                    crate::app::route() //
-                        .uri(uri)
-                        .send_file(path, config),
-                )?;
+                crate::app::directives::route(format!("/{}", name))?
+                    .send_file(path, config)
+                    .configure(cx)?;
             } else if file_type.is_dir() {
-                let uri = format!("/{}/*path", name).parse()?;
                 let root_dir = path;
-
-                cx.add_route(
-                    crate::app::route()
-                        .uri(uri)
-                        .extract(crate::extractor::param::wildcard())
-                        .call(move |suffix: PathBuf| {
-                            let path = root_dir.join(suffix);
-                            if let Some(ref config) = config {
-                                NamedFile::open_with_config(path, config.clone())
-                                    .map_err(Into::into)
-                            } else {
-                                NamedFile::open(path).map_err(Into::into)
-                            }
-                        }),
-                )?;
+                crate::app::directives::route(format!("/{}/*path", name))?
+                    .extract(crate::extractor::param::wildcard())
+                    .call(move |suffix: PathBuf| {
+                        let path = root_dir.join(suffix);
+                        if let Some(ref config) = config {
+                            NamedFile::open_with_config(path, config.clone()).map_err(Into::into)
+                        } else {
+                            NamedFile::open(path).map_err(Into::into)
+                        }
+                    }) //
+                    .configure(cx)?;
             } else {
                 return Err(io::Error::new(io::ErrorKind::Other, "unexpected file type").into());
             }

@@ -4,23 +4,79 @@ pub mod fallback;
 pub mod route;
 pub mod scope;
 
+/// A *prelude* for using the primitive `Scope`s.
+pub mod directives {
+    #[doc(no_inline)]
+    pub use {
+        super::{
+            scope::{mount, route},
+            App,
+        },
+        crate::route2 as route,
+    };
+
+    use {
+        super::{
+            fallback::{Fallback, FallbackInstance},
+            scope::Scope,
+        },
+        crate::{common::Never, modifier::Modifier},
+    };
+
+    /// Creates a `Scope` that registers the specified state to be shared into the scope.
+    #[allow(deprecated)]
+    pub fn state<T>(state: T) -> impl Scope<Error = Never>
+    where
+        T: Send + Sync + 'static,
+    {
+        super::scope::raw(move |cx| {
+            cx.set_state(state);
+            Ok(())
+        })
+    }
+
+    /// Creates a `Scope` that registers the specified `Modifier` into the scope.
+    #[allow(deprecated)]
+    pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
+    where
+        M: Modifier + Send + Sync + 'static,
+    {
+        super::scope::raw(move |cx| {
+            cx.add_modifier(modifier);
+            Ok(())
+        })
+    }
+
+    /// Creates a `Scope` that registers the specified `Fallback` into the scope.
+    pub fn fallback<F>(fallback: F) -> impl Scope<Error = Never>
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        state(FallbackInstance::from(fallback))
+    }
+}
+
 mod builder;
 mod error;
 pub(crate) mod imp;
 #[cfg(test)]
 mod tests;
 
+#[doc(hidden)]
+#[allow(deprecated)]
 pub use {
-    self::{
-        builder::Builder,
-        error::{Error, Result},
-        route::Route,
-        scope::Scope,
-    },
+    self::route::Route,
     crate::{route, scope},
+};
+
+pub use self::{
+    builder::Builder,
+    error::{Error, Result},
+    scope::Scope,
 };
 use {
     crate::{
+        common::TryFrom,
         error::Critical,
         handler::Handler,
         input::RequestBody,
@@ -37,14 +93,22 @@ use {
     tower_service::{NewService, Service},
 };
 
+#[doc(hidden)]
+#[deprecated(since = "0.4.2", note = "use `App::builder` instead")]
 pub fn app() -> self::builder::Builder<()> {
     self::builder::Builder::default()
 }
 
+#[doc(hidden)]
+#[deprecated(since = "0.4.2", note = "use `scope::mount` instead")]
+#[allow(deprecated)]
 pub fn scope() -> self::scope::Builder<()> {
     self::scope::Builder::<()>::default()
 }
 
+#[doc(hidden)]
+#[deprecated(since = "0.4.2", note = "use `scope::route` instead")]
+#[allow(deprecated)]
 pub fn route() -> self::route::Builder<()> {
     self::route::Builder::<()>::default()
 }
@@ -271,10 +335,17 @@ pub struct App {
 }
 
 impl App {
-    #[doc(hidden)]
-    #[deprecated(note = "use `tsukuyomi::app` instead.")]
-    pub fn builder() -> Builder {
+    /// Create a `Builder` to configure the instance of `App`.
+    pub fn builder() -> Builder<()> {
         Builder::default()
+    }
+
+    /// Create a `Builder` with the specified prefix.
+    pub fn with_prefix<T>(prefix: T) -> Result<Builder<()>>
+    where
+        Uri: TryFrom<T>,
+    {
+        Ok(Self::builder().prefix(Uri::try_from(prefix)?))
     }
 }
 

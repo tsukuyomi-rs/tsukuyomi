@@ -3,15 +3,17 @@ extern crate native_tls;
 extern crate tokio_tls;
 extern crate tsukuyomi;
 
+use tsukuyomi::app::directives::*;
+
 fn main() -> tsukuyomi::server::Result<()> {
     let der = std::fs::read("./private/identity.p12")?;
     let cert = native_tls::Identity::from_pkcs12(&der, "mypass")?;
     let tls_acceptor =
         tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
 
-    tsukuyomi::app!()
-        .route(
-            tsukuyomi::app::route!() //
+    App::builder()
+        .with(
+            route!("/") //
                 .say("Hello, Tsukuyomi.\n"),
         ) //
         .build_server()?

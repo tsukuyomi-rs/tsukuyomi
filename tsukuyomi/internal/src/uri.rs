@@ -8,32 +8,6 @@ use {
     },
 };
 
-/// A helper trait representing the conversion into an `Uri`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait TryIntoUri {
-    type Error: Into<Error>;
-
-    fn try_into_uri(self) -> Result<Uri, Self::Error>;
-}
-
-impl TryIntoUri for Uri {
-    type Error = Error;
-
-    #[inline]
-    fn try_into_uri(self) -> Result<Uri, Self::Error> {
-        Ok(self)
-    }
-}
-
-impl<'a> TryIntoUri for &'a str {
-    type Error = Error;
-
-    #[inline]
-    fn try_into_uri(self) -> Result<Uri, Self::Error> {
-        self.parse()
-    }
-}
-
 /// Concatenate a list of Uris to an Uri.
 pub fn join_all<I>(segments: I) -> Result<Uri, Error>
 where

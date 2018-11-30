@@ -1,7 +1,10 @@
 extern crate openssl;
 extern crate tsukuyomi;
 
-use openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod};
+use {
+    openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod},
+    tsukuyomi::app::directives::*,
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let mut builder = SslAcceptor::mozilla_modern(SslMethod::tls())?;
@@ -18,9 +21,9 @@ fn main() -> tsukuyomi::server::Result<()> {
     });
     let ssl_acceptor = builder.build();
 
-    tsukuyomi::app!()
-        .route(
-            tsukuyomi::app::route!() //
+    App::builder()
+        .with(
+            route!("/") //
                 .say("Hello, Tsukuyomi.\n"),
         ) //
         .build_server()?

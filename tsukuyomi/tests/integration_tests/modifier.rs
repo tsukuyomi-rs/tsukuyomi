@@ -1,6 +1,11 @@
 use {
     std::sync::{Arc, Mutex},
-    tsukuyomi::{handler::AsyncResult, output::Output, route, scope, Modifier},
+    tsukuyomi::{
+        app::directives::*, //
+        handler::AsyncResult,
+        output::Output,
+        Modifier,
+    },
 };
 
 #[derive(Clone)]
@@ -20,12 +25,15 @@ impl Modifier for MockModifier {
 fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
-        .route(route!("/").reply(|| "")) //
-        .modifier(MockModifier {
+    let mut server = App::builder()
+        .with(
+            route!("/") //
+                .reply(|| ""),
+        ) //
+        .with(modifier(MockModifier {
             marker: marker.clone(),
             name: "M",
-        }) //
+        })) //
         .build_server()?
         .into_test_server()?;
 
@@ -43,16 +51,18 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
-        .route(route!().reply(|| ""))
-        .modifier(MockModifier {
+    let mut server = App::builder()
+        .with(
+            route!("/") //
+                .reply(|| ""),
+        ).with(modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        }) //
-        .modifier(MockModifier {
+        })) //
+        .with(modifier(MockModifier {
             marker: marker.clone(),
             name: "M2",
-        }) //
+        })) //
         .build_server()?
         .into_test_server()?;
 
@@ -66,20 +76,20 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
-        .modifier(MockModifier {
+    let mut server = App::builder()
+        .with(modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        }) //
-        .mount(
-            scope!("/path1")
-                .modifier(MockModifier {
+        })) //
+        .with(
+            mount("/path1")?
+                .with(modifier(MockModifier {
                     marker: marker.clone(),
                     name: "M2",
-                }) //
-                .route(route!("/").reply(|| "")),
+                })) //
+                .with(route!("/").reply(|| "")),
         ) //
-        .route(route!("/path2").reply(|| ""))
+        .with(route!("/path2").reply(|| ""))
         .build_server()?
         .into_test_server()?;
 
@@ -97,27 +107,27 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = tsukuyomi::app!()
-        .mount(
-            scope!("/path")
-                .modifier(MockModifier {
+    let mut server = App::builder()
+        .with(
+            mount("/path")?
+                .with(modifier(MockModifier {
                     marker: marker.clone(),
                     name: "M1",
-                }) //
-                .mount(
-                    scope!("/to")
-                        .modifier(MockModifier {
+                })) //
+                .with(
+                    mount("/to")?
+                        .with(modifier(MockModifier {
                             marker: marker.clone(),
                             name: "M2",
-                        }) //
-                        .route(route!().reply(|| ""))
-                        .mount(
-                            scope!("/a")
-                                .modifier(MockModifier {
+                        })) //
+                        .with(route!("/").reply(|| ""))
+                        .with(
+                            mount("/a")?
+                                .with(modifier(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
-                                }) //
-                                .route(route!().reply(|| "")),
+                                })) //
+                                .with(route!("/").reply(|| "")),
                         ),
                 ),
         ) //

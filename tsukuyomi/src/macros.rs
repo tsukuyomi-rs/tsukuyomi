@@ -1,4 +1,8 @@
-/// A macro to start building an `App`.
+#[doc(hidden)]
+#[deprecated(
+    since = "0.4.2",
+    note = "this macro will be removed in the next version."
+)]
 #[macro_export(local_inner_macros)]
 macro_rules! app {
     () => {
@@ -13,8 +17,12 @@ macro_rules! app {
     }};
 }
 
-/// A macro to start building a `Scope`.
+#[doc(hidden)]
 #[macro_export(local_inner_macros)]
+#[deprecated(
+    since = "0.4.2",
+    note = "this macro will be removed in the next version."
+)]
 macro_rules! scope {
     () => {
         $crate::app::scope()
@@ -29,6 +37,7 @@ macro_rules! scope {
     }};
 }
 
+#[allow(deprecated)]
 pub mod route {
     pub use {
         crate::app::route, //
@@ -36,7 +45,8 @@ pub mod route {
     };
 }
 
-/// A macro to start building a `Route`.
+#[doc(hidden)]
+#[deprecated(since = "0.4.2", note = "use `route2!()` instead")]
 #[macro_export(local_inner_macros)]
 macro_rules! route {
     () => ( $crate::macros::route::route() );

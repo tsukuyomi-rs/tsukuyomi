@@ -1,3 +1,10 @@
+#![allow(deprecated)]
+#![doc(hidden)]
+#![deprecated(
+    since = "0.4.2",
+    note = "the module `app::route` will be removed in the next version."
+)]
+
 #[doc(hidden)]
 pub use http::Method;
 use {
@@ -16,18 +23,29 @@ use {
     indexmap::IndexSet,
     std::{
         borrow::Cow,
+        fmt,
         path::{Path, PathBuf},
         sync::Arc,
     },
 };
 
 /// A builder of `Route`.
-#[derive(Debug)]
 pub struct Builder<E: Extractor = (), M: Modifier = ()> {
     extractor: E,
     modifier: M,
     methods: IndexSet<Method>,
     uri: Uri,
+}
+
+impl<E: Extractor + fmt::Debug, M: Modifier + fmt::Debug> fmt::Debug for Builder<E, M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Builder")
+            .field("extractor", &self.extractor)
+            .field("modifier", &self.modifier)
+            .field("methods", &self.methods)
+            .field("uri", &self.uri)
+            .finish()
+    }
 }
 
 impl Default for Builder {
@@ -313,6 +331,10 @@ where
     Raw(f)
 }
 
+#[deprecated(
+    since = "0.4.2",
+    note = "the trait Route will be removed in the next version."
+)]
 #[allow(missing_debug_implementations)]
 pub struct Context {
     pub(super) uri: Uri,
@@ -321,68 +343,21 @@ pub struct Context {
 }
 
 impl Context {
-    fn uri(&mut self, uri: Uri) {
+    pub(super) fn uri(&mut self, uri: Uri) {
         self.uri = uri;
     }
 
-    fn methods<I>(&mut self, methods: I)
+    pub(super) fn methods<I>(&mut self, methods: I)
     where
         I: IntoIterator<Item = Method>,
     {
         self.methods = Some(methods.into_iter().collect());
     }
 
-    fn handler<H>(&mut self, handler: H)
+    pub(super) fn handler<H>(&mut self, handler: H)
     where
         H: Handler + Send + Sync + 'static,
     {
         self.handler = Some(Box::new(handler));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn generated() -> Builder<impl Extractor<Output = (u32, String)>> {
-        crate::app::route()
-            .uri("/:id/:name".parse().unwrap())
-            .extract(crate::extractor::param::pos(0))
-            .extract(crate::extractor::param::pos(1))
-    }
-
-    #[test]
-    #[ignore]
-    fn compiletest1() {
-        drop(
-            crate::app::app()
-                .route(
-                    generated() //
-                        .reply(|id: u32, name: String| {
-                            drop((id, name));
-                            "dummy"
-                        }),
-                ) //
-                .build()
-                .expect("failed to construct App"),
-        );
-    }
-
-    #[test]
-    #[ignore]
-    fn compiletest2() {
-        drop(
-            crate::app::app()
-                .route(
-                    generated() //
-                        .extract(crate::extractor::body::plain())
-                        .reply(|id: u32, name: String, body: String| {
-                            drop((id, name, body));
-                            "dummy"
-                        }),
-                ) //
-                .build()
-                .expect("failed to construct App"),
-        );
     }
 }

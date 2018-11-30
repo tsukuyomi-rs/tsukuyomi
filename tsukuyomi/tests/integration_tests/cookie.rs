@@ -1,13 +1,17 @@
 use {
     cookie::Cookie,
-    tsukuyomi::{handler::AsyncResult, Output},
+    tsukuyomi::{
+        app::directives::*, //
+        handler::AsyncResult,
+        Output,
+    },
 };
 
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
-        .route(
-            tsukuyomi::route!("/first") //
+    let mut server = App::builder()
+        .with(
+            route!("/first") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
                         input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
@@ -15,8 +19,8 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
                     })
                 }),
         ) //
-        .route(
-            tsukuyomi::route!("/second") //
+        .with(
+            route!("/second") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
                         assert!(input.cookies.jar()?.get("session").is_some());
@@ -36,9 +40,9 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::app!()
-        .route(
-            tsukuyomi::route!("/first") //
+    let mut server = App::builder()
+        .with(
+            route!("/first") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
                         input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
@@ -46,8 +50,8 @@ fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
                     })
                 }),
         ) //
-        .route(
-            tsukuyomi::route!("/second") //
+        .with(
+            route!("/second") //
                 .raw(|| {
                     AsyncResult::ready(|input| {
                         assert!(input.cookies.jar()?.get("session").is_none());

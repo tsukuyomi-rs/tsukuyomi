@@ -2,9 +2,13 @@ extern crate serde;
 extern crate tsukuyomi;
 extern crate tsukuyomi_cors;
 
-use tsukuyomi_cors::CORS;
+use {
+    serde::{Deserialize, Serialize},
+    tsukuyomi::{app::directives::*, extractor, Responder},
+    tsukuyomi_cors::CORS,
+};
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, tsukuyomi::Responder)]
+#[derive(Debug, Deserialize, Serialize, Responder)]
 #[responder(respond_to = "tsukuyomi::output::responder::json")]
 struct UserInfo {
     username: String,
@@ -21,11 +25,12 @@ fn main() -> tsukuyomi::server::Result<()> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    tsukuyomi::app!()
+    App::builder()
         .with(cors)
-        .route(
-            tsukuyomi::route!("/user/info", method = POST) //
-                .extract(tsukuyomi::extractor::body::json())
+        .with(
+            route!("/user/info")
+                .methods("POST")?
+                .extract(extractor::body::json())
                 .call(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
                         return Err(tsukuyomi::error::bad_request(

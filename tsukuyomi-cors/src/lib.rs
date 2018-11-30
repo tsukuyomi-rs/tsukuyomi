@@ -41,7 +41,6 @@ use {
     tsukuyomi::{
         app::{
             fallback::{self, Fallback},
-            scope,
             scope::Scope,
         },
         handler::AsyncResult, //
@@ -244,12 +243,11 @@ impl CORS {
 /// The implementation of `Scope` for registering itself as `Modifier` and `Fallback`
 /// into a specific scope.
 impl Scope for CORS {
-    type Error = tsukuyomi::Never;
+    type Error = tsukuyomi::app::Error;
 
-    fn configure(self, cx: &mut scope::Context<'_>) -> Result<(), Self::Error> {
-        scope()
-            .fallback(self.clone()) // <-- handles the fallback preflight request
-            .modifier(self) // <-- handle explicit preflight/simple request
+    fn configure(self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> Result<(), Self::Error> {
+        tsukuyomi::app::directives::fallback(self.clone()) // <-- handles the fallback preflight request
+            .chain(tsukuyomi::app::directives::modifier(self)) // <-- handle explicit preflight/simple request
             .configure(cx)
     }
 }

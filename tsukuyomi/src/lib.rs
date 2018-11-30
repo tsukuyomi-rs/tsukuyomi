@@ -77,7 +77,8 @@ pub mod test;
 
 #[doc(inline)]
 pub use crate::{
-    common::Never,
+    app::App,
+    common::{Never, TryFrom},
     error::{
         Error, //
         HttpError,
@@ -95,4 +96,4 @@ pub use crate::{
 };
 
 #[doc(hidden)]
-pub use tsukuyomi_macros::{route_expr_impl, validate_prefix};
+pub use tsukuyomi_macros::{route_expr_impl, route_impl, validate_prefix};

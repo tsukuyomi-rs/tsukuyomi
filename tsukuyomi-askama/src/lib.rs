@@ -6,7 +6,10 @@
 //! extern crate tsukuyomi_askama;
 //!
 //! use askama::Template;
-//! use tsukuyomi::output::Responder;
+//! use tsukuyomi::{
+//!     app::directives::*,
+//!     output::Responder,
+//! };
 //!
 //! #[derive(Template, Responder)]
 //! #[template(source = "Hello, {{name}}!", ext = "html")]
@@ -16,9 +19,9 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
-//! tsukuyomi::app!()
-//!     .route(
-//!         tsukuyomi::app::route!("/:name")
+//! App::builder()
+//!     .with(
+//!         route!("/:name")
 //!             .reply(|name| Index { name })
 //!     )
 //!     .build()
