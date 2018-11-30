@@ -1,7 +1,7 @@
 [package]
 name = "tsukuyomi-internal"
 description = "internal crate for Tsukuyomi."
-version = "0.4.2" # <cargo-version-sync>
+version = "0.4.3" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
