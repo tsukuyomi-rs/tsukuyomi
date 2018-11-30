@@ -44,8 +44,8 @@ fn main() -> tsukuyomi::server::Result<()> {
 ## Resources
 
 * [Examples](./examples)
-* [API documentation (released, 0.3)][docs-rs]
-* [API documentation (master, 0.4)][master-doc]
+* [API documentation (released)][docs-rs]
+* [API documentation (master)][master-doc]
 
 ## Extensions
 
