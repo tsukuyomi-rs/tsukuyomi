@@ -97,7 +97,7 @@ mod responder {
 
         let mut server = App::builder()
             .with(
-                tsukuyomi::route!() //
+                tsukuyomi::app::scope::route!("/") //
                     .reply(|| Foo("Foo".into())),
             ) //
             .build_server()?

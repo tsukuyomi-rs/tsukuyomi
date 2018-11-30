@@ -1,4 +1,4 @@
-use tsukuyomi::App;
+use tsukuyomi::{app::scope::route, App};
 
 #[test]
 #[ignore]
@@ -6,7 +6,7 @@ fn compiletest() {
     drop(
         App::builder()
             .with(
-                tsukuyomi::route!("/index.html") //
+                route!("/index.html") //
                     .send_file("/path/to/index.html", None),
             ) //
             .build()

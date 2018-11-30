@@ -64,7 +64,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            route!() //
+            route!("/") //
                 .reply(|| ""),
         ).with(MockModifier {
             marker: marker.clone(),
@@ -131,14 +131,14 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                             marker: marker.clone(),
                             name: "M2",
                         }) //
-                        .with(route!().reply(|| ""))
+                        .with(route!("/").reply(|| ""))
                         .with(
                             mount("/a")?
                                 .with(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
                                 }) //
-                                .with(route!().reply(|| "")),
+                                .with(route!("/").reply(|| "")),
                         ),
                 ),
         ) //

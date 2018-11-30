@@ -29,7 +29,7 @@ use {
     },
 };
 
-pub use crate::route;
+pub use crate::route2 as route;
 
 /// A trait representing a set of configurations within the scope.
 pub trait Scope {
@@ -777,6 +777,60 @@ where
             }.map_err(Into::into)
         })
     }
+}
+
+/// A macro to generate an expression of `Route`, based on the specified input.
+///
+/// This macro is implemented as a procedural macro (due to limitations of the current macro system,
+/// the actual `proc_macro` is invoked indirectly with `macro_rules!`).
+/// It takes a string literal representing the URL of a route, and generates the code
+/// to build a `Route` with the appropriate `Extractor` based on its value.
+///
+/// Roughly speaking, the following macro call
+///
+/// ```ignore
+/// route!("/path/to/:id")
+/// ```
+///
+/// will be expanded as follows:
+///
+/// ```ignore
+/// route("/path/to/:id/:name/*path").expect("never fails")
+///     .extract(extractor::param::pos(0_usize))
+///     .extract(extractor::param::pos(1_usize))
+///     .extract(extractor::param::wildcard())
+/// ```
+///
+/// # Example
+///
+/// ```
+/// # extern crate tsukuyomi;
+/// use tsukuyomi::app::{
+///     App,
+///     scope::route,
+/// };
+///
+/// # fn main() -> tsukuyomi::app::Result<()> {
+/// let get_post = route!("/posts/:id")
+///     .call(|id: u32| {
+///         // do some stuff.
+/// #       drop(id); Ok(())
+///     });
+///
+/// let app = App::builder()
+///     .with(get_post)
+///     .build()?;
+/// # Ok(())
+/// # }
+#[macro_export(local_inner_macros)]
+macro_rules! route2 {
+    ($uri:expr) => {{
+        enum __Dummy {}
+        impl __Dummy {
+            route_impl!($uri);
+        }
+        __Dummy::route()
+    }};
 }
 
 #[cfg(test)]

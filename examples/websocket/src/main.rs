@@ -10,7 +10,7 @@ use {
 fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::App::builder() //
         .with(
-            tsukuyomi::app::route!("/ws")
+            tsukuyomi::app::scope::route!("/ws")
                 .extract(tsukuyomi_tungstenite::ws())
                 .reply(|ws: Ws| {
                     ws.finish(|stream| {

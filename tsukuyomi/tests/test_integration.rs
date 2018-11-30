@@ -14,7 +14,7 @@ fn test_catch_unwind() {
     fn inner() -> tsukuyomi::test::Result<()> {
         let mut server = tsukuyomi::App::builder()
             .with(
-                tsukuyomi::route!("/") //
+                tsukuyomi::app::scope::route!("/") //
                     .reply(|| -> &'static str { panic!("explicit panic") }),
             ) //
             .build_server()?

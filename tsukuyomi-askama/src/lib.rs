@@ -18,7 +18,7 @@
 //! # fn main() -> tsukuyomi::app::Result<()> {
 //! tsukuyomi::App::builder()
 //!     .with(
-//!         tsukuyomi::app::route!("/:name")
+//!         tsukuyomi::app::scope::route!("/:name")
 //!             .reply(|name| Index { name })
 //!     )
 //!     .build()

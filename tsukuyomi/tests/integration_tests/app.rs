@@ -1,6 +1,12 @@
 use {
     http::{header, Method, Request, Response, StatusCode},
-    tsukuyomi::{app::App, extractor, handler::AsyncResult, route, test::ResponseExt, Output},
+    tsukuyomi::{
+        app::{scope::route, App},
+        extractor,
+        handler::AsyncResult,
+        test::ResponseExt,
+        Output,
+    },
 };
 
 #[test]
@@ -181,7 +187,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
 fn scope_variables() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(tsukuyomi::app::scope::state(String::from("foo")))
-        .with(tsukuyomi::route!("/").raw(tsukuyomi::handler::raw(|| {
+        .with(route!("/").raw(tsukuyomi::handler::raw(|| {
             AsyncResult::ready(|input| {
                 assert_eq!(input.states.get::<String>(), "foo");
                 Ok(Output::default())
@@ -191,7 +197,7 @@ fn scope_variables() -> tsukuyomi::test::Result<()> {
             tsukuyomi::app::scope::mount("/sub")?
                 .with(tsukuyomi::app::scope::state(String::from("bar"))) //
                 .with(
-                    tsukuyomi::route!("/") //
+                    route!("/") //
                         .raw(tsukuyomi::handler::raw(|| {
                             AsyncResult::ready(|input| {
                                 assert_eq!(input.states.get::<String>(), "bar");
@@ -224,7 +230,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
         .with(tsukuyomi::app::scope::state(String::from("foo")))
         .with(tsukuyomi::app::scope::modifier(MyModifier))
         .with(
-            tsukuyomi::route!("/") //
+            route!("/") //
                 .raw(tsukuyomi::handler::raw(|| {
                     AsyncResult::ready(|input| {
                         assert_eq!(input.states.get::<String>(), "foo");
@@ -237,7 +243,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
                 .with(tsukuyomi::app::scope::state(String::from("bar")))
                 .with(tsukuyomi::app::scope::modifier(MyModifier))
                 .with(
-                    tsukuyomi::route!("/") //
+                    route!("/") //
                         .raw(tsukuyomi::handler::raw(|| {
                             AsyncResult::ready(|input| {
                                 assert_eq!(input.states.get::<String>(), "bar");

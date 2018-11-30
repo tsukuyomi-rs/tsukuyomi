@@ -3,7 +3,7 @@ extern crate tsukuyomi;
 
 use {
     serde::{Deserialize, Serialize},
-    tsukuyomi::{extractor, route, Responder},
+    tsukuyomi::{app::scope::route, extractor, Responder},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Responder)]

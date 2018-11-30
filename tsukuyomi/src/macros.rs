@@ -37,17 +37,19 @@ macro_rules! scope {
     }};
 }
 
+#[allow(deprecated)]
 pub mod route {
     pub use {
-        crate::app::scope::route, //
+        crate::app::route, //
         http::Method,
     };
 }
 
 /// A macro to start building a `Route`.
+#[deprecated(since = "0.4.2", note = "use `route2!()` instead")]
 #[macro_export(local_inner_macros)]
 macro_rules! route {
-    () => ( $crate::macros::route::route("/").expect("this is a bug") );
+    () => ( $crate::macros::route::route() );
     ($uri:expr) => {{
         enum __Dummy {}
         impl __Dummy {
@@ -55,34 +57,12 @@ macro_rules! route {
         }
         __Dummy::route()
     }};
-    ($uri:expr, method = $METHOD:ident) => {{
-        #[allow(nonstandard_style)]
-        enum __priv__ {}
-        impl __priv__ {
-            #[inline(always)]
-            #[deprecated(since = "0.4.2", note = "the option `method = $METHOD` is deprecated and will be removed in the next version. In order to specify the methods, use `Route::methods` instead")]
-            fn deprecation() {}
-        }
-        __priv__::deprecation();
-
-        route!($uri)
-            .methods($crate::macros::route::Method::$METHOD)
-            .expect("should be valid")
-    }};
-    ($uri:expr, methods = [$($METHODS:ident),*]) => {{
-        #[allow(nonstandard_style)]
-        enum __priv__ {}
-        impl __priv__ {
-            #[inline(always)]
-            #[deprecated(since = "0.4.2", note = "the option `methods = [$($METHODS),*]` is deprecated and will be removed in the next version. In order to specify the methods, use `Route::methods` instead")]
-            fn deprecation() {}
-        }
-        __priv__::deprecation();
-
-        route!($uri)
-            .methods(__tsukuyomi_vec![$($crate::macros::route::Method::$METHODS),*])
-            .expect("should be valid")
-    }};
+    ($uri:expr, method = $METHOD:ident) => {
+        route!($uri).method($crate::macros::route::Method::$METHOD)
+    };
+    ($uri:expr, methods = [$($METHODS:ident),*]) => {
+        route!($uri).methods(__tsukuyomi_vec![$($crate::macros::route::Method::$METHODS),*])
+    };
 }
 
 #[doc(hidden)]

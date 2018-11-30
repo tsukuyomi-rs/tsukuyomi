@@ -13,7 +13,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     log::info!("Listening on {}", addr);
 
     tsukuyomi::App::builder()
-        .with(tsukuyomi::route!("/").say("Hello"))
+        .with(tsukuyomi::app::scope::route!("/").say("Hello"))
         .build_server()?
         .bind(addr)
         .tower_middleware(log_middleware)

@@ -1,16 +1,15 @@
 use {
     http::Request,
     tsukuyomi::{
-        app::App,
+        app::{scope::route, App},
         extractor::{self, Extractor},
-        route,
     },
 };
 
 #[test]
 fn unit_input() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(route!().reply(|| "dummy"))
+        .with(route!("/").reply(|| "dummy"))
         .build_server()?
         .into_test_server()?;
     let response = server.perform("/")?;
@@ -244,7 +243,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(tsukuyomi::app::scope::modifier(MyModifier))
         .with(
-            route!()
+            route!("/")
                 .extract(extractor::local::remove(&MyData::KEY))
                 .reply(|x: MyData| x.0),
         ) //
@@ -272,7 +271,7 @@ fn missing_local_data() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            route!()
+            route!("/")
                 .extract(extractor::local::remove(&MyData::KEY))
                 .reply(|x: MyData| x.0),
         ) //

@@ -9,8 +9,7 @@
 //! # extern crate tsukuyomi;
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //! use tsukuyomi::{
-//!     app::App,
-//!     route,
+//!     app::{App, scope::route},
 //!     output::Output,
 //!     handler::AsyncResult,
 //!     Modifier,

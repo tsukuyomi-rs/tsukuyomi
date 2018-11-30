@@ -24,7 +24,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     tsukuyomi::App::builder()
         .with(tsukuyomi::app::scope::state(engine))
         .with(
-            tsukuyomi::app::route!("/:name") //
+            tsukuyomi::app::scope::route!("/:name") //
                 .reply(|name| Index { name }),
         ) //
         .build_server()?

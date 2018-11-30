@@ -10,15 +10,15 @@ pub(crate) mod imp;
 #[cfg(test)]
 mod tests;
 
+pub use self::{
+    builder::Builder,
+    error::{Error, Result},
+    scope::Scope,
+};
 #[allow(deprecated)]
-pub use {self::route::Route, crate::scope};
 pub use {
-    self::{
-        builder::Builder,
-        error::{Error, Result},
-        scope::Scope,
-    },
-    crate::route,
+    self::route::Route,
+    crate::{route, scope},
 };
 use {
     crate::{

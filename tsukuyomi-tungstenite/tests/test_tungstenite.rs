@@ -24,7 +24,7 @@ fn test_version_sync() {
 fn test_handshake() -> tsukuyomi::test::Result<()> {
     let mut server = tsukuyomi::App::builder()
         .with(
-            tsukuyomi::app::route!("/ws")
+            tsukuyomi::app::scope::route!("/ws")
                 .extract(tsukuyomi_tungstenite::ws())
                 .call(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
         ) //

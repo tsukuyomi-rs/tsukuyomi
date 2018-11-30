@@ -14,7 +14,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     tsukuyomi::App::builder()
         .with(
-            tsukuyomi::app::route!("/") //
+            tsukuyomi::app::scope::route!("/") //
                 .say("Hello, Tsukuyomi!\n"),
         ) //
         .build_server()?
