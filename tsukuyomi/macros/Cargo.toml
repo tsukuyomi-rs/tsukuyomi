@@ -1,7 +1,7 @@
 [package]
 name = "tsukuyomi-macros"
 description = "Procerual macros for Tsukuyomi"
-version = "0.4.0" # <cargo-version-sync>
+version = "0.4.2" # <cargo-version-sync>
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
@@ -17,5 +17,5 @@ quote = "0.6"
 proc-macro2 = "0.4.20"
 
 [dependencies.tsukuyomi-internal]
-version = "0.4.0" # <cargo-version-sync>
+version = "=0.4.2" # <cargo-version-sync>
 path = "../internal"
