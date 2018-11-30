@@ -1,7 +1,7 @@
 use {
     cookie::Cookie,
     tsukuyomi::{
-        app::{scope::route, App},
+        app::directives::*, //
         handler::AsyncResult,
         Output,
     },

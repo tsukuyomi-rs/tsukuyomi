@@ -19,7 +19,7 @@ use {
         Method, Request,
     },
     tsukuyomi::{
-        app::{scope::route, App},
+        app::directives::*, //
         test::ResponseExt,
     },
     tsukuyomi_cors::CORS,
@@ -385,7 +385,7 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            tsukuyomi::app::scope::mount("/cors")?
+            mount("/cors")?
                 .with(cors.clone())
                 .with(route!("/").reply(|| "cors")),
         ) //

@@ -6,21 +6,22 @@ extern crate tsukuyomi_session;
 use {
     either::Either,
     tsukuyomi::{
-        app::scope::route,
+        app::directives::*,
+        extractor,
         output::{html, redirect},
     },
-    tsukuyomi_session::{backend::CookieBackend, Session, SessionStorage},
+    tsukuyomi_session::{backend::CookieBackend, session, Session, SessionStorage},
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
     let backend = CookieBackend::plain();
     let storage = SessionStorage::new(backend);
 
-    tsukuyomi::App::builder()
-        .with(tsukuyomi::app::scope::modifier(storage))
+    App::builder()
+        .with(modifier(storage))
         .with(
             route!("/") //
-                .extract(tsukuyomi_session::session())
+                .extract(session())
                 .call(|session: Session| -> tsukuyomi::Result<_> {
                     let username = session.get::<String>("username")?;
                     let output = if let Some(username) = username {
@@ -40,7 +41,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         ) //
         .with(
             route!("/login") //
-                .extract(tsukuyomi_session::session())
+                .extract(session())
                 .reply(|session: Session| {
                     let output = if session.contains("username") {
                         Either::Left(redirect::to("/"))
@@ -62,8 +63,8 @@ fn main() -> tsukuyomi::server::Result<()> {
                 username: String,
             }
             route!("/login")
-                .extract(tsukuyomi::extractor::body::urlencoded())
-                .extract(tsukuyomi_session::session())
+                .extract(extractor::body::urlencoded())
+                .extract(session())
                 .call(
                     |form: Form, mut session: Session| -> tsukuyomi::error::Result<_> {
                         session.set("username", form.username)?;
@@ -73,7 +74,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         }) //
         .with(
             route!("/logout") //
-                .extract(tsukuyomi_session::session())
+                .extract(session())
                 .reply(|mut session: Session| {
                     session.remove("username");
                     session.finish(redirect::to("/"))

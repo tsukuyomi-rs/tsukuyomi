@@ -1,9 +1,9 @@
 extern crate tsukuyomi;
 
-use tsukuyomi::app::scope::{mount, route};
+use tsukuyomi::app::directives::*;
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::App::builder()
+    App::builder()
         .with(
             route!("/") //
                 .say("Hello, world\n"),

@@ -3,8 +3,16 @@ extern crate http;
 extern crate tsukuyomi;
 extern crate tsukuyomi_session;
 
-use http::Request;
-use tsukuyomi_session::{backend::CookieBackend, Session, SessionStorage};
+use {
+    http::Request,
+    tsukuyomi::app::directives::*,
+    tsukuyomi_session::{
+        backend::CookieBackend, //
+        session,
+        Session,
+        SessionStorage,
+    },
+};
 
 #[test]
 fn test_version_sync() {
@@ -16,40 +24,34 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
     let backend = CookieBackend::plain().cookie_name("session");
     let storage = SessionStorage::new(backend);
 
-    let mut server = tsukuyomi::App::builder()
-        .with(tsukuyomi::app::scope::modifier(storage))
+    let mut server = App::builder()
+        .with(modifier(storage))
+        .with(route!("/counter").methods("GET")?.extract(session()).call(
+            |sess: Session| -> tsukuyomi::Result<_> {
+                let counter: Option<i64> = sess.get("counter")?;
+                Ok(sess.finish(format!("{:?}", counter)))
+            },
+        )) //
+        .with(route!("/counter").methods("PUT")?.extract(session()).call(
+            |mut sess: Session| -> tsukuyomi::Result<_> {
+                let counter: i64 = sess.get("counter")?.unwrap_or_default();
+                sess.set("counter", counter + 1)?;
+                Ok(sess.finish(format!("{}", counter)))
+            },
+        )) //
         .with(
-            tsukuyomi::app::scope::route!("/counter")
-                .methods("GET")?
-                .extract(tsukuyomi_session::session())
-                .call(|sess: Session| -> tsukuyomi::Result<_> {
-                    let counter: Option<i64> = sess.get("counter")?;
-                    Ok(sess.finish(format!("{:?}", counter)))
-                }),
-        ) //
-        .with(
-            tsukuyomi::app::scope::route!("/counter")
-                .methods("PUT")?
-                .extract(tsukuyomi_session::session())
-                .call(|mut sess: Session| -> tsukuyomi::Result<_> {
-                    let counter: i64 = sess.get("counter")?.unwrap_or_default();
-                    sess.set("counter", counter + 1)?;
-                    Ok(sess.finish(format!("{}", counter)))
-                }),
-        ) //
-        .with(
-            tsukuyomi::app::scope::route!("/counter")
+            route!("/counter")
                 .methods("DELETE")?
-                .extract(tsukuyomi_session::session())
+                .extract(session())
                 .reply(|mut sess: Session| {
                     sess.remove("counter");
                     sess.finish("removed")
                 }),
         ) //
         .with(
-            tsukuyomi::app::scope::route!("/clear")
+            route!("/clear")
                 .methods("PUT")?
-                .extract(tsukuyomi_session::session())
+                .extract(session())
                 .reply(|mut sess: Session| {
                     sess.clear();
                     sess.finish("cleared")

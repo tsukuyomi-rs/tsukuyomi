@@ -24,11 +24,7 @@
 
 ```rust,no_run
 extern crate tsukuyomi;
-
-use tsukuyomi::{
-    App,
-    app::scope::route,
-};
+use tsukuyomi::app::directives::*;
 
 fn main() -> tsukuyomi::server::Result<()> {
     let server = App::builder()

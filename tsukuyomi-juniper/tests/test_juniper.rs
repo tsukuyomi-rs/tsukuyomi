@@ -12,23 +12,38 @@ fn test_version_sync() {
 
 use {
     http::{Request, Response},
-    juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
-    percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
-    std::cell::RefCell,
-    tsukuyomi::test::{Output as TestOutput, Server as TestServer},
+    juniper::{
+        http::tests as http_tests, //
+        tests::model::Database,
+        EmptyMutation,
+        RootNode,
+    },
+    percent_encoding::{
+        define_encode_set, //
+        utf8_percent_encode,
+        QUERY_ENCODE_SET,
+    },
+    std::{cell::RefCell, sync::Arc},
+    tsukuyomi::{
+        app::directives::*, //
+        test::{
+            Output as TestOutput, //
+            Server as TestServer,
+        },
+    },
     tsukuyomi_juniper::Executor,
 };
 
 #[test]
 fn integration_test() -> tsukuyomi::test::Result<()> {
-    let database = std::sync::Arc::new(Database::new());
+    let database = Arc::new(Database::new());
     let schema = RootNode::new(Database::new(), EmptyMutation::<Database>::new());
     let executor = tsukuyomi_juniper::executor(schema);
     let executor = std::sync::Arc::new(executor);
 
-    let test_server = tsukuyomi::App::builder()
+    let test_server = App::builder()
         .with(
-            tsukuyomi::app::scope::route!("/")
+            route!("/")
                 .methods("GET, POST")?
                 .extract(executor.clone())
                 .call({

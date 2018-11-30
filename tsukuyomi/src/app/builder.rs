@@ -76,7 +76,7 @@ where
     where
         T: Send + Sync + 'static,
     {
-        self.with(super::scope::state(state))
+        self.with(super::directives::state(state))
     }
 
     #[doc(hidden)]
@@ -86,7 +86,7 @@ where
     where
         M: Modifier + Send + Sync + 'static,
     {
-        self.with(super::scope::modifier(modifier))
+        self.with(super::directives::modifier(modifier))
     }
 
     #[doc(hidden)]

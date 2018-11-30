@@ -29,8 +29,6 @@ use {
     },
 };
 
-pub use crate::route2 as route;
-
 /// A trait representing a set of configurations within the scope.
 pub trait Scope {
     type Error: Into<Error>;
@@ -54,38 +52,6 @@ impl Scope for () {
     fn configure(self, _: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-}
-
-/// Creates a `Scope` that registers the specified state to be shared into the scope.
-#[allow(deprecated)]
-pub fn state<T>(state: T) -> impl Scope<Error = Never>
-where
-    T: Send + Sync + 'static,
-{
-    self::raw(move |cx| {
-        cx.set_state(state);
-        Ok(())
-    })
-}
-
-/// Creates a `Scope` that registers the specified `Modifier` into the scope.
-#[allow(deprecated)]
-pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
-where
-    M: Modifier + Send + Sync + 'static,
-{
-    self::raw(move |cx| {
-        cx.add_modifier(modifier);
-        Ok(())
-    })
-}
-
-/// Creates a `Scope` that registers the specified `Fallback` into the scope.
-pub fn fallback<F>(fallback: F) -> impl Scope<Error = Never>
-where
-    F: Fallback + Send + Sync + 'static,
-{
-    state(FallbackInstance::from(fallback))
 }
 
 pub(super) fn raw<F, E>(f: F) -> impl Scope<Error = E>
@@ -808,10 +774,7 @@ where
 ///
 /// ```
 /// # extern crate tsukuyomi;
-/// use tsukuyomi::app::{
-///     App,
-///     scope::route,
-/// };
+/// use tsukuyomi::app::directives::*;
 ///
 /// # fn main() -> tsukuyomi::app::Result<()> {
 /// let get_post = route!("/posts/:id")

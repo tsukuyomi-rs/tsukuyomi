@@ -3,9 +3,14 @@ extern crate tsukuyomi;
 extern crate tsukuyomi_askama;
 extern crate version_sync;
 
-use askama::Template;
-use tsukuyomi::output::Responder;
-use tsukuyomi::test::ResponseExt;
+use {
+    askama::Template,
+    tsukuyomi::{
+        app::directives::*, //
+        output::Responder,
+        test::ResponseExt,
+    },
+};
 
 #[test]
 fn test_version_sync() {
@@ -26,9 +31,9 @@ fn test_template() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let mut server = tsukuyomi::App::builder()
+    let mut server = App::builder()
         .with(
-            tsukuyomi::app::scope::route!("/") //
+            route!("/") //
                 .reply(|| assert_impl(Index { name: "Alice" })),
         ) //
         .build_server()?

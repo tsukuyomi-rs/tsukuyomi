@@ -4,7 +4,7 @@ extern crate tsukuyomi_cors;
 
 use {
     serde::{Deserialize, Serialize},
-    tsukuyomi::{app::scope::route, extractor, Responder},
+    tsukuyomi::{app::directives::*, extractor, Responder},
     tsukuyomi_cors::CORS,
 };
 
@@ -25,7 +25,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    tsukuyomi::App::builder()
+    App::builder()
         .with(cors)
         .with(
             route!("/user/info")

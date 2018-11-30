@@ -3,7 +3,7 @@ extern crate tsukuyomi;
 
 use {
     serde::{Deserialize, Serialize},
-    tsukuyomi::{app::scope::route, extractor, Responder},
+    tsukuyomi::{app::directives::*, extractor, Responder},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Responder)]
@@ -14,7 +14,7 @@ struct User {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::App::builder()
+    App::builder()
         .with(
             route!("/") //
                 .say(User {

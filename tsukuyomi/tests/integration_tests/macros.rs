@@ -1,7 +1,10 @@
 mod responder {
     use {
         std::fmt,
-        tsukuyomi::{app::App, test::ResponseExt},
+        tsukuyomi::{
+            app::directives::*, //
+            test::ResponseExt,
+        },
     };
 
     fn assert_impl_responder<T: tsukuyomi::output::Responder>() {}
@@ -97,7 +100,7 @@ mod responder {
 
         let mut server = App::builder()
             .with(
-                tsukuyomi::app::scope::route!("/") //
+                route!("/") //
                     .reply(|| Foo("Foo".into())),
             ) //
             .build_server()?

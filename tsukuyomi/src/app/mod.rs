@@ -4,6 +4,58 @@ pub mod fallback;
 pub mod route;
 pub mod scope;
 
+/// A *prelude* for using the primitive `Scope`s.
+pub mod directives {
+    #[doc(no_inline)]
+    pub use {
+        super::{
+            scope::{mount, route},
+            App,
+        },
+        crate::route2 as route,
+    };
+
+    use {
+        super::{
+            fallback::{Fallback, FallbackInstance},
+            scope::Scope,
+        },
+        crate::{common::Never, modifier::Modifier},
+    };
+
+    /// Creates a `Scope` that registers the specified state to be shared into the scope.
+    #[allow(deprecated)]
+    pub fn state<T>(state: T) -> impl Scope<Error = Never>
+    where
+        T: Send + Sync + 'static,
+    {
+        super::scope::raw(move |cx| {
+            cx.set_state(state);
+            Ok(())
+        })
+    }
+
+    /// Creates a `Scope` that registers the specified `Modifier` into the scope.
+    #[allow(deprecated)]
+    pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
+    where
+        M: Modifier + Send + Sync + 'static,
+    {
+        super::scope::raw(move |cx| {
+            cx.add_modifier(modifier);
+            Ok(())
+        })
+    }
+
+    /// Creates a `Scope` that registers the specified `Fallback` into the scope.
+    pub fn fallback<F>(fallback: F) -> impl Scope<Error = Never>
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        state(FallbackInstance::from(fallback))
+    }
+}
+
 mod builder;
 mod error;
 pub(crate) mod imp;

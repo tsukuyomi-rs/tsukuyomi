@@ -1,7 +1,7 @@
 use {
     http::{header, Method, Request, Response, StatusCode},
     tsukuyomi::{
-        app::{scope::route, App},
+        app::directives::*, //
         extractor,
         handler::AsyncResult,
         test::ResponseExt,
@@ -186,7 +186,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
 #[test]
 fn scope_variables() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(tsukuyomi::app::scope::state(String::from("foo")))
+        .with(state(String::from("foo")))
         .with(route!("/").raw(tsukuyomi::handler::raw(|| {
             AsyncResult::ready(|input| {
                 assert_eq!(input.states.get::<String>(), "foo");
@@ -194,8 +194,8 @@ fn scope_variables() -> tsukuyomi::test::Result<()> {
             })
         }))) //
         .with(
-            tsukuyomi::app::scope::mount("/sub")?
-                .with(tsukuyomi::app::scope::state(String::from("bar"))) //
+            mount("/sub")?
+                .with(state(String::from("bar"))) //
                 .with(
                     route!("/") //
                         .raw(tsukuyomi::handler::raw(|| {
@@ -227,8 +227,8 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::builder()
-        .with(tsukuyomi::app::scope::state(String::from("foo")))
-        .with(tsukuyomi::app::scope::modifier(MyModifier))
+        .with(state(String::from("foo")))
+        .with(modifier(MyModifier))
         .with(
             route!("/") //
                 .raw(tsukuyomi::handler::raw(|| {
@@ -239,9 +239,9 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
                 })),
         ) //
         .with(
-            tsukuyomi::app::scope::mount("/sub")?
-                .with(tsukuyomi::app::scope::state(String::from("bar")))
-                .with(tsukuyomi::app::scope::modifier(MyModifier))
+            mount("/sub")?
+                .with(state(String::from("bar")))
+                .with(modifier(MyModifier))
                 .with(
                     route!("/") //
                         .raw(tsukuyomi::handler::raw(|| {

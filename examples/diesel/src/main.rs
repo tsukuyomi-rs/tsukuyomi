@@ -21,7 +21,7 @@ use {
     dotenv::dotenv,
     std::{env, sync::Arc},
     tsukuyomi::{
-        app::scope::route,
+        app::directives::*,
         error::Error,
         extractor::{self, Extractor},
         rt::Future,
@@ -105,7 +105,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             }).map(|post_opt| post_opt.map(tsukuyomi::output::json))
         });
 
-    let server = tsukuyomi::App::with_prefix("/api/v1/posts")?
+    let server = App::with_prefix("/api/v1/posts")?
         .with(get_posts)
         .with(create_post)
         .with(get_post)

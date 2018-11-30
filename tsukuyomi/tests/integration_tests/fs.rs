@@ -1,4 +1,7 @@
-use tsukuyomi::{app::scope::route, App};
+use tsukuyomi::{
+    app::directives::*, //
+    fs::Staticfiles,
+};
 
 #[test]
 #[ignore]
@@ -19,7 +22,7 @@ fn compiletest() {
 fn compiletest_staticfiles() {
     drop(
         App::builder()
-            .with(tsukuyomi::fs::Staticfiles::new("./public")) //
+            .with(Staticfiles::new("./public")) //
             .build()
             .unwrap(),
     );

@@ -1,6 +1,6 @@
 use {
     super::{
-        scope::{mount, route, state},
+        directives::{mount, route, state},
         App, Recognize, Result, ScopeId,
     },
     http::Method,

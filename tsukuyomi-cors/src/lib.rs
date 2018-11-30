@@ -246,8 +246,8 @@ impl Scope for CORS {
     type Error = tsukuyomi::app::Error;
 
     fn configure(self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> Result<(), Self::Error> {
-        tsukuyomi::app::scope::fallback(self.clone()) // <-- handles the fallback preflight request
-            .chain(tsukuyomi::app::scope::modifier(self)) // <-- handle explicit preflight/simple request
+        tsukuyomi::app::directives::fallback(self.clone()) // <-- handles the fallback preflight request
+            .chain(tsukuyomi::app::directives::modifier(self)) // <-- handle explicit preflight/simple request
             .configure(cx)
     }
 }

@@ -1,5 +1,7 @@
 extern crate tsukuyomi;
 
+use tsukuyomi::app::directives::*;
+
 #[cfg(not(unix))]
 fn main() {
     println!("This example works only on Unix platform.");
@@ -12,9 +14,9 @@ fn main() -> tsukuyomi::server::Result<()> {
         .map(Into::into)
         .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
-    tsukuyomi::App::builder()
+    App::builder()
         .with(
-            tsukuyomi::app::scope::route!("/") //
+            route!("/") //
                 .say("Hello, Tsukuyomi!\n"),
         ) //
         .build_server()?

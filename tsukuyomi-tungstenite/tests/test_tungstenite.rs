@@ -6,13 +6,20 @@ extern crate version_sync;
 use {
     http::{
         header::{
-            CONNECTION, HOST, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION,
+            CONNECTION, //
+            HOST,
+            SEC_WEBSOCKET_ACCEPT,
+            SEC_WEBSOCKET_KEY,
+            SEC_WEBSOCKET_VERSION,
             UPGRADE,
         },
         Request,
     },
-    tsukuyomi::test::ResponseExt,
-    tsukuyomi_tungstenite::Ws,
+    tsukuyomi::{
+        app::directives::*, //
+        test::ResponseExt,
+    },
+    tsukuyomi_tungstenite::{ws, Ws},
 };
 
 #[test]
@@ -22,10 +29,10 @@ fn test_version_sync() {
 
 #[test]
 fn test_handshake() -> tsukuyomi::test::Result<()> {
-    let mut server = tsukuyomi::App::builder()
+    let mut server = App::builder()
         .with(
-            tsukuyomi::app::scope::route!("/ws")
-                .extract(tsukuyomi_tungstenite::ws())
+            route!("/ws")
+                .extract(ws())
                 .call(|ws: Ws| Ok(ws.finish(|_| Ok(())))),
         ) //
         .build_server()?

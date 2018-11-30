@@ -4,14 +4,15 @@ extern crate tsukuyomi_tungstenite;
 
 use {
     futures::prelude::*,
-    tsukuyomi_tungstenite::{Message, Ws},
+    tsukuyomi::app::directives::*,
+    tsukuyomi_tungstenite::{ws, Message, Ws},
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
-    tsukuyomi::App::builder() //
+    App::builder() //
         .with(
-            tsukuyomi::app::scope::route!("/ws")
-                .extract(tsukuyomi_tungstenite::ws())
+            route!("/ws") //
+                .extract(ws())
                 .reply(|ws: Ws| {
                     ws.finish(|stream| {
                         let (tx, rx) = stream.split();

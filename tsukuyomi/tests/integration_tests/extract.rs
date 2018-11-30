@@ -1,8 +1,9 @@
 use {
     http::Request,
     tsukuyomi::{
-        app::{scope::route, App},
-        extractor::{self, Extractor},
+        app::directives::*, //
+        extractor,
+        Extractor,
     },
 };
 
@@ -241,7 +242,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::builder()
-        .with(tsukuyomi::app::scope::modifier(MyModifier))
+        .with(modifier(MyModifier))
         .with(
             route!("/")
                 .extract(extractor::local::remove(&MyData::KEY))
