@@ -9,6 +9,7 @@ use {
 };
 
 /// Concatenate a list of Uris to an Uri.
+#[deprecated(since = "0.4.3")]
 pub fn join_all<I>(segments: I) -> Result<Uri, Error>
 where
     I: IntoIterator,
@@ -160,8 +161,8 @@ impl Uri {
         }
     }
 
-    fn join(self, other: impl AsRef<Self>) -> Result<Self, Error> {
-        match self.0 {
+    pub fn join(&self, other: impl AsRef<Self>) -> Result<Self, Error> {
+        match self.0.clone() {
             UriKind::Root => Ok(other.as_ref().clone()),
             UriKind::Asterisk => {
                 failure::bail!("the asterisk URI cannot be joined with other URI(s)")

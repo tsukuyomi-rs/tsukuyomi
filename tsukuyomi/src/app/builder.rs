@@ -361,9 +361,7 @@ impl AppContext {
                         None => unreachable!("the local scope must have at least one parent."),
                     };
                     match (&parent_scope.uri, &self.scopes[id].prefix) {
-                        (Some(uri), Some(prefix)) => {
-                            crate::uri::join_all(&[uri, prefix]).map(Some)?
-                        }
+                        (Some(uri), Some(prefix)) => uri.join(prefix).map(Some)?,
                         (Some(uri), None) => Some(uri.clone()),
                         (None, uri) => uri.clone(),
                     }
