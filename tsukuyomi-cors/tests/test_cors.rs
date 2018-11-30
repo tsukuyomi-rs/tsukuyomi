@@ -1,6 +1,7 @@
 extern crate http;
 extern crate tsukuyomi;
 extern crate tsukuyomi_cors;
+extern crate version_sync;
 
 use {
     http::{
@@ -24,6 +25,11 @@ use {
     },
     tsukuyomi_cors::CORS,
 };
+
+#[test]
+fn test_version_sync() {
+    version_sync::assert_html_root_url_updated!("src/lib.rs");
+}
 
 #[test]
 fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
