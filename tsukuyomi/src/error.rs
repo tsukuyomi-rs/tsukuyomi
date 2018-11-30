@@ -98,7 +98,7 @@ impl HttpError for io::Error {
     }
 }
 
-/// The implementation of `HttpError` for the standard I/O error.
+/// The implementation of `HttpError` for the generic error provided by `failure`.
 impl HttpError for failure::Error {
     fn to_response(&mut self, _: &mut Input<'_>) -> Output {
         Response::builder()
@@ -358,6 +358,14 @@ impl Error {
                 Some(&mut *(&mut **e as *mut dyn HttpError as *mut T))
             },
             _ => None,
+        }
+    }
+
+    /// Returns `true` if the type of inner error value is equal to `T`.
+    pub fn is<T: HttpError>(&self) -> bool {
+        match self.0 {
+            Ok(ref e) => e.__private_type_id__() == TypeId::of::<T>(),
+            Err(..) => TypeId::of::<T>() == TypeId::of::<Critical>(),
         }
     }
 
