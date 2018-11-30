@@ -124,7 +124,7 @@ t! {
     name: index,
     source: ("/"),
     expected: {
-        fn route() -> tsukuyomi::app::scope::Route<()> {
+        fn route() -> tsukuyomi::app::route::Builder<()> {
             tsukuyomi::app::route()
                 .uri("/".parse().expect("this is a bug"))
         }
@@ -135,7 +135,7 @@ t! {
     name: single_param,
     source: ("/:id"),
     expected: {
-        fn route<T0>() -> tsukuyomi::app::scope::Route<
+        fn route<T0>() -> tsukuyomi::app::route::Builder<
             impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
         >
         where
@@ -152,7 +152,7 @@ t! {
     name: wildcard_param,
     source: ("/*path"),
     expected: {
-        fn route<T0>() -> tsukuyomi::app::scope::Route<
+        fn route<T0>() -> tsukuyomi::app::route::Builder<
             impl tsukuyomi::extractor::Extractor<Output = (T0,), Error = tsukuyomi::error::Error>,
         >
         where
@@ -169,7 +169,7 @@ t! {
     name: compound_params,
     source: ("/:id/people/:name/*path"),
     expected: {
-        fn route<T0, T1, T2>() -> tsukuyomi::app::scope::Route<
+        fn route<T0, T1, T2>() -> tsukuyomi::app::route::Builder<
             impl tsukuyomi::extractor::Extractor<Output = (T0, T1, T2,), Error = tsukuyomi::error::Error>,
         >
         where
@@ -190,7 +190,7 @@ t! {
     name: asterisk,
     source: ("*"),
     expected: {
-        fn route() -> tsukuyomi::app::scope::Route<()> {
+        fn route() -> tsukuyomi::app::route::Builder<()> {
             tsukuyomi::app::route()
                 .uri("*".parse().expect("this is a bug"))
         }
