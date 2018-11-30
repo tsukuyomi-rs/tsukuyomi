@@ -5,6 +5,8 @@ authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 description = """
 Session support for Tsukuyomi.
 """
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
 build = "build.rs"
 
