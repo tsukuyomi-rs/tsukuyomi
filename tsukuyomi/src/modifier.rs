@@ -27,7 +27,7 @@
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
 //! App::builder()
-//!     .with(route!().reply(|| "Hello"))
+//!     .with(route!("/").reply(|| "Hello"))
 //!     .with(tsukuyomi::app::scope::modifier(RequestCounter::default()))
 //!     .build()
 //! #   .map(drop)

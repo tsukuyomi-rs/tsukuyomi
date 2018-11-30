@@ -823,6 +823,7 @@ where
 /// let app = App::builder()
 ///     .with(get_post)
 ///     .build()?;
+/// # drop(app);
 /// # Ok(())
 /// # }
 #[macro_export(local_inner_macros)]
