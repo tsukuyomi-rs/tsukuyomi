@@ -8,6 +8,7 @@
 #[doc(hidden)]
 pub use http::Method;
 use {
+    super::Uri,
     crate::{
         error::Error,
         extractor::{Combine, ExtractStatus, Extractor, Func},
@@ -15,7 +16,6 @@ use {
         handler::{raw as raw_handler, AsyncResult, Handler},
         modifier::{Chain, Modifier},
         output::{redirect::Redirect, Responder},
-        uri::Uri,
         Never,
     },
     futures::{Async, Future, IntoFuture},

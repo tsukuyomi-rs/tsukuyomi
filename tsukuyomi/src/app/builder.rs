@@ -2,18 +2,14 @@ use {
     super::{
         error::{Error, Result},
         fallback::{Fallback, FallbackInstance},
+        router::{Config, Endpoint, Recognizer, Resource, ResourceId, Router, Scope as ScopeData},
         scope::{Context as ScopeContext, Scope},
-        App, AppData, Config, EndpointData, EndpointId, RouteData, RouteId, ScopeData,
-    },
-    bytes::BytesMut,
-    crate::{
-        modifier::Modifier,
-        recognizer::Recognizer,
         scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
-        uri::Uri,
+        App, AppInner, Uri,
     },
+    crate::modifier::Modifier,
     http::{header::HeaderValue, Method},
-    indexmap::{IndexMap, IndexSet},
+    indexmap::IndexMap,
     std::{fmt, sync::Arc},
 };
 
@@ -128,8 +124,7 @@ where
 
 fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> {
     let mut cx = AppContext {
-        endpoints: IndexMap::new(),
-        routes: vec![],
+        resources: IndexMap::new(),
         scopes: vec![],
         global_scope: ScopeData {
             id: ScopeId::Global,
@@ -146,8 +141,7 @@ fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> 
         .map_err(Into::into)?;
 
     let AppContext {
-        mut endpoints,
-        routes,
+        resources,
         scopes,
         global_scope,
         states,
@@ -162,51 +156,29 @@ fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> 
 
     // create a route recognizer.
     let mut recognizer = Recognizer::default();
-    for uri in endpoints.keys().cloned() {
-        recognizer.add_path(uri.as_str())?;
-    }
-
-    for endpoint in endpoints.values_mut() {
-        endpoint.allowed_methods_value = {
-            let allowed_methods: IndexSet<_> = endpoint
-                .route_ids
-                .keys()
-                .chain(Some(&Method::OPTIONS))
-                .collect();
-            let bytes =
-                allowed_methods
-                    .iter()
-                    .enumerate()
-                    .fold(BytesMut::new(), |mut acc, (i, m)| {
-                        if i > 0 {
-                            acc.extend_from_slice(b", ");
-                        }
-                        acc.extend_from_slice(m.as_str().as_bytes());
-                        acc
-                    });
-            unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-        };
+    for (uri, mut resource) in resources {
+        resource.update();
+        recognizer.insert(uri.as_str(), resource)?;
     }
 
     Ok(App {
-        data: Arc::new(AppData {
-            routes,
-            scopes,
-            global_scope,
-            recognizer,
-            endpoints,
-            config,
-            states,
+        inner: Arc::new(AppInner {
+            router: Router {
+                recognizer,
+                config,
+                scopes,
+                global_scope,
+            },
+            data: states,
         }),
     })
 }
 
 #[derive(Debug)]
 pub(super) struct AppContext {
-    routes: Vec<RouteData>,
+    resources: IndexMap<Uri, Resource>,
     scopes: Vec<ScopeData>,
     global_scope: ScopeData,
-    endpoints: IndexMap<Uri, EndpointData>,
     states: ScopedContainerBuilder,
 }
 
@@ -226,7 +198,7 @@ impl AppContext {
                 ScopeId::Global => &self.global_scope,
                 ScopeId::Local(i) => &self.scopes[i],
             };
-            crate::uri::join_all(scope.uri.iter().chain(Some(&cx.uri)))?
+            tsukuyomi_internal::uri::join_all(scope.uri.iter().chain(Some(&cx.uri)))?
         };
 
         // collect a chain of scope IDs where this endpoint belongs.
@@ -240,22 +212,23 @@ impl AppContext {
             ScopeId::Global => vec![ScopeId::Global],
         };
 
-        let endpoint = {
-            let pos = self.endpoints.len();
-            self.endpoints
+        let resource = {
+            let pos = self.resources.len();
+            self.resources
                 .entry(uri.clone())
-                .or_insert_with(|| EndpointData {
-                    id: EndpointId(scope_id, pos),
+                .or_insert_with(|| Resource {
+                    id: ResourceId(scope_id, pos),
                     uri: uri.clone(),
-                    route_ids: IndexMap::new(),
+                    endpoints: vec![],
+                    allowed_methods: IndexMap::new(),
                     allowed_methods_value: HeaderValue::from_static(""),
                     parents,
                 })
         };
 
-        if scope_id != endpoint.id.0 {
+        if scope_id != resource.id.0 {
             return Err(Error::from(failure::format_err!(
-                "all routes with the same URI belong to the same scope"
+                "all endpoints with the same URI belong to the same scope"
             )));
         }
 
@@ -277,18 +250,18 @@ impl AppContext {
             }
         }
 
-        let route_id = RouteId(endpoint.id, self.routes.len());
+        let endpoint_id = resource.allowed_methods.len();
         for method in &methods {
-            if endpoint.route_ids.contains_key(method) {
+            if resource.allowed_methods.contains_key(method) {
                 return Err(Error::from(failure::format_err!(
                     "the route with the same URI and method is not supported."
                 )));
             }
-            endpoint.route_ids.insert(method.clone(), route_id);
+            resource.allowed_methods.insert(method.clone(), endpoint_id);
         }
 
-        self.routes.push(RouteData {
-            id: route_id,
+        resource.endpoints.push(Endpoint {
+            id: endpoint_id,
             uri: cx.uri,
             methods,
             handler: cx

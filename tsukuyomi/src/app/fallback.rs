@@ -1,5 +1,5 @@
 use {
-    super::{AppData, EndpointData},
+    super::{router::Resource, AppInner},
     crate::{error::Error, output::Output},
     http::{Method, Request, StatusCode},
 };
@@ -21,9 +21,9 @@ where
 
 #[derive(Debug)]
 pub struct Context<'a> {
+    pub(super) inner: &'a AppInner,
     pub(super) request: &'a Request<()>,
-    pub(super) app: &'a AppData,
-    pub(super) endpoint: Option<&'a EndpointData>,
+    pub(super) resource: Option<&'a Resource>,
 }
 
 impl<'a> Context<'a> {
@@ -32,11 +32,11 @@ impl<'a> Context<'a> {
     }
 
     pub fn is_no_route(&self) -> bool {
-        self.endpoint.is_none()
+        self.resource.is_none()
     }
 
     pub fn methods(&self) -> Option<impl Iterator<Item = &'a Method> + 'a> {
-        Some(self.endpoint?.route_ids.keys())
+        Some(self.resource?.allowed_methods.keys())
     }
 }
 
@@ -63,18 +63,15 @@ impl std::ops::Deref for FallbackInstance {
 
 /// The default fallback when the `Fallback` is not registered.
 pub fn default(cx: &Context<'_>) -> Result<Output, Error> {
-    let endpoint = match cx.endpoint {
-        Some(endpoint) => endpoint,
-        None => return Err(StatusCode::NOT_FOUND.into()),
-    };
+    let resoruce = cx.resource.ok_or_else(|| StatusCode::NOT_FOUND)?;
 
-    if cx.request.method() == Method::OPTIONS {
-        let mut response = Output::default();
-        response
-            .headers_mut()
-            .insert(http::header::ALLOW, endpoint.allowed_methods_value.clone());
-        Ok(response)
-    } else {
-        Err(StatusCode::METHOD_NOT_ALLOWED.into())
+    if cx.request.method() != Method::OPTIONS {
+        return Err(StatusCode::METHOD_NOT_ALLOWED.into());
     }
+
+    let mut response = Output::default();
+    response
+        .headers_mut()
+        .insert(http::header::ALLOW, resoruce.allowed_methods_value.clone());
+    Ok(response)
 }
