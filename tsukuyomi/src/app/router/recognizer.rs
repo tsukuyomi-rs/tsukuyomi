@@ -2,7 +2,7 @@
 
 use {
     failure::Error,
-    indexmap::{indexset, IndexSet},
+    indexmap::{indexset, IndexMap, IndexSet},
     std::{
         cmp::{self, Ordering},
         fmt, mem,
@@ -39,16 +39,25 @@ impl Candidates {
 }
 
 /// A route recognizer.
-#[derive(Debug, Default)]
-pub struct Recognizer {
-    paths: Vec<String>,
+#[derive(Debug)]
+pub struct Recognizer<T> {
+    inner: IndexMap<String, T>,
     tree: Tree,
     asterisk: Option<usize>,
 }
 
-impl Recognizer {
-    /// Add a path to this builder with a value of `T`.
-    pub fn add_path(&mut self, path: &str) -> Result<(), Error> {
+impl<T> Default for Recognizer<T> {
+    fn default() -> Self {
+        Self {
+            inner: IndexMap::default(),
+            tree: Tree::default(),
+            asterisk: None,
+        }
+    }
+}
+
+impl<T> Recognizer<T> {
+    pub fn insert(&mut self, path: &str, data: T) -> Result<(), Error> {
         if !path.is_ascii() {
             failure::bail!("The path must be a sequence of ASCII characters");
         }
@@ -57,16 +66,16 @@ impl Recognizer {
             if self.asterisk.is_some() {
                 failure::bail!("the asterisk URI has already set");
             }
-            self.asterisk = Some(self.paths.len());
+            self.asterisk = Some(self.inner.len());
         } else {
             InsertContext {
                 path: path.as_ref(),
-                index: self.paths.len(),
+                index: self.inner.len(),
             } //
             .visit_tree(&mut self.tree)?;
         }
 
-        self.paths.push(path.into());
+        self.inner.insert(path.into(), data);
 
         Ok(())
     }
@@ -75,16 +84,25 @@ impl Recognizer {
     ///
     /// At the same time, this method returns a sequence of pairs which indicates the range of
     /// substrings extracted as parameters.
-    pub fn recognize(&self, path: &str, captures: &mut Option<Captures>) -> Recognize<'_> {
-        if path == "*" {
-            self.asterisk.ok_or_else(|| RecognizeError::NotMatched)
+    pub fn recognize(
+        &self,
+        path: &str,
+        captures: &mut Option<Captures>,
+    ) -> Result<&T, RecognizeError<'_>> {
+        let index = if path == "*" {
+            self.asterisk.ok_or_else(|| RecognizeError::NotMatched)?
         } else {
             RecognizeContext {
                 path: path.as_ref(),
                 captures,
             } //
-            .visit_tree(&self.tree)
-        }
+            .visit_tree(&self.tree)?
+        };
+        Ok(self.get(index).expect("should be success"))
+    }
+
+    pub fn get(&self, index: usize) -> Option<&T> {
+        Some(self.inner.get_index(index)?.1)
     }
 }
 
@@ -296,8 +314,6 @@ impl<'a> InsertContext<'a> {
 
 // ===== recognize =====
 
-pub type Recognize<'a> = Result<usize, RecognizeError<'a>>;
-
 #[derive(Debug, PartialEq)]
 pub enum RecognizeError<'a> {
     NotMatched,
@@ -311,7 +327,7 @@ struct RecognizeContext<'a> {
 }
 
 impl<'a> RecognizeContext<'a> {
-    fn recognize<'t>(&mut self, mut n: &'t Node) -> Recognize<'t> {
+    fn recognize<'t>(&mut self, mut n: &'t Node) -> Result<usize, RecognizeError<'t>> {
         let mut offset = 0;
         loop {
             match n.kind {
@@ -426,22 +442,22 @@ mod tests {
     #[test]
     fn case1_empty() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/").unwrap();
+        recognizer.insert("/", 0).unwrap();
 
         let mut captures = None;
-        assert_eq!(recognizer.recognize("/", &mut captures), Ok(0));
+        assert_eq!(recognizer.recognize("/", &mut captures), Ok(&0));
         assert_eq!(captures, None);
     }
 
     #[test]
     fn case2_multi_param() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/files/:name/:id").unwrap();
+        recognizer.insert("/files/:name/:id", 0).unwrap();
 
         let mut captures = None;
         assert_eq!(
             recognizer.recognize("/files/readme/0", &mut captures),
-            Ok(0)
+            Ok(&0)
         );
         assert_eq!(
             captures,
@@ -455,12 +471,12 @@ mod tests {
     #[test]
     fn case3_wildcard_root() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/*path").unwrap();
+        recognizer.insert("/*path", 0).unwrap();
 
         let mut captures = None;
         assert_eq!(
             recognizer.recognize("/path/to/readme.txt", &mut captures),
-            Ok(0)
+            Ok(&0)
         );
         assert_eq!(
             captures,
@@ -474,12 +490,12 @@ mod tests {
     #[test]
     fn case4_wildcard_subdir() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/path/to/*path").unwrap();
+        recognizer.insert("/path/to/*path", 0).unwrap();
 
         let mut captures = None;
         assert_eq!(
             recognizer.recognize("/path/to/readme.txt", &mut captures),
-            Ok(0)
+            Ok(&0)
         );
         assert_eq!(
             captures,
@@ -493,10 +509,10 @@ mod tests {
     #[test]
     fn case5_wildcard_empty_root() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/*path").unwrap();
+        recognizer.insert("/*path", 0).unwrap();
 
         let mut captures = None;
-        assert_eq!(recognizer.recognize("/", &mut captures), Ok(0));
+        assert_eq!(recognizer.recognize("/", &mut captures), Ok(&0));
         assert_eq!(
             captures,
             Some(Captures {
@@ -509,10 +525,10 @@ mod tests {
     #[test]
     fn case6_wildcard_empty_subdir() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/path/to/*path").unwrap();
+        recognizer.insert("/path/to/*path", 0).unwrap();
 
         let mut captures = None;
-        assert_eq!(recognizer.recognize("/path/to/", &mut captures), Ok(0));
+        assert_eq!(recognizer.recognize("/path/to/", &mut captures), Ok(&0));
         assert_eq!(
             captures,
             Some(Captures {
@@ -525,10 +541,10 @@ mod tests {
     #[test]
     fn case7_wildcard_empty_with_param() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/path/to/:id/*path").unwrap();
+        recognizer.insert("/path/to/:id/*path", 0).unwrap();
 
         let mut captures = None;
-        assert_eq!(recognizer.recognize("/path/to/10/", &mut captures), Ok(0));
+        assert_eq!(recognizer.recognize("/path/to/10/", &mut captures), Ok(&0));
         assert_eq!(
             captures,
             Some(Captures {
@@ -541,8 +557,8 @@ mod tests {
     #[test]
     fn case8_partially_matched() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/path/to/foo").unwrap();
-        recognizer.add_path("/path/to/bar").unwrap();
+        recognizer.insert("/path/to/foo", 0).unwrap();
+        recognizer.insert("/path/to/bar", 1).unwrap();
 
         // too short path
         assert_eq!(
@@ -562,7 +578,7 @@ mod tests {
     #[test]
     fn case9_completely_mismatched() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/path/to/foo").unwrap();
+        recognizer.insert("/path/to/foo", 0).unwrap();
 
         // the suffix is different
         assert_eq!(
@@ -574,17 +590,17 @@ mod tests {
     #[test]
     fn case10_asterisk() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("*").unwrap();
+        recognizer.insert("*", 0).unwrap();
 
         let mut captures = None;
-        assert_eq!(recognizer.recognize("*", &mut captures), Ok(0));
+        assert_eq!(recognizer.recognize("*", &mut captures), Ok(&0));
         assert_eq!(captures, None);
     }
 
     #[test]
     fn case11_no_asterisk() {
         let mut recognizer = Recognizer::default();
-        recognizer.add_path("/foo").unwrap();
+        recognizer.insert("/foo", 0).unwrap();
 
         assert_eq!(
             recognizer.recognize("*", &mut None),
@@ -606,7 +622,7 @@ mod tests_tree {
             fn $test() {
                 let mut recognizer = Recognizer::default();
                 for path in &[$($path),*] {
-                    recognizer.add_path(path).unwrap();
+                    recognizer.insert(path, ()).unwrap();
                 }
                 assert_eq!(recognizer.tree.root, Some($expected));
             }
@@ -618,7 +634,7 @@ mod tests_tree {
 
     #[test]
     fn case0() {
-        let recognizer = Recognizer::default();
+        let recognizer = Recognizer::<()>::default();
         assert_eq!(recognizer.tree.root, None);
     }
 
@@ -769,58 +785,58 @@ mod tests_tree {
     );
 
     #[test]
-    fn failcase1() {
+    fn failcase1_conflict_static_and_param() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/foo").is_ok());
-        assert!(recognizer.add_path("/:id").is_err());
+        assert!(recognizer.insert("/foo", ()).is_ok());
+        assert!(recognizer.insert("/:id", ()).is_err());
     }
 
     #[test]
-    fn failcase2() {
+    fn failcase2_conflict_catch_all() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/foo/").is_ok());
-        assert!(recognizer.add_path("/foo/*path").is_err());
+        assert!(recognizer.insert("/foo/", ()).is_ok());
+        assert!(recognizer.insert("/foo/*path", ()).is_err());
     }
 
     #[test]
-    fn failcase3() {
+    fn failcase3_conflict_param_static() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/:id").is_ok());
-        assert!(recognizer.add_path("/foo").is_err());
+        assert!(recognizer.insert("/:id", ()).is_ok());
+        assert!(recognizer.insert("/foo", ()).is_err());
     }
 
     #[test]
-    fn failcase4() {
+    fn failcase4_conflict_catch_all_2() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/foo/*path").is_ok());
-        assert!(recognizer.add_path("/foo/").is_err());
+        assert!(recognizer.insert("/foo/*path", ()).is_ok());
+        assert!(recognizer.insert("/foo/", ()).is_err());
     }
 
     #[test]
-    fn failcase5() {
+    fn failcase5_conflict_param_with_different_name() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/:id").is_ok());
-        assert!(recognizer.add_path("/:name").is_err());
+        assert!(recognizer.insert("/:id", ()).is_ok());
+        assert!(recognizer.insert("/:name", ()).is_err());
     }
 
     #[test]
-    fn failcase6() {
+    fn failcase6_conflict_param_with_different_kind_1() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/:id").is_ok());
-        assert!(recognizer.add_path("/*id").is_err());
+        assert!(recognizer.insert("/:id", ()).is_ok());
+        assert!(recognizer.insert("/*id", ()).is_err());
     }
 
     #[test]
-    fn failcase7() {
+    fn failcase7_conflict_param_with_different_kind_2() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/*id").is_ok());
-        assert!(recognizer.add_path("/:id").is_err());
+        assert!(recognizer.insert("/*id", ()).is_ok());
+        assert!(recognizer.insert("/:id", ()).is_err());
     }
 
     #[test]
-    fn failcase8() {
+    fn failcase8_conflict_entire_path() {
         let mut recognizer = Recognizer::default();
-        assert!(recognizer.add_path("/path/to").is_ok());
-        assert!(recognizer.add_path("/path/to").is_err());
+        assert!(recognizer.insert("/path/to", ()).is_ok());
+        assert!(recognizer.insert("/path/to", ()).is_err());
     }
 }

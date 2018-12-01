@@ -1,7 +1,8 @@
 use {
     super::{
         fallback::{Context as FallbackContext, FallbackInstance},
-        AppData, Recognize, ResourceId, ScopeId,
+        router::{Captures, ResourceId, Route},
+        AppInner, ScopeId,
     },
     cookie::{Cookie, CookieJar},
     crate::{
@@ -10,8 +11,6 @@ use {
         input::RequestBody,
         localmap::LocalMap,
         output::{Output, ResponseBody},
-        recognizer::Captures,
-        uri::CaptureNames,
     },
     either::Either,
     futures::{Async, Future, IntoFuture, Poll},
@@ -22,6 +21,7 @@ use {
     hyper::body::Payload,
     mime::Mime,
     std::{marker::PhantomData, mem, ops::Index, rc::Rc, sync::Arc},
+    tsukuyomi_internal::uri::CaptureNames,
 };
 
 macro_rules! ready {
@@ -39,7 +39,7 @@ macro_rules! ready {
 #[derive(Debug)]
 pub struct AppFuture {
     request: Request<()>,
-    data: Arc<AppData>,
+    inner: Arc<AppInner>,
     body: BodyState,
     cookie_jar: Option<CookieJar>,
     response_headers: Option<HeaderMap>,
@@ -70,9 +70,10 @@ macro_rules! input {
             request: &$self.request,
             params: {
                 &if let Some(resource_id) = $self.resource_id {
-                    if let (Some(names), &Some(ref captures)) =
-                        ($self.data.uri(resource_id).capture_names(), &$self.captures)
-                    {
+                    if let (Some(names), &Some(ref captures)) = (
+                        $self.inner.router.resource(resource_id).uri.capture_names(),
+                        &$self.captures,
+                    ) {
                         Some(Params {
                             path: $self.request.uri().path(),
                             names,
@@ -86,7 +87,7 @@ macro_rules! input {
                 }
             },
             states: &States {
-                data: &$self.data,
+                inner: &$self.inner,
                 scope_id: $self.resource_id.map(|ResourceId(scope, _)| scope),
             },
             cookies: &mut Cookies {
@@ -97,7 +98,7 @@ macro_rules! input {
             locals: &mut $self.locals,
             body: &mut $self.body,
             response_headers: &mut $self.response_headers,
-            data: &*$self.data,
+            inner: &*$self.inner,
             resource_id: $self.resource_id,
             _marker: PhantomData,
         }
@@ -105,11 +106,11 @@ macro_rules! input {
 }
 
 impl AppFuture {
-    pub(super) fn new(request: Request<RequestBody>, data: Arc<AppData>) -> Self {
+    pub(super) fn new(request: Request<RequestBody>, inner: Arc<AppInner>) -> Self {
         let (parts, body) = request.into_parts();
         Self {
             request: Request::from_parts(parts, ()),
-            data,
+            inner,
             body: BodyState::Some(body),
             cookie_jar: None,
             response_headers: None,
@@ -122,10 +123,11 @@ impl AppFuture {
 
     fn process_recognize(&mut self) -> Result<Either<Output, AsyncResult<Output>>, Error> {
         match self
-            .data
-            .recognize(self.request.uri().path(), self.request.method())
+            .inner
+            .router
+            .route(self.request.uri().path(), self.request.method())
         {
-            Recognize::Matched {
+            Route::Matched {
                 endpoint,
                 resource,
                 captures,
@@ -135,12 +137,12 @@ impl AppFuture {
                 self.captures = captures;
 
                 let mut in_flight = endpoint.handler.handle();
-                let scope = self.data.scope(resource.id.0);
+                let scope = self.inner.router.scope(resource.id.0);
                 for modifier in scope.modifiers.iter().rev() {
                     in_flight = modifier.modify(in_flight);
                 }
                 for &parent in scope.parents.iter().rev() {
-                    let scope = self.data.scope(parent);
+                    let scope = self.inner.router.scope(parent);
                     for modifier in scope.modifiers.iter().rev() {
                         in_flight = modifier.modify(in_flight);
                     }
@@ -149,7 +151,7 @@ impl AppFuture {
                 Ok(Either::Right(in_flight))
             }
 
-            Recognize::MethodNotAllowed {
+            Route::MethodNotAllowed {
                 resource, captures, ..
             } => {
                 self.resource_id = Some(resource.id);
@@ -157,12 +159,12 @@ impl AppFuture {
 
                 let cx = FallbackContext {
                     request: &self.request,
-                    app: &*self.data,
+                    inner: &*self.inner,
                     resource: Some(resource),
                 };
 
-                self.data
-                    .get_state::<FallbackInstance>(resource.id.0)
+                self.inner
+                    .get_data::<FallbackInstance>(resource.id.0)
                     .map_or_else(
                         || super::fallback::default(&cx),
                         |ref fallback| fallback.call(&cx),
@@ -170,15 +172,15 @@ impl AppFuture {
                     .map(Either::Left)
             }
 
-            Recognize::NotFound(scope_id) => {
+            Route::NotFound(scope_id) => {
                 let cx = FallbackContext {
                     request: &self.request,
-                    app: &*self.data,
+                    inner: &*self.inner,
                     resource: None,
                 };
 
-                self.data
-                    .get_state::<FallbackInstance>(scope_id)
+                self.inner
+                    .get_data::<FallbackInstance>(scope_id)
                     .map_or_else(
                         || super::fallback::default(&cx),
                         |ref fallback| fallback.call(&cx),
@@ -254,7 +256,7 @@ impl Future for AppFuture {
 
 #[derive(Debug)]
 pub struct States<'task> {
-    data: &'task Arc<AppData>,
+    inner: &'task Arc<AppInner>,
     scope_id: Option<ScopeId>,
 }
 
@@ -265,7 +267,7 @@ impl<'task> States<'task> {
     where
         T: Send + Sync + 'static,
     {
-        self.data.get_state(self.scope_id?)
+        self.inner.get_data(self.scope_id?)
     }
 
     /// Returns the reference to a shared state of `T` registered in the scope.
@@ -390,7 +392,7 @@ pub struct Input<'task> {
     /// The information of incoming request without the message body.
     pub request: &'task Request<()>,
 
-    /// A set of extracted parameters from router.
+    /// A set of extracted parameters from inner.
     pub params: &'task Option<Params<'task>>,
 
     /// A proxy object for accessing shared states.
@@ -399,12 +401,12 @@ pub struct Input<'task> {
     /// A proxy object for accessing Cookie values.
     pub cookies: &'task mut Cookies<'task>,
 
-    /// A typemap that holds arbitrary request-local data.
+    /// A typemap that holds arbitrary request-local inner.
     pub locals: &'task mut LocalMap,
 
     body: &'task mut BodyState,
     response_headers: &'task mut Option<HeaderMap>,
-    data: &'task AppData,
+    inner: &'task AppInner,
     resource_id: Option<ResourceId>,
     _marker: PhantomData<Rc<()>>,
 }
@@ -479,11 +481,10 @@ impl<'task> Input<'task> {
 
     pub fn allowed_methods<'a>(&'a self) -> Option<impl Iterator<Item = &'a Method> + 'a> {
         Some(
-            self.data
-                .resources
-                .get_index(self.resource_id?.1)?
-                .1
-                .route_ids
+            self.inner
+                .router
+                .resource(self.resource_id?)
+                .allowed_methods
                 .keys(),
         )
     }

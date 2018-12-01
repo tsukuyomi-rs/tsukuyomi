@@ -7,6 +7,8 @@ use {
         builder::AppContext,
         error::{Error, Result},
         fallback::{Fallback, FallbackInstance},
+        scoped_map::ScopeId,
+        Uri,
     },
     crate::{
         common::{Never, TryFrom},
@@ -15,8 +17,6 @@ use {
         handler::{AsyncResult, Handler},
         modifier::Modifier,
         output::{redirect::Redirect, Responder},
-        scoped_map::ScopeId,
-        uri::Uri,
     },
     futures::{Async, Future, IntoFuture},
     http::{HttpTryFrom, Method, StatusCode},

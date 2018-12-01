@@ -1,7 +1,8 @@
 use {
-    crate::{error::HttpError, input::Input, output::Output, uri::Uri},
+    crate::{error::HttpError, input::Input, output::Output},
     http::StatusCode,
     std::{error::Error as StdError, fmt},
+    tsukuyomi_internal::uri::Uri,
 };
 
 /// A helper type which emulates the standard `never_type` (`!`).

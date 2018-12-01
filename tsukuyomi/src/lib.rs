@@ -59,9 +59,6 @@ extern crate matches;
 pub mod macros;
 
 mod common;
-mod recognizer;
-mod scoped_map;
-use tsukuyomi_internal::uri;
 
 pub mod app;
 pub mod error;

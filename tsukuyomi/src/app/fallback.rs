@@ -1,5 +1,5 @@
 use {
-    super::{AppData, Resource},
+    super::{router::Resource, AppInner},
     crate::{error::Error, output::Output},
     http::{Method, Request, StatusCode},
 };
@@ -21,8 +21,8 @@ where
 
 #[derive(Debug)]
 pub struct Context<'a> {
+    pub(super) inner: &'a AppInner,
     pub(super) request: &'a Request<()>,
-    pub(super) app: &'a AppData,
     pub(super) resource: Option<&'a Resource>,
 }
 
@@ -36,7 +36,7 @@ impl<'a> Context<'a> {
     }
 
     pub fn methods(&self) -> Option<impl Iterator<Item = &'a Method> + 'a> {
-        Some(self.resource?.route_ids.keys())
+        Some(self.resource?.allowed_methods.keys())
     }
 }
 
