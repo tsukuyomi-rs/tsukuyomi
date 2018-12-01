@@ -1,7 +1,7 @@
 use {
     super::{
         fallback::{Context as FallbackContext, FallbackInstance},
-        AppData, EndpointId, Recognize, ScopeId,
+        AppData, Recognize, ResourceId, ScopeId,
     },
     cookie::{Cookie, CookieJar},
     crate::{
@@ -44,7 +44,7 @@ pub struct AppFuture {
     cookie_jar: Option<CookieJar>,
     response_headers: Option<HeaderMap>,
     locals: LocalMap,
-    endpoint_id: Option<EndpointId>,
+    resource_id: Option<ResourceId>,
     captures: Option<Captures>,
     state: AppFutureState,
 }
@@ -69,9 +69,9 @@ macro_rules! input {
         &mut Input {
             request: &$self.request,
             params: {
-                &if let Some(endpoint_id) = $self.endpoint_id {
+                &if let Some(resource_id) = $self.resource_id {
                     if let (Some(names), &Some(ref captures)) =
-                        ($self.data.uri(endpoint_id).capture_names(), &$self.captures)
+                        ($self.data.uri(resource_id).capture_names(), &$self.captures)
                     {
                         Some(Params {
                             path: $self.request.uri().path(),
@@ -87,7 +87,7 @@ macro_rules! input {
             },
             states: &States {
                 data: &$self.data,
-                scope_id: $self.endpoint_id.map(|EndpointId(scope, _)| scope),
+                scope_id: $self.resource_id.map(|ResourceId(scope, _)| scope),
             },
             cookies: &mut Cookies {
                 jar: &mut $self.cookie_jar,
@@ -98,7 +98,7 @@ macro_rules! input {
             body: &mut $self.body,
             response_headers: &mut $self.response_headers,
             data: &*$self.data,
-            endpoint_id: $self.endpoint_id,
+            resource_id: $self.resource_id,
             _marker: PhantomData,
         }
     };
@@ -114,7 +114,7 @@ impl AppFuture {
             cookie_jar: None,
             response_headers: None,
             locals: LocalMap::default(),
-            endpoint_id: None,
+            resource_id: None,
             captures: None,
             state: AppFutureState::Init,
         }
@@ -127,15 +127,15 @@ impl AppFuture {
         {
             Recognize::Matched {
                 route,
-                endpoint,
+                resource,
                 captures,
                 ..
             } => {
-                self.endpoint_id = Some(endpoint.id);
+                self.resource_id = Some(resource.id);
                 self.captures = captures;
 
                 let mut in_flight = route.handler.handle();
-                let scope = self.data.scope(endpoint.id.0);
+                let scope = self.data.scope(resource.id.0);
                 for modifier in scope.modifiers.iter().rev() {
                     in_flight = modifier.modify(in_flight);
                 }
@@ -150,19 +150,19 @@ impl AppFuture {
             }
 
             Recognize::MethodNotAllowed {
-                endpoint, captures, ..
+                resource, captures, ..
             } => {
-                self.endpoint_id = Some(endpoint.id);
+                self.resource_id = Some(resource.id);
                 self.captures = captures;
 
                 let cx = FallbackContext {
                     request: &self.request,
                     app: &*self.data,
-                    endpoint: Some(endpoint),
+                    resource: Some(resource),
                 };
 
                 self.data
-                    .get_state::<FallbackInstance>(endpoint.id.0)
+                    .get_state::<FallbackInstance>(resource.id.0)
                     .map_or_else(
                         || super::fallback::default(&cx),
                         |ref fallback| fallback.call(&cx),
@@ -174,7 +174,7 @@ impl AppFuture {
                 let cx = FallbackContext {
                     request: &self.request,
                     app: &*self.data,
-                    endpoint: None,
+                    resource: None,
                 };
 
                 self.data
@@ -405,7 +405,7 @@ pub struct Input<'task> {
     body: &'task mut BodyState,
     response_headers: &'task mut Option<HeaderMap>,
     data: &'task AppData,
-    endpoint_id: Option<EndpointId>,
+    resource_id: Option<ResourceId>,
     _marker: PhantomData<Rc<()>>,
 }
 
@@ -480,8 +480,8 @@ impl<'task> Input<'task> {
     pub fn allowed_methods<'a>(&'a self) -> Option<impl Iterator<Item = &'a Method> + 'a> {
         Some(
             self.data
-                .endpoints
-                .get_index(self.endpoint_id?.1)?
+                .resources
+                .get_index(self.resource_id?.1)?
                 .1
                 .route_ids
                 .keys(),

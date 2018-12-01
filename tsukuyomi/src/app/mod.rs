@@ -133,7 +133,7 @@ struct AppData {
     global_scope: ScopeData,
 
     recognizer: Recognizer,
-    endpoints: IndexMap<Uri, EndpointData>,
+    resources: IndexMap<Uri, Resource>,
 
     states: ScopedContainer,
     config: Config,
@@ -147,7 +147,7 @@ impl fmt::Debug for AppData {
             .field("scopes", &self.scopes)
             .field("global_scope", &self.global_scope)
             .field("recognizer", &self.recognizer)
-            .field("endpoints", &self.endpoints)
+            .field("resources", &self.resources)
             .field("states", &self.states)
             .field("config", &self.config)
             .finish()
@@ -155,11 +155,11 @@ impl fmt::Debug for AppData {
 }
 
 impl AppData {
-    fn uri(&self, id: EndpointId) -> &Uri {
-        self.endpoints
+    fn uri(&self, id: ResourceId) -> &Uri {
+        self.resources
             .get_index(id.1)
             .map(|(uri, _endpoint)| uri)
-            .expect("the wrong endpoint ID")
+            .expect("the wrong resource ID")
     }
 
     fn get_state<T>(&self, id: ScopeId) -> Option<&T>
@@ -176,21 +176,21 @@ impl AppData {
         }
     }
 
-    /// Infers the scope ID where the input path belongs from the extract candidates of endpoint indices.
+    /// Infers the scope ID where the input path belongs from the extract candidates of resource indices.
     fn infer_scope_id(&self, path: &str, candidates: &Candidates) -> Option<ScopeId> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[ScopeId]> = None;
-            for (_, endpoint) in candidates
+            for (_, resource) in candidates
                 .iter()
-                .filter_map(|i| self.endpoints.get_index(i))
+                .filter_map(|i| self.resources.get_index(i))
             {
-                let ancestors = ancestors.get_or_insert(&endpoint.parents);
+                let ancestors = ancestors.get_or_insert(&resource.parents);
                 let n = (*ancestors)
                     .iter()
-                    .zip(&endpoint.parents)
+                    .zip(&resource.parents)
                     .position(|(a, b)| a != b)
-                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), endpoint.parents.len()));
+                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), resource.parents.len()));
                 *ancestors = &ancestors[..n];
             }
             ancestors?
@@ -222,37 +222,37 @@ impl AppData {
             }
         };
 
-        let (_, endpoint) = &self
-            .endpoints
+        let (_, resource) = &self
+            .resources
             .get_index(i)
             .expect("the wrong index was registered in recognizer");
-        debug_assert_eq!(endpoint.id.1, i);
+        debug_assert_eq!(resource.id.1, i);
 
-        if let Some(&id) = endpoint.route_ids.get(method) {
+        if let Some(&id) = resource.route_ids.get(method) {
             let route = &self.routes[id.1];
             debug_assert_eq!(route.id, id);
             return Recognize::Matched {
                 route,
-                endpoint,
+                resource,
                 captures,
                 fallback_head: false,
             };
         }
 
         if self.config.fallback_head && *method == Method::HEAD {
-            if let Some(&id) = endpoint.route_ids.get(&Method::GET) {
+            if let Some(&id) = resource.route_ids.get(&Method::GET) {
                 let route = &self.routes[id.1];
                 debug_assert_eq!(route.id, id);
                 return Recognize::Matched {
                     route,
-                    endpoint,
+                    resource,
                     captures,
                     fallback_head: true,
                 };
             }
         }
 
-        Recognize::MethodNotAllowed { endpoint, captures }
+        Recognize::MethodNotAllowed { resource, captures }
     }
 }
 
@@ -277,11 +277,12 @@ impl fmt::Debug for ScopeData {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct EndpointId(ScopeId, usize);
+struct ResourceId(ScopeId, usize);
 
+/// A type representing a set of endpoints with the same HTTP path.
 #[derive(Debug)]
-struct EndpointData {
-    id: EndpointId,
+struct Resource {
+    id: ResourceId,
     uri: Uri,
     route_ids: IndexMap<Method, RouteId>,
     allowed_methods_value: HeaderValue,
@@ -289,7 +290,7 @@ struct EndpointData {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct RouteId(EndpointId, usize);
+struct RouteId(ResourceId, usize);
 
 struct RouteData {
     id: RouteId,
@@ -313,7 +314,7 @@ enum Recognize<'a> {
     /// The URI is matched and a route associated with the specified method is found.
     Matched {
         route: &'a RouteData,
-        endpoint: &'a EndpointData,
+        resource: &'a Resource,
         captures: Option<Captures>,
         fallback_head: bool,
     },
@@ -323,7 +324,7 @@ enum Recognize<'a> {
 
     /// the URI is matched, but the method is disallowed.
     MethodNotAllowed {
-        endpoint: &'a EndpointData,
+        resource: &'a Resource,
         captures: Option<Captures>,
     },
 }
