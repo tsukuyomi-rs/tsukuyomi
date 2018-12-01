@@ -126,7 +126,7 @@ impl AppFuture {
             .recognize(self.request.uri().path(), self.request.method())
         {
             Recognize::Matched {
-                route,
+                endpoint,
                 resource,
                 captures,
                 ..
@@ -134,7 +134,7 @@ impl AppFuture {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
 
-                let mut in_flight = route.handler.handle();
+                let mut in_flight = endpoint.handler.handle();
                 let scope = self.data.scope(resource.id.0);
                 for modifier in scope.modifiers.iter().rev() {
                     in_flight = modifier.modify(in_flight);

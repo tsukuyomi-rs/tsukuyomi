@@ -3,7 +3,7 @@ use {
         error::{Error, Result},
         fallback::{Fallback, FallbackInstance},
         scope::{Context as ScopeContext, Scope},
-        App, AppData, Config, Resource, ResourceId, RouteData, RouteId, ScopeData,
+        App, AppData, Config, Endpoint, EndpointId, Resource, ResourceId, ScopeData,
     },
     bytes::BytesMut,
     crate::{
@@ -129,7 +129,7 @@ where
 fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> {
     let mut cx = AppContext {
         resources: IndexMap::new(),
-        routes: vec![],
+        endpoints: vec![],
         scopes: vec![],
         global_scope: ScopeData {
             id: ScopeId::Global,
@@ -147,7 +147,7 @@ fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> 
 
     let AppContext {
         mut resources,
-        routes,
+        endpoints,
         scopes,
         global_scope,
         states,
@@ -190,7 +190,7 @@ fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> 
 
     Ok(App {
         data: Arc::new(AppData {
-            routes,
+            endpoints,
             scopes,
             global_scope,
             recognizer,
@@ -203,7 +203,7 @@ fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> 
 
 #[derive(Debug)]
 pub(super) struct AppContext {
-    routes: Vec<RouteData>,
+    endpoints: Vec<Endpoint>,
     scopes: Vec<ScopeData>,
     global_scope: ScopeData,
     resources: IndexMap<Uri, Resource>,
@@ -255,7 +255,7 @@ impl AppContext {
 
         if scope_id != resource.id.0 {
             return Err(Error::from(failure::format_err!(
-                "all routes with the same URI belong to the same scope"
+                "all endpoints with the same URI belong to the same scope"
             )));
         }
 
@@ -277,18 +277,18 @@ impl AppContext {
             }
         }
 
-        let route_id = RouteId(resource.id, self.routes.len());
+        let endpoint_id = EndpointId(resource.id, self.endpoints.len());
         for method in &methods {
             if resource.route_ids.contains_key(method) {
                 return Err(Error::from(failure::format_err!(
                     "the route with the same URI and method is not supported."
                 )));
             }
-            resource.route_ids.insert(method.clone(), route_id);
+            resource.route_ids.insert(method.clone(), endpoint_id);
         }
 
-        self.routes.push(RouteData {
-            id: route_id,
+        self.endpoints.push(Endpoint {
+            id: endpoint_id,
             uri: cx.uri,
             methods,
             handler: cx

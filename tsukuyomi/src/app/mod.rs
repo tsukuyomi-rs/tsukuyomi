@@ -128,7 +128,7 @@ impl Default for Config {
 
 /// The global and shared variables used throughout the serving an HTTP application.
 struct AppData {
-    routes: Vec<RouteData>,
+    endpoints: Vec<Endpoint>,
     scopes: Vec<ScopeData>,
     global_scope: ScopeData,
 
@@ -143,7 +143,7 @@ struct AppData {
 impl fmt::Debug for AppData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppData")
-            .field("routes", &self.routes)
+            .field("endpoints", &self.endpoints)
             .field("scopes", &self.scopes)
             .field("global_scope", &self.global_scope)
             .field("recognizer", &self.recognizer)
@@ -229,10 +229,10 @@ impl AppData {
         debug_assert_eq!(resource.id.1, i);
 
         if let Some(&id) = resource.route_ids.get(method) {
-            let route = &self.routes[id.1];
-            debug_assert_eq!(route.id, id);
+            let endpoint = &self.endpoints[id.1];
+            debug_assert_eq!(endpoint.id, id);
             return Recognize::Matched {
-                route,
+                endpoint,
                 resource,
                 captures,
                 fallback_head: false,
@@ -241,10 +241,10 @@ impl AppData {
 
         if self.config.fallback_head && *method == Method::HEAD {
             if let Some(&id) = resource.route_ids.get(&Method::GET) {
-                let route = &self.routes[id.1];
-                debug_assert_eq!(route.id, id);
+                let endpoint = &self.endpoints[id.1];
+                debug_assert_eq!(endpoint.id, id);
                 return Recognize::Matched {
-                    route,
+                    endpoint,
                     resource,
                     captures,
                     fallback_head: true,
@@ -256,6 +256,7 @@ impl AppData {
     }
 }
 
+/// A type representing a set of data associated with the certain scope.
 struct ScopeData {
     id: ScopeId,
     parents: Vec<ScopeId>,
@@ -284,25 +285,26 @@ struct ResourceId(ScopeId, usize);
 struct Resource {
     id: ResourceId,
     uri: Uri,
-    route_ids: IndexMap<Method, RouteId>,
+    route_ids: IndexMap<Method, EndpointId>,
     allowed_methods_value: HeaderValue,
     parents: Vec<ScopeId>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct RouteId(ResourceId, usize);
+struct EndpointId(ResourceId, usize);
 
-struct RouteData {
-    id: RouteId,
+/// A struct representing a set of data associated with an endpoint.
+struct Endpoint {
+    id: EndpointId,
     uri: Uri,
     methods: IndexSet<Method>,
     handler: Box<dyn Handler + Send + Sync + 'static>,
 }
 
 #[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for RouteData {
+impl fmt::Debug for Endpoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RouteData")
+        f.debug_struct("Endpoint")
             .field("uri", &self.uri)
             .field("methods", &self.methods)
             .finish()
@@ -313,7 +315,7 @@ impl fmt::Debug for RouteData {
 enum Recognize<'a> {
     /// The URI is matched and a route associated with the specified method is found.
     Matched {
-        route: &'a RouteData,
+        endpoint: &'a Endpoint,
         resource: &'a Resource,
         captures: Option<Captures>,
         fallback_head: bool,

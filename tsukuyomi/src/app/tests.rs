@@ -25,7 +25,7 @@ fn route_single_method() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("/", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 0
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 0
     );
 
     assert_matches!(
@@ -49,11 +49,11 @@ fn route_multiple_method() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("/", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 0
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 0
     );
     assert_matches!(
         app.data.recognize("/", &Method::POST),
-        Recognize::Matched { route, .. } if route.id.1 == 1
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 1
     );
 
     assert_matches!(
@@ -72,7 +72,7 @@ fn route_fallback_head_enabled() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("/", &Method::HEAD),
-        Recognize::Matched { route, fallback_head: true, .. } if route.id.1 == 0
+        Recognize::Matched { endpoint, fallback_head: true, .. } if endpoint.id.1 == 0
     );
 
     Ok(())
@@ -105,7 +105,7 @@ fn asterisk_route() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("*", &Method::OPTIONS),
-        Recognize::Matched { route, .. } if route.id.1 == 0
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 0
     );
 
     Ok(())
@@ -129,7 +129,7 @@ fn asterisk_route_with_normal_routes() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("*", &Method::OPTIONS),
-        Recognize::Matched { route, .. } if route.id.1 == 3
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 3
     );
 
     Ok(())
@@ -153,23 +153,23 @@ fn scope_simple() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("/a", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 0
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 0
     );
     assert_matches!(
         app.data.recognize("/b", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 1
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 1
     );
     assert_matches!(
         app.data.recognize("/foo", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 2
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 2
     );
     assert_matches!(
         app.data.recognize("/c/d", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 3
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 3
     );
     assert_matches!(
         app.data.recognize("/c/e", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 4
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 4
     );
 
     Ok(())
@@ -196,23 +196,23 @@ fn scope_nested() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("/foo", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 0
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 0
     );
     assert_matches!(
         app.data.recognize("/bar", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 1
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 1
     );
     assert_matches!(
         app.data.recognize("/baz", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 2
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 2
     );
     assert_matches!(
         app.data.recognize("/baz/foobar", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 3
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 3
     );
     assert_matches!(
         app.data.recognize("/hoge", &Method::GET),
-        Recognize::Matched { route, .. } if route.id.1 == 4
+        Recognize::Matched { endpoint, .. } if endpoint.id.1 == 4
     );
 
     assert_matches!(
@@ -408,15 +408,15 @@ fn test_deprecated() -> Result<()> {
 
     assert_matches!(
         app.data.recognize("/", &Method::GET),
-        Recognize::Matched { route, .. } if (route.id.0).0 == ScopeId::Global && route.id.1 == 0
+        Recognize::Matched { endpoint, .. } if (endpoint.id.0).0 == ScopeId::Global && endpoint.id.1 == 0
     );
     assert_matches!(
         app.data.recognize("/s1", &Method::GET),
-        Recognize::Matched { route, .. } if (route.id.0).0 == ScopeId::Local(0) && route.id.1 == 1
+        Recognize::Matched { endpoint, .. } if (endpoint.id.0).0 == ScopeId::Local(0) && endpoint.id.1 == 1
     );
     assert_matches!(
         app.data.recognize("/s1/a", &Method::GET),
-        Recognize::Matched { route, .. } if (route.id.0).0 == ScopeId::Local(1) && route.id.1 == 2
+        Recognize::Matched { endpoint, .. } if (endpoint.id.0).0 == ScopeId::Local(1) && endpoint.id.1 == 2
     );
 
     Ok(())
