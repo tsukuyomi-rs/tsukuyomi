@@ -9,18 +9,6 @@ use {
     },
 };
 
-/// Concatenate a list of Uris to an Uri.
-#[deprecated(since = "0.4.3")]
-pub fn join_all<I>(segments: I) -> Result<Uri, Error>
-where
-    I: IntoIterator,
-    I::Item: AsRef<Uri>,
-{
-    segments
-        .into_iter()
-        .fold(Ok(Uri::root()), |acc, uri| acc?.join(uri))
-}
-
 /// A type representing the URI of a route.
 #[derive(Debug, Clone)]
 pub struct Uri(UriKind);

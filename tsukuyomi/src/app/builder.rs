@@ -1,20 +1,16 @@
 use {
     super::{
         error::{Error, Result},
-        fallback::{Fallback, FallbackInstance},
         router::{Config, Endpoint, Recognizer, Resource, ResourceId, Router, Scope as ScopeData},
         scope::{Context as ScopeContext, Scope},
         scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
         App, AppInner, Uri,
     },
-    crate::modifier::Modifier,
+    crate::{handler::Handler, modifier::Modifier},
     http::{header::HeaderValue, Method},
-    indexmap::IndexMap,
+    indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
 };
-
-#[allow(deprecated)]
-use super::route::{Context as RouteContext, Route};
 
 /// A builder object for constructing an instance of `App`.
 #[derive(Default)]
@@ -43,19 +39,6 @@ impl<S> Builder<S>
 where
     S: Scope,
 {
-    #[doc(hidden)]
-    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead.")]
-    #[allow(deprecated)]
-    pub fn route(self, route: impl Route) -> Builder<impl Scope<Error = Error>> {
-        self.with(super::scope::raw(move |cx| cx.add_route(route)))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
-    pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
-        self.with(super::scope::raw(move |cx| cx.add_scope(new_scope)))
-    }
-
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
     pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
@@ -63,36 +46,6 @@ where
             prefix: self.prefix,
             scope: self.scope.chain(next_scope),
         }
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
-    #[allow(deprecated)]
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = Error>>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.with(super::directives::state(state))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
-    #[allow(deprecated)]
-    pub fn modifier<M>(self, modifier: M) -> Builder<impl Scope<Error = Error>>
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
-        self.with(super::directives::modifier(modifier))
-    }
-
-    #[doc(hidden)]
-    #[deprecated(since = "0.4.2", note = "use `Builder::with` instead")]
-    #[allow(deprecated)]
-    pub fn fallback<F>(self, fallback: F) -> Builder<impl Scope<Error = Error>>
-    where
-        F: Fallback + Send + Sync + 'static,
-    {
-        self.state(FallbackInstance::from(fallback))
     }
 
     /// Sets the prefix URI of the global scope.
@@ -183,22 +136,26 @@ pub(super) struct AppContext {
 }
 
 impl AppContext {
-    #[allow(deprecated)]
-    pub(super) fn new_route(&mut self, scope_id: ScopeId, route: impl Route) -> Result<()> {
-        let mut cx = RouteContext {
-            uri: Uri::root(),
-            methods: None,
-            handler: None,
-        };
-        route.configure(&mut cx).map_err(Into::into)?;
-
+    pub(super) fn new_route<H>(
+        &mut self,
+        scope_id: ScopeId,
+        uri: Uri,
+        mut methods: IndexSet<Method>,
+        handler: H,
+    ) -> Result<()>
+    where
+        H: Handler + Send + Sync + 'static,
+    {
         // build absolute URI.
         let uri = {
             let scope = match scope_id {
                 ScopeId::Global => &self.global_scope,
                 ScopeId::Local(i) => &self.scopes[i],
             };
-            super::uri::join_all(scope.uri.iter().chain(Some(&cx.uri)))?
+            match scope.uri {
+                Some(ref parent_uri) => parent_uri.join(&uri)?,
+                None => uri.clone(),
+            }
         };
 
         // collect a chain of scope IDs where this endpoint belongs.
@@ -232,7 +189,6 @@ impl AppContext {
             )));
         }
 
-        let mut methods = cx.methods.unwrap_or_default();
         if methods.is_empty() {
             methods.insert(Method::GET);
         }
@@ -262,11 +218,9 @@ impl AppContext {
 
         resource.endpoints.push(Endpoint {
             id: endpoint_id,
-            uri: cx.uri,
+            uri,
             methods,
-            handler: cx
-                .handler
-                .ok_or_else(|| failure::format_err!("default handler is not supported"))?,
+            handler: Box::new(handler),
         });
 
         Ok(())

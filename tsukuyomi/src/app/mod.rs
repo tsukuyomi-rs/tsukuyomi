@@ -1,7 +1,6 @@
 //! Components for constructing HTTP applications.
 
 pub mod fallback;
-pub mod route;
 pub mod scope;
 
 /// A *prelude* for using the primitive `Scope`s.
@@ -21,7 +20,6 @@ pub mod directives {
     };
 
     /// Creates a `Scope` that registers the specified state to be shared into the scope.
-    #[allow(deprecated)]
     pub fn state<T>(state: T) -> impl Scope<Error = Never>
     where
         T: Send + Sync + 'static,
@@ -33,7 +31,6 @@ pub mod directives {
     }
 
     /// Creates a `Scope` that registers the specified `Modifier` into the scope.
-    #[allow(deprecated)]
     pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
     where
         M: Modifier + Send + Sync + 'static,
@@ -58,13 +55,10 @@ mod error;
 pub(crate) mod imp;
 mod router;
 mod scoped_map;
-#[cfg(test)]
-mod tests;
 mod uri;
 
-#[doc(hidden)]
-#[allow(deprecated)]
-pub use self::route::Route;
+#[cfg(test)]
+mod tests;
 
 pub use self::{
     builder::Builder,
@@ -82,26 +76,6 @@ use {
 
 use self::scoped_map::{ScopeId, ScopedContainer};
 use self::uri::Uri;
-
-#[doc(hidden)]
-#[deprecated(since = "0.4.2", note = "use `App::builder` instead")]
-pub fn app() -> self::builder::Builder<()> {
-    self::builder::Builder::default()
-}
-
-#[doc(hidden)]
-#[deprecated(since = "0.4.2", note = "use `scope::mount` instead")]
-#[allow(deprecated)]
-pub fn scope() -> self::scope::Builder<()> {
-    self::scope::Builder::<()>::default()
-}
-
-#[doc(hidden)]
-#[deprecated(since = "0.4.2", note = "use `scope::route` instead")]
-#[allow(deprecated)]
-pub fn route() -> self::route::Builder<()> {
-    self::route::Builder::<()>::default()
-}
 
 /// The main type which represents an HTTP application.
 #[derive(Debug, Clone)]

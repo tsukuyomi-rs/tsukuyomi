@@ -465,37 +465,3 @@ fn failcase_asterisk_with_explicit_get_handler() -> Result<()> {
     assert!(app.is_err());
     Ok(())
 }
-
-#[allow(deprecated)]
-#[test]
-fn test_deprecated() -> Result<()> {
-    let app = crate::app::app()
-        .route(crate::app::route().uri("/".parse()?).say(""))
-        .mount(
-            crate::app::scope()
-                .prefix("/s1".parse()?)
-                .route(crate::app::route().uri("/".parse()?).say(""))
-                .mount(crate::app::scope().route(crate::app::route().uri("/a".parse()?).say(""))),
-        ).build()?;
-
-    assert_matches!(
-        app.inner.router.route("/", &Method::GET),
-        Route::Matched { resource, endpoint, .. }
-            if resource.id == ResourceId(ScopeId::Global, 0)
-            && endpoint.id == 0
-    );
-    assert_matches!(
-        app.inner.router.route("/s1", &Method::GET),
-        Route::Matched { resource, endpoint, .. }
-            if resource.id == ResourceId(ScopeId::Local(0), 1)
-            && endpoint.id == 0
-    );
-    assert_matches!(
-        app.inner.router.route("/s1/a", &Method::GET),
-        Route::Matched { resource, endpoint, .. }
-            if resource.id == ResourceId(ScopeId::Local(1), 2)
-            && endpoint.id == 0
-    );
-
-    Ok(())
-}

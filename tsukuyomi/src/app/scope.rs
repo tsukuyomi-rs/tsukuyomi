@@ -1,12 +1,9 @@
 //! The definition of `Scope` and its implementors.
 
-#![allow(deprecated)]
-
 use {
     super::{
         builder::AppContext,
         error::{Error, Result},
-        fallback::{Fallback, FallbackInstance},
         scoped_map::ScopeId,
         Uri,
     },
@@ -23,7 +20,6 @@ use {
     indexmap::{indexset, IndexSet},
     std::{
         borrow::Cow,
-        fmt,
         path::{Path, PathBuf},
         sync::Arc,
     },
@@ -75,132 +71,6 @@ where
     }
 
     Raw(f)
-}
-
-#[doc(hidden)]
-#[deprecated(since = "0.4.2", note = "use `Mount` instead.")]
-pub struct Builder<S: Scope = ()> {
-    pub(super) scope: S,
-}
-
-#[allow(deprecated)]
-impl<S: fmt::Debug + Scope> fmt::Debug for Builder<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Builder")
-            .field("scope", &self.scope)
-            .finish()
-    }
-}
-
-#[allow(deprecated)]
-impl<S: Default + Scope> Default for Builder<S> {
-    fn default() -> Self {
-        Self {
-            scope: S::default(),
-        }
-    }
-}
-
-#[deprecated(since = "0.4.2", note = "use `Mount` instead.")]
-#[allow(deprecated)]
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S> Builder<S>
-where
-    S: Scope,
-{
-    /// Adds a route into this scope.
-    pub fn route(self, route: impl super::route::Route) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
-                cx.add_route(route)?;
-                Ok(())
-            }),
-        }
-    }
-
-    /// Create a new subscope onto this scope.
-    #[inline]
-    pub fn mount(self, new_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
-                cx.add_scope(new_scope)?;
-                Ok(())
-            }),
-        }
-    }
-
-    /// Merges the specified `Scope` into this scope, *without* creating a new subscope.
-    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            scope: raw(move |cx| {
-                self.scope.configure(cx).map_err(Into::into)?;
-                next_scope.configure(cx).map_err(Into::into)?;
-                Ok(())
-            }),
-        }
-    }
-
-    /// Registers a shared variable into this scope.
-    pub fn state<T>(self, state: T) -> Builder<impl Scope<Error = S::Error>>
-    where
-        T: Send + Sync + 'static,
-    {
-        Builder {
-            scope: raw(move |cx| {
-                self.scope.configure(cx)?;
-                cx.set_state(state);
-                Ok(())
-            }),
-        }
-    }
-
-    /// Registers a `Modifier` into this scope.
-    pub fn modifier(
-        self,
-        modifier: impl Modifier + Send + Sync + 'static,
-    ) -> Builder<impl Scope<Error = S::Error>> {
-        Builder {
-            scope: raw(move |cx| {
-                self.scope.configure(cx)?;
-                cx.add_modifier(modifier);
-                Ok(())
-            }),
-        }
-    }
-
-    /// Registers a `Fallback` into this scope.
-    pub fn fallback(
-        self,
-        fallback: impl Fallback + Send + Sync + 'static,
-    ) -> Builder<impl Scope<Error = S::Error>> {
-        self.state(FallbackInstance::from(fallback))
-    }
-
-    /// Set the prefix URL of this scope.
-    pub fn prefix(self, prefix: Uri) -> Builder<impl Scope<Error = Error>> {
-        Builder {
-            scope: raw(move |cx| {
-                cx.set_prefix(prefix)?;
-                self.scope.configure(cx).map_err(Into::into)?;
-                Ok(())
-            }),
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl<S> Scope for Builder<S>
-where
-    S: Scope,
-{
-    type Error = S::Error;
-
-    #[inline]
-    fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
-        self.scope.configure(cx)
-    }
 }
 
 /// A pair representing a chain of `Scope`.
@@ -303,7 +173,6 @@ where
     }
 }
 
-#[allow(deprecated)]
 impl<S> Scope for Mount<S>
 where
     S: Scope,
@@ -331,21 +200,6 @@ impl<'a> Context<'a> {
         Self { cx, id }
     }
 
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.4.2",
-        note = "This method will be removed in the next version."
-    )]
-    #[allow(deprecated)]
-    pub fn add_route<R>(&mut self, route: R) -> Result<()>
-    where
-        R: super::route::Route,
-    {
-        self.cx.new_route(self.id, route)
-    }
-
-    /// Create a new scope mounted to the certain URI.
-    #[inline]
     pub(super) fn add_scope<S>(&mut self, new_scope: S) -> Result<()>
     where
         S: Scope,
@@ -353,36 +207,21 @@ impl<'a> Context<'a> {
         self.cx.new_scope(self.id, new_scope)
     }
 
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.4.2",
-        note = "this method will be removed in the next version."
-    )]
-    pub fn set_state<T>(&mut self, value: T)
+    pub(super) fn set_state<T>(&mut self, value: T)
     where
         T: Send + Sync + 'static,
     {
         self.cx.set_state(value, self.id)
     }
 
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.4.2",
-        note = "this method will be removed in the next version."
-    )]
-    pub fn add_modifier<M>(&mut self, modifier: M)
+    pub(super) fn add_modifier<M>(&mut self, modifier: M)
     where
         M: Modifier + Send + Sync + 'static,
     {
         self.cx.add_modifier(modifier, self.id)
     }
 
-    #[doc(hidden)]
-    #[deprecated(
-        since = "0.4.2",
-        note = "this method will be removed in the next version."
-    )]
-    pub fn set_prefix(&mut self, prefix: Uri) -> super::Result<()> {
+    pub(super) fn set_prefix(&mut self, prefix: Uri) -> super::Result<()> {
         self.cx.set_prefix(self.id, prefix)
     }
 }
@@ -547,52 +386,17 @@ where
         H: Handler + Send + Sync + 'static,
         R: Into<super::Error>,
     {
-        #[allow(missing_debug_implementations)]
-        struct Raw<F>(F);
-
-        impl<F, E> super::route::Route for Raw<F>
-        where
-            F: FnOnce(&mut super::route::Context) -> std::result::Result<(), E>,
-            E: Into<super::Error>,
-        {
-            type Error = E;
-
-            fn configure(
-                self,
-                cx: &mut super::route::Context,
-            ) -> std::result::Result<(), Self::Error> {
-                (self.0)(cx)
-            }
-        }
-
-        impl<F, E> Scope for Raw<F>
-        where
-            F: FnOnce(&mut super::route::Context) -> std::result::Result<(), E>,
-            E: Into<super::Error>,
-        {
-            type Error = super::Error;
-
-            fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
-                cx.add_route(self)
-            }
-        }
-
-        Raw(move |cx: &mut super::route::Context| -> super::Result<_> {
+        raw(move |cx: &mut Context<'_>| -> super::Result<_> {
             let handler = f(self.extractor).map_err(Into::into)?;
             let modifier = self.modifier;
-            cx.methods(self.methods.0);
-            cx.uri(self.uri);
-            cx.handler(crate::handler::raw(move || {
-                modifier.modify(handler.handle())
-            }));
-            Ok(())
+            let handler = crate::handler::raw(move || modifier.modify(handler.handle()));
+            cx.cx.new_route(cx.id, self.uri, self.methods.0, handler)
         })
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The provided function always succeeds and immediately returns a value of `Responder`.
-    #[allow(deprecated)]
     pub fn reply<F>(self, f: F) -> impl Scope<Error = super::Error>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
@@ -638,7 +442,6 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The result of provided function is returned by `Future`.
-    #[allow(deprecated)]
     pub fn call<F, R>(self, f: F) -> impl Scope<Error = super::Error>
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
