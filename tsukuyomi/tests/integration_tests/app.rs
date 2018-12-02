@@ -24,7 +24,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(route!("/hello").reply(|| "Tsukuyomi"))
+        .with(route("/hello")?.reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
 
@@ -44,7 +44,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
     let mut server = App::with_prefix("/api/v1")?
-        .with(route!("/hello").reply(|| "Tsukuyomi"))
+        .with(route("/hello")?.reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
 
@@ -58,7 +58,7 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            route!("/hello")
+            route("/hello")?
                 .methods("POST")?
                 .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body),
@@ -91,7 +91,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            route!("/login")
+            route("/login")?
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
                         Cookie::build("session", "dummy_session_id")
@@ -103,7 +103,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 })).reply(|| "Logged in"),
         ) //
         .with(
-            route!("/logout")
+            route("/logout")?
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(None)
@@ -141,8 +141,8 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(route!("/path").reply(|| "get"))
-        .with(route!("/path").methods("POST")?.reply(|| "post"))
+        .with(route("/path")?.reply(|| "get"))
+        .with(route("/path")?.methods("POST")?.reply(|| "post"))
         .build_server()?
         .into_test_server()?;
 
@@ -159,7 +159,7 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 fn test_canceled() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            route!("/")
+            route("/")?
                 .methods("GET, POST")?
                 .extract(tsukuyomi::extractor::guard(
                     |input| -> tsukuyomi::error::Result<_> {
@@ -187,7 +187,7 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
 fn scope_variables() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(state(String::from("foo")))
-        .with(route!("/").raw(tsukuyomi::handler::raw(|| {
+        .with(route("/")?.raw(tsukuyomi::handler::raw(|| {
             AsyncResult::ready(|input| {
                 assert_eq!(input.states.get::<String>(), "foo");
                 Ok(Output::default())
@@ -197,7 +197,7 @@ fn scope_variables() -> tsukuyomi::test::Result<()> {
             mount("/sub")?
                 .with(state(String::from("bar"))) //
                 .with(
-                    route!("/") //
+                    route("/")? //
                         .raw(tsukuyomi::handler::raw(|| {
                             AsyncResult::ready(|input| {
                                 assert_eq!(input.states.get::<String>(), "bar");
@@ -230,7 +230,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
         .with(state(String::from("foo")))
         .with(modifier(MyModifier))
         .with(
-            route!("/") //
+            route("/")? //
                 .raw(tsukuyomi::handler::raw(|| {
                     AsyncResult::ready(|input| {
                         assert_eq!(input.states.get::<String>(), "foo");
@@ -243,7 +243,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
                 .with(state(String::from("bar")))
                 .with(modifier(MyModifier))
                 .with(
-                    route!("/") //
+                    route("/")? //
                         .raw(tsukuyomi::handler::raw(|| {
                             AsyncResult::ready(|input| {
                                 assert_eq!(input.states.get::<String>(), "bar");

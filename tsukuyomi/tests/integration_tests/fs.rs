@@ -5,16 +5,14 @@ use tsukuyomi::{
 
 #[test]
 #[ignore]
-fn compiletest() {
-    drop(
-        App::builder()
-            .with(
-                route!("/index.html") //
-                    .send_file("/path/to/index.html", None),
-            ) //
-            .build()
-            .unwrap(),
-    );
+fn compiletest() -> tsukuyomi::app::Result<()> {
+    App::builder()
+        .with(
+            route("/index.html")? //
+                .send_file("/path/to/index.html", None),
+        ) //
+        .build()
+        .map(drop)
 }
 
 #[test]

@@ -198,7 +198,7 @@ impl AppContext {
                 ScopeId::Global => &self.global_scope,
                 ScopeId::Local(i) => &self.scopes[i],
             };
-            tsukuyomi_internal::uri::join_all(scope.uri.iter().chain(Some(&cx.uri)))?
+            super::uri::join_all(scope.uri.iter().chain(Some(&cx.uri)))?
         };
 
         // collect a chain of scope IDs where this endpoint belongs.

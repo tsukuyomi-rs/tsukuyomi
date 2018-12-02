@@ -100,7 +100,7 @@ mod responder {
 
         let mut server = App::builder()
             .with(
-                route!("/") //
+                route("/")? //
                     .reply(|| Foo("Foo".into())),
             ) //
             .build_server()?

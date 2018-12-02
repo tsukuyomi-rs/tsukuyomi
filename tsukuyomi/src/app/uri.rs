@@ -1,4 +1,5 @@
 use {
+    crate::common::{Never, TryFrom},
     failure::Error,
     indexmap::IndexSet,
     std::{
@@ -54,6 +55,33 @@ impl FromStr for Uri {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
+    }
+}
+
+impl TryFrom<Self> for Uri {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(uri: Self) -> Result<Self, Self::Error> {
+        Ok(uri)
+    }
+}
+
+impl<'a> TryFrom<&'a str> for Uri {
+    type Error = failure::Error;
+
+    #[inline]
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl TryFrom<String> for Uri {
+    type Error = failure::Error;
+
+    #[inline]
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
     }
 }
 
@@ -258,7 +286,7 @@ impl CaptureNames {
 #[cfg_attr(feature = "cargo-clippy", allow(non_ascii_literal))]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, indexmap::indexset};
 
     macro_rules! t {
         (@case $name:ident, $input:expr, $expected:expr) => {

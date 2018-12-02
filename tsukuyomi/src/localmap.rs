@@ -1,7 +1,5 @@
 //! An implementation of typemap for managing request-local data.
 
-#![cfg(feature = "localmap")]
-
 use std::{
     any::TypeId,
     collections::{hash_map, HashMap},

@@ -13,7 +13,6 @@
 #![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
 #![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
 
-extern crate tsukuyomi_internal;
 extern crate tsukuyomi_macros;
 
 extern crate bytes;
@@ -54,10 +53,6 @@ extern crate tower_web;
 #[cfg(test)]
 extern crate matches;
 
-#[macro_use]
-#[doc(hidden)]
-pub mod macros;
-
 mod common;
 
 pub mod app;
@@ -66,6 +61,7 @@ pub mod extractor;
 pub mod fs;
 pub mod handler;
 pub mod input;
+pub mod localmap;
 pub mod modifier;
 pub mod output;
 pub mod rt;
@@ -89,8 +85,4 @@ pub use crate::{
         Output, //
         Responder,
     },
-    tsukuyomi_internal::localmap,
 };
-
-#[doc(hidden)]
-pub use tsukuyomi_macros::{route_expr_impl, route_impl, validate_prefix};

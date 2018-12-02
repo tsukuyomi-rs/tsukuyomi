@@ -407,7 +407,7 @@ impl TryFrom<Method> for Methods {
 
     #[inline]
     fn try_from(method: Method) -> std::result::Result<Self, Self::Error> {
-        Ok(Methods(indexset!{ method }))
+        Ok(Methods(indexset! { method }))
     }
 }
 
@@ -748,58 +748,6 @@ where
     }
 }
 
-/// A macro to generate an expression of `Route`, based on the specified input.
-///
-/// This macro is implemented as a procedural macro (due to limitations of the current macro system,
-/// the actual `proc_macro` is invoked indirectly with `macro_rules!`).
-/// It takes a string literal representing the URL of a route, and generates the code
-/// to build a `Route` with the appropriate `Extractor` based on its value.
-///
-/// Roughly speaking, the following macro call
-///
-/// ```ignore
-/// route!("/path/to/:id")
-/// ```
-///
-/// will be expanded as follows:
-///
-/// ```ignore
-/// route("/path/to/:id/:name/*path").expect("never fails")
-///     .extract(extractor::param::pos(0_usize))
-///     .extract(extractor::param::pos(1_usize))
-///     .extract(extractor::param::wildcard())
-/// ```
-///
-/// # Example
-///
-/// ```
-/// # extern crate tsukuyomi;
-/// use tsukuyomi::app::directives::*;
-///
-/// # fn main() -> tsukuyomi::app::Result<()> {
-/// let get_post = route!("/posts/:id")
-///     .call(|id: u32| {
-///         // do some stuff.
-/// #       drop(id); Ok(())
-///     });
-///
-/// let app = App::builder()
-///     .with(get_post)
-///     .build()?;
-/// # drop(app);
-/// # Ok(())
-/// # }
-#[macro_export(local_inner_macros)]
-macro_rules! route2 {
-    ($uri:expr) => {{
-        enum __Dummy {}
-        impl __Dummy {
-            route_impl!($uri);
-        }
-        __Dummy::route()
-    }};
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,14 +755,14 @@ mod tests {
     #[test]
     fn test_methods_try_from() {
         assert_eq!(
-            Methods::try_from(Methods(indexset!{ Method::GET }))
+            Methods::try_from(Methods(indexset! { Method::GET }))
                 .unwrap()
                 .0,
-            indexset!{ Method::GET }
+            indexset! { Method::GET }
         );
         assert_eq!(
             Methods::try_from(Method::GET).unwrap().0,
-            indexset!{ Method::GET }
+            indexset! { Method::GET }
         );
         assert_eq!(
             Methods::try_from(vec![Method::GET, Method::POST])
@@ -824,11 +772,11 @@ mod tests {
         );
         assert_eq!(
             Methods::try_from("GET").unwrap().0,
-            indexset!{ Method::GET }
+            indexset! { Method::GET }
         );
         assert_eq!(
             Methods::try_from("GET, POST").unwrap().0,
-            indexset!{ Method::GET , Method::POST }
+            indexset! { Method::GET , Method::POST }
         );
         assert!(Methods::try_from("").is_err());
     }

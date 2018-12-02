@@ -1,4 +1,5 @@
 use {
+    super::uri::CaptureNames,
     super::{
         fallback::{Context as FallbackContext, FallbackInstance},
         router::{Captures, ResourceId, Route},
@@ -21,7 +22,6 @@ use {
     hyper::body::Payload,
     mime::Mime,
     std::{marker::PhantomData, mem, ops::Index, rc::Rc, sync::Arc},
-    tsukuyomi_internal::uri::CaptureNames,
 };
 
 macro_rules! ready {

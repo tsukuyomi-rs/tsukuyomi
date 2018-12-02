@@ -7,12 +7,9 @@ pub mod scope;
 /// A *prelude* for using the primitive `Scope`s.
 pub mod directives {
     #[doc(no_inline)]
-    pub use {
-        super::{
-            scope::{mount, route},
-            App,
-        },
-        crate::route2 as route,
+    pub use super::{
+        scope::{mount, route},
+        App,
     };
 
     use {
@@ -63,13 +60,11 @@ mod router;
 mod scoped_map;
 #[cfg(test)]
 mod tests;
+mod uri;
 
 #[doc(hidden)]
 #[allow(deprecated)]
-pub use {
-    self::route::Route,
-    crate::{route, scope},
-};
+pub use self::route::Route;
 
 pub use self::{
     builder::Builder,
@@ -86,7 +81,7 @@ use {
 };
 
 use self::scoped_map::{ScopeId, ScopedContainer};
-use tsukuyomi_internal::uri::Uri;
+use self::uri::Uri;
 
 #[doc(hidden)]
 #[deprecated(since = "0.4.2", note = "use `App::builder` instead")]
