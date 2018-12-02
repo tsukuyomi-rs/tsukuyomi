@@ -249,7 +249,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::builder()
-        .with(modifier(MyModifier))
+        .modifier(MyModifier)
         .with(
             route("/")?
                 .extract(extractor::local::remove(&MyData::KEY))

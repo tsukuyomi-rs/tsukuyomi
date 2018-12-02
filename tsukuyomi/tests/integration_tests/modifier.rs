@@ -30,10 +30,10 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
             route("/")? //
                 .reply(|| ""),
         ) //
-        .with(modifier(MockModifier {
+        .modifier(MockModifier {
             marker: marker.clone(),
             name: "M",
-        })) //
+        }) //
         .build_server()?
         .into_test_server()?;
 
@@ -55,14 +55,14 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
         .with(
             route("/")? //
                 .reply(|| ""),
-        ).with(modifier(MockModifier {
+        ).modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        })) //
-        .with(modifier(MockModifier {
+        }) //
+        .modifier(MockModifier {
             marker: marker.clone(),
             name: "M2",
-        })) //
+        }) //
         .build_server()?
         .into_test_server()?;
 
@@ -77,16 +77,16 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = App::builder()
-        .with(modifier(MockModifier {
+        .modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        })) //
+        }) //
         .with(
             mount("/path1")?
-                .with(modifier(MockModifier {
+                .modifier(MockModifier {
                     marker: marker.clone(),
                     name: "M2",
-                })) //
+                }) //
                 .with(route("/")?.reply(|| "")),
         ) //
         .with(route("/path2")?.reply(|| ""))
@@ -110,23 +110,23 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
             mount("/path")?
-                .with(modifier(MockModifier {
+                .modifier(MockModifier {
                     marker: marker.clone(),
                     name: "M1",
-                })) //
+                }) //
                 .with(
                     mount("/to")?
-                        .with(modifier(MockModifier {
+                        .modifier(MockModifier {
                             marker: marker.clone(),
                             name: "M2",
-                        })) //
+                        }) //
                         .with(route("/")?.reply(|| ""))
                         .with(
                             mount("/a")?
-                                .with(modifier(MockModifier {
+                                .modifier(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
-                                })) //
+                                }) //
                                 .with(route("/")?.reply(|| "")),
                         ),
                 ),

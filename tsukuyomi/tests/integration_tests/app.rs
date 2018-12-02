@@ -228,7 +228,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(state(String::from("foo")))
-        .with(modifier(MyModifier))
+        .modifier(MyModifier)
         .with(
             route("/")? //
                 .raw(tsukuyomi::handler::raw(|| {
@@ -241,7 +241,7 @@ fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
         .with(
             mount("/sub")?
                 .with(state(String::from("bar")))
-                .with(modifier(MyModifier))
+                .modifier(MyModifier)
                 .with(
                     route("/")? //
                         .raw(tsukuyomi::handler::raw(|| {

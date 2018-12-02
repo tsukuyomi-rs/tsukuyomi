@@ -175,7 +175,7 @@ pub(super) struct Scope {
     pub(super) id: ScopeId,
     pub(super) prefix: Uri,
     pub(super) parents: Vec<ScopeId>,
-    pub(super) modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
+    pub(super) modifier: Box<dyn Modifier + Send + Sync + 'static>,
 }
 
 #[cfg_attr(tarpaulin, skip)]

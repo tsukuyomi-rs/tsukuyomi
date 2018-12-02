@@ -107,56 +107,77 @@ pub fn mount<T>(prefix: T) -> Result<Mount<()>>
 where
     Uri: TryFrom<T>,
 {
-    Ok(Mount::new((), Uri::try_from(prefix)?))
+    Ok(Mount::new((), (), Uri::try_from(prefix)?))
 }
 
 /// An instance of `Scope` that represents a sub-scope with a specific prefix.
 #[derive(Debug)]
-pub struct Mount<S: Scope = ()> {
+pub struct Mount<S: Scope = (), M: Modifier = ()> {
     scope: S,
+    modifier: M,
     prefix: Uri,
 }
 
-impl<S> Default for Mount<S>
+impl<S, M> Default for Mount<S, M>
 where
     S: Scope + Default,
+    M: Modifier + Default,
 {
     fn default() -> Self {
         Self {
             scope: S::default(),
+            modifier: M::default(),
             prefix: Uri::root(),
         }
     }
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S> Mount<S>
+impl<S, M> Mount<S, M>
 where
     S: Scope,
+    M: Modifier,
 {
     /// Create a new `Mount` with the specified components.
-    pub fn new(scope: S, prefix: Uri) -> Self {
-        Mount { scope, prefix }
+    pub fn new(scope: S, modifier: M, prefix: Uri) -> Self {
+        Mount {
+            scope,
+            modifier,
+            prefix,
+        }
     }
 
     /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
-    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>>
+    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M>
     where
         S2: Scope,
     {
         Mount {
             scope: Chain::new(self.scope, next_scope),
+            modifier: self.modifier,
             prefix: self.prefix,
         }
     }
 
     /// Replaces the inner `Scope` with the specified value.
-    pub fn scope<S2>(self, scope: S2) -> Mount<S2>
+    pub fn scope<S2>(self, scope: S2) -> Mount<S2, M>
     where
         S2: Scope,
     {
         Mount {
             scope,
+            modifier: self.modifier,
+            prefix: self.prefix,
+        }
+    }
+
+    pub fn modifier<M2>(self, modifier: M2) -> Mount<S, crate::modifier::Chain<M, M2>>
+    where
+        M2: Modifier,
+    {
+        Mount {
+            scope: self.scope,
+            modifier: crate::modifier::Chain::new(self.modifier, modifier),
             prefix: self.prefix,
         }
     }
@@ -173,14 +194,16 @@ where
     }
 }
 
-impl<S> Scope for Mount<S>
+impl<S, M> Scope for Mount<S, M>
 where
     S: Scope,
+    M: Modifier + Send + Sync + 'static,
 {
     type Error = super::Error;
 
     fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
-        cx.add_scope(self.prefix, self.scope)
+        cx.cx
+            .new_scope(cx.id, self.prefix, self.modifier, self.scope)
     }
 }
 
@@ -196,25 +219,11 @@ impl<'a> Context<'a> {
         Self { cx, id }
     }
 
-    pub(super) fn add_scope<S>(&mut self, prefix: Uri, new_scope: S) -> Result<()>
-    where
-        S: Scope,
-    {
-        self.cx.new_scope(self.id, prefix, new_scope)
-    }
-
     pub(super) fn set_state<T>(&mut self, value: T)
     where
         T: Send + Sync + 'static,
     {
         self.cx.set_state(value, self.id)
-    }
-
-    pub(super) fn add_modifier<M>(&mut self, modifier: M)
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
-        self.cx.add_modifier(modifier, self.id)
     }
 }
 

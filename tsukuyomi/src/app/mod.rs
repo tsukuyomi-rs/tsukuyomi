@@ -16,7 +16,7 @@ pub mod directives {
             fallback::{Fallback, FallbackInstance},
             scope::Scope,
         },
-        crate::{common::Never, modifier::Modifier},
+        crate::common::Never,
     };
 
     /// Creates a `Scope` that registers the specified state to be shared into the scope.
@@ -26,17 +26,6 @@ pub mod directives {
     {
         super::scope::raw(move |cx| {
             cx.set_state(state);
-            Ok(())
-        })
-    }
-
-    /// Creates a `Scope` that registers the specified `Modifier` into the scope.
-    pub fn modifier<M>(modifier: M) -> impl Scope<Error = Never>
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
-        super::scope::raw(move |cx| {
-            cx.add_modifier(modifier);
             Ok(())
         })
     }

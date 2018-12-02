@@ -138,14 +138,10 @@ impl AppFuture {
 
                 let mut in_flight = endpoint.handler.handle();
                 let scope = self.inner.router.scope(resource.id.0);
-                for modifier in scope.modifiers.iter().rev() {
-                    in_flight = modifier.modify(in_flight);
-                }
+                in_flight = scope.modifier.modify(in_flight);
                 for &parent in scope.parents.iter().rev() {
                     let scope = self.inner.router.scope(parent);
-                    for modifier in scope.modifiers.iter().rev() {
-                        in_flight = modifier.modify(in_flight);
-                    }
+                    in_flight = scope.modifier.modify(in_flight);
                 }
 
                 Ok(Either::Right(in_flight))

@@ -13,19 +13,22 @@ use {
 };
 
 /// A builder object for constructing an instance of `App`.
-pub struct Builder<S: Scope = ()> {
+pub struct Builder<S: Scope = (), M: Modifier = ()> {
     scope: S,
+    modifier: M,
     prefix: Uri,
     config: Config,
 }
 
-impl<S> Default for Builder<S>
+impl<S, M> Default for Builder<S, M>
 where
     S: Scope + Default,
+    M: Modifier + Default,
 {
     fn default() -> Self {
         Builder {
             scope: S::default(),
+            modifier: M::default(),
             prefix: Uri::root(),
             config: Config::default(),
         }
@@ -33,13 +36,15 @@ where
 }
 
 #[cfg_attr(tarpaulin, skip)]
-impl<S> fmt::Debug for Builder<S>
+impl<S, M> fmt::Debug for Builder<S, M>
 where
     S: Scope + fmt::Debug,
+    M: Modifier + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder")
             .field("scope", &self.scope)
+            .field("modifier", &self.modifier)
             .field("prefix", &self.prefix)
             .field("config", &self.config)
             .finish()
@@ -47,35 +52,49 @@ where
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S> Builder<S>
+impl<S, M> Builder<S, M>
 where
     S: Scope,
+    M: Modifier + Send + Sync + 'static,
 {
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
-    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
+    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>, M> {
         Builder {
             config: self.config,
             prefix: self.prefix,
             scope: self.scope.chain(next_scope),
+            modifier: self.modifier,
         }
     }
 
     /// Sets the prefix URI of the global scope.
-    pub fn prefix(self, prefix: Uri) -> Builder<S> {
+    pub fn prefix(self, prefix: Uri) -> Self {
         Self { prefix, ..self }
+    }
+
+    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, crate::modifier::Chain<M, M2>>
+    where
+        M2: Modifier,
+    {
+        Builder {
+            config: self.config,
+            prefix: self.prefix,
+            scope: self.scope,
+            modifier: self.modifier.chain(modifier),
+        }
     }
 
     /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
     ///
     /// The default value is `true`.
-    pub fn fallback_head(mut self, enabled: bool) -> Builder<S> {
+    pub fn fallback_head(mut self, enabled: bool) -> Self {
         self.config.fallback_head = enabled;
         self
     }
 
     /// Creates an `App` using the current configuration.
     pub fn build(self) -> Result<App> {
-        build(self.scope, self.prefix, self.config)
+        build(self.scope, self.prefix, self.modifier, self.config)
     }
 
     /// Creates a builder of HTTP server using the current configuration.
@@ -84,7 +103,12 @@ where
     }
 }
 
-fn build(scope: impl Scope, prefix: Uri, config: Config) -> Result<App> {
+fn build(
+    scope: impl Scope,
+    prefix: Uri,
+    modifier: impl Modifier + Send + Sync + 'static,
+    config: Config,
+) -> Result<App> {
     let mut cx = AppContext {
         resources: IndexMap::new(),
         scopes: vec![],
@@ -92,7 +116,7 @@ fn build(scope: impl Scope, prefix: Uri, config: Config) -> Result<App> {
             id: ScopeId::Global,
             prefix,
             parents: vec![],
-            modifiers: vec![],
+            modifier: Box::new(modifier),
         },
         states: ScopedContainerBuilder::default(),
     };
@@ -235,6 +259,7 @@ impl AppContext {
         &mut self,
         parent: ScopeId,
         prefix: Uri,
+        modifier: impl Modifier + Send + Sync + 'static,
         scope: impl Scope,
     ) -> Result<()> {
         let pos = self.scopes.len();
@@ -256,7 +281,7 @@ impl AppContext {
             id,
             parents,
             prefix,
-            modifiers: vec![],
+            modifier: Box::new(modifier),
         });
 
         scope
@@ -271,16 +296,5 @@ impl AppContext {
         T: Send + Sync + 'static,
     {
         self.states.set(value, id);
-    }
-
-    pub(super) fn add_modifier(
-        &mut self,
-        modifier: impl Modifier + Send + Sync + 'static,
-        id: ScopeId,
-    ) {
-        match id {
-            ScopeId::Global => self.global_scope.modifiers.push(Box::new(modifier)),
-            ScopeId::Local(i) => self.scopes[i].modifiers.push(Box::new(modifier)),
-        }
     }
 }
