@@ -180,11 +180,7 @@ where
     type Error = super::Error;
 
     fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
-        cx.add_scope(raw(move |cx| -> super::Result<()> {
-            cx.set_prefix(self.prefix)?;
-            self.scope.configure(cx).map_err(Into::into)?;
-            Ok(())
-        }))
+        cx.add_scope(self.prefix, self.scope)
     }
 }
 
@@ -200,11 +196,11 @@ impl<'a> Context<'a> {
         Self { cx, id }
     }
 
-    pub(super) fn add_scope<S>(&mut self, new_scope: S) -> Result<()>
+    pub(super) fn add_scope<S>(&mut self, prefix: Uri, new_scope: S) -> Result<()>
     where
         S: Scope,
     {
-        self.cx.new_scope(self.id, new_scope)
+        self.cx.new_scope(self.id, prefix, new_scope)
     }
 
     pub(super) fn set_state<T>(&mut self, value: T)
@@ -219,10 +215,6 @@ impl<'a> Context<'a> {
         M: Modifier + Send + Sync + 'static,
     {
         self.cx.add_modifier(modifier, self.id)
-    }
-
-    pub(super) fn set_prefix(&mut self, prefix: Uri) -> super::Result<()> {
-        self.cx.set_prefix(self.id, prefix)
     }
 }
 

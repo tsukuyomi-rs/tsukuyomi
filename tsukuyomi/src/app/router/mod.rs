@@ -52,12 +52,7 @@ impl Router {
         // Then, find the oldest ancestor that with the input path as the prefix of URI.
         ancestors
             .into_iter()
-            .find(|&&scope| {
-                self.scope(scope)
-                    .uri
-                    .as_ref()
-                    .map_or(false, |uri| uri.as_str().starts_with(path))
-            }) //
+            .find(|&&scope| self.scope(scope).prefix.as_str().starts_with(path)) //
             .or_else(|| ancestors.last())
             .cloned()
     }
@@ -178,9 +173,8 @@ impl fmt::Debug for Endpoint {
 /// A type representing a set of data associated with the certain scope.
 pub(super) struct Scope {
     pub(super) id: ScopeId,
+    pub(super) prefix: Uri,
     pub(super) parents: Vec<ScopeId>,
-    pub(super) prefix: Option<Uri>,
-    pub(super) uri: Option<Uri>,
     pub(super) modifiers: Vec<Box<dyn Modifier + Send + Sync + 'static>>,
 }
 
@@ -189,9 +183,8 @@ impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Scope")
             .field("id", &self.id)
-            .field("parents", &self.parents)
             .field("prefix", &self.prefix)
-            .field("uri", &self.uri)
+            .field("parents", &self.parents)
             .finish()
     }
 }

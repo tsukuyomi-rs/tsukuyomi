@@ -13,11 +13,23 @@ use {
 };
 
 /// A builder object for constructing an instance of `App`.
-#[derive(Default)]
 pub struct Builder<S: Scope = ()> {
     scope: S,
-    prefix: Option<Uri>,
+    prefix: Uri,
     config: Config,
+}
+
+impl<S> Default for Builder<S>
+where
+    S: Scope + Default,
+{
+    fn default() -> Self {
+        Builder {
+            scope: S::default(),
+            prefix: Uri::root(),
+            config: Config::default(),
+        }
+    }
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -50,10 +62,7 @@ where
 
     /// Sets the prefix URI of the global scope.
     pub fn prefix(self, prefix: Uri) -> Builder<S> {
-        Self {
-            prefix: Some(prefix),
-            ..self
-        }
+        Self { prefix, ..self }
     }
 
     /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
@@ -75,15 +84,14 @@ where
     }
 }
 
-fn build(scope: impl Scope, prefix: Option<Uri>, config: Config) -> Result<App> {
+fn build(scope: impl Scope, prefix: Uri, config: Config) -> Result<App> {
     let mut cx = AppContext {
         resources: IndexMap::new(),
         scopes: vec![],
         global_scope: ScopeData {
             id: ScopeId::Global,
+            prefix,
             parents: vec![],
-            prefix: prefix.clone(),
-            uri: prefix,
             modifiers: vec![],
         },
         states: ScopedContainerBuilder::default(),
@@ -152,10 +160,7 @@ impl AppContext {
                 ScopeId::Global => &self.global_scope,
                 ScopeId::Local(i) => &self.scopes[i],
             };
-            match scope.uri {
-                Some(ref parent_uri) => parent_uri.join(&uri)?,
-                None => uri.clone(),
-            }
+            scope.prefix.join(&uri)?
         };
 
         // collect a chain of scope IDs where this endpoint belongs.
@@ -226,24 +231,31 @@ impl AppContext {
         Ok(())
     }
 
-    pub(super) fn new_scope(&mut self, parent: ScopeId, scope: impl Scope) -> Result<()> {
+    pub(super) fn new_scope(
+        &mut self,
+        parent: ScopeId,
+        prefix: Uri,
+        scope: impl Scope,
+    ) -> Result<()> {
         let pos = self.scopes.len();
         let id = ScopeId::Local(pos);
 
-        let (parents, uri) = match parent {
-            ScopeId::Global => (vec![ScopeId::Global], self.global_scope.uri.clone()),
+        let (parents, prefix) = match parent {
+            ScopeId::Global => (
+                vec![ScopeId::Global],
+                self.global_scope.prefix.join(&prefix)?,
+            ),
             ScopeId::Local(i) => {
                 let mut parents = self.scopes[i].parents.clone();
                 parents.push(parent);
-                (parents, self.scopes[i].uri.clone())
+                (parents, self.scopes[i].prefix.join(&prefix)?)
             }
         };
 
         self.scopes.push(ScopeData {
             id,
             parents,
-            prefix: None,
-            uri,
+            prefix,
             modifiers: vec![],
         });
 
@@ -270,32 +282,5 @@ impl AppContext {
             ScopeId::Global => self.global_scope.modifiers.push(Box::new(modifier)),
             ScopeId::Local(i) => self.scopes[i].modifiers.push(Box::new(modifier)),
         }
-    }
-
-    pub(super) fn set_prefix(&mut self, id: ScopeId, prefix: Uri) -> Result<()> {
-        match id {
-            ScopeId::Global => {
-                self.global_scope.prefix = Some(prefix);
-                self.global_scope.uri = self.global_scope.prefix.clone();
-            }
-            ScopeId::Local(id) => {
-                self.scopes[id].prefix = Some(prefix);
-
-                self.scopes[id].uri = {
-                    let parent_scope = match self.scopes[id].parents.last().cloned() {
-                        Some(ScopeId::Global) => &self.global_scope,
-                        Some(ScopeId::Local(i)) => &self.scopes[i],
-                        None => unreachable!("the local scope must have at least one parent."),
-                    };
-                    match (&parent_scope.uri, &self.scopes[id].prefix) {
-                        (Some(uri), Some(prefix)) => uri.join(prefix).map(Some)?,
-                        (Some(uri), None) => Some(uri.clone()),
-                        (None, uri) => uri.clone(),
-                    }
-                };
-            }
-        }
-
-        Ok(())
     }
 }
