@@ -11,7 +11,6 @@ pub mod header;
 pub mod local;
 pub mod param;
 pub mod query;
-pub mod state;
 pub mod verb;
 
 pub use self::builder::Builder;

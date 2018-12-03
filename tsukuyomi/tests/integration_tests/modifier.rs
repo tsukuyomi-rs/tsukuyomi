@@ -55,14 +55,15 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
         .with(
             route("/")? //
                 .reply(|| ""),
-        ).modifier(MockModifier {
-            marker: marker.clone(),
-            name: "M1",
-        }) //
-        .modifier(MockModifier {
-            marker: marker.clone(),
-            name: "M2",
-        }) //
+        ).modifier(
+            MockModifier {
+                marker: marker.clone(),
+                name: "M1",
+            }.chain(MockModifier {
+                marker: marker.clone(),
+                name: "M2",
+            }),
+        ) //
         .build_server()?
         .into_test_server()?;
 

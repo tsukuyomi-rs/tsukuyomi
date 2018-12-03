@@ -2,9 +2,9 @@
 
 use {
     super::{
-        builder::AppContext,
+        builder::{AppContext, ScopeData},
         error::{Error, Result},
-        scoped_map::ScopeId,
+        fallback::Fallback,
         Uri,
     },
     crate::{
@@ -107,77 +107,66 @@ pub fn mount<T>(prefix: T) -> Result<Mount<()>>
 where
     Uri: TryFrom<T>,
 {
-    Ok(Mount::new((), (), Uri::try_from(prefix)?))
+    Ok(Mount::new((), Uri::try_from(prefix)?))
 }
 
 /// An instance of `Scope` that represents a sub-scope with a specific prefix.
-#[derive(Debug)]
-pub struct Mount<S: Scope = (), M: Modifier = ()> {
+#[allow(missing_debug_implementations)]
+pub struct Mount<S: Scope = ()> {
     scope: S,
-    modifier: M,
+    modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
+    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
     prefix: Uri,
 }
 
-impl<S, M> Default for Mount<S, M>
-where
-    S: Scope + Default,
-    M: Modifier + Default,
-{
-    fn default() -> Self {
-        Self {
-            scope: S::default(),
-            modifier: M::default(),
-            prefix: Uri::root(),
-        }
-    }
-}
-
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, M> Mount<S, M>
+impl<S> Mount<S>
 where
     S: Scope,
-    M: Modifier,
 {
     /// Create a new `Mount` with the specified components.
-    pub fn new(scope: S, modifier: M, prefix: Uri) -> Self {
+    pub fn new(scope: S, prefix: Uri) -> Self {
         Mount {
             scope,
-            modifier,
+            modifier: None,
+            fallback: None,
             prefix,
         }
     }
 
     /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
-    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M>
+    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>>
     where
         S2: Scope,
     {
         Mount {
             scope: Chain::new(self.scope, next_scope),
             modifier: self.modifier,
+            fallback: self.fallback,
             prefix: self.prefix,
         }
     }
 
-    /// Replaces the inner `Scope` with the specified value.
-    pub fn scope<S2>(self, scope: S2) -> Mount<S2, M>
+    pub fn modifier<M>(self, modifier: M) -> Mount<S>
     where
-        S2: Scope,
-    {
-        Mount {
-            scope,
-            modifier: self.modifier,
-            prefix: self.prefix,
-        }
-    }
-
-    pub fn modifier<M2>(self, modifier: M2) -> Mount<S, crate::modifier::Chain<M, M2>>
-    where
-        M2: Modifier,
+        M: Modifier + Send + Sync + 'static,
     {
         Mount {
             scope: self.scope,
-            modifier: crate::modifier::Chain::new(self.modifier, modifier),
+            modifier: Some(Box::new(modifier)),
+            fallback: self.fallback,
+            prefix: self.prefix,
+        }
+    }
+
+    pub fn fallback<F>(self, fallback: F) -> Mount<S>
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        Mount {
+            scope: self.scope,
+            modifier: self.modifier,
+            fallback: Some(Box::new(fallback)),
             prefix: self.prefix,
         }
     }
@@ -194,37 +183,28 @@ where
     }
 }
 
-impl<S, M> Scope for Mount<S, M>
+impl<S> Scope for Mount<S>
 where
     S: Scope,
-    M: Modifier + Send + Sync + 'static,
 {
     type Error = super::Error;
 
     fn configure(self, cx: &mut Context<'_>) -> std::result::Result<(), Self::Error> {
-        cx.cx
-            .new_scope(cx.id, self.prefix, self.modifier, self.scope)
+        cx.app.new_scope(
+            &cx.data,
+            self.prefix,
+            self.modifier,
+            self.fallback,
+            self.scope,
+        )
     }
 }
 
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
 pub struct Context<'a> {
-    cx: &'a mut AppContext,
-    id: ScopeId,
-}
-
-impl<'a> Context<'a> {
-    pub(super) fn new(cx: &'a mut AppContext, id: ScopeId) -> Self {
-        Self { cx, id }
-    }
-
-    pub(super) fn set_state<T>(&mut self, value: T)
-    where
-        T: Send + Sync + 'static,
-    {
-        self.cx.set_state(value, self.id)
-    }
+    pub(super) app: &'a mut AppContext,
+    pub(super) data: &'a ScopeData,
 }
 
 // ==== Route ====
@@ -391,7 +371,8 @@ where
             let handler = f(self.extractor).map_err(Into::into)?;
             let modifier = self.modifier;
             let handler = crate::handler::raw(move || modifier.modify(handler.handle()));
-            cx.cx.new_route(cx.id, self.uri, self.methods.0, handler)
+            cx.app
+                .new_route(&cx.data, self.uri, self.methods.0, handler)
         })
     }
 

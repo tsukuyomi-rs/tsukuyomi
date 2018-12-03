@@ -1,9 +1,9 @@
 use {
     super::{
         error::{Error, Result},
-        router::{Config, Endpoint, Recognizer, Resource, ResourceId, Router, Scope as ScopeData},
+        fallback::Fallback,
+        router::{Config, Endpoint, Recognizer, Resource, ResourceId, Router},
         scope::{Context as ScopeContext, Scope},
-        scoped_map::{Builder as ScopedContainerBuilder, ScopeId},
         App, AppInner, Uri,
     },
     crate::{handler::Handler, modifier::Modifier},
@@ -13,22 +13,23 @@ use {
 };
 
 /// A builder object for constructing an instance of `App`.
-pub struct Builder<S: Scope = (), M: Modifier = ()> {
+pub struct Builder<S: Scope = ()> {
     scope: S,
-    modifier: M,
+    modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
+    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
     prefix: Uri,
     config: Config,
 }
 
-impl<S, M> Default for Builder<S, M>
+impl<S> Default for Builder<S>
 where
     S: Scope + Default,
-    M: Modifier + Default,
 {
     fn default() -> Self {
         Builder {
             scope: S::default(),
-            modifier: M::default(),
+            modifier: None,
+            fallback: None,
             prefix: Uri::root(),
             config: Config::default(),
         }
@@ -36,15 +37,13 @@ where
 }
 
 #[cfg_attr(tarpaulin, skip)]
-impl<S, M> fmt::Debug for Builder<S, M>
+impl<S> fmt::Debug for Builder<S>
 where
     S: Scope + fmt::Debug,
-    M: Modifier + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder")
             .field("scope", &self.scope)
-            .field("modifier", &self.modifier)
             .field("prefix", &self.prefix)
             .field("config", &self.config)
             .finish()
@@ -52,18 +51,18 @@ where
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, M> Builder<S, M>
+impl<S> Builder<S>
 where
     S: Scope,
-    M: Modifier + Send + Sync + 'static,
 {
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
-    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>, M> {
+    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
         Builder {
             config: self.config,
             prefix: self.prefix,
             scope: self.scope.chain(next_scope),
             modifier: self.modifier,
+            fallback: self.fallback,
         }
     }
 
@@ -72,15 +71,29 @@ where
         Self { prefix, ..self }
     }
 
-    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, crate::modifier::Chain<M, M2>>
+    pub fn modifier<M>(self, modifier: M) -> Self
     where
-        M2: Modifier,
+        M: Modifier + Send + Sync + 'static,
     {
         Builder {
             config: self.config,
             prefix: self.prefix,
             scope: self.scope,
-            modifier: self.modifier.chain(modifier),
+            modifier: Some(Box::new(modifier)),
+            fallback: self.fallback,
+        }
+    }
+
+    pub fn fallback<F>(self, fallback: F) -> Self
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        Builder {
+            config: self.config,
+            prefix: self.prefix,
+            scope: self.scope,
+            modifier: self.modifier,
+            fallback: Some(Box::new(fallback)),
         }
     }
 
@@ -94,7 +107,36 @@ where
 
     /// Creates an `App` using the current configuration.
     pub fn build(self) -> Result<App> {
-        build(self.scope, self.prefix, self.modifier, self.config)
+        let mut cx = AppContext {
+            resources: IndexMap::new(),
+        };
+
+        let global_scope = ScopeData {
+            prefix: self.prefix,
+            modifiers: self.modifier.into_iter().map(Arc::from).collect(),
+            fallback: self.fallback.map(Arc::from),
+        };
+        self.scope
+            .configure(&mut ScopeContext {
+                app: &mut cx,
+                data: &global_scope,
+            }).map_err(Into::into)?;
+
+        // create a route recognizer.
+        let mut recognizer = Recognizer::default();
+        for (uri, mut resource) in cx.resources {
+            resource.update();
+            recognizer.insert(uri.as_str(), resource)?;
+        }
+
+        Ok(App {
+            inner: Arc::new(AppInner {
+                router: Router {
+                    recognizer,
+                    config: self.config,
+                },
+            }),
+        })
     }
 
     /// Creates a builder of HTTP server using the current configuration.
@@ -103,74 +145,15 @@ where
     }
 }
 
-fn build(
-    scope: impl Scope,
-    prefix: Uri,
-    modifier: impl Modifier + Send + Sync + 'static,
-    config: Config,
-) -> Result<App> {
-    let mut cx = AppContext {
-        resources: IndexMap::new(),
-        scopes: vec![],
-        global_scope: ScopeData {
-            id: ScopeId::Global,
-            prefix,
-            parents: vec![],
-            modifier: Box::new(modifier),
-        },
-        states: ScopedContainerBuilder::default(),
-    };
-
-    scope
-        .configure(&mut ScopeContext::new(&mut cx, ScopeId::Global))
-        .map_err(Into::into)?;
-
-    let AppContext {
-        resources,
-        scopes,
-        global_scope,
-        states,
-    } = cx;
-
-    // finalize global/scope-local storages.
-    let parents: Vec<_> = scopes
-        .iter()
-        .map(|scope| *scope.parents.last().expect("no parent"))
-        .collect();
-    let states = states.finish(&parents[..]);
-
-    // create a route recognizer.
-    let mut recognizer = Recognizer::default();
-    for (uri, mut resource) in resources {
-        resource.update();
-        recognizer.insert(uri.as_str(), resource)?;
-    }
-
-    Ok(App {
-        inner: Arc::new(AppInner {
-            router: Router {
-                recognizer,
-                config,
-                scopes,
-                global_scope,
-            },
-            data: states,
-        }),
-    })
-}
-
 #[derive(Debug)]
 pub(super) struct AppContext {
     resources: IndexMap<Uri, Resource>,
-    scopes: Vec<ScopeData>,
-    global_scope: ScopeData,
-    states: ScopedContainerBuilder,
 }
 
 impl AppContext {
     pub(super) fn new_route<H>(
         &mut self,
-        scope_id: ScopeId,
+        scope: &ScopeData,
         uri: Uri,
         mut methods: IndexSet<Method>,
         handler: H,
@@ -179,44 +162,22 @@ impl AppContext {
         H: Handler + Send + Sync + 'static,
     {
         // build absolute URI.
-        let uri = {
-            let scope = match scope_id {
-                ScopeId::Global => &self.global_scope,
-                ScopeId::Local(i) => &self.scopes[i],
-            };
-            scope.prefix.join(&uri)?
-        };
-
-        // collect a chain of scope IDs where this endpoint belongs.
-        let parents = match scope_id {
-            ScopeId::Local(i) => self.scopes[i]
-                .parents
-                .iter()
-                .cloned()
-                .chain(Some(scope_id))
-                .collect(),
-            ScopeId::Global => vec![ScopeId::Global],
-        };
+        let uri = { scope.prefix.join(&uri)? };
 
         let resource = {
-            let pos = self.resources.len();
+            let id = ResourceId(self.resources.len());
             self.resources
                 .entry(uri.clone())
                 .or_insert_with(|| Resource {
-                    id: ResourceId(scope_id, pos),
+                    id,
                     uri: uri.clone(),
                     endpoints: vec![],
+                    modifiers: scope.modifiers.clone(),
+                    fallback: scope.fallback.clone(),
                     allowed_methods: IndexMap::new(),
                     allowed_methods_value: HeaderValue::from_static(""),
-                    parents,
                 })
         };
-
-        if scope_id != resource.id.0 {
-            return Err(Error::from(failure::format_err!(
-                "all endpoints with the same URI belong to the same scope"
-            )));
-        }
 
         if methods.is_empty() {
             methods.insert(Method::GET);
@@ -257,44 +218,49 @@ impl AppContext {
 
     pub(super) fn new_scope(
         &mut self,
-        parent: ScopeId,
+        parent: &ScopeData,
         prefix: Uri,
-        modifier: impl Modifier + Send + Sync + 'static,
+        modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
+        fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
         scope: impl Scope,
     ) -> Result<()> {
-        let pos = self.scopes.len();
-        let id = ScopeId::Local(pos);
-
-        let (parents, prefix) = match parent {
-            ScopeId::Global => (
-                vec![ScopeId::Global],
-                self.global_scope.prefix.join(&prefix)?,
-            ),
-            ScopeId::Local(i) => {
-                let mut parents = self.scopes[i].parents.clone();
-                parents.push(parent);
-                (parents, self.scopes[i].prefix.join(&prefix)?)
-            }
+        let data = ScopeData {
+            prefix: parent.prefix.join(&prefix)?,
+            modifiers: {
+                let mut modifiers = parent.modifiers.clone();
+                if let Some(modifier) = modifier {
+                    modifiers.push(Arc::from(modifier));
+                }
+                modifiers
+            },
+            fallback: match fallback {
+                Some(fallback) => Some(Arc::from(fallback)),
+                None => parent.fallback.clone(),
+            },
         };
 
-        self.scopes.push(ScopeData {
-            id,
-            parents,
-            prefix,
-            modifier: Box::new(modifier),
-        });
-
         scope
-            .configure(&mut ScopeContext::new(self, id))
-            .map_err(Into::into)?;
+            .configure(&mut ScopeContext {
+                app: self,
+                data: &data,
+            }).map_err(Into::into)?;
 
         Ok(())
     }
+}
 
-    pub(super) fn set_state<T>(&mut self, value: T, id: ScopeId)
-    where
-        T: Send + Sync + 'static,
-    {
-        self.states.set(value, id);
+/// A type representing a set of data associated with the certain scope.
+pub(super) struct ScopeData {
+    pub(super) prefix: Uri,
+    pub(super) modifiers: Vec<Arc<dyn Modifier + Send + Sync + 'static>>,
+    pub(super) fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for ScopeData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Scope")
+            .field("prefix", &self.prefix)
+            .finish()
     }
 }

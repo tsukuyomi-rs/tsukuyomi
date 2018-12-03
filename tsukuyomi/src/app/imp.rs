@@ -1,9 +1,9 @@
 use {
     super::uri::CaptureNames,
     super::{
-        fallback::{Context as FallbackContext, FallbackInstance},
+        fallback::Context as FallbackContext,
         router::{Captures, ResourceId, Route},
-        AppInner, ScopeId,
+        AppInner,
     },
     cookie::{Cookie, CookieJar},
     crate::{
@@ -13,11 +13,10 @@ use {
         localmap::LocalMap,
         output::{Output, ResponseBody},
     },
-    either::Either,
     futures::{Async, Future, IntoFuture, Poll},
     http::{
         header::{self, HeaderMap, HeaderValue},
-        Method, Request, Response,
+        Method, Request, Response, StatusCode,
     },
     hyper::body::Payload,
     mime::Mime,
@@ -86,10 +85,6 @@ macro_rules! input {
                     None
                 }
             },
-            states: &States {
-                inner: &$self.inner,
-                scope_id: $self.resource_id.map(|ResourceId(scope, _)| scope),
-            },
             cookies: &mut Cookies {
                 jar: &mut $self.cookie_jar,
                 request_headers: &$self.request.headers(),
@@ -121,7 +116,7 @@ impl AppFuture {
         }
     }
 
-    fn process_recognize(&mut self) -> Result<Either<Output, AsyncResult<Output>>, Error> {
+    fn process_recognize(&mut self) -> Result<AsyncResult<Output>, Error> {
         match self
             .inner
             .router
@@ -135,16 +130,11 @@ impl AppFuture {
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-
                 let mut in_flight = endpoint.handler.handle();
-                let scope = self.inner.router.scope(resource.id.0);
-                in_flight = scope.modifier.modify(in_flight);
-                for &parent in scope.parents.iter().rev() {
-                    let scope = self.inner.router.scope(parent);
-                    in_flight = scope.modifier.modify(in_flight);
+                for modifier in resource.modifiers.iter().rev() {
+                    in_flight = modifier.modify(in_flight);
                 }
-
-                Ok(Either::Right(in_flight))
+                Ok(in_flight)
             }
 
             Route::MethodNotAllowed {
@@ -152,37 +142,20 @@ impl AppFuture {
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-
                 let cx = FallbackContext {
                     request: &self.request,
                     inner: &*self.inner,
-                    resource: Some(resource),
+                    resource,
                 };
-
-                self.inner
-                    .get_data::<FallbackInstance>(resource.id.0)
+                resource
+                    .fallback
+                    .as_ref()
                     .map_or_else(
                         || super::fallback::default(&cx),
-                        |ref fallback| fallback.call(&cx),
-                    ) //
-                    .map(Either::Left)
+                        |fallback| fallback.call(&cx),
+                    ).map(AsyncResult::ok)
             }
-
-            Route::NotFound(scope_id) => {
-                let cx = FallbackContext {
-                    request: &self.request,
-                    inner: &*self.inner,
-                    resource: None,
-                };
-
-                self.inner
-                    .get_data::<FallbackInstance>(scope_id)
-                    .map_or_else(
-                        || super::fallback::default(&cx),
-                        |ref fallback| fallback.call(&cx),
-                    ) //
-                    .map(Either::Left)
-            }
+            Route::NotFound => Err(StatusCode::NOT_FOUND.into()),
         }
     }
 
@@ -227,8 +200,7 @@ impl Future for AppFuture {
         let polled = loop {
             self.state = match self.state {
                 AppFutureState::Init => match self.process_recognize() {
-                    Ok(Either::Right(in_flight)) => AppFutureState::InFlight(in_flight),
-                    Ok(Either::Left(output)) => break Ok(output),
+                    Ok(in_flight) => AppFutureState::InFlight(in_flight),
                     Err(err) => break Err(err),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
@@ -247,35 +219,6 @@ impl Future for AppFuture {
         self.process_before_reply(&mut output);
 
         Ok(Async::Ready(output))
-    }
-}
-
-#[derive(Debug)]
-pub struct States<'task> {
-    inner: &'task Arc<AppInner>,
-    scope_id: Option<ScopeId>,
-}
-
-impl<'task> States<'task> {
-    /// Returns the reference to a shared state of `T` registered in the scope.
-    #[inline]
-    pub fn try_get<T>(&self) -> Option<&T>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.inner.get_data(self.scope_id?)
-    }
-
-    /// Returns the reference to a shared state of `T` registered in the scope.
-    ///
-    /// # Panics
-    /// This method will panic if the state of `T` is not registered in the scope.
-    #[inline]
-    pub fn get<T>(&self) -> &T
-    where
-        T: Send + Sync + 'static,
-    {
-        self.try_get().expect("The state is not set")
     }
 }
 
@@ -390,9 +333,6 @@ pub struct Input<'task> {
 
     /// A set of extracted parameters from inner.
     pub params: &'task Option<Params<'task>>,
-
-    /// A proxy object for accessing shared states.
-    pub states: &'task States<'task>,
 
     /// A proxy object for accessing Cookie values.
     pub cookies: &'task mut Cookies<'task>,

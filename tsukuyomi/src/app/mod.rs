@@ -10,45 +10,18 @@ pub mod directives {
         scope::{mount, route},
         App,
     };
-
-    use {
-        super::{
-            fallback::{Fallback, FallbackInstance},
-            scope::Scope,
-        },
-        crate::common::Never,
-    };
-
-    /// Creates a `Scope` that registers the specified state to be shared into the scope.
-    pub fn state<T>(state: T) -> impl Scope<Error = Never>
-    where
-        T: Send + Sync + 'static,
-    {
-        super::scope::raw(move |cx| {
-            cx.set_state(state);
-            Ok(())
-        })
-    }
-
-    /// Creates a `Scope` that registers the specified `Fallback` into the scope.
-    pub fn fallback<F>(fallback: F) -> impl Scope<Error = Never>
-    where
-        F: Fallback + Send + Sync + 'static,
-    {
-        state(FallbackInstance::from(fallback))
-    }
 }
 
 mod builder;
 mod error;
 pub(crate) mod imp;
 mod router;
-mod scoped_map;
 mod uri;
 
 #[cfg(test)]
 mod tests;
 
+use self::uri::Uri;
 pub use self::{
     builder::Builder,
     error::{Error, Result},
@@ -63,9 +36,6 @@ use {
     tower_service::{NewService, Service},
 };
 
-use self::scoped_map::{ScopeId, ScopedContainer};
-use self::uri::Uri;
-
 /// The main type which represents an HTTP application.
 #[derive(Debug, Clone)]
 pub struct App {
@@ -75,16 +45,6 @@ pub struct App {
 #[derive(Debug)]
 struct AppInner {
     router: Router,
-    data: ScopedContainer,
-}
-
-impl AppInner {
-    fn get_data<T>(&self, id: ScopeId) -> Option<&T>
-    where
-        T: Send + Sync + 'static,
-    {
-        self.data.get(id)
-    }
 }
 
 impl App {

@@ -3,9 +3,7 @@ use {
     tsukuyomi::{
         app::directives::*, //
         extractor,
-        handler::AsyncResult,
         test::ResponseExt,
-        Output,
     },
 };
 
@@ -184,77 +182,41 @@ fn test_canceled() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn scope_variables() -> tsukuyomi::test::Result<()> {
+fn scoped_fallback() -> tsukuyomi::test::Result<()> {
+    use std::sync::{Arc, Mutex};
+    let marker = Arc::new(Mutex::new(vec![]));
+
     let mut server = App::builder()
-        .with(state(String::from("foo")))
-        .with(route("/")?.raw(tsukuyomi::handler::raw(|| {
-            AsyncResult::ready(|input| {
-                assert_eq!(input.states.get::<String>(), "foo");
-                Ok(Output::default())
-            })
-        }))) //
+        .fallback({
+            let marker = marker.clone();
+            move |cx: &tsukuyomi::app::fallback::Context| {
+                marker.lock().unwrap().push("F1");
+                tsukuyomi::app::fallback::default(cx)
+            }
+        }) //
         .with(
-            mount("/sub")?
-                .with(state(String::from("bar"))) //
-                .with(
-                    route("/")? //
-                        .raw(tsukuyomi::handler::raw(|| {
-                            AsyncResult::ready(|input| {
-                                assert_eq!(input.states.get::<String>(), "bar");
-                                Ok(Output::default())
-                            })
-                        })),
-                ),
+            mount("/api/v1/")?
+                .fallback({
+                    let marker = marker.clone();
+                    move |cx: &tsukuyomi::app::fallback::Context| {
+                        marker.lock().unwrap().push("F2");
+                        tsukuyomi::app::fallback::default(cx)
+                    }
+                }) //
+                .with(route("/posts")?.methods("POST")?.say("posts")),
         ) //
         .build_server()?
         .into_test_server()?;
 
     let _ = server.perform("/")?;
-    let _ = server.perform("/sub")?;
-    Ok(())
-}
+    assert!(marker.lock().unwrap().is_empty());
 
-#[test]
-fn scope_variables_in_modifier() -> tsukuyomi::test::Result<()> {
-    struct MyModifier;
-    impl tsukuyomi::Modifier for MyModifier {
-        fn modify(&self, mut handle: AsyncResult<Output>) -> AsyncResult<Output> {
-            AsyncResult::poll_fn(move |input| {
-                assert!(input.states.try_get::<String>().is_some());
-                handle.poll_ready(input)
-            })
-        }
-    }
+    let _ = server.perform("/api/v1/p")?;
+    assert!(marker.lock().unwrap().is_empty());
 
-    let mut server = App::builder()
-        .with(state(String::from("foo")))
-        .modifier(MyModifier)
-        .with(
-            route("/")? //
-                .raw(tsukuyomi::handler::raw(|| {
-                    AsyncResult::ready(|input| {
-                        assert_eq!(input.states.get::<String>(), "foo");
-                        Ok(Output::default())
-                    })
-                })),
-        ) //
-        .with(
-            mount("/sub")?
-                .with(state(String::from("bar")))
-                .modifier(MyModifier)
-                .with(
-                    route("/")? //
-                        .raw(tsukuyomi::handler::raw(|| {
-                            AsyncResult::ready(|input| {
-                                assert_eq!(input.states.get::<String>(), "bar");
-                                Ok(Output::default())
-                            })
-                        })),
-                ),
-        ).build_server()?
-        .into_test_server()?;
+    marker.lock().unwrap().clear();
+    let _ = server.perform("/api/v1/posts")?;
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
 
-    let _ = server.perform("/")?;
-    let _ = server.perform("/sub")?;
     Ok(())
 }

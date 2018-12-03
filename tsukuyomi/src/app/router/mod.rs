@@ -1,13 +1,13 @@
 mod recognizer;
 
 use {
-    self::recognizer::{Candidates, RecognizeError},
-    super::{scoped_map::ScopeId, Uri},
+    self::recognizer::RecognizeError,
+    super::{fallback::Fallback, Uri},
     bytes::BytesMut,
     crate::{handler::Handler, modifier::Modifier},
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
-    std::fmt,
+    std::{fmt, sync::Arc},
 };
 
 pub(super) use self::recognizer::{Captures, Recognizer};
@@ -15,59 +15,20 @@ pub(super) use self::recognizer::{Captures, Recognizer};
 #[derive(Debug)]
 pub(super) struct Router {
     pub(super) recognizer: Recognizer<Resource>,
-    pub(super) scopes: Vec<Scope>,
-    pub(super) global_scope: Scope,
     pub(super) config: Config,
 }
 
 impl Router {
     pub(super) fn resource(&self, id: ResourceId) -> &Resource {
-        self.recognizer.get(id.1).expect("the wrong resource ID")
-    }
-
-    pub(super) fn scope(&self, id: ScopeId) -> &Scope {
-        match id {
-            ScopeId::Global => &self.global_scope,
-            ScopeId::Local(id) => &self.scopes[id],
-        }
-    }
-
-    /// Infers the scope ID where the input path belongs from the extract candidates of resource indices.
-    fn infer_scope_id(&self, path: &str, candidates: &Candidates) -> Option<ScopeId> {
-        // First, extract a series of common ancestors of candidates.
-        let ancestors = {
-            let mut ancestors: Option<&[ScopeId]> = None;
-            for resource in candidates.iter().filter_map(|i| self.recognizer.get(i)) {
-                let ancestors = ancestors.get_or_insert(&resource.parents);
-                let n = (*ancestors)
-                    .iter()
-                    .zip(&resource.parents)
-                    .position(|(a, b)| a != b)
-                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), resource.parents.len()));
-                *ancestors = &ancestors[..n];
-            }
-            ancestors?
-        };
-
-        // Then, find the oldest ancestor that with the input path as the prefix of URI.
-        ancestors
-            .into_iter()
-            .find(|&&scope| self.scope(scope).prefix.as_str().starts_with(path)) //
-            .or_else(|| ancestors.last())
-            .cloned()
+        self.recognizer.get(id.0).expect("the wrong resource ID")
     }
 
     pub(super) fn route(&self, path: &str, method: &Method) -> Route<'_> {
         let mut captures = None;
         let resource = match self.recognizer.recognize(path, &mut captures) {
             Ok(resource) => resource,
-            Err(RecognizeError::NotMatched) => return Route::NotFound(ScopeId::Global),
-            Err(RecognizeError::PartiallyMatched(candidates)) => {
-                return Route::NotFound(
-                    self.infer_scope_id(path, candidates)
-                        .unwrap_or(ScopeId::Global),
-                )
-            }
+            Err(RecognizeError::NotMatched) => return Route::NotFound,
+            Err(RecognizeError::PartiallyMatched(_candidates)) => return Route::NotFound,
         };
 
         if let Some(endpoint) = resource.recognize(method) {
@@ -108,17 +69,38 @@ impl Default for Config {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub(super) struct ResourceId(pub(super) ScopeId, pub(super) usize);
+pub(super) struct ResourceId(pub(super) usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
-#[derive(Debug)]
 pub(super) struct Resource {
     pub(super) id: ResourceId,
     pub(super) uri: Uri,
     pub(super) endpoints: Vec<Endpoint>,
+    pub(super) modifiers: Vec<Arc<dyn Modifier + Send + Sync + 'static>>,
+    pub(super) fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
     pub(super) allowed_methods: IndexMap<Method, usize>,
     pub(super) allowed_methods_value: HeaderValue,
-    pub(super) parents: Vec<ScopeId>,
+}
+
+impl fmt::Debug for Resource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Resource")
+            .field("id", &self.id)
+            .field("uri", &self.uri)
+            .field("endpoints", &self.endpoints)
+            .field(
+                "modifiers",
+                &self
+                    .modifiers
+                    .iter()
+                    .map(|_| "<modifier>")
+                    .collect::<Vec<_>>(),
+            ) //
+            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
+            .field("allowed_methods", &self.allowed_methods)
+            .field("allowed_methods_value", &self.allowed_methods_value)
+            .finish()
+    }
 }
 
 impl Resource {
@@ -170,25 +152,6 @@ impl fmt::Debug for Endpoint {
     }
 }
 
-/// A type representing a set of data associated with the certain scope.
-pub(super) struct Scope {
-    pub(super) id: ScopeId,
-    pub(super) prefix: Uri,
-    pub(super) parents: Vec<ScopeId>,
-    pub(super) modifier: Box<dyn Modifier + Send + Sync + 'static>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Scope")
-            .field("id", &self.id)
-            .field("prefix", &self.prefix)
-            .field("parents", &self.parents)
-            .finish()
-    }
-}
-
 #[derive(Debug)]
 pub(super) enum Route<'a> {
     /// The URI is matched and a route associated with the specified method is found.
@@ -200,7 +163,7 @@ pub(super) enum Route<'a> {
     },
 
     /// The URI is not matched to any endpoints.
-    NotFound(ScopeId),
+    NotFound,
 
     /// the URI is matched, but the method is disallowed.
     MethodNotAllowed {
