@@ -6,44 +6,32 @@ use {
         scope::{Context as ScopeContext, Scope},
         App, AppInner, Uri,
     },
-    crate::{handler::Handler, modifier::Modifier},
+    crate::{common::Chain, handler::Handler},
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
 };
 
 /// A builder object for constructing an instance of `App`.
-pub struct Builder<S: Scope = ()> {
+#[derive(Default)]
+pub struct Builder<S = (), M = ()> {
     scope: S,
-    modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
+    modifier: M,
     fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
     prefix: Uri,
     config: Config,
 }
 
-impl<S> Default for Builder<S>
-where
-    S: Scope + Default,
-{
-    fn default() -> Self {
-        Builder {
-            scope: S::default(),
-            modifier: None,
-            fallback: None,
-            prefix: Uri::root(),
-            config: Config::default(),
-        }
-    }
-}
-
 #[cfg_attr(tarpaulin, skip)]
-impl<S> fmt::Debug for Builder<S>
+impl<S, M> fmt::Debug for Builder<S, M>
 where
-    S: Scope + fmt::Debug,
+    S: fmt::Debug,
+    M: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Builder")
             .field("scope", &self.scope)
+            .field("modifier", &self.modifier)
             .field("prefix", &self.prefix)
             .field("config", &self.config)
             .finish()
@@ -51,16 +39,13 @@ where
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S> Builder<S>
-where
-    S: Scope,
-{
+impl<S, M> Builder<S, M> {
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
-    pub fn with(self, next_scope: impl Scope) -> Builder<impl Scope<Error = Error>> {
+    pub fn with<S2>(self, next_scope: S2) -> Builder<Chain<S, S2>, M> {
         Builder {
             config: self.config,
             prefix: self.prefix,
-            scope: self.scope.chain(next_scope),
+            scope: Chain::new(self.scope, next_scope),
             modifier: self.modifier,
             fallback: self.fallback,
         }
@@ -71,15 +56,12 @@ where
         Self { prefix, ..self }
     }
 
-    pub fn modifier<M>(self, modifier: M) -> Self
-    where
-        M: Modifier + Send + Sync + 'static,
-    {
+    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, Chain<M, M2>> {
         Builder {
             config: self.config,
             prefix: self.prefix,
             scope: self.scope,
-            modifier: Some(Box::new(modifier)),
+            modifier: Chain::new(self.modifier, modifier),
             fallback: self.fallback,
         }
     }
@@ -89,11 +71,8 @@ where
         F: Fallback + Send + Sync + 'static,
     {
         Builder {
-            config: self.config,
-            prefix: self.prefix,
-            scope: self.scope,
-            modifier: self.modifier,
             fallback: Some(Box::new(fallback)),
+            ..self
         }
     }
 
@@ -106,20 +85,23 @@ where
     }
 
     /// Creates an `App` using the current configuration.
-    pub fn build(self) -> Result<App> {
+    pub fn build(self) -> Result<App>
+    where
+        S: Scope<M>,
+    {
         let mut cx = AppContext {
             resources: IndexMap::new(),
         };
 
         let global_scope = ScopeData {
             prefix: self.prefix,
-            modifiers: self.modifier.into_iter().map(Arc::from).collect(),
             fallback: self.fallback.map(Arc::from),
         };
         self.scope
             .configure(&mut ScopeContext {
                 app: &mut cx,
                 data: &global_scope,
+                modifier: self.modifier,
             }).map_err(Into::into)?;
 
         // create a route recognizer.
@@ -140,7 +122,10 @@ where
     }
 
     /// Creates a builder of HTTP server using the current configuration.
-    pub fn build_server(self) -> Result<crate::server::Server<App>> {
+    pub fn build_server(self) -> Result<crate::server::Server<App>>
+    where
+        S: Scope<M>,
+    {
         self.build().map(crate::server::Server::new)
     }
 }
@@ -151,16 +136,17 @@ pub(super) struct AppContext {
 }
 
 impl AppContext {
-    pub(super) fn new_route<H>(
+    pub(super) fn new_route(
         &mut self,
         scope: &ScopeData,
         uri: Uri,
         mut methods: IndexSet<Method>,
-        handler: H,
-    ) -> Result<()>
-    where
-        H: Handler + Send + Sync + 'static,
-    {
+        handler: impl Handler<
+                Handle = impl crate::handler::AsyncResult<crate::output::Output> + Send + 'static,
+            > + Send
+            + Sync
+            + 'static,
+    ) -> Result<()> {
         // build absolute URI.
         let uri = { scope.prefix.join(&uri)? };
 
@@ -172,7 +158,6 @@ impl AppContext {
                     id,
                     uri: uri.clone(),
                     endpoints: vec![],
-                    modifiers: scope.modifiers.clone(),
                     fallback: scope.fallback.clone(),
                     allowed_methods: IndexMap::new(),
                     allowed_methods_value: HeaderValue::from_static(""),
@@ -210,29 +195,22 @@ impl AppContext {
             id: endpoint_id,
             uri,
             methods,
-            handler: Box::new(handler),
+            handler: handler.into(),
         });
 
         Ok(())
     }
 
-    pub(super) fn new_scope(
+    pub(super) fn new_scope<M>(
         &mut self,
         parent: &ScopeData,
         prefix: Uri,
-        modifier: Option<Box<dyn Modifier + Send + Sync + 'static>>,
+        modifier: M,
         fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
-        scope: impl Scope,
+        scope: impl Scope<M>,
     ) -> Result<()> {
         let data = ScopeData {
             prefix: parent.prefix.join(&prefix)?,
-            modifiers: {
-                let mut modifiers = parent.modifiers.clone();
-                if let Some(modifier) = modifier {
-                    modifiers.push(Arc::from(modifier));
-                }
-                modifiers
-            },
             fallback: match fallback {
                 Some(fallback) => Some(Arc::from(fallback)),
                 None => parent.fallback.clone(),
@@ -243,6 +221,7 @@ impl AppContext {
             .configure(&mut ScopeContext {
                 app: self,
                 data: &data,
+                modifier,
             }).map_err(Into::into)?;
 
         Ok(())
@@ -252,7 +231,6 @@ impl AppContext {
 /// A type representing a set of data associated with the certain scope.
 pub(super) struct ScopeData {
     pub(super) prefix: Uri,
-    pub(super) modifiers: Vec<Arc<dyn Modifier + Send + Sync + 'static>>,
     pub(super) fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
 }
 

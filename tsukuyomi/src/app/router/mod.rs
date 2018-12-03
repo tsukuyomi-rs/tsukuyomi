@@ -4,7 +4,7 @@ use {
     self::recognizer::RecognizeError,
     super::{fallback::Fallback, Uri},
     bytes::BytesMut,
-    crate::{handler::Handler, modifier::Modifier},
+    crate::handler::BoxedHandler,
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
@@ -76,7 +76,6 @@ pub(super) struct Resource {
     pub(super) id: ResourceId,
     pub(super) uri: Uri,
     pub(super) endpoints: Vec<Endpoint>,
-    pub(super) modifiers: Vec<Arc<dyn Modifier + Send + Sync + 'static>>,
     pub(super) fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
     pub(super) allowed_methods: IndexMap<Method, usize>,
     pub(super) allowed_methods_value: HeaderValue,
@@ -88,14 +87,6 @@ impl fmt::Debug for Resource {
             .field("id", &self.id)
             .field("uri", &self.uri)
             .field("endpoints", &self.endpoints)
-            .field(
-                "modifiers",
-                &self
-                    .modifiers
-                    .iter()
-                    .map(|_| "<modifier>")
-                    .collect::<Vec<_>>(),
-            ) //
             .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
             .field("allowed_methods", &self.allowed_methods)
             .field("allowed_methods_value", &self.allowed_methods_value)
@@ -138,7 +129,7 @@ pub(super) struct Endpoint {
     pub(super) id: usize,
     pub(super) uri: Uri,
     pub(super) methods: IndexSet<Method>,
-    pub(super) handler: Box<dyn Handler + Send + Sync + 'static>,
+    pub(super) handler: BoxedHandler,
 }
 
 #[cfg_attr(tarpaulin, skip)]

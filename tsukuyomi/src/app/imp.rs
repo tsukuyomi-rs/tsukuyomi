@@ -13,6 +13,7 @@ use {
         localmap::LocalMap,
         output::{Output, ResponseBody},
     },
+    either::Either,
     futures::{Async, Future, IntoFuture, Poll},
     http::{
         header::{self, HeaderMap, HeaderValue},
@@ -20,7 +21,7 @@ use {
     },
     hyper::body::Payload,
     mime::Mime,
-    std::{marker::PhantomData, mem, ops::Index, rc::Rc, sync::Arc},
+    std::{fmt, marker::PhantomData, mem, ops::Index, rc::Rc, sync::Arc},
 };
 
 macro_rules! ready {
@@ -49,11 +50,20 @@ pub struct AppFuture {
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
-#[derive(Debug)]
 enum AppFutureState {
     Init,
-    InFlight(AsyncResult<Output>),
+    InFlight(Box<dyn AsyncResult<Output> + Send + 'static>),
     Done,
+}
+
+impl fmt::Debug for AppFutureState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppFutureState::Init => f.debug_struct("Init").finish(),
+            AppFutureState::InFlight(..) => f.debug_struct("InFlight").finish(),
+            AppFutureState::Done => f.debug_struct("Done").finish(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -116,7 +126,9 @@ impl AppFuture {
         }
     }
 
-    fn process_recognize(&mut self) -> Result<AsyncResult<Output>, Error> {
+    fn process_recognize(
+        &mut self,
+    ) -> Result<Either<Output, Box<dyn AsyncResult<Output> + Send + 'static>>, Error> {
         match self
             .inner
             .router
@@ -130,11 +142,7 @@ impl AppFuture {
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-                let mut in_flight = endpoint.handler.handle();
-                for modifier in resource.modifiers.iter().rev() {
-                    in_flight = modifier.modify(in_flight);
-                }
-                Ok(in_flight)
+                Ok(Either::Right(endpoint.handler.handle()))
             }
 
             Route::MethodNotAllowed {
@@ -153,7 +161,8 @@ impl AppFuture {
                     .map_or_else(
                         || super::fallback::default(&cx),
                         |fallback| fallback.call(&cx),
-                    ).map(AsyncResult::ok)
+                    ) //
+                    .map(Either::Left)
             }
             Route::NotFound => Err(StatusCode::NOT_FOUND.into()),
         }
@@ -200,7 +209,8 @@ impl Future for AppFuture {
         let polled = loop {
             self.state = match self.state {
                 AppFutureState::Init => match self.process_recognize() {
-                    Ok(in_flight) => AppFutureState::InFlight(in_flight),
+                    Ok(Either::Right(in_flight)) => AppFutureState::InFlight(in_flight),
+                    Ok(Either::Left(output)) => break Ok(output),
                     Err(err) => break Err(err),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {

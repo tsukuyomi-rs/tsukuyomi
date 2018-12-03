@@ -13,6 +13,12 @@ use {
 #[derive(Debug, Clone)]
 pub struct Uri(UriKind);
 
+impl Default for Uri {
+    fn default() -> Self {
+        Self::root()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum UriKind {
     Root,

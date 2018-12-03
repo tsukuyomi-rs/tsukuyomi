@@ -2,8 +2,7 @@ use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         app::directives::*, //
-        handler::AsyncResult,
-        output::Output,
+        handler::Handler,
         Modifier,
     },
 };
@@ -14,10 +13,36 @@ struct MockModifier {
     name: &'static str,
 }
 
-impl Modifier for MockModifier {
-    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
+impl<H> Modifier<H> for MockModifier
+where
+    H: Handler + Send + Sync + 'static,
+{
+    type Out = MockHandler<H>;
+
+    fn modify(&self, inner: H) -> Self::Out {
+        MockHandler {
+            inner,
+            marker: self.marker.clone(),
+            name: self.name,
+        }
+    }
+}
+
+struct MockHandler<H> {
+    inner: H,
+    marker: Arc<Mutex<Vec<&'static str>>>,
+    name: &'static str,
+}
+
+impl<H> Handler for MockHandler<H>
+where
+    H: Handler,
+{
+    type Handle = H::Handle;
+
+    fn handle(&self) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
-        result
+        self.inner.handle()
     }
 }
 
@@ -55,20 +80,18 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
         .with(
             route("/")? //
                 .reply(|| ""),
-        ).modifier(
-            MockModifier {
-                marker: marker.clone(),
-                name: "M1",
-            }.chain(MockModifier {
-                marker: marker.clone(),
-                name: "M2",
-            }),
-        ) //
+        ).modifier(MockModifier {
+            marker: marker.clone(),
+            name: "M1",
+        }).modifier(MockModifier {
+            marker: marker.clone(),
+            name: "M2",
+        }) //
         .build_server()?
         .into_test_server()?;
 
     let _ = server.perform("/")?;
-    assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2"]);
 
     Ok(())
 }
@@ -95,7 +118,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
         .into_test_server()?;
 
     let _ = server.perform("/path1")?;
-    assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2"]);
 
     marker.lock().unwrap().clear();
     let _ = server.perform("/path2")?;
@@ -136,11 +159,11 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
         .into_test_server()?;
 
     let _ = server.perform("/path/to")?;
-    assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2"]);
 
     marker.lock().unwrap().clear();
     let _ = server.perform("/path/to/a")?;
-    assert_eq!(*marker.lock().unwrap(), vec!["M3", "M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2", "M3"]);
 
     Ok(())
 }

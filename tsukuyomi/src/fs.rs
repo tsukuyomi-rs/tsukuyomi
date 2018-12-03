@@ -431,50 +431,51 @@ where
     }
 }
 
-impl<P> crate::app::scope::Scope for Staticfiles<P>
-where
-    P: AsRef<Path>,
-{
-    type Error = crate::app::Error;
+// impl<P, M> crate::app::scope::Scope<M> for Staticfiles<P>
+// where
+//     P: AsRef<Path>,
+//     M: Modifier,
+// {
+//     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut crate::app::scope::Context<'_>) -> crate::app::Result<()> {
-        let Self { root_dir, config } = self;
+//     fn configure(self, cx: &mut crate::app::scope::Context<'_, M>) -> crate::app::Result<()> {
+//         let Self { root_dir, config } = self;
 
-        for entry in std::fs::read_dir(root_dir)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            let name = entry.file_name();
-            let name = name.to_str().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "the filename must be UTF-8")
-            })?;
-            let path = entry
-                .path()
-                .canonicalize()
-                .map(|path| ArcPath(Arc::new(path)))?;
-            let config = config.clone();
+//         for entry in std::fs::read_dir(root_dir)? {
+//             let entry = entry?;
+//             let file_type = entry.file_type()?;
+//             let name = entry.file_name();
+//             let name = name.to_str().ok_or_else(|| {
+//                 io::Error::new(io::ErrorKind::Other, "the filename must be UTF-8")
+//             })?;
+//             let path = entry
+//                 .path()
+//                 .canonicalize()
+//                 .map(|path| ArcPath(Arc::new(path)))?;
+//             let config = config.clone();
 
-            if file_type.is_file() {
-                crate::app::directives::route(format!("/{}", name))?
-                    .send_file(path, config)
-                    .configure(cx)?;
-            } else if file_type.is_dir() {
-                let root_dir = path;
-                crate::app::directives::route(format!("/{}/*path", name))?
-                    .extract(crate::extractor::param::wildcard())
-                    .call(move |suffix: PathBuf| {
-                        let path = root_dir.join(suffix);
-                        if let Some(ref config) = config {
-                            NamedFile::open_with_config(path, config.clone()).map_err(Into::into)
-                        } else {
-                            NamedFile::open(path).map_err(Into::into)
-                        }
-                    }) //
-                    .configure(cx)?;
-            } else {
-                return Err(io::Error::new(io::ErrorKind::Other, "unexpected file type").into());
-            }
-        }
+//             if file_type.is_file() {
+//                 crate::app::directives::route(format!("/{}", name))?
+//                     .send_file(path, config)
+//                     .configure(cx)?;
+//             } else if file_type.is_dir() {
+//                 let root_dir = path;
+//                 crate::app::directives::route(format!("/{}/*path", name))?
+//                     .extract(crate::extractor::param::wildcard())
+//                     .call(move |suffix: PathBuf| {
+//                         let path = root_dir.join(suffix);
+//                         if let Some(ref config) = config {
+//                             NamedFile::open_with_config(path, config.clone()).map_err(Into::into)
+//                         } else {
+//                             NamedFile::open(path).map_err(Into::into)
+//                         }
+//                     }) //
+//                     .configure(cx)?;
+//             } else {
+//                 return Err(io::Error::new(io::ErrorKind::Other, "unexpected file type").into());
+//             }
+//         }
 
-        Ok(())
-    }
-}
+//         Ok(())
+//     }
+// }

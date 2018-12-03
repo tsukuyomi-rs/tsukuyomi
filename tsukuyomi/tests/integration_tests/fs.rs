@@ -1,7 +1,4 @@
-use tsukuyomi::{
-    app::directives::*, //
-    fs::Staticfiles,
-};
+use tsukuyomi::app::directives::*;
 
 #[test]
 #[ignore]
@@ -15,6 +12,7 @@ fn compiletest() -> tsukuyomi::app::Result<()> {
         .map(drop)
 }
 
+/*
 #[test]
 #[ignore]
 fn compiletest_staticfiles() {
@@ -25,3 +23,4 @@ fn compiletest_staticfiles() {
             .unwrap(),
     );
 }
+*/

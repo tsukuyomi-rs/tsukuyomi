@@ -223,7 +223,15 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::{handler::AsyncResult, localmap::local_key, Modifier, Output};
+    use {
+        futures::Poll,
+        tsukuyomi::{
+            handler::{AsyncResult, Handler},
+            input::Input,
+            localmap::local_key,
+            Modifier, Output,
+        },
+    };
 
     #[derive(Clone)]
     struct MyData(String);
@@ -234,17 +242,49 @@ fn local_data() -> tsukuyomi::test::Result<()> {
         }
     }
 
+    #[derive(Clone)]
     struct MyModifier;
-    impl Modifier for MyModifier {
-        fn modify(&self, mut result: AsyncResult<Output>) -> AsyncResult<Output> {
-            let mut inserted = false;
-            AsyncResult::poll_fn(move |input| {
-                if !inserted {
-                    input.locals.insert(&MyData::KEY, MyData("dummy".into()));
-                    inserted = true;
-                }
-                result.poll_ready(input)
-            })
+    impl<H> Modifier<H> for MyModifier
+    where
+        H: Handler + Send + Sync + 'static,
+    {
+        type Out = MyHandler<H>;
+
+        fn modify(&self, inner: H) -> Self::Out {
+            MyHandler(inner)
+        }
+    }
+
+    struct MyHandler<H>(H);
+    impl<H> Handler for MyHandler<H>
+    where
+        H: Handler,
+    {
+        type Handle = MyHandlerFuture<H::Handle>;
+
+        fn handle(&self) -> Self::Handle {
+            MyHandlerFuture {
+                handle: self.0.handle(),
+                inserted: false,
+            }
+        }
+    }
+
+    struct MyHandlerFuture<H> {
+        handle: H,
+        inserted: bool,
+    }
+
+    impl<H> AsyncResult<Output> for MyHandlerFuture<H>
+    where
+        H: AsyncResult<Output>,
+    {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, tsukuyomi::Error> {
+            if !self.inserted {
+                input.locals.insert(&MyData::KEY, MyData("dummy".into()));
+                self.inserted = true;
+            }
+            self.handle.poll_ready(input)
         }
     }
 
