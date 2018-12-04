@@ -399,7 +399,6 @@ where
                         }
                         Status::Init => match self.extractor.extract(input) {
                             Err(e) => return Err(e.into()),
-                            Ok(ExtractStatus::Canceled(output)) => return Ok(Async::Ready(output)),
                             Ok(ExtractStatus::Ready(arg)) => {
                                 return crate::output::internal::respond_to(self.f.call(arg), input)
                                     .map(Async::Ready);
@@ -507,7 +506,6 @@ where
                         }
                         Status::Init => match self.extractor.extract(input) {
                             Err(e) => return Err(e.into()),
-                            Ok(ExtractStatus::Canceled(output)) => return Ok(Async::Ready(output)),
                             Ok(ExtractStatus::Ready(arg)) => {
                                 Status::Second(self.f.call(arg).into_future())
                             }

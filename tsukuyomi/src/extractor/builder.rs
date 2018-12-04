@@ -147,12 +147,10 @@ where
                 let left = match left.extract(input).map_err(Into::into)? {
                     ExtractStatus::Ready(output) => MaybeDone::Ready(output),
                     ExtractStatus::Pending(future) => MaybeDone::Pending(future),
-                    ExtractStatus::Canceled(output) => return Ok(ExtractStatus::Canceled(output)),
                 };
                 let right = match right.extract(input).map_err(Into::into)? {
                     ExtractStatus::Ready(output) => MaybeDone::Ready(output),
                     ExtractStatus::Pending(future) => MaybeDone::Pending(future),
-                    ExtractStatus::Canceled(output) => return Ok(ExtractStatus::Canceled(output)),
                 };
                 match (left, right) {
                     (MaybeDone::Ready(left), MaybeDone::Ready(right)) => {
@@ -224,7 +222,7 @@ where
                 };
 
                 let left = match left_status {
-                    status @ ExtractStatus::Ready(..) | status @ ExtractStatus::Canceled(..) => {
+                    status @ ExtractStatus::Ready(..) => {
                         return Ok(status.map_pending(|_| unreachable!()));
                     }
                     ExtractStatus::Pending(left) => left,
@@ -282,7 +280,6 @@ where
         Builder {
             extractor: super::raw(move |input| {
                 let mut state = match self.extractor.extract(input).map_err(Into::into)? {
-                    ExtractStatus::Canceled(output) => return Ok(ExtractStatus::Canceled(output)),
                     ExtractStatus::Ready(arg) => {
                         let future = f.call(arg).into_future();
                         AndThenState::Second(future)

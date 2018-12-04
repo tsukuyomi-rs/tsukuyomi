@@ -17,7 +17,7 @@ pub use self::builder::Builder;
 pub(crate) use self::generic::{Combine, Func, Tuple};
 
 use {
-    crate::{common::Never, error::Error, input::Input, output::Output},
+    crate::{common::Never, error::Error, input::Input},
     futures::{Future, IntoFuture, Poll},
     std::marker::PhantomData,
 };
@@ -45,12 +45,8 @@ impl<T, E> Future for Placeholder<T, E> {
 pub enum ExtractStatus<T, Fut> {
     /// The value of `T` is immediately available.
     Ready(T),
-
     /// The value has not been available yet.
     Pending(Fut),
-
-    /// Cancel the subsequent extraction and return the specified output to the client.
-    Canceled(Output),
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
@@ -63,7 +59,6 @@ impl<T, Fut> ExtractStatus<T, Fut> {
         match self {
             ExtractStatus::Ready(t) => ExtractStatus::Ready(f(t)),
             ExtractStatus::Pending(fut) => ExtractStatus::Pending(g(fut)),
-            ExtractStatus::Canceled(out) => ExtractStatus::Canceled(out),
         }
     }
 
@@ -185,15 +180,13 @@ where
 
 pub fn guard<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
 where
-    F: Fn(&mut Input<'_>) -> Result<Option<Output>, E> + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
     E: Into<Error> + 'static,
 {
     self::raw(
         move |input| -> Result<ExtractStatus<(), self::Placeholder<_, _>>, E> {
-            match f(input)? {
-                Some(output) => Ok(ExtractStatus::Canceled(output)),
-                None => Ok(ExtractStatus::Ready(())),
-            }
+            f(input)?;
+            Ok(ExtractStatus::Ready(()))
         },
     )
 }

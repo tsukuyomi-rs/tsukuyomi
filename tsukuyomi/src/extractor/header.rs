@@ -40,7 +40,7 @@ where
     T: PartialEq<HeaderValue> + Send + Sync + 'static,
 {
     super::guard(move |input| match input.request.headers().get(&name) {
-        Some(h) if value.eq(h) => Ok(None),
+        Some(h) if value.eq(h) => Ok(()),
         Some(..) => Err(crate::error::bad_request(format!(
             "mismatched header field: {}",
             name

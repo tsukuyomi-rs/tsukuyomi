@@ -1,5 +1,5 @@
 use {
-    http::{header, Method, Request, Response, StatusCode},
+    http::{header, Request, StatusCode},
     tsukuyomi::{
         app::directives::*, //
         extractor,
@@ -97,14 +97,14 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                             .expires(expires_in)
                             .finish(),
                     );
-                    Ok::<_, tsukuyomi::error::Error>(None)
+                    Ok::<_, tsukuyomi::error::Error>(())
                 })).reply(|| "Logged in"),
         ) //
         .with(
             route("/logout")?
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
-                    Ok::<_, tsukuyomi::error::Error>(None)
+                    Ok::<_, tsukuyomi::error::Error>(())
                 })).reply(|| "Logged out"),
         ) //
         .build_server()?
@@ -149,34 +149,6 @@ fn default_options() -> tsukuyomi::test::Result<()> {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
     assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
-
-    Ok(())
-}
-
-#[test]
-fn test_canceled() -> tsukuyomi::test::Result<()> {
-    let mut server = App::builder()
-        .with(
-            route("/")?
-                .methods("GET, POST")?
-                .extract(tsukuyomi::extractor::guard(
-                    |input| -> tsukuyomi::error::Result<_> {
-                        if input.request.method() == Method::GET {
-                            Ok(None)
-                        } else {
-                            Ok(Some(Response::new("canceled".into())))
-                        }
-                    },
-                )).reply(|| "passed"),
-        ) //
-        .build_server()?
-        .into_test_server()?;
-
-    let response = server.perform("/")?;
-    assert_eq!(response.body().to_utf8()?, "passed");
-
-    let response = server.perform(Request::post("/"))?;
-    assert_eq!(response.body().to_utf8()?, "canceled");
 
     Ok(())
 }
