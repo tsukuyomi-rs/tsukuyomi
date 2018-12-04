@@ -32,6 +32,10 @@ impl Candidates {
     fn insert(&mut self, value: usize) {
         self.0.insert(value);
     }
+
+    pub(super) fn iter<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+        self.0.iter().cloned()
+    }
 }
 
 /// A route recognizer.

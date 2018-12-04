@@ -4,7 +4,7 @@ use {
     super::{
         builder::{AppContext, ScopeData},
         error::{Error, Result},
-        fallback::Fallback,
+        fallback::{BoxedFallback, Fallback},
         Uri,
     },
     crate::{
@@ -84,7 +84,7 @@ where
 pub struct Mount<S = (), M = ()> {
     scope: S,
     modifier: M,
-    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
+    fallback: Option<BoxedFallback>,
     prefix: Uri,
 }
 
@@ -121,10 +121,10 @@ impl<S, M> Mount<S, M> {
 
     pub fn fallback<F>(self, fallback: F) -> Self
     where
-        F: Fallback + Send + Sync + 'static,
+        F: Fallback,
     {
         Self {
-            fallback: Some(Box::new(fallback)),
+            fallback: Some(fallback.into()),
             ..self
         }
     }

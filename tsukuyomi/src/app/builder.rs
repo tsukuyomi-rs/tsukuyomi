@@ -1,8 +1,8 @@
 use {
     super::{
         error::{Error, Result},
-        fallback::Fallback,
-        router::{Config, Endpoint, Recognizer, Resource, ResourceId, Router},
+        fallback::{BoxedFallback, Fallback},
+        router::{Endpoint, Recognizer, Resource, ResourceId, Router},
         scope::{Context as ScopeContext, Scope},
         App, AppInner, Uri,
     },
@@ -17,9 +17,8 @@ use {
 pub struct Builder<S = (), M = ()> {
     scope: S,
     modifier: M,
-    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
+    fallback: Option<BoxedFallback>,
     prefix: Uri,
-    config: Config,
 }
 
 #[cfg_attr(tarpaulin, skip)]
@@ -33,7 +32,6 @@ where
             .field("scope", &self.scope)
             .field("modifier", &self.modifier)
             .field("prefix", &self.prefix)
-            .field("config", &self.config)
             .finish()
     }
 }
@@ -43,7 +41,6 @@ impl<S, M> Builder<S, M> {
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
     pub fn with<S2>(self, next_scope: S2) -> Builder<Chain<S, S2>, M> {
         Builder {
-            config: self.config,
             prefix: self.prefix,
             scope: Chain::new(self.scope, next_scope),
             modifier: self.modifier,
@@ -58,7 +55,6 @@ impl<S, M> Builder<S, M> {
 
     pub fn modifier<M2>(self, modifier: M2) -> Builder<S, Chain<M, M2>> {
         Builder {
-            config: self.config,
             prefix: self.prefix,
             scope: self.scope,
             modifier: Chain::new(self.modifier, modifier),
@@ -66,22 +62,15 @@ impl<S, M> Builder<S, M> {
         }
     }
 
+    /// Sets the instance of `Fallback` to the global scope.
     pub fn fallback<F>(self, fallback: F) -> Self
     where
-        F: Fallback + Send + Sync + 'static,
+        F: Fallback,
     {
         Builder {
-            fallback: Some(Box::new(fallback)),
+            fallback: Some(fallback.into()),
             ..self
         }
-    }
-
-    /// Specifies whether to use the fallback `HEAD` handlers if it is not registered.
-    ///
-    /// The default value is `true`.
-    pub fn fallback_head(mut self, enabled: bool) -> Self {
-        self.config.fallback_head = enabled;
-        self
     }
 
     /// Creates an `App` using the current configuration.
@@ -91,11 +80,15 @@ impl<S, M> Builder<S, M> {
     {
         let mut cx = AppContext {
             resources: IndexMap::new(),
+            num_scopes: 1,
         };
 
+        let global_fallback = self.fallback.map(Arc::new);
+
         let global_scope = ScopeData {
+            id: 0,
             prefix: self.prefix,
-            fallback: self.fallback.map(Arc::from),
+            fallback: global_fallback.clone(),
         };
         self.scope
             .configure(&mut ScopeContext {
@@ -106,7 +99,7 @@ impl<S, M> Builder<S, M> {
 
         // create a route recognizer.
         let mut recognizer = Recognizer::default();
-        for (uri, mut resource) in cx.resources {
+        for (uri, (_, mut resource)) in cx.resources {
             resource.update();
             recognizer.insert(uri.as_str(), resource)?;
         }
@@ -115,7 +108,7 @@ impl<S, M> Builder<S, M> {
             inner: Arc::new(AppInner {
                 router: Router {
                     recognizer,
-                    config: self.config,
+                    global_fallback,
                 },
             }),
         })
@@ -132,7 +125,8 @@ impl<S, M> Builder<S, M> {
 
 #[derive(Debug)]
 pub(super) struct AppContext {
-    resources: IndexMap<Uri, Resource>,
+    resources: IndexMap<Uri, (usize, Resource)>,
+    num_scopes: usize,
 }
 
 impl AppContext {
@@ -141,28 +135,30 @@ impl AppContext {
         scope: &ScopeData,
         uri: Uri,
         mut methods: IndexSet<Method>,
-        handler: impl Handler<
-                Handle = impl crate::handler::AsyncResult<crate::output::Output> + Send + 'static,
-            > + Send
-            + Sync
-            + 'static,
+        handler: impl Handler,
     ) -> Result<()> {
         // build absolute URI.
         let uri = { scope.prefix.join(&uri)? };
 
-        let resource = {
+        let &mut (scope_id, ref mut resource) = {
             let id = ResourceId(self.resources.len());
-            self.resources
-                .entry(uri.clone())
-                .or_insert_with(|| Resource {
-                    id,
-                    uri: uri.clone(),
-                    endpoints: vec![],
-                    fallback: scope.fallback.clone(),
-                    allowed_methods: IndexMap::new(),
-                    allowed_methods_value: HeaderValue::from_static(""),
-                })
+            self.resources.entry(uri.clone()).or_insert_with(|| {
+                (
+                    scope.id,
+                    Resource {
+                        id,
+                        uri: uri.clone(),
+                        endpoints: vec![],
+                        fallback: scope.fallback.clone(),
+                        allowed_methods: IndexMap::new(),
+                        allowed_methods_value: HeaderValue::from_static(""),
+                    },
+                )
+            })
         };
+        if scope.id != scope_id {
+            return Err(failure::format_err!("different scope id").into());
+        }
 
         if methods.is_empty() {
             methods.insert(Method::GET);
@@ -206,16 +202,18 @@ impl AppContext {
         parent: &ScopeData,
         prefix: Uri,
         modifier: M,
-        fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
+        fallback: Option<BoxedFallback>,
         scope: impl Scope<M>,
     ) -> Result<()> {
         let data = ScopeData {
+            id: self.num_scopes,
             prefix: parent.prefix.join(&prefix)?,
             fallback: match fallback {
-                Some(fallback) => Some(Arc::from(fallback)),
+                Some(fallback) => Some(Arc::new(fallback)),
                 None => parent.fallback.clone(),
             },
         };
+        self.num_scopes += 1;
 
         scope
             .configure(&mut ScopeContext {
@@ -230,8 +228,9 @@ impl AppContext {
 
 /// A type representing a set of data associated with the certain scope.
 pub(super) struct ScopeData {
+    id: usize,
     pub(super) prefix: Uri,
-    pub(super) fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
+    pub(super) fallback: Option<Arc<BoxedFallback>>,
 }
 
 #[cfg_attr(tarpaulin, skip)]

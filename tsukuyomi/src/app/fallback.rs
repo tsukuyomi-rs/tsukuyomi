@@ -1,35 +1,20 @@
 use {
-    super::{router::Resource, AppInner},
-    crate::{error::Error, output::Output},
+    super::router::Resource,
+    crate::{handler::AsyncResult, output::Output},
     http::{Method, Request, StatusCode},
+    std::fmt,
 };
 
-/// A trait representing the callback function to be called when the incoming request
-/// does not match to the registered routes in the application.
-pub trait Fallback {
-    fn call(&self, cx: &Context<'_>) -> Result<Output, Error>;
-}
-
-impl Fallback for () {
-    fn call(&self, cx: &Context<'_>) -> Result<Output, Error> {
-        self::default(cx)
-    }
-}
-
-impl<F> Fallback for F
-where
-    F: Fn(&Context<'_>) -> Result<Output, Error>,
-{
-    fn call(&self, cx: &Context<'_>) -> Result<Output, Error> {
-        (*self)(cx)
-    }
+#[derive(Debug)]
+pub enum FallbackKind<'a> {
+    NotFound(Vec<&'a Resource>),
+    FoundResource(&'a Resource),
 }
 
 #[derive(Debug)]
 pub struct Context<'a> {
-    pub(super) inner: &'a AppInner,
     pub(super) request: &'a Request<()>,
-    pub(super) resource: &'a Resource,
+    pub(super) kind: FallbackKind<'a>,
 }
 
 impl<'a> Context<'a> {
@@ -37,21 +22,85 @@ impl<'a> Context<'a> {
         &*self.request
     }
 
-    pub fn methods(&self) -> impl Iterator<Item = &'a Method> + 'a {
-        self.resource.allowed_methods.keys()
+    pub fn kind(&self) -> &FallbackKind<'a> {
+        &self.kind
+    }
+}
+
+/// A trait representing the callback function to be called when the incoming request
+/// does not match to the registered routes in the application.
+pub trait Fallback: Send + Sync + 'static {
+    type Handle: Into<Box<dyn AsyncResult<Output> + Send + 'static>>;
+
+    fn call(&self, cx: &Context<'_>) -> Self::Handle;
+}
+
+impl<F, R> Fallback for F
+where
+    F: Fn(&Context<'_>) -> R + Send + Sync + 'static,
+    R: Into<Box<dyn AsyncResult<Output> + Send + 'static>>,
+{
+    type Handle = R;
+
+    fn call(&self, cx: &Context<'_>) -> Self::Handle {
+        (*self)(cx)
+    }
+}
+
+pub struct BoxedFallback(
+    Box<
+        dyn Fn(&Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static>
+            + Send
+            + Sync
+            + 'static,
+    >,
+);
+
+impl fmt::Debug for BoxedFallback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BoxedFallback").finish()
+    }
+}
+
+impl<F> From<F> for BoxedFallback
+where
+    F: Fallback,
+{
+    fn from(fallback: F) -> Self {
+        BoxedFallback(Box::new(move |cx| fallback.call(cx).into()))
+    }
+}
+
+impl BoxedFallback {
+    pub(crate) fn call(&self, cx: &Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+        (self.0)(cx)
     }
 }
 
 /// The default fallback when the `Fallback` is not registered.
-pub fn default(cx: &Context<'_>) -> Result<Output, Error> {
-    if cx.request.method() != Method::OPTIONS {
-        return Err(StatusCode::METHOD_NOT_ALLOWED.into());
-    }
+pub fn default(cx: &Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+    match cx.kind {
+        FallbackKind::NotFound(..) => Box::new(crate::handler::err(StatusCode::NOT_FOUND.into())),
+        FallbackKind::FoundResource(resource) => {
+            if cx.request.method() == Method::HEAD {
+                return resource
+                    .allowed_methods
+                    .get(&Method::GET)
+                    .map(|&i| resource.endpoints[i].handler.handle())
+                    .unwrap_or_else(|| {
+                        Box::new(crate::handler::err(StatusCode::METHOD_NOT_ALLOWED.into()))
+                    });
+            }
 
-    let mut response = Output::default();
-    response.headers_mut().insert(
-        http::header::ALLOW,
-        cx.resource.allowed_methods_value.clone(),
-    );
-    Ok(response)
+            if cx.request.method() == Method::OPTIONS {
+                let mut response = Output::default();
+                response
+                    .headers_mut()
+                    .insert(http::header::ALLOW, resource.allowed_methods_value.clone());
+                return Box::new(crate::handler::ok(response));
+            }
+
+            Box::new(crate::handler::err(StatusCode::METHOD_NOT_ALLOWED.into()))
+        }
+    }
 }

@@ -25,6 +25,7 @@ use self::uri::Uri;
 pub use self::{
     builder::Builder,
     error::{Error, Result},
+    router::Resource,
     scope::Scope,
 };
 use {

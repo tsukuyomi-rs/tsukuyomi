@@ -209,10 +209,11 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
         .into_test_server()?;
 
     let _ = server.perform("/")?;
-    assert!(marker.lock().unwrap().is_empty());
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);
 
+    marker.lock().unwrap().clear();
     let _ = server.perform("/api/v1/p")?;
-    assert!(marker.lock().unwrap().is_empty());
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);
 
     marker.lock().unwrap().clear();
     let _ = server.perform("/api/v1/posts")?;

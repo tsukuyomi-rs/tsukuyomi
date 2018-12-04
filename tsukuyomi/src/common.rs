@@ -1,8 +1,4 @@
-use {
-    crate::{error::HttpError, input::Input, output::Output},
-    http::StatusCode,
-    std::{error::Error as StdError, fmt},
-};
+use std::{error::Error as StdError, fmt};
 
 /// A helper type which emulates the standard `never_type` (`!`).
 #[cfg_attr(feature = "cargo-clippy", allow(empty_enum))]
@@ -25,17 +21,7 @@ impl StdError for Never {
     }
 }
 
-impl HttpError for Never {
-    fn status_code(&self) -> StatusCode {
-        match *self {}
-    }
-
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
-        match *self {}
-    }
-}
-
-/// A helper trait representing the conversion into an `Uri`.
+/// A trait representing the arbitrary conversion into `Self`.
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait TryFrom<T>: Sized {
     type Error: Into<failure::Error>;

@@ -1,7 +1,7 @@
 use {
     super::uri::CaptureNames,
     super::{
-        fallback::Context as FallbackContext,
+        fallback::{Context as FallbackContext, FallbackKind},
         router::{Captures, ResourceId, Route},
         AppInner,
     },
@@ -13,11 +13,10 @@ use {
         localmap::LocalMap,
         output::{Output, ResponseBody},
     },
-    either::Either,
     futures::{Async, Future, IntoFuture, Poll},
     http::{
         header::{self, HeaderMap, HeaderValue},
-        Method, Request, Response, StatusCode,
+        Method, Request, Response,
     },
     hyper::body::Payload,
     mime::Mime,
@@ -73,43 +72,6 @@ enum BodyState {
     Upgraded,
 }
 
-macro_rules! input {
-    ($self:expr) => {
-        &mut Input {
-            request: &$self.request,
-            params: {
-                &if let Some(resource_id) = $self.resource_id {
-                    if let (Some(names), &Some(ref captures)) = (
-                        $self.inner.router.resource(resource_id).uri.capture_names(),
-                        &$self.captures,
-                    ) {
-                        Some(Params {
-                            path: $self.request.uri().path(),
-                            names,
-                            captures,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            },
-            cookies: &mut Cookies {
-                jar: &mut $self.cookie_jar,
-                request_headers: &$self.request.headers(),
-                _marker: PhantomData,
-            },
-            locals: &mut $self.locals,
-            body: &mut $self.body,
-            response_headers: &mut $self.response_headers,
-            inner: &*$self.inner,
-            resource_id: $self.resource_id,
-            _marker: PhantomData,
-        }
-    };
-}
-
 impl AppFuture {
     pub(super) fn new(request: Request<RequestBody>, inner: Arc<AppInner>) -> Self {
         let (parts, body) = request.into_parts();
@@ -126,15 +88,13 @@ impl AppFuture {
         }
     }
 
-    fn process_recognize(
-        &mut self,
-    ) -> Result<Either<Output, Box<dyn AsyncResult<Output> + Send + 'static>>, Error> {
+    fn process_recognize(&mut self) -> Box<dyn AsyncResult<Output> + Send + 'static> {
         match self
             .inner
             .router
             .route(self.request.uri().path(), self.request.method())
         {
-            Route::Matched {
+            Route::FoundEndpoint {
                 endpoint,
                 resource,
                 captures,
@@ -142,29 +102,38 @@ impl AppFuture {
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-                Ok(Either::Right(endpoint.handler.handle()))
+                return endpoint.handler.handle();
             }
 
-            Route::MethodNotAllowed {
+            Route::FoundResource {
                 resource, captures, ..
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
                 let cx = FallbackContext {
                     request: &self.request,
-                    inner: &*self.inner,
-                    resource,
+                    kind: FallbackKind::FoundResource(resource),
                 };
-                resource
-                    .fallback
-                    .as_ref()
-                    .map_or_else(
-                        || super::fallback::default(&cx),
-                        |fallback| fallback.call(&cx),
-                    ) //
-                    .map(Either::Left)
+                match resource.fallback {
+                    Some(ref fallback) => fallback.call(&cx),
+                    None => super::fallback::default(&cx),
+                }
             }
-            Route::NotFound => Err(StatusCode::NOT_FOUND.into()),
+            Route::NotFound {
+                resources,
+                captures,
+            } => {
+                self.resource_id = None;
+                self.captures = captures;
+                let cx = FallbackContext {
+                    request: &self.request,
+                    kind: FallbackKind::NotFound(resources),
+                };
+                match self.inner.router.global_fallback {
+                    Some(ref fallback) => fallback.call(&cx),
+                    None => super::fallback::default(&cx),
+                }
+            }
         }
     }
 
@@ -209,12 +178,41 @@ impl Future for AppFuture {
         let polled = loop {
             self.state = match self.state {
                 AppFutureState::Init => match self.process_recognize() {
-                    Ok(Either::Right(in_flight)) => AppFutureState::InFlight(in_flight),
-                    Ok(Either::Left(output)) => break Ok(output),
-                    Err(err) => break Err(err),
+                    in_flight => AppFutureState::InFlight(in_flight),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
-                    break ready!(in_flight.poll_ready(input!(self)))
+                    break ready!(in_flight.poll_ready(&mut Input {
+                        request: &self.request,
+                        params: {
+                            &if let Some(resource_id) = self.resource_id {
+                                if let (Some(names), &Some(ref captures)) = (
+                                    self.inner.router.resource(resource_id).uri.capture_names(),
+                                    &self.captures,
+                                ) {
+                                    Some(Params {
+                                        path: self.request.uri().path(),
+                                        names,
+                                        captures,
+                                    })
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        },
+                        cookies: &mut Cookies {
+                            jar: &mut self.cookie_jar,
+                            request_headers: &self.request.headers(),
+                            _marker: PhantomData,
+                        },
+                        locals: &mut self.locals,
+                        body: &mut self.body,
+                        response_headers: &mut self.response_headers,
+                        inner: &*self.inner,
+                        resource_id: self.resource_id,
+                        _marker: PhantomData,
+                    }))
                 }
                 AppFutureState::Done => panic!("the future has already polled."),
             };
@@ -223,7 +221,7 @@ impl Future for AppFuture {
 
         let mut output = match polled {
             Ok(output) => output,
-            Err(err) => err.into_response(input!(self))?,
+            Err(err) => err.into_response(&self.request)?,
         };
 
         self.process_before_reply(&mut output);

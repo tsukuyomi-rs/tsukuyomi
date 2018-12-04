@@ -8,7 +8,7 @@ use {
     },
     either::Either,
     futures::{Async, Future, IntoFuture, Poll},
-    std::sync::Arc,
+    std::{fmt, sync::Arc},
 };
 
 pub trait AsyncResult<T, E = Error> {
@@ -181,10 +181,15 @@ where
     Raw(f)
 }
 
-#[allow(missing_debug_implementations)]
 pub(crate) struct BoxedHandler(
     Box<dyn Fn() -> Box<dyn AsyncResult<Output> + Send + 'static> + Send + Sync + 'static>,
 );
+
+impl fmt::Debug for BoxedHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BoxedHandler").finish()
+    }
+}
 
 impl<H> From<H> for BoxedHandler
 where

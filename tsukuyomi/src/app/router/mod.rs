@@ -2,7 +2,7 @@ mod recognizer;
 
 use {
     self::recognizer::RecognizeError,
-    super::{fallback::Fallback, Uri},
+    super::{fallback::BoxedFallback, Uri},
     bytes::BytesMut,
     crate::handler::BoxedHandler,
     http::{header::HeaderValue, Method},
@@ -15,7 +15,7 @@ pub(super) use self::recognizer::{Captures, Recognizer};
 #[derive(Debug)]
 pub(super) struct Router {
     pub(super) recognizer: Recognizer<Resource>,
-    pub(super) config: Config,
+    pub(super) global_fallback: Option<Arc<BoxedFallback>>,
 }
 
 impl Router {
@@ -27,43 +27,31 @@ impl Router {
         let mut captures = None;
         let resource = match self.recognizer.recognize(path, &mut captures) {
             Ok(resource) => resource,
-            Err(RecognizeError::NotMatched) => return Route::NotFound,
-            Err(RecognizeError::PartiallyMatched(_candidates)) => return Route::NotFound,
+            Err(RecognizeError::NotMatched) => {
+                return Route::NotFound {
+                    resources: vec![],
+                    captures,
+                }
+            }
+            Err(RecognizeError::PartiallyMatched(candidates)) => {
+                return Route::NotFound {
+                    resources: candidates
+                        .iter()
+                        .filter_map(|i| self.recognizer.get(i))
+                        .collect(),
+                    captures,
+                }
+            }
         };
 
         if let Some(endpoint) = resource.recognize(method) {
-            return Route::Matched {
+            Route::FoundEndpoint {
                 endpoint,
                 resource,
                 captures,
-                fallback_head: false,
-            };
-        }
-
-        if self.config.fallback_head && *method == Method::HEAD {
-            if let Some(endpoint) = resource.recognize(&Method::GET) {
-                return Route::Matched {
-                    endpoint,
-                    resource,
-                    captures,
-                    fallback_head: true,
-                };
             }
-        }
-
-        Route::MethodNotAllowed { resource, captures }
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct Config {
-    pub(super) fallback_head: bool,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            fallback_head: true,
+        } else {
+            Route::FoundResource { resource, captures }
         }
     }
 }
@@ -72,11 +60,11 @@ impl Default for Config {
 pub(super) struct ResourceId(pub(super) usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
-pub(super) struct Resource {
+pub struct Resource {
     pub(super) id: ResourceId,
     pub(super) uri: Uri,
     pub(super) endpoints: Vec<Endpoint>,
-    pub(super) fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
+    pub(super) fallback: Option<Arc<BoxedFallback>>,
     pub(super) allowed_methods: IndexMap<Method, usize>,
     pub(super) allowed_methods_value: HeaderValue,
 }
@@ -95,6 +83,10 @@ impl fmt::Debug for Resource {
 }
 
 impl Resource {
+    pub fn allowed_methods<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
+        self.allowed_methods.keys()
+    }
+
     fn recognize(&self, method: &Method) -> Option<&Endpoint> {
         self.allowed_methods
             .get(method)
@@ -125,7 +117,7 @@ impl Resource {
 }
 
 /// A struct representing a set of data associated with an endpoint.
-pub(super) struct Endpoint {
+pub struct Endpoint {
     pub(super) id: usize,
     pub(super) uri: Uri,
     pub(super) methods: IndexSet<Method>,
@@ -146,19 +138,21 @@ impl fmt::Debug for Endpoint {
 #[derive(Debug)]
 pub(super) enum Route<'a> {
     /// The URI is matched and a route associated with the specified method is found.
-    Matched {
+    FoundEndpoint {
         endpoint: &'a Endpoint,
         resource: &'a Resource,
         captures: Option<Captures>,
-        fallback_head: bool,
+    },
+
+    /// the URI is matched, but the method is disallowed.
+    FoundResource {
+        resource: &'a Resource,
+        captures: Option<Captures>,
     },
 
     /// The URI is not matched to any endpoints.
-    NotFound,
-
-    /// the URI is matched, but the method is disallowed.
-    MethodNotAllowed {
-        resource: &'a Resource,
+    NotFound {
+        resources: Vec<&'a Resource>,
         captures: Option<Captures>,
     },
 }

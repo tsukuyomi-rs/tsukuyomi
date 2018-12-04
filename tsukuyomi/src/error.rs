@@ -16,10 +16,10 @@
 
 use {
     crate::{
-        input::Input,
+        common::Never,
         output::{Output, ResponseBody},
     },
-    http::{Response, StatusCode},
+    http::{Request, Response, StatusCode},
     std::{any::TypeId, fmt, io},
 };
 
@@ -55,7 +55,7 @@ pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static {
 
     /// Generates a message body from this error value.
     #[allow(unused_variables)]
-    fn to_response(&mut self, input: &mut Input<'_>) -> Output {
+    fn to_response(&mut self, request: &Request<()>) -> Output {
         Response::builder()
             .status(self.status_code())
             .body(self.to_string().into())
@@ -73,7 +73,7 @@ impl HttpError for StatusCode {
         *self
     }
 
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
+    fn to_response(&mut self, _: &Request<()>) -> Output {
         let mut response = Response::new(ResponseBody::default());
         *response.status_mut() = *self;
         response
@@ -82,7 +82,7 @@ impl HttpError for StatusCode {
 
 /// The implementation of `HttpError` for the standard I/O error.
 impl HttpError for io::Error {
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
+    fn to_response(&mut self, _: &Request<()>) -> Output {
         Response::builder()
             .status(self.status_code())
             .body(format!("I/O error: {}", self).into())
@@ -100,7 +100,7 @@ impl HttpError for io::Error {
 
 /// The implementation of `HttpError` for the generic error provided by `failure`.
 impl HttpError for failure::Error {
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
+    fn to_response(&mut self, _: &Request<()>) -> Output {
         Response::builder()
             .status(self.status_code())
             .body(format!("generic error: {}", self).into())
@@ -109,6 +109,16 @@ impl HttpError for failure::Error {
 
     fn status_code(&self) -> StatusCode {
         StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+impl HttpError for Never {
+    fn status_code(&self) -> StatusCode {
+        match *self {}
+    }
+
+    fn to_response(&mut self, _: &Request<()>) -> Output {
+        match *self {}
     }
 }
 
@@ -206,7 +216,7 @@ where
         }
     }
 
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
+    fn to_response(&mut self, _: &Request<()>) -> Output {
         let parts = self
             .parts
             .take()
@@ -371,11 +381,11 @@ impl Error {
 
     pub(crate) fn into_response(
         self,
-        input: &mut Input<'_>,
+        request: &Request<()>,
     ) -> std::result::Result<Output, Critical> {
         let mut err = self.0?;
         let status = err.status_code();
-        let mut response = err.to_response(input);
+        let mut response = err.to_response(request);
         *response.status_mut() = status;
         Ok(response)
     }
