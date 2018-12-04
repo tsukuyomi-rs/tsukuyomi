@@ -1,7 +1,7 @@
 use {
     super::router::Resource,
-    crate::{handler::AsyncResult, output::Output},
-    http::{Method, Request, StatusCode},
+    crate::{handler::AsyncResult, input::Input, output::Output},
+    http::{Method, StatusCode},
     std::fmt,
 };
 
@@ -13,18 +13,9 @@ pub enum FallbackKind<'a> {
 
 #[derive(Debug)]
 pub struct Context<'a> {
-    pub(super) request: &'a Request<()>,
-    pub(super) kind: FallbackKind<'a>,
-}
-
-impl<'a> Context<'a> {
-    pub fn request(&self) -> &Request<()> {
-        &*self.request
-    }
-
-    pub fn kind(&self) -> &FallbackKind<'a> {
-        &self.kind
-    }
+    pub input: &'a mut Input<'a>,
+    pub kind: &'a FallbackKind<'a>,
+    pub(super) _priv: (),
 }
 
 /// A trait representing the callback function to be called when the incoming request
@@ -32,24 +23,24 @@ impl<'a> Context<'a> {
 pub trait Fallback: Send + Sync + 'static {
     type Handle: Into<Box<dyn AsyncResult<Output> + Send + 'static>>;
 
-    fn call(&self, cx: &Context<'_>) -> Self::Handle;
+    fn call(&self, cx: &mut Context<'_>) -> Self::Handle;
 }
 
 impl<F, R> Fallback for F
 where
-    F: Fn(&Context<'_>) -> R + Send + Sync + 'static,
+    F: Fn(&mut Context<'_>) -> R + Send + Sync + 'static,
     R: Into<Box<dyn AsyncResult<Output> + Send + 'static>>,
 {
     type Handle = R;
 
-    fn call(&self, cx: &Context<'_>) -> Self::Handle {
+    fn call(&self, cx: &mut Context<'_>) -> Self::Handle {
         (*self)(cx)
     }
 }
 
 pub struct BoxedFallback(
     Box<
-        dyn Fn(&Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static>
+        dyn Fn(&mut Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static>
             + Send
             + Sync
             + 'static,
@@ -72,27 +63,30 @@ where
 }
 
 impl BoxedFallback {
-    pub(crate) fn call(&self, cx: &Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+    pub(crate) fn call(
+        &self,
+        cx: &mut Context<'_>,
+    ) -> Box<dyn AsyncResult<Output> + Send + 'static> {
         (self.0)(cx)
     }
 }
 
 /// The default fallback when the `Fallback` is not registered.
-pub fn default(cx: &Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+pub fn default(cx: &mut Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static> {
     match cx.kind {
         FallbackKind::NotFound(..) => Box::new(crate::handler::err(StatusCode::NOT_FOUND.into())),
         FallbackKind::FoundResource(resource) => {
-            if cx.request.method() == Method::HEAD {
+            if cx.input.request.method() == Method::HEAD {
                 return resource
                     .allowed_methods
                     .get(&Method::GET)
-                    .map(|&i| resource.endpoints[i].handler.handle())
+                    .map(|&i| resource.endpoints[i].handler.handle(&mut *cx.input))
                     .unwrap_or_else(|| {
                         Box::new(crate::handler::err(StatusCode::METHOD_NOT_ALLOWED.into()))
                     });
             }
 
-            if cx.request.method() == Method::OPTIONS {
+            if cx.input.request.method() == Method::OPTIONS {
                 let mut response = Output::default();
                 response
                     .headers_mut()

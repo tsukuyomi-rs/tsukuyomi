@@ -12,6 +12,7 @@ use {
         extractor::{Combine, ExtractStatus, Extractor, Func},
         fs::NamedFile,
         handler::{AsyncResult, Handler},
+        input::Input,
         modifier::Modifier,
         output::{redirect::Redirect, Output, Responder},
     },
@@ -421,7 +422,7 @@ where
         {
             type Handle = ReplyFuture<E, F>;
 
-            fn handle(&self) -> Self::Handle {
+            fn handle(&self, _: &mut Input<'_>) -> Self::Handle {
                 ReplyFuture {
                     extractor: self.0.clone(),
                     f: self.1.clone(),
@@ -529,7 +530,7 @@ where
         {
             type Handle = CallHandlerFuture<E, F>;
 
-            fn handle(&self) -> Self::Handle {
+            fn handle(&self, _: &mut Input<'_>) -> Self::Handle {
                 CallHandlerFuture {
                     extractor: self.0.clone(),
                     f: self.1.clone(),

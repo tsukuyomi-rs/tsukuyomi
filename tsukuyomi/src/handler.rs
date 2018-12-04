@@ -52,27 +52,27 @@ where
     poll_fn(move |input| input.with_set_current(|| future.poll()))
 }
 
-/// Creates an `AsyncResult` from the specified `Result`.
-pub fn result<T, E>(result: Result<T, E>) -> impl AsyncResult<T, E> {
-    #[allow(missing_debug_implementations)]
-    struct AsyncResultValue<T, E>(Option<Result<T, E>>);
+#[derive(Debug)]
+pub struct AsyncResultValue<T, E>(Option<Result<T, E>>);
 
-    impl<T, E> AsyncResult<T, E> for AsyncResultValue<T, E> {
-        fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<T, E> {
-            self.0.take().unwrap().map(Async::Ready)
-        }
+impl<T, E> AsyncResult<T, E> for AsyncResultValue<T, E> {
+    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<T, E> {
+        self.0.take().unwrap().map(Async::Ready)
     }
+}
 
+/// Creates an `AsyncResult` from the specified `Result`.
+pub fn result<T, E>(result: Result<T, E>) -> AsyncResultValue<T, E> {
     AsyncResultValue(Some(result))
 }
 
 /// Creates an `AsyncResult` from an successful value.
-pub fn ok<T, E>(output: T) -> impl AsyncResult<T, E> {
+pub fn ok<T, E>(output: T) -> AsyncResultValue<T, E> {
     self::result(Ok(output))
 }
 
 /// Creates an `AsyncResult` from an error value.
-pub fn err<T, E>(err: E) -> impl AsyncResult<T, E> {
+pub fn err<T, E>(err: E) -> AsyncResultValue<T, E> {
     self::result(Err(err))
 }
 
@@ -113,19 +113,19 @@ pub trait Handler: Send + Sync + 'static {
     type Handle: AsyncResult<Output> + Send + 'static;
 
     /// Creates an `AsyncResult` which handles the incoming request.
-    fn handle(&self) -> Self::Handle;
+    fn handle(&self, input: &mut Input<'_>) -> Self::Handle;
 }
 
 impl<F, R> Handler for F
 where
-    F: Fn() -> R + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
     R: AsyncResult<Output> + Send + 'static,
 {
     type Handle = R;
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
-        (*self)()
+    fn handle(&self, input: &mut Input<'_>) -> Self::Handle {
+        (*self)(input)
     }
 }
 
@@ -136,8 +136,8 @@ where
     type Handle = H::Handle;
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
-        (**self).handle()
+    fn handle(&self, input: &mut Input<'_>) -> Self::Handle {
+        (**self).handle(input)
     }
 }
 
@@ -149,17 +149,17 @@ where
     type Handle = Either<L::Handle, R::Handle>;
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
+    fn handle(&self, input: &mut Input<'_>) -> Self::Handle {
         match self {
-            Either::Left(ref handler) => Either::Left(handler.handle()),
-            Either::Right(ref handler) => Either::Right(handler.handle()),
+            Either::Left(ref handler) => Either::Left(handler.handle(input)),
+            Either::Right(ref handler) => Either::Right(handler.handle(input)),
         }
     }
 }
 
 pub fn raw<F, R>(f: F) -> impl Handler
 where
-    F: Fn() -> R + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
     R: AsyncResult<Output> + Send + 'static,
 {
     #[allow(missing_debug_implementations)]
@@ -167,14 +167,14 @@ where
 
     impl<F, R> Handler for Raw<F>
     where
-        F: Fn() -> R + Send + Sync + 'static,
+        F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
         R: AsyncResult<Output> + Send + 'static,
     {
         type Handle = R;
 
         #[inline]
-        fn handle(&self) -> Self::Handle {
-            (self.0)()
+        fn handle(&self, input: &mut Input<'_>) -> Self::Handle {
+            (self.0)(input)
         }
     }
 
@@ -182,7 +182,12 @@ where
 }
 
 pub(crate) struct BoxedHandler(
-    Box<dyn Fn() -> Box<dyn AsyncResult<Output> + Send + 'static> + Send + Sync + 'static>,
+    Box<
+        dyn Fn(&mut Input<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static>
+            + Send
+            + Sync
+            + 'static,
+    >,
 );
 
 impl fmt::Debug for BoxedHandler {
@@ -196,14 +201,17 @@ where
     H: Handler,
 {
     fn from(handler: H) -> Self {
-        BoxedHandler(Box::new(move || {
-            Box::new(handler.handle()) as Box<dyn AsyncResult<Output> + Send + 'static>
+        BoxedHandler(Box::new(move |input| {
+            Box::new(handler.handle(input)) as Box<dyn AsyncResult<Output> + Send + 'static>
         }))
     }
 }
 
 impl BoxedHandler {
-    pub(crate) fn handle(&self) -> Box<dyn AsyncResult<Output> + Send + 'static> {
-        (self.0)()
+    pub(crate) fn handle(
+        &self,
+        input: &mut Input<'_>,
+    ) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+        (self.0)(input)
     }
 }

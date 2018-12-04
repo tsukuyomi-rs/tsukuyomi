@@ -189,7 +189,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .fallback({
             let marker = marker.clone();
-            move |cx: &tsukuyomi::app::fallback::Context| {
+            move |cx: &mut tsukuyomi::app::fallback::Context<'_>| {
                 marker.lock().unwrap().push("F1");
                 tsukuyomi::app::fallback::default(cx)
             }
@@ -198,7 +198,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
             mount("/api/v1/")?
                 .fallback({
                     let marker = marker.clone();
-                    move |cx: &tsukuyomi::app::fallback::Context| {
+                    move |cx: &mut tsukuyomi::app::fallback::Context<'_>| {
                         marker.lock().unwrap().push("F2");
                         tsukuyomi::app::fallback::default(cx)
                     }

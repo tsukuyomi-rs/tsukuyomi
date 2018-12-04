@@ -40,9 +40,9 @@ where
 {
     type Handle = H::Handle;
 
-    fn handle(&self) -> Self::Handle {
+    fn handle(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
-        self.inner.handle()
+        self.inner.handle(input)
     }
 }
 

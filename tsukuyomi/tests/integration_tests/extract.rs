@@ -262,9 +262,9 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     {
         type Handle = MyHandlerFuture<H::Handle>;
 
-        fn handle(&self) -> Self::Handle {
+        fn handle(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
             MyHandlerFuture {
-                handle: self.0.handle(),
+                handle: self.0.handle(input),
                 inserted: false,
             }
         }
