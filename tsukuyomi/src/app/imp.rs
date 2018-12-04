@@ -16,7 +16,7 @@ use {
     futures::{Async, Future, IntoFuture, Poll},
     http::{
         header::{self, HeaderMap, HeaderValue},
-        Method, Request, Response,
+        Request, Response,
     },
     hyper::body::Payload,
     mime::Mime,
@@ -41,7 +41,6 @@ pub struct AppFuture {
     inner: Arc<AppInner>,
     body: BodyState,
     cookie_jar: Option<CookieJar>,
-    response_headers: Option<HeaderMap>,
     locals: LocalMap,
     resource_id: Option<ResourceId>,
     captures: Option<Captures>,
@@ -101,9 +100,6 @@ macro_rules! input {
             },
             locals: &mut $self.locals,
             body: &mut $self.body,
-            response_headers: &mut $self.response_headers,
-            inner: &*$self.inner,
-            resource_id: $self.resource_id,
             _marker: PhantomData,
         }
     };
@@ -117,7 +113,6 @@ impl AppFuture {
             inner,
             body: BodyState::Some(body),
             cookie_jar: None,
-            response_headers: None,
             locals: LocalMap::default(),
             resource_id: None,
             captures: None,
@@ -192,13 +187,6 @@ impl AppFuture {
                     header::SET_COOKIE,
                     cookie.encoded().to_string().parse().unwrap(),
                 );
-            }
-        }
-
-        // append supplemental response headers.
-        if let Some(mut hdrs) = self.response_headers.take() {
-            for (k, v) in hdrs.drain() {
-                output.headers_mut().extend(v.map(|v| (k.clone(), v)));
             }
         }
 
@@ -365,9 +353,6 @@ pub struct Input<'task> {
     pub locals: &'task mut LocalMap,
 
     body: &'task mut BodyState,
-    response_headers: &'task mut Option<HeaderMap>,
-    inner: &'task AppInner,
-    resource_id: Option<ResourceId>,
     _marker: PhantomData<Rc<()>>,
 }
 
@@ -433,19 +418,5 @@ impl<'task> Input<'task> {
                 Ok(entry.insert(mime).as_ref())
             }
         }
-    }
-
-    pub fn response_headers(&mut self) -> &mut HeaderMap {
-        self.response_headers.get_or_insert_with(Default::default)
-    }
-
-    pub fn allowed_methods<'a>(&'a self) -> Option<impl Iterator<Item = &'a Method> + 'a> {
-        Some(
-            self.inner
-                .router
-                .resource(self.resource_id?)
-                .allowed_methods
-                .keys(),
-        )
     }
 }
