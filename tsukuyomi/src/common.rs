@@ -1,5 +1,5 @@
 use {
-    futures::{Async, Future, Poll},
+    futures::{Async, Future, IntoFuture, Poll},
     std::{error::Error as StdError, fmt, marker::PhantomData},
 };
 
@@ -124,6 +124,35 @@ impl<F: Future> MaybeFuture<F> {
         match self {
             MaybeFuture::Ready(result) => MaybeFuture::Ready(f(result)),
             MaybeFuture::Future(future) => MaybeFuture::Future(MapFuture(future, Some(f))),
+        }
+    }
+
+    pub fn and_then<R>(
+        self,
+        f: impl FnOnce(F::Item) -> R,
+    ) -> MaybeFuture<impl Future<Item = R::Item, Error = F::Error>>
+    where
+        R: IntoFuture<Error = F::Error>,
+    {
+        match self {
+            MaybeFuture::Ready(result) => {
+                MaybeFuture::Future(futures::future::Either::A(result.into_future().and_then(f)))
+            }
+            MaybeFuture::Future(future) => {
+                MaybeFuture::Future(futures::future::Either::B(future.and_then(f)))
+            }
+        }
+    }
+
+    pub fn boxed(
+        self,
+    ) -> MaybeFuture<Box<dyn Future<Item = F::Item, Error = F::Error> + Send + 'static>>
+    where
+        F: Send + 'static,
+    {
+        match self {
+            MaybeFuture::Ready(result) => MaybeFuture::Ready(result),
+            MaybeFuture::Future(future) => MaybeFuture::Future(Box::new(future)),
         }
     }
 }

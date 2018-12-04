@@ -11,12 +11,12 @@ use {
         common::{Chain, MaybeFuture, Never, TryFrom},
         extractor::{Combine, Extractor, Func},
         fs::NamedFile,
-        handler::{AsyncResult, Handler},
+        handler::Handler,
         input::Input,
         modifier::Modifier,
-        output::{redirect::Redirect, Output, Responder},
+        output::{redirect::Redirect, Responder},
     },
-    futures::{Async, Future, IntoFuture},
+    futures::{Future, IntoFuture},
     http::{HttpTryFrom, Method, StatusCode},
     indexmap::{indexset, IndexSet},
     std::{
@@ -319,7 +319,10 @@ where
 }
 
 pub trait Finalizer<E> {
-    type Handler: Handler;
+    type Output: Responder;
+    type Error: Into<crate::Error>;
+    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
+
     fn finalize(self, extractor: E) -> super::Result<Self::Handler>;
 }
 
@@ -362,56 +365,10 @@ where
         F::Out: Responder,
     {
         #[allow(missing_debug_implementations)]
-        struct ReplyFuture<E, F>
-        where
-            E: Extractor,
-            F: Func<E::Output> + Clone + Send + Sync + 'static,
-            F::Out: Responder,
-        {
-            extractor: Arc<E>,
+        struct ReplyHandler<E, F> {
+            extractor: E,
             f: F,
-            status: Status<E::Future>,
         }
-
-        enum Status<F> {
-            Init,
-            InFlight(F),
-        }
-
-        impl<E, F> AsyncResult<Output> for ReplyFuture<E, F>
-        where
-            E: Extractor,
-            F: Func<E::Output> + Clone + Send + Sync + 'static,
-            F::Out: Responder,
-        {
-            fn poll_ready(
-                &mut self,
-                input: &mut crate::input::Input<'_>,
-            ) -> futures::Poll<Output, crate::Error> {
-                loop {
-                    self.status = match self.status {
-                        Status::InFlight(ref mut future) => {
-                            let arg = futures::try_ready!(
-                                input.with_set_current(|| future.poll().map_err(Into::into))
-                            );
-                            return crate::output::internal::respond_to(self.f.call(arg), input)
-                                .map(Async::Ready);
-                        }
-                        Status::Init => match self.extractor.extract(input) {
-                            MaybeFuture::Ready(Err(e)) => return Err(e.into()),
-                            MaybeFuture::Ready(Ok(arg)) => {
-                                return crate::output::internal::respond_to(self.f.call(arg), input)
-                                    .map(Async::Ready);
-                            }
-                            MaybeFuture::Future(future) => Status::InFlight(future),
-                        },
-                    }
-                }
-            }
-        }
-
-        #[allow(missing_debug_implementations)]
-        struct ReplyHandler<E, F>(Arc<E>, F);
 
         impl<E, F> Handler for ReplyHandler<E, F>
         where
@@ -419,14 +376,18 @@ where
             F: Func<E::Output> + Clone + Send + Sync + 'static,
             F::Out: Responder,
         {
-            type Handle = ReplyFuture<E, F>;
+            type Output = F::Out;
+            type Error = crate::Error;
+            type Future =
+                Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
 
-            fn handle(&self, _: &mut Input<'_>) -> Self::Handle {
-                ReplyFuture {
-                    extractor: self.0.clone(),
-                    f: self.1.clone(),
-                    status: Status::Init,
-                }
+            fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+                let f = self.f.clone();
+                self.extractor
+                    .extract(input)
+                    .map_err(Into::into)
+                    .map(move |result| result.map(|args| f.call(args)))
+                    .boxed()
             }
         }
 
@@ -438,11 +399,14 @@ where
             F: Func<E::Output> + Clone + Send + Sync + 'static,
             F::Out: Responder,
         {
+            type Output = F::Out;
+            type Error = crate::Error;
             type Handler = ReplyHandler<E, F>;
+
             fn finalize(self, extractor: E) -> super::Result<Self::Handler> {
                 Ok(ReplyHandler {
-                    0: std::sync::Arc::new(extractor),
-                    1: self.0,
+                    extractor,
+                    f: self.0,
                 })
             }
         }
@@ -455,85 +419,39 @@ where
     /// The result of provided function is returned by `Future`.
     pub fn call<F, R>(self, f: F) -> Endpoint<E, M, impl Finalizer<E>>
     where
+        E::Output: Send + 'static,
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-        R: IntoFuture<Error = crate::Error>,
+        R: IntoFuture<Error = crate::Error> + 'static,
         R::Future: Send + 'static,
-        R::Item: Responder,
+        R::Item: Responder + Send + 'static,
     {
         #[allow(missing_debug_implementations)]
-        struct CallHandlerFuture<E, F>
-        where
-            E: Extractor,
-            F: Func<E::Output> + Clone + Send + Sync + 'static,
-            F::Out: IntoFuture<Error = crate::Error>,
-            <F::Out as IntoFuture>::Future: Send + 'static,
-            <F::Out as IntoFuture>::Item: Responder,
-        {
-            extractor: Arc<E>,
+        struct CallHandler<E, F> {
+            extractor: E,
             f: F,
-            status: Status<E::Future, <F::Out as IntoFuture>::Future>,
         }
 
-        enum Status<F1, F2> {
-            Init,
-            First(F1),
-            Second(F2),
-        }
-
-        impl<E, F, R> AsyncResult<Output> for CallHandlerFuture<E, F>
-        where
-            E: Extractor,
-            F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error>,
-            R::Future: Send + 'static,
-            R::Item: Responder,
-        {
-            fn poll_ready(
-                &mut self,
-                input: &mut crate::input::Input<'_>,
-            ) -> futures::Poll<Output, crate::Error> {
-                loop {
-                    self.status = match self.status {
-                        Status::First(ref mut future) => {
-                            let arg = futures::try_ready!(
-                                input.with_set_current(|| future.poll().map_err(Into::into))
-                            );
-                            Status::Second(self.f.call(arg).into_future())
-                        }
-                        Status::Second(ref mut future) => {
-                            let x = futures::try_ready!(input.with_set_current(|| future.poll()));
-                            return crate::output::internal::respond_to(x, input).map(Async::Ready);
-                        }
-                        Status::Init => match self.extractor.extract(input) {
-                            MaybeFuture::Ready(Err(e)) => return Err(e.into()),
-                            MaybeFuture::Ready(Ok(arg)) => {
-                                Status::Second(self.f.call(arg).into_future())
-                            }
-                            MaybeFuture::Future(future) => Status::First(future),
-                        },
-                    };
-                }
-            }
-        }
-
-        #[allow(missing_debug_implementations)]
-        struct CallHandler<E, F>(Arc<E>, F);
         impl<E, F, R> Handler for CallHandler<E, F>
         where
             E: Extractor,
+            E::Output: Send + 'static,
             F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error>,
+            R: IntoFuture<Error = crate::Error> + 'static,
             R::Future: Send + 'static,
-            R::Item: Responder,
+            R::Item: Responder + Send + 'static,
         {
-            type Handle = CallHandlerFuture<E, F>;
+            type Output = R::Item;
+            type Error = crate::Error;
+            type Future =
+                Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
 
-            fn handle(&self, _: &mut Input<'_>) -> Self::Handle {
-                CallHandlerFuture {
-                    extractor: self.0.clone(),
-                    f: self.1.clone(),
-                    status: Status::Init,
-                }
+            fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+                let f = self.f.clone();
+                self.extractor
+                    .extract(input)
+                    .map_err(Into::into)
+                    .and_then(move |args| f.call(args))
+                    .boxed()
             }
         }
 
@@ -542,16 +460,20 @@ where
         impl<F, E, R> Finalizer<E> for Call<F>
         where
             E: Extractor,
+            E::Output: Send + 'static,
             F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error>,
+            R: IntoFuture<Error = crate::Error> + 'static,
             R::Future: Send + 'static,
-            R::Item: Responder,
+            R::Item: Responder + Send + 'static,
         {
+            type Output = R::Item;
+            type Error = crate::Error;
             type Handler = CallHandler<E, F>;
+
             fn finalize(self, extractor: E) -> super::Result<Self::Handler> {
                 Ok(CallHandler {
-                    0: std::sync::Arc::new(extractor),
-                    1: self.0,
+                    extractor,
+                    f: self.0,
                 })
             }
         }
@@ -572,7 +494,10 @@ impl<M> Route<(), M> {
         where
             H: Handler,
         {
+            type Output = H::Output;
+            type Error = H::Error;
             type Handler = H;
+
             fn finalize(self, _: ()) -> super::Result<H> {
                 Ok(self.0)
             }

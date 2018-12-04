@@ -2,7 +2,8 @@ use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         app::directives::*, //
-        handler::Handler,
+        Handler,
+        MaybeFuture,
         Modifier,
     },
 };
@@ -38,11 +39,13 @@ impl<H> Handler for MockHandler<H>
 where
     H: Handler,
 {
-    type Handle = H::Handle;
+    type Output = H::Output;
+    type Error = H::Error;
+    type Future = H::Future;
 
-    fn handle(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
+    fn call(&self, input: &mut tsukuyomi::Input<'_>) -> MaybeFuture<Self::Future> {
         self.marker.lock().unwrap().push(self.name);
-        self.inner.handle(input)
+        self.inner.call(input)
     }
 }
 

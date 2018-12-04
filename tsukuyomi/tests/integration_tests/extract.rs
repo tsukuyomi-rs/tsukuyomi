@@ -223,15 +223,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
-    use {
-        futures::Poll,
-        tsukuyomi::{
-            handler::{AsyncResult, Handler},
-            input::Input,
-            localmap::local_key,
-            Modifier, Output,
-        },
-    };
+    use tsukuyomi::{handler::Handler, localmap::local_key, Modifier};
 
     #[derive(Clone)]
     struct MyData(String);
@@ -260,31 +252,13 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     where
         H: Handler,
     {
-        type Handle = MyHandlerFuture<H::Handle>;
+        type Output = H::Output;
+        type Error = H::Error;
+        type Future = H::Future;
 
-        fn handle(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
-            MyHandlerFuture {
-                handle: self.0.handle(input),
-                inserted: false,
-            }
-        }
-    }
-
-    struct MyHandlerFuture<H> {
-        handle: H,
-        inserted: bool,
-    }
-
-    impl<H> AsyncResult<Output> for MyHandlerFuture<H>
-    where
-        H: AsyncResult<Output>,
-    {
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Output, tsukuyomi::Error> {
-            if !self.inserted {
-                input.locals.insert(&MyData::KEY, MyData("dummy".into()));
-                self.inserted = true;
-            }
-            self.handle.poll_ready(input)
+        fn call(&self, input: &mut tsukuyomi::Input<'_>) -> tsukuyomi::MaybeFuture<Self::Future> {
+            input.locals.insert(&MyData::KEY, MyData("dummy".into()));
+            self.0.call(input)
         }
     }
 

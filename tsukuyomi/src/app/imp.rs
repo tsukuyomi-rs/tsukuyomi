@@ -8,7 +8,7 @@ use {
     cookie::{Cookie, CookieJar},
     crate::{
         error::{Critical, Error},
-        handler::AsyncResult,
+        handler::{Handle, HandleFn, HandleInner},
         input::RequestBody,
         localmap::LocalMap,
         output::{Output, ResponseBody},
@@ -50,7 +50,7 @@ pub struct AppFuture {
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 enum AppFutureState {
     Init,
-    InFlight(Box<dyn AsyncResult<Output> + Send + 'static>),
+    InFlight(Box<HandleFn>),
     Done,
 }
 
@@ -120,7 +120,7 @@ impl AppFuture {
         }
     }
 
-    fn process_recognize(&mut self) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+    fn process_recognize(&mut self) -> Handle {
         match self
             .inner
             .router
@@ -134,7 +134,7 @@ impl AppFuture {
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-                return endpoint.handler.handle(input!(self));
+                endpoint.handler.call(input!(self))
             }
 
             Route::FoundResource {
@@ -212,11 +212,12 @@ impl Future for AppFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let polled = loop {
             self.state = match self.state {
-                AppFutureState::Init => match self.process_recognize() {
-                    in_flight => AppFutureState::InFlight(in_flight),
+                AppFutureState::Init => match self.process_recognize().into_inner() {
+                    HandleInner::Ready(result) => break result,
+                    HandleInner::PollFn(in_flight) => AppFutureState::InFlight(in_flight),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
-                    break ready!(in_flight.poll_ready(input!(self)))
+                    break ready!((*in_flight)(input!(self)))
                 }
                 AppFutureState::Done => panic!("the future has already polled."),
             };

@@ -1,6 +1,6 @@
 use {
     super::router::Resource,
-    crate::{handler::AsyncResult, input::Input, output::Output},
+    crate::{handler::Handle, input::Input, output::Output},
     http::{Method, StatusCode},
     std::fmt,
 };
@@ -21,31 +21,22 @@ pub struct Context<'a> {
 /// A trait representing the callback function to be called when the incoming request
 /// does not match to the registered routes in the application.
 pub trait Fallback: Send + Sync + 'static {
-    type Handle: Into<Box<dyn AsyncResult<Output> + Send + 'static>>;
-
-    fn call(&self, cx: &mut Context<'_>) -> Self::Handle;
+    fn call(&self, cx: &mut Context<'_>) -> Handle;
 }
 
 impl<F, R> Fallback for F
 where
     F: Fn(&mut Context<'_>) -> R + Send + Sync + 'static,
-    R: Into<Box<dyn AsyncResult<Output> + Send + 'static>>,
+    R: Into<Handle>,
 {
-    type Handle = R;
-
-    fn call(&self, cx: &mut Context<'_>) -> Self::Handle {
-        (*self)(cx)
+    fn call(&self, cx: &mut Context<'_>) -> Handle {
+        (*self)(cx).into()
     }
 }
 
-pub struct BoxedFallback(
-    Box<
-        dyn Fn(&mut Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static>
-            + Send
-            + Sync
-            + 'static,
-    >,
-);
+pub struct BoxedFallback {
+    inner: Box<dyn Fn(&mut Context<'_>) -> Handle + Send + Sync + 'static>,
+}
 
 impl fmt::Debug for BoxedFallback {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -58,32 +49,29 @@ where
     F: Fallback,
 {
     fn from(fallback: F) -> Self {
-        BoxedFallback(Box::new(move |cx| fallback.call(cx).into()))
+        BoxedFallback {
+            inner: Box::new(move |cx| fallback.call(cx).into()),
+        }
     }
 }
 
 impl BoxedFallback {
-    pub(crate) fn call(
-        &self,
-        cx: &mut Context<'_>,
-    ) -> Box<dyn AsyncResult<Output> + Send + 'static> {
-        (self.0)(cx)
+    pub(crate) fn call(&self, cx: &mut Context<'_>) -> Handle {
+        (self.inner)(cx)
     }
 }
 
 /// The default fallback when the `Fallback` is not registered.
-pub fn default(cx: &mut Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'static> {
+pub fn default(cx: &mut Context<'_>) -> Handle {
     match cx.kind {
-        FallbackKind::NotFound(..) => Box::new(crate::handler::err(StatusCode::NOT_FOUND.into())),
+        FallbackKind::NotFound(..) => Handle::err(StatusCode::NOT_FOUND.into()),
         FallbackKind::FoundResource(resource) => {
             if cx.input.request.method() == Method::HEAD {
                 return resource
                     .allowed_methods
                     .get(&Method::GET)
-                    .map(|&i| resource.endpoints[i].handler.handle(&mut *cx.input))
-                    .unwrap_or_else(|| {
-                        Box::new(crate::handler::err(StatusCode::METHOD_NOT_ALLOWED.into()))
-                    });
+                    .map(|&i| resource.endpoints[i].handler.call(&mut *cx.input))
+                    .unwrap_or_else(|| Handle::err(StatusCode::METHOD_NOT_ALLOWED.into()));
             }
 
             if cx.input.request.method() == Method::OPTIONS {
@@ -91,10 +79,10 @@ pub fn default(cx: &mut Context<'_>) -> Box<dyn AsyncResult<Output> + Send + 'st
                 response
                     .headers_mut()
                     .insert(http::header::ALLOW, resource.allowed_methods_value.clone());
-                return Box::new(crate::handler::ok(response));
+                return Handle::ok(response);
             }
 
-            Box::new(crate::handler::err(StatusCode::METHOD_NOT_ALLOWED.into()))
+            Handle::err(StatusCode::METHOD_NOT_ALLOWED.into())
         }
     }
 }
