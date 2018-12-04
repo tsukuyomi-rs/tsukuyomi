@@ -1,10 +1,14 @@
 use {
     super::{
         generic::{Combine, Func, Tuple},
-        Extract, ExtractStatus, Extractor,
+        Extract, Extractor,
     },
-    crate::{common::Never, error::Error, input::Input},
-    futures::{future, Async, Future, IntoFuture, Poll},
+    crate::{
+        common::{MaybeFuture, Never},
+        error::Error,
+        input::Input,
+    },
+    futures::{Async, Future, Poll},
 };
 
 #[derive(Debug)]
@@ -38,18 +42,7 @@ where
             extractor: super::raw(move |input| {
                 self.extractor
                     .extract(input)
-                    .map(|status| {
-                        status
-                            .map_ready(|(out,)| (Some(out),))
-                            .map_pending(|mut future| {
-                                futures::future::poll_fn(move || {
-                                    future
-                                        .poll()
-                                        .map(|x| x.map(|(out,)| (Some(out),)))
-                                        .or_else(|_| Ok(Async::Ready((None,))))
-                                })
-                            })
-                    }).or_else(|_| Ok(ExtractStatus::Ready((None,))))
+                    .map(|result| Ok((result.ok().map(|(x,)| x),)))
             }),
         }
     }
@@ -59,24 +52,14 @@ where
     ) -> Builder<impl Extractor<Output = (Result<T, E::Error>,), Error = Never>>
     where
         E: Extractor<Output = (T,)>,
-        T: 'static,
+        T: Send + 'static,
+        E::Error: Send + 'static,
     {
         Builder {
             extractor: super::raw(move |input| {
                 self.extractor
                     .extract(input)
-                    .map(|status| {
-                        status
-                            .map_ready(|(out,)| (Ok(out),))
-                            .map_pending(|mut future| {
-                                futures::future::poll_fn(move || {
-                                    future
-                                        .poll()
-                                        .map(|x| x.map(|(out,)| (Ok(out),)))
-                                        .or_else(|err| Ok(Async::Ready((Err(err),))))
-                                })
-                            })
-                    }).or_else(|err| Ok(ExtractStatus::Ready((Err(err),))))
+                    .map(|result| Ok((result.map(|(x,)| x),)))
             }),
         }
     }
@@ -144,19 +127,21 @@ where
         let right = other;
         Builder {
             extractor: super::raw(move |input| {
-                let left = match left.extract(input).map_err(Into::into)? {
-                    ExtractStatus::Ready(output) => MaybeDone::Ready(output),
-                    ExtractStatus::Pending(future) => MaybeDone::Pending(future),
+                let left = match left.extract(input) {
+                    MaybeFuture::Ready(Ok(output)) => MaybeDone::Ready(output),
+                    MaybeFuture::Ready(Err(e)) => return MaybeFuture::err(e.into()),
+                    MaybeFuture::Future(future) => MaybeDone::Pending(future),
                 };
-                let right = match right.extract(input).map_err(Into::into)? {
-                    ExtractStatus::Ready(output) => MaybeDone::Ready(output),
-                    ExtractStatus::Pending(future) => MaybeDone::Pending(future),
+                let right = match right.extract(input) {
+                    MaybeFuture::Ready(Ok(output)) => MaybeDone::Ready(output),
+                    MaybeFuture::Ready(Err(e)) => return MaybeFuture::err(e.into()),
+                    MaybeFuture::Future(future) => MaybeDone::Pending(future),
                 };
                 match (left, right) {
                     (MaybeDone::Ready(left), MaybeDone::Ready(right)) => {
-                        Ok(ExtractStatus::Ready(left.combine(right)))
+                        MaybeFuture::ok(left.combine(right))
                     }
-                    (left, right) => Ok(ExtractStatus::Pending(AndFuture { left, right })),
+                    (left, right) => MaybeFuture::from(AndFuture { left, right }),
                 }
             }),
         }
@@ -178,9 +163,9 @@ where
             Left(L),
             Right(R),
             Both(
-                future::Select<
-                    future::MapErr<L, fn(L::Error) -> Error>,
-                    future::MapErr<R, fn(R::Error) -> Error>,
+                futures::future::Select<
+                    futures::future::MapErr<L, fn(L::Error) -> Error>,
+                    futures::future::MapErr<R, fn(R::Error) -> Error>,
                 >,
             ),
         }
@@ -211,31 +196,25 @@ where
         let right = other;
         Builder {
             extractor: super::raw(move |input| {
-                let left_status = match left.extract(input) {
-                    Ok(status) => status,
-                    Err(..) => {
-                        return right
-                            .extract(input)
-                            .map(|status| status.map_pending(OrFuture::Right))
-                            .map_err(Into::into)
-                    }
+                let left = match left.extract(input) {
+                    MaybeFuture::Future(future) => future,
+                    MaybeFuture::Ready(Ok(left)) => return MaybeFuture::ok(left),
+                    MaybeFuture::Ready(Err(..)) => match right.extract(input) {
+                        MaybeFuture::Ready(result) => {
+                            return MaybeFuture::Ready(result.map_err(Into::into))
+                        }
+                        MaybeFuture::Future(future) => {
+                            return MaybeFuture::Future(OrFuture::Right(future))
+                        }
+                    },
                 };
-
-                let left = match left_status {
-                    status @ ExtractStatus::Ready(..) => {
-                        return Ok(status.map_pending(|_| unreachable!()));
-                    }
-                    ExtractStatus::Pending(left) => left,
-                };
-
                 match right.extract(input) {
-                    Ok(status) => Ok(status.map_pending(|right| {
-                        OrFuture::Both(
-                            left.map_err(Into::into as fn(E::Error) -> Error)
-                                .select(right.map_err(Into::into as fn(T::Error) -> Error)),
-                        )
-                    })),
-                    Err(..) => Ok(ExtractStatus::Pending(OrFuture::Left(left))),
+                    MaybeFuture::Ready(Ok(right)) => return MaybeFuture::ok(right),
+                    MaybeFuture::Ready(Err(..)) => MaybeFuture::Future(OrFuture::Left(left)),
+                    MaybeFuture::Future(right) => MaybeFuture::Future(OrFuture::Both(
+                        left.map_err(Into::into as fn(E::Error) -> Error)
+                            .select(right.map_err(Into::into as fn(T::Error) -> Error)),
+                    )),
                 }
             }),
         }
@@ -247,71 +226,10 @@ where
     {
         Builder {
             extractor: super::raw(move |input| {
+                let f = f.clone();
                 self.extractor
-                    .extract(input) //
-                    .map(|status| {
-                        status
-                            .map_ready(|args| (f.call(args),))
-                            .map_pending(|mut future| {
-                                let f = f.clone();
-                                futures::future::poll_fn(move || {
-                                    future.poll().map(|x| x.map(|out| (f.call(out),)))
-                                })
-                            })
-                    })
-            }),
-        }
-    }
-
-    pub fn and_then<F, R>(self, f: F) -> Builder<impl Extractor<Output = (R::Item,), Error = Error>>
-    where
-        F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-        R: IntoFuture + 'static,
-        R::Future: Send + 'static,
-        R::Error: Into<Error>,
-    {
-        #[allow(missing_debug_implementations)]
-        enum AndThenState<F1, F2, F> {
-            First(F1, F),
-            Second(F2),
-            Empty,
-        }
-
-        Builder {
-            extractor: super::raw(move |input| {
-                let mut state = match self.extractor.extract(input).map_err(Into::into)? {
-                    ExtractStatus::Ready(arg) => {
-                        let future = f.call(arg).into_future();
-                        AndThenState::Second(future)
-                    }
-                    ExtractStatus::Pending(future) => AndThenState::First(future, f.clone()),
-                };
-                Ok(ExtractStatus::Pending(futures::future::poll_fn(
-                    move || loop {
-                        let next_future = match state {
-                            AndThenState::First(ref mut f1, ref f) => match f1.poll() {
-                                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                                Ok(Async::Ready(ok)) => Ok(f.call(ok)),
-                                Err(err) => Err(err),
-                            },
-                            AndThenState::Second(ref mut f2) => {
-                                return f2.poll().map(|x| x.map(|out| (out,))).map_err(Into::into)
-                            }
-                            AndThenState::Empty => panic!("This future has already polled."),
-                        };
-
-                        match next_future {
-                            Ok(future) => {
-                                state = AndThenState::Second(future.into_future());
-                                continue;
-                            }
-                            Err(err) => {
-                                state = AndThenState::Empty;
-                                return Err(err.into());
-                            }
-                        }
-                    },
-                )))
+                    .extract(input)
+                    .map_ok(move |args| (f.call(args),))
             }),
         }
     }

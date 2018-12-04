@@ -8,8 +8,8 @@ use {
         Uri,
     },
     crate::{
-        common::{Chain, Never, TryFrom},
-        extractor::{Combine, ExtractStatus, Extractor, Func},
+        common::{Chain, MaybeFuture, Never, TryFrom},
+        extractor::{Combine, Extractor, Func},
         fs::NamedFile,
         handler::{AsyncResult, Handler},
         input::Input,
@@ -398,12 +398,12 @@ where
                                 .map(Async::Ready);
                         }
                         Status::Init => match self.extractor.extract(input) {
-                            Err(e) => return Err(e.into()),
-                            Ok(ExtractStatus::Ready(arg)) => {
+                            MaybeFuture::Ready(Err(e)) => return Err(e.into()),
+                            MaybeFuture::Ready(Ok(arg)) => {
                                 return crate::output::internal::respond_to(self.f.call(arg), input)
                                     .map(Async::Ready);
                             }
-                            Ok(ExtractStatus::Pending(future)) => Status::InFlight(future),
+                            MaybeFuture::Future(future) => Status::InFlight(future),
                         },
                     }
                 }
@@ -505,11 +505,11 @@ where
                             return crate::output::internal::respond_to(x, input).map(Async::Ready);
                         }
                         Status::Init => match self.extractor.extract(input) {
-                            Err(e) => return Err(e.into()),
-                            Ok(ExtractStatus::Ready(arg)) => {
+                            MaybeFuture::Ready(Err(e)) => return Err(e.into()),
+                            MaybeFuture::Ready(Ok(arg)) => {
                                 Status::Second(self.f.call(arg).into_future())
                             }
-                            Ok(ExtractStatus::Pending(future)) => Status::First(future),
+                            MaybeFuture::Future(future) => Status::First(future),
                         },
                     };
                 }

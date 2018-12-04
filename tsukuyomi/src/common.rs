@@ -1,4 +1,7 @@
-use std::{error::Error as StdError, fmt};
+use {
+    futures::{Async, Future, Poll},
+    std::{error::Error as StdError, fmt, marker::PhantomData},
+};
 
 /// A helper type which emulates the standard `never_type` (`!`).
 #[cfg_attr(feature = "cargo-clippy", allow(empty_enum))]
@@ -39,5 +42,106 @@ pub struct Chain<L, R> {
 impl<L, R> Chain<L, R> {
     pub fn new(left: L, right: R) -> Self {
         Self { left, right }
+    }
+}
+
+/// An enum that represents arbitrary results that may not be completed.
+#[derive(Debug)]
+pub enum MaybeFuture<F: Future> {
+    Ready(Result<F::Item, F::Error>),
+    Future(F),
+}
+
+impl<F: Future> From<F> for MaybeFuture<F> {
+    fn from(future: F) -> Self {
+        MaybeFuture::Future(future)
+    }
+}
+
+impl<F: Future> MaybeFuture<F> {
+    pub fn ok(ok: F::Item) -> Self {
+        MaybeFuture::Ready(Ok(ok))
+    }
+
+    pub fn err(err: F::Error) -> Self {
+        MaybeFuture::Ready(Err(err))
+    }
+
+    pub fn is_ready(&self) -> bool {
+        match self {
+            MaybeFuture::Ready(..) => true,
+            MaybeFuture::Future(..) => false,
+        }
+    }
+
+    pub fn map_ok<T>(
+        self,
+        f: impl FnOnce(F::Item) -> T,
+    ) -> MaybeFuture<impl Future<Item = T, Error = F::Error>> {
+        match self {
+            MaybeFuture::Ready(result) => MaybeFuture::Ready(result.map(f)),
+            MaybeFuture::Future(future) => MaybeFuture::Future(future.map(f)),
+        }
+    }
+
+    pub fn map_err<U>(
+        self,
+        f: impl FnOnce(F::Error) -> U,
+    ) -> MaybeFuture<impl Future<Item = F::Item, Error = U>> {
+        match self {
+            MaybeFuture::Ready(result) => MaybeFuture::Ready(result.map_err(f)),
+            MaybeFuture::Future(future) => MaybeFuture::Future(future.map_err(f)),
+        }
+    }
+
+    pub fn map<T, U>(
+        self,
+        f: impl FnOnce(Result<F::Item, F::Error>) -> Result<T, U>,
+    ) -> MaybeFuture<impl Future<Item = T, Error = U>> {
+        #[allow(missing_debug_implementations)]
+        struct MapFuture<Fut, F>(Fut, Option<F>);
+
+        impl<Fut, F, T, E> Future for MapFuture<Fut, F>
+        where
+            Fut: Future,
+            F: FnOnce(Result<Fut::Item, Fut::Error>) -> Result<T, E>,
+        {
+            type Item = T;
+            type Error = E;
+
+            #[inline]
+            fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+                let result = match self.0.poll() {
+                    Ok(Async::Ready(ok)) => Ok(ok),
+                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                    Err(err) => Err(err),
+                };
+                let f = self.1.take().expect("the future has already polled");
+                f(result).map(Async::Ready)
+            }
+        }
+
+        match self {
+            MaybeFuture::Ready(result) => MaybeFuture::Ready(f(result)),
+            MaybeFuture::Future(future) => MaybeFuture::Future(MapFuture(future, Some(f))),
+        }
+    }
+}
+
+/// A helper struct representing a `Future` that will be *never* constructed.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct NeverFuture<T, E> {
+    never: Never,
+    _marker: PhantomData<fn() -> (T, E)>,
+}
+
+impl<T, E> Future for NeverFuture<T, E> {
+    type Item = T;
+    type Error = E;
+
+    #[inline]
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self.never {}
     }
 }

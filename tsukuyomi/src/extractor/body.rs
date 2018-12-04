@@ -2,11 +2,7 @@
 
 use {
     bytes::Bytes,
-    crate::{
-        error::Error,
-        extractor::{ExtractStatus, Extractor},
-        input::body::RequestBody,
-    },
+    crate::{common::MaybeFuture, error::Error, extractor::Extractor, input::body::RequestBody},
     futures::{Async, Future},
     mime::Mime,
     serde::de::DeserializeOwned,
@@ -134,22 +130,27 @@ where
     D: self::decode::Decoder<T> + Send + Sync + 'static,
 {
     super::raw(move |input| {
-        {
-            let mime_opt = input.content_type()?;
+        if let Err(err) = input.content_type().and_then(|mime_opt| {
             decoder
                 .validate_mime(mime_opt)
                 .map_err(crate::error::bad_request)?;
+            Ok(mime_opt)
+        }) {
+            return MaybeFuture::err(err);
         }
 
-        input.body().ok_or_else(stolen_payload).map(|body| {
-            let mut read_all = body.read_all();
-            ExtractStatus::Pending(futures::future::poll_fn(move || {
-                let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
-                D::decode(&data)
-                    .map(|out| Async::Ready((out,)))
-                    .map_err(crate::error::bad_request)
-            }))
-        })
+        input.body().map_or_else(
+            || MaybeFuture::err(stolen_payload()),
+            |body| {
+                let mut read_all = body.read_all();
+                MaybeFuture::from(futures::future::poll_fn(move || {
+                    let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
+                    D::decode(&data)
+                        .map(|out| Async::Ready((out,)))
+                        .map_err(crate::error::bad_request)
+                }))
+            },
+        )
     })
 }
 
@@ -179,11 +180,10 @@ where
 
 pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
     super::raw(|input| {
-        input
-            .body()
-            .map(|body| {
-                ExtractStatus::Pending(body.read_all().map(|out| (out,)).map_err(Error::critical))
-            }).ok_or_else(stolen_payload)
+        input.body().map_or_else(
+            || MaybeFuture::err(stolen_payload()),
+            |body| MaybeFuture::from(body.read_all().map(|out| (out,)).map_err(Error::critical)),
+        )
     })
 }
 

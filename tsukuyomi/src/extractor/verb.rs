@@ -4,7 +4,7 @@
 
 use {
     super::{Extract, Extractor},
-    crate::{error::Error, input::Input},
+    crate::{common::MaybeFuture, error::Error, input::Input},
     futures::Future,
     http::Method,
 };
@@ -28,13 +28,14 @@ where
         #[inline]
         fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
             if input.request.method() != self.1 {
-                return Err(crate::error::method_not_allowed("rejected by extractor"));
+                return MaybeFuture::err(crate::error::method_not_allowed("rejected by extractor"));
             }
-            self.0
-                .extract(input)
-                .map(|status| {
-                    status.map_pending(|future| future.map_err(Into::into as fn(E::Error) -> Error))
-                }).map_err(Into::into)
+            match self.0.extract(input) {
+                MaybeFuture::Ready(result) => MaybeFuture::Ready(result.map_err(Into::into)),
+                MaybeFuture::Future(future) => {
+                    MaybeFuture::from(future.map_err(Into::into as fn(E::Error) -> Error))
+                }
+            }
         }
     }
 
