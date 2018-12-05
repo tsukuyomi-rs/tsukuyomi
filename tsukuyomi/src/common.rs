@@ -174,3 +174,34 @@ impl<T, E> Future for NeverFuture<T, E> {
         match self.never {}
     }
 }
+
+#[derive(Debug)]
+pub enum MaybeDone<F: Future> {
+    Ready(F::Item),
+    Pending(F),
+    Gone,
+}
+
+impl<F: Future> MaybeDone<F> {
+    pub fn poll_ready(&mut self) -> Poll<(), F::Error> {
+        let async_ = match self {
+            MaybeDone::Ready(..) => return Ok(Async::Ready(())),
+            MaybeDone::Pending(ref mut future) => future.poll()?,
+            MaybeDone::Gone => panic!("This future has already polled"),
+        };
+        match async_ {
+            Async::Ready(item) => {
+                *self = MaybeDone::Ready(item);
+                Ok(Async::Ready(()))
+            }
+            Async::NotReady => Ok(Async::NotReady),
+        }
+    }
+
+    pub fn take_item(&mut self) -> Option<F::Item> {
+        match std::mem::replace(self, MaybeDone::Gone) {
+            MaybeDone::Ready(item) => Some(item),
+            _ => None,
+        }
+    }
+}

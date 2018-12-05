@@ -387,11 +387,7 @@ where
         U::Output: Send + 'static,
     {
         Builder {
-            extractor: self
-                .extractor
-                .into_builder() //
-                .and(other)
-                .into_inner(),
+            extractor: Chain::new(self.extractor, other),
             modifier: self.modifier,
             uri: self.uri,
             methods: self.methods,

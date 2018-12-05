@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 
 mod builder;
+mod chain;
 mod generic;
 
 pub mod body;
