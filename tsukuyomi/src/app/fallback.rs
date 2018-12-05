@@ -1,9 +1,10 @@
 use {
-    super::router::Resource,
     crate::{handler::Handle, input::Input, output::Output},
     http::{Method, StatusCode},
     std::fmt,
 };
+
+pub use super::router::Resource;
 
 #[derive(Debug)]
 pub enum FallbackKind<'a> {
@@ -34,7 +35,7 @@ where
     }
 }
 
-pub struct BoxedFallback {
+pub(super) struct BoxedFallback {
     inner: Box<dyn Fn(&mut Context<'_>) -> Handle + Send + Sync + 'static>,
 }
 

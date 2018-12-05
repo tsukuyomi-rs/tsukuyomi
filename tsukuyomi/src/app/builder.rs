@@ -1,12 +1,14 @@
 use {
     super::{
-        error::{Error, Result},
         fallback::{BoxedFallback, Fallback},
         router::{Endpoint, Recognizer, Resource, ResourceId, Router},
-        scope::{Context as ScopeContext, Scope},
         App, AppInner, Uri,
     },
-    crate::{common::Chain, handler::Handler},
+    crate::{
+        common::{Chain, Never},
+        handler::Handler,
+        modifier::Modifier,
+    },
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
@@ -74,26 +76,25 @@ impl<S, M> Builder<S, M> {
     }
 
     /// Creates an `App` using the current configuration.
-    pub fn build(self) -> Result<App>
+    pub fn build(self) -> super::Result<App>
     where
         S: Scope<M>,
     {
-        let mut cx = AppContext {
+        let global_fallback = self.fallback.map(Arc::new);
+
+        let mut cx = ContextInner {
             resources: IndexMap::new(),
             num_scopes: 1,
         };
-
-        let global_fallback = self.fallback.map(Arc::new);
-
         let global_scope = ScopeData {
             id: 0,
             prefix: self.prefix,
             fallback: global_fallback.clone(),
         };
         self.scope
-            .configure(&mut ScopeContext {
+            .configure(&mut Context {
                 app: &mut cx,
-                data: &global_scope,
+                scope: &global_scope,
                 modifier: self.modifier,
             }).map_err(Into::into)?;
 
@@ -115,7 +116,7 @@ impl<S, M> Builder<S, M> {
     }
 
     /// Creates a builder of HTTP server using the current configuration.
-    pub fn build_server(self) -> Result<crate::server::Server<App>>
+    pub fn build_server(self) -> super::Result<crate::server::Server<App>>
     where
         S: Scope<M>,
     {
@@ -123,26 +124,61 @@ impl<S, M> Builder<S, M> {
     }
 }
 
+/// A trait representing a set of configurations within the scope.
+pub trait Scope<M> {
+    type Error: Into<super::Error>;
+
+    /// Applies this configuration to the specified context.
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error>;
+
+    /// Consumes itself and returns a new `Scope` combined with the specified configuration.
+    fn chain<S>(self, next: S) -> Chain<Self, S>
+    where
+        Self: Sized,
+    {
+        Chain::new(self, next)
+    }
+}
+
 #[derive(Debug)]
-pub(super) struct AppContext {
+struct ContextInner {
     resources: IndexMap<Uri, (usize, Resource)>,
     num_scopes: usize,
 }
 
-impl AppContext {
-    pub(super) fn new_route(
+#[derive(Debug)]
+struct ScopeData {
+    id: usize,
+    prefix: Uri,
+    fallback: Option<Arc<BoxedFallback>>,
+}
+
+/// A type representing the contextual information in `Scope::configure`.
+#[derive(Debug)]
+pub struct Context<'a, M> {
+    app: &'a mut ContextInner,
+    scope: &'a ScopeData,
+    modifier: M,
+}
+
+impl<'a, M> Context<'a, M> {
+    pub(super) fn add_endpoint<H>(
         &mut self,
-        scope: &ScopeData,
         uri: Uri,
         mut methods: IndexSet<Method>,
-        handler: impl Handler,
-    ) -> Result<()> {
+        handler: H,
+    ) -> super::Result<()>
+    where
+        H: Handler,
+        M: Modifier<H>,
+    {
         // build absolute URI.
-        let uri = { scope.prefix.join(&uri)? };
+        let uri = { self.scope.prefix.join(&uri)? };
 
         let &mut (scope_id, ref mut resource) = {
-            let id = ResourceId(self.resources.len());
-            self.resources.entry(uri.clone()).or_insert_with(|| {
+            let id = ResourceId(self.app.resources.len());
+            let scope = &self.scope;
+            self.app.resources.entry(uri.clone()).or_insert_with(|| {
                 (
                     scope.id,
                     Resource {
@@ -156,7 +192,7 @@ impl AppContext {
                 )
             })
         };
-        if scope.id != scope_id {
+        if self.scope.id != scope_id {
             return Err(failure::format_err!("different scope id").into());
         }
 
@@ -180,7 +216,7 @@ impl AppContext {
         let endpoint_id = resource.allowed_methods.len();
         for method in &methods {
             if resource.allowed_methods.contains_key(method) {
-                return Err(Error::from(failure::format_err!(
+                return Err(super::Error::from(failure::format_err!(
                     "the route with the same URI and method is not supported."
                 )));
             }
@@ -191,34 +227,38 @@ impl AppContext {
             id: endpoint_id,
             uri,
             methods,
-            handler: handler.into(),
+            handler: self.modifier.modify(handler).into(),
         });
 
         Ok(())
     }
 
-    pub(super) fn new_scope<M>(
+    pub(super) fn add_scope<S, M2>(
         &mut self,
-        parent: &ScopeData,
         prefix: Uri,
-        modifier: M,
+        modifier: M2,
         fallback: Option<BoxedFallback>,
-        scope: impl Scope<M>,
-    ) -> Result<()> {
-        let data = ScopeData {
-            id: self.num_scopes,
-            prefix: parent.prefix.join(&prefix)?,
-            fallback: match fallback {
-                Some(fallback) => Some(Arc::new(fallback)),
-                None => parent.fallback.clone(),
-            },
-        };
-        self.num_scopes += 1;
+        new_scope: S,
+    ) -> super::Result<()>
+    where
+        M: Clone,
+        S: Scope<Chain<M, M2>>,
+    {
+        let modifier = Chain::new(self.modifier.clone(), modifier);
 
-        scope
-            .configure(&mut ScopeContext {
-                app: self,
-                data: &data,
+        let data = ScopeData {
+            id: self.app.num_scopes,
+            prefix: self.scope.prefix.join(&prefix)?,
+            fallback: fallback
+                .map(Arc::new)
+                .or_else(|| self.scope.fallback.clone()),
+        };
+        self.app.num_scopes += 1;
+
+        new_scope
+            .configure(&mut Context {
+                app: &mut *self.app,
+                scope: &data,
                 modifier,
             }).map_err(Into::into)?;
 
@@ -226,18 +266,24 @@ impl AppContext {
     }
 }
 
-/// A type representing a set of data associated with the certain scope.
-pub(super) struct ScopeData {
-    id: usize,
-    pub(super) prefix: Uri,
-    pub(super) fallback: Option<Arc<BoxedFallback>>,
+impl<M> Scope<M> for () {
+    type Error = Never;
+
+    fn configure(self, _: &mut Context<'_, M>) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for ScopeData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Scope")
-            .field("prefix", &self.prefix)
-            .finish()
+impl<S1, S2, M> Scope<M> for Chain<S1, S2>
+where
+    S1: Scope<M>,
+    S2: Scope<M>,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
+        self.left.configure(cx).map_err(Into::into)?;
+        self.right.configure(cx).map_err(Into::into)?;
+        Ok(())
     }
 }

@@ -4,6 +4,7 @@ use {
     crate::{
         common::{MaybeFuture, Never, NeverFuture},
         error::Error, //
+        extractor::Extractor,
         input::Input,
         output::{Output, Responder},
     },
@@ -182,4 +183,12 @@ impl BoxedHandler {
     pub(crate) fn call(&self, input: &mut Input<'_>) -> Handle {
         (self.inner)(input)
     }
+}
+
+pub trait MakeHandler<E: Extractor> {
+    type Output: Responder;
+    type Error: Into<crate::Error>;
+    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
+
+    fn make_handler(self, extractor: E) -> Self::Handler;
 }

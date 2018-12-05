@@ -1,22 +1,18 @@
-//! The definition of `Scope` and its implementors.
-
 use {
     super::{
-        builder::{AppContext, ScopeData},
-        error::{Error, Result},
-        fallback::{BoxedFallback, Fallback},
-        Uri,
+        builder::{Context, Scope},
+        uri::Uri,
     },
     crate::{
         common::{Chain, MaybeFuture, Never, TryFrom},
-        extractor::{Combine, Extractor, Func},
+        extractor::{Combine, Extractor, Func, Tuple},
         fs::NamedFile,
-        handler::Handler,
+        handler::{Handler, MakeHandler},
         input::Input,
         modifier::Modifier,
         output::{redirect::Redirect, Responder},
     },
-    futures::{Future, IntoFuture},
+    futures::{Future, IntoFuture, Poll},
     http::{HttpTryFrom, Method, StatusCode},
     indexmap::{indexset, IndexSet},
     std::{
@@ -26,142 +22,6 @@ use {
     },
 };
 
-/// A trait representing a set of configurations within the scope.
-pub trait Scope<M> {
-    type Error: Into<Error>;
-
-    /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut Context<'_, M>) -> std::result::Result<(), Self::Error>;
-
-    /// Consumes itself and returns a new `Scope` combined with the specified configuration.
-    fn chain<S>(self, next: S) -> Chain<Self, S>
-    where
-        Self: Sized,
-    {
-        Chain::new(self, next)
-    }
-}
-
-/// A type representing the contextual information in `Scope::configure`.
-#[derive(Debug)]
-pub struct Context<'a, M> {
-    pub(super) app: &'a mut AppContext,
-    pub(super) data: &'a ScopeData,
-    pub(super) modifier: M,
-}
-
-impl<M> Scope<M> for () {
-    type Error = Never;
-
-    fn configure(self, _: &mut Context<'_, M>) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-impl<S1, S2, M> Scope<M> for Chain<S1, S2>
-where
-    S1: Scope<M>,
-    S2: Scope<M>,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut Context<'_, M>) -> std::result::Result<(), Self::Error> {
-        self.left.configure(cx).map_err(Into::into)?;
-        self.right.configure(cx).map_err(Into::into)?;
-        Ok(())
-    }
-}
-
-/// A function that creates a `Mount` with the empty scope items.
-pub fn mount<T>(prefix: T) -> Result<Mount<(), ()>>
-where
-    Uri: TryFrom<T>,
-{
-    Ok(Mount::new((), (), Uri::try_from(prefix)?))
-}
-
-/// An instance of `Scope` that represents a sub-scope with a specific prefix.
-#[allow(missing_debug_implementations)]
-pub struct Mount<S = (), M = ()> {
-    scope: S,
-    modifier: M,
-    fallback: Option<BoxedFallback>,
-    prefix: Uri,
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<S, M> Mount<S, M> {
-    /// Create a new `Mount` with the specified components.
-    pub fn new(scope: S, modifier: M, prefix: Uri) -> Self {
-        Mount {
-            scope,
-            modifier,
-            fallback: None,
-            prefix,
-        }
-    }
-
-    /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
-    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M> {
-        Mount {
-            scope: Chain::new(self.scope, next_scope),
-            modifier: self.modifier,
-            fallback: self.fallback,
-            prefix: self.prefix,
-        }
-    }
-
-    pub fn modifier<M2>(self, modifier: M2) -> Mount<S, Chain<M, M2>> {
-        Mount {
-            scope: self.scope,
-            modifier: Chain::new(self.modifier, modifier),
-            fallback: self.fallback,
-            prefix: self.prefix,
-        }
-    }
-
-    pub fn fallback<F>(self, fallback: F) -> Self
-    where
-        F: Fallback,
-    {
-        Self {
-            fallback: Some(fallback.into()),
-            ..self
-        }
-    }
-
-    /// Sets the prefix of the URL appended to the all routes in the inner scope.
-    pub fn prefix<T>(self, prefix: T) -> Result<Self>
-    where
-        Uri: TryFrom<T>,
-    {
-        Ok(Self {
-            prefix: Uri::try_from(prefix)?,
-            ..self
-        })
-    }
-}
-
-impl<S, M1, M2> Scope<M1> for Mount<S, M2>
-where
-    M1: Clone,
-    S: Scope<Chain<M1, M2>>,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut Context<'_, M1>) -> std::result::Result<(), Self::Error> {
-        cx.app.new_scope(
-            &cx.data,
-            self.prefix,
-            Chain::new(cx.modifier.clone(), self.modifier),
-            self.fallback,
-            self.scope,
-        )
-    }
-}
-
-// ==== Route ====
-
 /// A set of request methods that a route accepts.
 #[derive(Debug, Default)]
 pub struct Methods(IndexSet<Method>);
@@ -170,7 +30,7 @@ impl TryFrom<Self> for Methods {
     type Error = Never;
 
     #[inline]
-    fn try_from(methods: Self) -> std::result::Result<Self, Self::Error> {
+    fn try_from(methods: Self) -> Result<Self, Self::Error> {
         Ok(methods)
     }
 }
@@ -179,7 +39,7 @@ impl TryFrom<Method> for Methods {
     type Error = Never;
 
     #[inline]
-    fn try_from(method: Method) -> std::result::Result<Self, Self::Error> {
+    fn try_from(method: Method) -> Result<Self, Self::Error> {
         Ok(Methods(indexset! { method }))
     }
 }
@@ -191,11 +51,11 @@ where
     type Error = http::Error;
 
     #[inline]
-    fn try_from(methods: Vec<M>) -> std::result::Result<Self, Self::Error> {
+    fn try_from(methods: Vec<M>) -> Result<Self, Self::Error> {
         let methods = methods
             .into_iter()
             .map(Method::try_from)
-            .collect::<std::result::Result<_, _>>()
+            .collect::<Result<_, _>>()
             .map_err(Into::into)?;
         Ok(Methods(methods))
     }
@@ -205,7 +65,7 @@ impl<'a> TryFrom<&'a str> for Methods {
     type Error = failure::Error;
 
     #[inline]
-    fn try_from(methods: &'a str) -> std::result::Result<Self, Self::Error> {
+    fn try_from(methods: &'a str) -> Result<Self, Self::Error> {
         let methods = methods
             .split(',')
             .map(|s| Method::try_from(s.trim()).map_err(Into::into))
@@ -215,18 +75,18 @@ impl<'a> TryFrom<&'a str> for Methods {
 }
 
 /// Creates a `Route` for building a `Scope` that registers a route within the scope.
-pub fn route<T>(uri: T) -> Result<Route<(), ()>>
+pub fn route<T>(uri: T) -> super::Result<Builder<(), ()>>
 where
     Uri: TryFrom<T>,
 {
     let uri = Uri::try_from(uri)?;
-    Ok(Route::new((), (), uri))
+    Ok(Builder::new((), (), uri))
 }
 
 /// A builder of `Scope` to register a route, which is matched to the requests
 /// with a certain path and method(s) and will return its response.
 #[derive(Debug, Default)]
-pub struct Route<E: Extractor = (), M = ()> {
+pub struct Builder<E: Extractor = (), M = ()> {
     extractor: E,
     modifier: M,
     uri: Uri,
@@ -234,12 +94,12 @@ pub struct Route<E: Extractor = (), M = ()> {
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<E, M> Route<E, M>
+impl<E, M> Builder<E, M>
 where
     E: Extractor,
 {
     pub fn new(extractor: E, modifier: M, uri: Uri) -> Self {
-        Self {
+        Builder {
             extractor,
             modifier,
             uri,
@@ -248,22 +108,22 @@ where
     }
 
     /// Sets the URI of this route.
-    pub fn uri<T>(self, uri: T) -> Result<Self>
+    pub fn uri<T>(self, uri: T) -> super::Result<Self>
     where
         Uri: TryFrom<T>,
     {
-        Ok(Self {
+        Ok(Builder {
             uri: Uri::try_from(uri)?,
             ..self
         })
     }
 
     /// Sets the HTTP methods that this route accepts.
-    pub fn methods<M2>(self, methods: M2) -> Result<Self>
+    pub fn methods<M2>(self, methods: M2) -> super::Result<Self>
     where
         Methods: TryFrom<M2>,
     {
-        Ok(Self {
+        Ok(Builder {
             methods: Methods::try_from(methods).map_err(Into::into)?,
             ..self
         })
@@ -273,7 +133,7 @@ where
     pub fn extract<U>(
         self,
         other: U,
-    ) -> Route<
+    ) -> Builder<
         impl Extractor<Output = <E::Output as Combine<U::Output>>::Out, Error = crate::Error>,
         M,
     >
@@ -282,7 +142,7 @@ where
         E::Output: Combine<U::Output> + Send + 'static,
         U::Output: Send + 'static,
     {
-        Route {
+        Builder {
             extractor: self
                 .extractor
                 .into_builder() //
@@ -295,8 +155,8 @@ where
     }
 
     /// Appends a `Modifier` to this builder.
-    pub fn modify<M2>(self, modifier: M2) -> Route<E, Chain<M, M2>> {
-        Route {
+    pub fn modify<M2>(self, modifier: M2) -> Builder<E, Chain<M, M2>> {
+        Builder {
             extractor: self.extractor,
             modifier: Chain::new(self.modifier, modifier),
             uri: self.uri,
@@ -304,66 +164,55 @@ where
         }
     }
 
-    pub fn finish<F>(self, finalizer: F) -> Endpoint<E, M, F>
+    pub fn finish<F>(self, make_handler: F) -> Route<F::Handler, M>
     where
-        F: Finalizer<E>,
+        F: MakeHandler<E>,
     {
-        Endpoint {
-            extractor: self.extractor,
-            finalizer,
-            modifier: self.modifier,
-            methods: self.methods,
+        Route {
             uri: self.uri,
+            methods: self.methods,
+            handler: make_handler.make_handler(self.extractor),
+            modifier: self.modifier,
         }
     }
 }
 
-pub trait Finalizer<E> {
-    type Output: Responder;
-    type Error: Into<crate::Error>;
-    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
-
-    fn finalize(self, extractor: E) -> super::Result<Self::Handler>;
-}
-
-#[derive(Debug)]
-pub struct Endpoint<E, M, F> {
-    extractor: E,
-    modifier: M,
-    methods: Methods,
-    uri: Uri,
-    finalizer: F,
-}
-
-impl<E, F, M1, M2> Scope<M1> for Endpoint<E, M2, F>
-where
-    E: Extractor,
-    F: Finalizer<E>,
-    M2: Modifier<F::Handler>,
-    M1: Modifier<M2::Out>,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut Context<'_, M1>) -> std::result::Result<(), Self::Error> {
-        let handler = self.finalizer.finalize(self.extractor)?;
-        let handler = cx.modifier.modify(self.modifier.modify(handler));
-        cx.app
-            .new_route(&cx.data, self.uri, self.methods.0, handler)
-    }
-}
-
-impl<E, M> Route<E, M>
+impl<E, M> Builder<E, M>
 where
     E: Extractor,
 {
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The provided function always succeeds and immediately returns a value of `Responder`.
-    pub fn reply<F>(self, f: F) -> Endpoint<E, M, impl Finalizer<E>>
+    pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out, Error = crate::Error>, M>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
     {
+        #[allow(missing_debug_implementations)]
+        struct ReplyHandlerFuture<Fut, F> {
+            future: Fut,
+            f: F,
+        }
+
+        impl<Fut, F> Future for ReplyHandlerFuture<Fut, F>
+        where
+            Fut: Future,
+            Fut::Item: Tuple,
+            Fut::Error: Into<crate::Error>,
+            F: Func<Fut::Item>,
+            F::Out: Responder,
+        {
+            type Item = F::Out;
+            type Error = crate::Error;
+
+            #[inline]
+            fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+                let args = futures::try_ready!(self.future.poll().map_err(Into::into));
+                Ok(self.f.call(args).into())
+            }
+        }
+
         #[allow(missing_debug_implementations)]
         struct ReplyHandler<E, F> {
             extractor: E,
@@ -378,22 +227,25 @@ where
         {
             type Output = F::Out;
             type Error = crate::Error;
-            type Future =
-                Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+            type Future = ReplyHandlerFuture<E::Future, F>;
 
             fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-                let f = self.f.clone();
-                self.extractor
-                    .extract(input)
-                    .map_err(Into::into)
-                    .map(move |result| result.map(|args| f.call(args)))
-                    .boxed()
+                match self.extractor.extract(input) {
+                    MaybeFuture::Ready(result) => {
+                        MaybeFuture::Ready(result.map(|args| self.f.call(args)).map_err(Into::into))
+                    }
+                    MaybeFuture::Future(future) => MaybeFuture::Future(ReplyHandlerFuture {
+                        future,
+                        f: self.f.clone(),
+                    }),
+                }
             }
         }
 
         #[allow(missing_debug_implementations)]
         struct Reply<F>(F);
-        impl<F, E> Finalizer<E> for Reply<F>
+
+        impl<F, E> MakeHandler<E> for Reply<F>
         where
             E: Extractor,
             F: Func<E::Output> + Clone + Send + Sync + 'static,
@@ -403,11 +255,11 @@ where
             type Error = crate::Error;
             type Handler = ReplyHandler<E, F>;
 
-            fn finalize(self, extractor: E) -> super::Result<Self::Handler> {
-                Ok(ReplyHandler {
+            fn make_handler(self, extractor: E) -> Self::Handler {
+                ReplyHandler {
                     extractor,
                     f: self.0,
-                })
+                }
             }
         }
 
@@ -417,14 +269,57 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The result of provided function is returned by `Future`.
-    pub fn call<F, R>(self, f: F) -> Endpoint<E, M, impl Finalizer<E>>
+    pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Item, Error = crate::Error>, M>
     where
-        E::Output: Send + 'static,
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-        R: IntoFuture<Error = crate::Error> + 'static,
+        R: IntoFuture<Error = crate::Error>,
         R::Future: Send + 'static,
-        R::Item: Responder + Send + 'static,
+        R::Item: Responder,
     {
+        #[allow(missing_debug_implementations)]
+        struct CallHandlerFuture<Fut, F>
+        where
+            Fut: Future,
+            Fut::Item: Tuple,
+            Fut::Error: Into<crate::Error>,
+            F: Func<Fut::Item>,
+            F::Out: IntoFuture<Error = crate::Error>,
+            <F::Out as IntoFuture>::Item: Responder,
+        {
+            state: State<Fut, <F::Out as IntoFuture>::Future, F>,
+        }
+
+        enum State<F1, F2, F> {
+            First(F1, F),
+            Second(F2),
+        }
+
+        impl<Fut, F> Future for CallHandlerFuture<Fut, F>
+        where
+            Fut: Future,
+            Fut::Item: Tuple,
+            Fut::Error: Into<crate::Error>,
+            F: Func<Fut::Item>,
+            F::Out: IntoFuture<Error = crate::Error>,
+            <F::Out as IntoFuture>::Item: Responder,
+        {
+            type Item = <F::Out as IntoFuture>::Item;
+            type Error = crate::Error;
+
+            #[inline]
+            fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+                loop {
+                    self.state = match self.state {
+                        State::First(ref mut f1, ref f) => {
+                            let args = futures::try_ready!(f1.poll().map_err(Into::into));
+                            State::Second(f.call(args).into_future())
+                        }
+                        State::Second(ref mut f2) => return f2.poll(),
+                    }
+                }
+            }
+        }
+
         #[allow(missing_debug_implementations)]
         struct CallHandler<E, F> {
             extractor: E,
@@ -434,47 +329,48 @@ where
         impl<E, F, R> Handler for CallHandler<E, F>
         where
             E: Extractor,
-            E::Output: Send + 'static,
             F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error> + 'static,
+            R: IntoFuture<Error = crate::Error>,
             R::Future: Send + 'static,
-            R::Item: Responder + Send + 'static,
+            R::Item: Responder,
         {
             type Output = R::Item;
             type Error = crate::Error;
-            type Future =
-                Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+            type Future = CallHandlerFuture<E::Future, F>;
 
             fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-                let f = self.f.clone();
-                self.extractor
-                    .extract(input)
-                    .map_err(Into::into)
-                    .and_then(move |args| f.call(args))
-                    .boxed()
+                match self.extractor.extract(input) {
+                    MaybeFuture::Ready(Ok(args)) => MaybeFuture::Future(CallHandlerFuture {
+                        state: State::Second(self.f.call(args).into_future()),
+                    }),
+                    MaybeFuture::Ready(Err(err)) => MaybeFuture::err(err.into()),
+                    MaybeFuture::Future(future) => MaybeFuture::Future(CallHandlerFuture {
+                        state: State::First(future, self.f.clone()),
+                    }),
+                }
             }
         }
 
         #[allow(missing_debug_implementations)]
         struct Call<F>(F);
-        impl<F, E, R> Finalizer<E> for Call<F>
+
+        impl<F, E, R> MakeHandler<E> for Call<F>
         where
             E: Extractor,
-            E::Output: Send + 'static,
             F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error> + 'static,
+            R: IntoFuture<Error = crate::Error>,
             R::Future: Send + 'static,
-            R::Item: Responder + Send + 'static,
+            R::Item: Responder,
         {
             type Output = R::Item;
             type Error = crate::Error;
             type Handler = CallHandler<E, F>;
 
-            fn finalize(self, extractor: E) -> super::Result<Self::Handler> {
-                Ok(CallHandler {
+            fn make_handler(self, extractor: E) -> Self::Handler {
+                CallHandler {
                     extractor,
                     f: self.0,
-                })
+                }
             }
         }
 
@@ -482,15 +378,16 @@ where
     }
 }
 
-impl<M> Route<(), M> {
+impl<M> Builder<(), M> {
     /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(self, handler: H) -> Endpoint<(), M, impl Finalizer<(), Handler = H>>
+    pub fn raw<H>(self, handler: H) -> Route<H, M>
     where
         H: Handler,
     {
         #[allow(missing_debug_implementations)]
         struct Raw<H>(H);
-        impl<H> Finalizer<()> for Raw<H>
+
+        impl<H> MakeHandler<()> for Raw<H>
         where
             H: Handler,
         {
@@ -498,8 +395,9 @@ impl<M> Route<(), M> {
             type Error = H::Error;
             type Handler = H;
 
-            fn finalize(self, _: ()) -> super::Result<H> {
-                Ok(self.0)
+            #[inline]
+            fn make_handler(self, _: ()) -> Self::Handler {
+                self.0
             }
         }
 
@@ -507,12 +405,12 @@ impl<M> Route<(), M> {
     }
 }
 
-impl<E, M> Route<E, M>
+impl<E, M> Builder<E, M>
 where
     E: Extractor<Output = ()>,
 {
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<T>(self, output: T) -> Endpoint<E, M, impl Finalizer<E>>
+    pub fn say<T>(self, output: T) -> Route<impl Handler<Output = T, Error = crate::Error>, M>
     where
         T: Responder + Clone + Send + Sync + 'static,
     {
@@ -524,7 +422,7 @@ where
         self,
         location: impl Into<Cow<'static, str>>,
         status: StatusCode,
-    ) -> Endpoint<E, M, impl Finalizer<E>> {
+    ) -> Route<impl Handler<Output = Redirect, Error = crate::Error>, M> {
         self.say(Redirect::new(status, location))
     }
 
@@ -533,7 +431,7 @@ where
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
-    ) -> Endpoint<E, M, impl Finalizer<E>> {
+    ) -> Route<impl Handler<Output = NamedFile, Error = crate::Error>, M> {
         let path = {
             #[derive(Clone)]
             #[allow(missing_debug_implementations)]
@@ -552,6 +450,27 @@ where
                 None => NamedFile::open(path.clone()),
             }.map_err(Into::into)
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct Route<H, M> {
+    methods: Methods,
+    uri: Uri,
+    handler: H,
+    modifier: M,
+}
+
+impl<H, M1, M2> Scope<M1> for Route<H, M2>
+where
+    H: Handler,
+    M2: Modifier<H>,
+    M1: Modifier<M2::Out>,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut Context<'_, M1>) -> Result<(), Self::Error> {
+        cx.add_endpoint(self.uri, self.methods.0, self.modifier.modify(self.handler))
     }
 }
 

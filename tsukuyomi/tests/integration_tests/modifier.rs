@@ -54,10 +54,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = App::builder()
-        .with(
-            route("/")? //
-                .reply(|| ""),
-        ) //
+        .with(route("/")?.say("")) //
         .modifier(MockModifier {
             marker: marker.clone(),
             name: "M",
@@ -80,10 +77,8 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = App::builder()
-        .with(
-            route("/")? //
-                .reply(|| ""),
-        ).modifier(MockModifier {
+        .with(route("/")?.say(""))
+        .modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
         }).modifier(MockModifier {
@@ -114,9 +109,9 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
                     marker: marker.clone(),
                     name: "M2",
                 }) //
-                .with(route("/")?.reply(|| "")),
+                .with(route("/")?.say("")),
         ) //
-        .with(route("/path2")?.reply(|| ""))
+        .with(route("/path2")?.say(""))
         .build_server()?
         .into_test_server()?;
 
@@ -147,14 +142,14 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                             marker: marker.clone(),
                             name: "M2",
                         }) //
-                        .with(route("/")?.reply(|| ""))
+                        .with(route("/")?.say(""))
                         .with(
                             mount("/a")?
                                 .modifier(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
                                 }) //
-                                .with(route("/")?.reply(|| "")),
+                                .with(route("/")?.say("")),
                         ),
                 ),
         ) //
