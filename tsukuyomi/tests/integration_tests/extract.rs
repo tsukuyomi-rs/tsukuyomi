@@ -22,10 +22,10 @@ fn unit_input() -> tsukuyomi::test::Result<()> {
 fn params() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            path::builder()
-                .param("id")
-                .param("name")
-                .catch_all("path")
+            path::root()
+                .param("id")?
+                .param("name")?
+                .catch_all("path")?
                 .reply(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)),
         ) //
         .build_server()?
@@ -44,28 +44,22 @@ fn params() -> tsukuyomi::test::Result<()> {
 fn route_macros() -> tsukuyomi::test::Result<()> {
     drop(
         App::builder()
+            .with(path::root().segment("root")?.reply(|| "root"))
             .with(
-                path::builder()
-                    .segment("root")
-                    .end() //
-                    .reply(|| "root"),
-            ).with(
-                path::builder()
-                    .segment("params")
-                    .param("id")
-                    .param("name")
-                    .end()
+                path::root()
+                    .segment("params")?
+                    .param("id")?
+                    .param("name")?
                     .reply(|id: i32, name: String| {
                         drop((id, name));
                         "dummy"
                     }),
             ) //
             .with(
-                path::builder()
-                    .segment("posts")
-                    .param("id")
-                    .segment("edit")
-                    .end()
+                path::root()
+                    .segment("posts")?
+                    .param("id")?
+                    .segment("edit")?
                     .methods("PUT")?
                     .extract(extractor::body::plain::<String>())
                     .reply(|id: u32, body: String| {
@@ -74,9 +68,9 @@ fn route_macros() -> tsukuyomi::test::Result<()> {
                     }),
             ) //
             .with(
-                path::builder()
-                    .segment("static")
-                    .catch_all("path")
+                path::root()
+                    .segment("static")?
+                    .catch_all("path")?
                     .reply(|path: String| {
                         drop(path);
                         "dummy"

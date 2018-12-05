@@ -5,9 +5,8 @@ use tsukuyomi::app::directives::*;
 fn compiletest() -> tsukuyomi::app::Result<()> {
     App::builder()
         .with(
-            path::builder()
-                .segment("index.html")
-                .end() //
+            path::root()
+                .segment("index.html")?
                 .send_file("/path/to/index.html", None),
         ) //
         .build()

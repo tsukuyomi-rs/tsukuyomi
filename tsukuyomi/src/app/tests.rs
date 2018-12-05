@@ -125,8 +125,8 @@ fn asterisk_route_with_normal_routes() -> Result<()> {
         .with(path::root().say(""))
         .with(
             mount("/api")?
-                .with(path::builder().segment("posts").end().say(""))
-                .with(path::builder().segment("events").end().say("")),
+                .with(path::root().segment("posts")?.say(""))
+                .with(path::root().segment("events")?.say("")),
         ) //
         .with(
             path::asterisk()
@@ -150,14 +150,14 @@ fn scope_simple() -> Result<()> {
     let app = App::builder() //
         .with(
             mount("/")?
-                .with(path::builder().segment("a").end().say(""))
-                .with(path::builder().segment("b").end().say("")),
+                .with(path::root().segment("a")?.say(""))
+                .with(path::root().segment("b")?.say("")),
         ) //
-        .with(path::builder().segment("foo").end().say(""))
+        .with(path::root().segment("foo")?.say(""))
         .with(
             mount("/c")?
-                .with(path::builder().segment("d").end().say(""))
-                .with(path::builder().segment("d").end().methods("POST")?.say("")),
+                .with(path::root().segment("d")?.say(""))
+                .with(path::root().segment("d")?.methods("POST")?.say("")),
         ) //
         .build()?;
 
@@ -200,19 +200,19 @@ fn scope_nested() -> Result<()> {
     let app = App::builder()
         .with(
             mount("/")? // 0
-                .with(path::builder().segment("foo").end().reply(|| "")) // /foo
-                .with(path::builder().segment("bar").end().reply(|| "")) // /bar
-                .with(path::builder().segment("foo").end().methods("POST")?.say("")), // foo (POST)
+                .with(path::root().segment("foo")?.reply(|| "")) // /foo
+                .with(path::root().segment("bar")?.reply(|| "")) // /bar
+                .with(path::root().segment("foo")?.methods("POST")?.say("")), // foo (POST)
         ) //
         .with(
             mount("/baz")? // 1
                 .with(path::root().reply(|| "")) // /baz
                 .with(
                     mount("/")? // 2
-                        .with(path::builder().segment("foobar").end().reply(|| "")), // /baz/foobar
+                        .with(path::root().segment("foobar")?.reply(|| "")), // /baz/foobar
                 ), //
         ) //
-        .with(path::builder().segment("hoge").end().reply(|| "")) // /hoge
+        .with(path::root().segment("hoge")?.reply(|| "")) // /hoge
         .build()?;
 
     assert_matches!(
@@ -263,8 +263,8 @@ fn scope_nested() -> Result<()> {
 #[test]
 fn failcase_duplicate_uri_and_method() -> Result<()> {
     let app = App::builder()
-        .with(path::builder().segment("path").end().reply(|| ""))
-        .with(path::builder().segment("path").end().reply(|| ""))
+        .with(path::root().segment("path")?.reply(|| ""))
+        .with(path::root().segment("path")?.reply(|| ""))
         .build();
     assert!(app.is_err());
     Ok(())
@@ -273,13 +273,15 @@ fn failcase_duplicate_uri_and_method() -> Result<()> {
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::builder()
-        .with(path::builder().segment("path").end().reply(|| ""))
         .with(
+            path::root() //
+                .segment("path")?
+                .reply(|| ""),
+        ).with(
             mount("/")? //
                 .with(
-                    path::builder()
-                        .segment("path")
-                        .end()
+                    path::root() //
+                        .segment("path")?
                         .methods("POST")?
                         .reply(|| ""),
                 ),

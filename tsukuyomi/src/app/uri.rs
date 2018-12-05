@@ -1,13 +1,20 @@
 use {
     crate::common::{Never, TryFrom},
     failure::Error,
-    indexmap::IndexSet,
+    indexmap::{indexset, IndexSet},
     std::{
         fmt,
         hash::{Hash, Hasher},
         str::FromStr,
     },
 };
+
+#[derive(Debug, Clone, PartialEq)]
+enum UriKind {
+    Root,
+    Asterisk,
+    Segments(String, Option<CaptureNames>),
+}
 
 /// A type representing the URI of a route.
 #[derive(Debug, Clone)]
@@ -19,11 +26,16 @@ impl Default for Uri {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum UriKind {
-    Root,
-    Asterisk,
-    Segments(String, Option<CaptureNames>),
+impl AsRef<Uri> for Uri {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl fmt::Display for Uri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 impl PartialEq for Uri {
@@ -183,6 +195,70 @@ impl Uri {
         }
     }
 
+    pub fn push(&mut self, component: UriComponent) -> Result<(), Error> {
+        self.0 = match self.0 {
+            UriKind::Root => match component {
+                UriComponent::Static(s) => UriKind::Segments(format!("/{}", s), None),
+                UriComponent::Param(name, param_kind) => UriKind::Segments(
+                    format!("/{}{}", param_kind, name),
+                    Some(CaptureNames {
+                        params: indexset!{ name.to_string() },
+                        has_wildcard: param_kind == '*',
+                    }),
+                ),
+                UriComponent::Slash => UriKind::Root,
+            },
+            UriKind::Asterisk => failure::bail!("the asterisk URI cannot be extended"),
+            UriKind::Segments(ref mut segments, ref mut names) => match component {
+                UriComponent::Static(s) => {
+                    if names.as_ref().map_or(false, |names| names.has_wildcard) {
+                        failure::bail!("the catch-all parameter has already registered");
+                    }
+
+                    if !segments.ends_with('/') {
+                        segments.push('/');
+                    }
+                    segments.push_str(&s);
+
+                    return Ok(());
+                }
+                UriComponent::Param(name, param_kind) => {
+                    let names = names.get_or_insert_with(Default::default);
+                    if names.params.contains(&name) {
+                        failure::bail!("duplicated parameter name");
+                    }
+                    if names.has_wildcard {
+                        failure::bail!("the catch-all parameter has already been registered");
+                    }
+
+                    if !segments.ends_with('/') {
+                        segments.push('/');
+                    }
+                    segments.push(param_kind);
+                    segments.push_str(&name);
+
+                    names.params.insert(name);
+                    names.has_wildcard = param_kind == '*';
+
+                    return Ok(());
+                }
+                UriComponent::Slash => {
+                    if names.as_ref().map_or(false, |names| names.has_wildcard) {
+                        failure::bail!("the catch-all parameter has already registered");
+                    }
+
+                    if !segments.ends_with('/') {
+                        segments.push('/');
+                    }
+
+                    return Ok(());
+                }
+            },
+        };
+
+        Ok(())
+    }
+
     pub fn join(&self, other: impl AsRef<Self>) -> Result<Self, Error> {
         match self.0.clone() {
             UriKind::Root => Ok(other.as_ref().clone()),
@@ -216,16 +292,11 @@ impl Uri {
     }
 }
 
-impl AsRef<Uri> for Uri {
-    fn as_ref(&self) -> &Self {
-        self
-    }
-}
-
-impl fmt::Display for Uri {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
+#[derive(Debug)]
+pub enum UriComponent {
+    Static(String),
+    Param(String, char),
+    Slash,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -385,4 +456,77 @@ mod tests {
             Uri::static_("/path/to")
         );
     ];
+
+    #[test]
+    fn push_uri_1() -> Result<(), failure::Error> {
+        let mut uri = Uri::root();
+        uri.push(UriComponent::Static("path".into()))?;
+        uri.push(UriComponent::Static("to".into()))?;
+        uri.push(UriComponent::Param("id".into(), ':'))?;
+        uri.push(UriComponent::Param("name".into(), ':'))?;
+        uri.push(UriComponent::Param("path".into(), '*'))?;
+
+        assert_eq!(uri.as_str(), "/path/to/:id/:name/*path");
+
+        let names = uri.capture_names().expect("should be Some");
+        assert_eq!(
+            names.params,
+            indexset!{ "id".into(), "name".into(), "path".into() }
+        );
+        assert!(names.has_wildcard);
+
+        Ok(())
+    }
+
+    #[test]
+    fn push_uri_2() -> Result<(), failure::Error> {
+        let mut uri = Uri::root();
+        uri.push(UriComponent::Param("id".into(), ':'))?;
+
+        assert_eq!(uri.as_str(), "/:id");
+
+        let names = uri.capture_names().expect("should be Some");
+        assert_eq!(names.params, indexset!{ "id".into(), });
+        assert!(!names.has_wildcard);
+
+        Ok(())
+    }
+
+    #[test]
+    fn push_uri_3() -> Result<(), failure::Error> {
+        let mut uri = Uri::root();
+        uri.push(UriComponent::Param("path".into(), '*'))?;
+
+        assert_eq!(uri.as_str(), "/*path");
+
+        let names = uri.capture_names().expect("should be Some");
+        assert_eq!(names.params, indexset!{ "path".into(), });
+        assert!(names.has_wildcard);
+
+        Ok(())
+    }
+
+    #[test]
+    fn push_uri_4() -> Result<(), failure::Error> {
+        let mut uri = Uri::root();
+        uri.push(UriComponent::Static("path".into()))?;
+        uri.push(UriComponent::Slash)?;
+
+        assert_eq!(uri.as_str(), "/path/");
+        assert!(uri.capture_names().is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn push_uri_asterisk() {
+        let mut uri = Uri::asterisk();
+        assert!(uri.push(UriComponent::Static("path".into())).is_err());
+    }
+
+    #[test]
+    fn push_uri_slash_after_catch_all() {
+        let mut uri = Uri::try_from("/*path").unwrap();
+        assert!(uri.push(UriComponent::Slash).is_err());
+    }
 }

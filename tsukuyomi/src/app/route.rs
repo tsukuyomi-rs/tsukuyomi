@@ -1,14 +1,14 @@
 use {
     super::{
         builder::{Context, Scope},
-        uri::Uri,
+        uri::{Uri, UriComponent},
     },
     crate::{
         common::{Chain, MaybeFuture, Never, TryFrom},
         extractor::{Combine, Extractor, Func, Tuple},
         fs::NamedFile,
         handler::{Handler, MakeHandler},
-        input::{Input, Params},
+        input::Input,
         modifier::Modifier,
         output::{redirect::Redirect, Responder},
     },
@@ -142,226 +142,156 @@ impl<'a> TryFrom<&'a str> for Methods {
     }
 }
 
-pub trait PathExtractor: Send + Sync + 'static {
-    type Output: Tuple;
+pub mod path {
+    use super::{Builder, Methods, Uri};
 
-    fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output>;
-}
+    pub fn root() -> Builder<(), (), super::Incomplete> {
+        Builder {
+            uri: Uri::root(),
+            methods: Methods::default(),
+            extractor: (),
+            modifier: (),
+            _marker: std::marker::PhantomData,
+        }
+    }
 
-impl PathExtractor for () {
-    type Output = ();
-
-    #[inline]
-    fn extract(&self, _: &Params<'_>) -> crate::Result<Self::Output> {
-        Ok(())
+    pub fn asterisk() -> Builder<(), (), super::Completed> {
+        Builder {
+            uri: Uri::asterisk(),
+            methods: Methods::default(),
+            extractor: (),
+            modifier: (),
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
-impl<E1, E2> PathExtractor for Chain<E1, E2>
-where
-    E1: PathExtractor,
-    E2: PathExtractor,
-    E1::Output: Combine<E2::Output>,
-{
-    type Output = <E1::Output as Combine<E2::Output>>::Out;
+#[derive(Debug)]
+pub struct Completed(());
 
-    #[inline]
-    fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output> {
-        let x = self.left.extract(params)?;
-        let y = self.right.extract(params)?;
-        Ok(x.combine(y))
-    }
-}
+#[derive(Debug)]
+pub struct Incomplete(());
 
-#[derive(Debug, Default)]
-pub struct PathBuilder<E: PathExtractor = ()> {
+/// A builder of `Scope` to register a route, which is matched to the requests
+/// with a certain path and method(s) and will return its response.
+#[derive(Debug)]
+pub struct Builder<E: Extractor = (), M = (), T = Incomplete> {
+    uri: Uri,
+    methods: Methods,
     extractor: E,
-    segments: Vec<String>,
+    modifier: M,
+    _marker: PhantomData<T>,
 }
 
-impl<E: PathExtractor> PathBuilder<E> {
-    pub fn segment(mut self, s: impl AsRef<str>) -> Self {
-        self.segments.push(s.as_ref().into());
-        self
+impl<E, M> Builder<E, M, Incomplete>
+where
+    E: Extractor,
+{
+    pub fn segment(mut self, s: impl Into<String>) -> super::Result<Self> {
+        self.uri.push(UriComponent::Static(s.into()))?;
+        Ok(self)
+    }
+
+    pub fn slash(self) -> Builder<E, M, Completed> {
+        Builder {
+            uri: {
+                let mut uri = self.uri;
+                uri.push(UriComponent::Slash).expect("this is a bug.");
+                uri
+            },
+            methods: self.methods,
+            extractor: self.extractor,
+            modifier: self.modifier,
+            _marker: PhantomData,
+        }
     }
 
     pub fn param<T>(
         self,
-        name: impl AsRef<str>,
-    ) -> PathBuilder<impl PathExtractor<Output = <E::Output as Combine<(T,)>>::Out>>
+        name: impl Into<String>,
+    ) -> super::Result<
+        Builder<
+            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>,
+            M,
+            Incomplete,
+        >,
+    >
     where
-        T: FromParam,
-        E::Output: Combine<(T,)>,
+        T: FromParam + Send + 'static,
+        E::Output: Combine<(T,)> + Send + 'static,
     {
-        #[allow(missing_debug_implementations)]
-        struct ExtractParam<T>(String, PhantomData<fn() -> T>);
-
-        impl<T> PathExtractor for ExtractParam<T>
-        where
-            T: FromParam,
-        {
-            type Output = (T,);
-
-            fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output> {
-                let s = params
-                    .name(&self.0)
-                    .ok_or_else(|| crate::error::internal_server_error("unknown parameter name"))?;
-                T::from_param(EncodedStr::new(s))
-                    .map(|x| (x,))
-                    .map_err(Into::into)
-            }
-        }
-
-        PathBuilder {
-            segments: {
-                let mut segments = self.segments;
-                segments.push(format!(":{}", name.as_ref()));
-                segments
+        let name = name.into();
+        Ok(Builder {
+            uri: {
+                let mut uri = self.uri;
+                uri.push(UriComponent::Param(name.clone(), ':'))?;
+                uri
             },
+            methods: self.methods,
             extractor: Chain::new(
                 self.extractor,
-                ExtractParam(name.as_ref().into(), PhantomData),
+                crate::extractor::ready(move |input| match input.params {
+                    Some(ref params) => {
+                        let s = params.name(&name).ok_or_else(|| {
+                            crate::error::internal_server_error("invalid paramter name")
+                        })?;
+                        T::from_param(EncodedStr::new(s)).map_err(Into::into)
+                    }
+                    None => Err(crate::error::internal_server_error("missing Params")),
+                }),
             ),
-        }
+            modifier: self.modifier,
+            _marker: PhantomData,
+        })
     }
 
     pub fn catch_all<T>(
         self,
-        name: impl AsRef<str>,
-    ) -> Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>, ()>
+        name: impl Into<String>,
+    ) -> super::Result<
+        Builder<
+            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>,
+            M,
+            Completed,
+        >,
+    >
     where
-        T: FromParam,
-        E::Output: Combine<(T,)>,
+        T: FromParam + Send + 'static,
+        E::Output: Combine<(T,)> + Send + 'static,
     {
-        #[allow(missing_debug_implementations)]
-        struct ExtractCatchAll<T>(PhantomData<fn() -> T>);
-
-        impl<T> PathExtractor for ExtractCatchAll<T>
-        where
-            T: FromParam,
-        {
-            type Output = (T,);
-
-            fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output> {
-                let s = params.get_wildcard().ok_or_else(|| {
-                    crate::error::internal_server_error("missing wildcard_parameter")
-                })?;
-                T::from_param(EncodedStr::new(s))
-                    .map(|x| (x,))
-                    .map_err(Into::into)
-            }
-        }
-
-        (PathBuilder {
-            segments: {
-                let mut segments = self.segments;
-                segments.push(format!("*{}", name.as_ref()));
-                segments
+        let name = name.into();
+        Ok(Builder {
+            uri: {
+                let mut uri = self.uri;
+                uri.push(UriComponent::Param(name.clone(), '*'))?;
+                uri
             },
-            extractor: Chain::new(self.extractor, ExtractCatchAll(PhantomData)),
-        }).finalize(false)
-    }
-
-    pub fn end(self) -> Builder<impl Extractor<Output = E::Output, Error = crate::Error>, ()> {
-        self.finalize(false)
-    }
-
-    pub fn slash(self) -> Builder<impl Extractor<Output = E::Output, Error = crate::Error>, ()> {
-        self.finalize(true)
-    }
-
-    fn finalize(
-        self,
-        trailing_slash: bool,
-    ) -> Builder<impl Extractor<Output = E::Output, Error = crate::Error>, ()> {
-        #[derive(Debug)]
-        struct ExtractParams<E>(E);
-
-        impl<E> Extractor for ExtractParams<E>
-        where
-            E: PathExtractor,
-        {
-            type Output = E::Output;
-            type Error = crate::Error;
-            type Future = crate::common::NeverFuture<Self::Output, Self::Error>;
-
-            #[inline]
-            fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-                match input.params {
-                    Some(params) => MaybeFuture::Ready(self.0.extract(&params)),
-                    None => MaybeFuture::err(crate::error::internal_server_error("missing params")),
-                }
-            }
-        }
-
-        let uri = if trailing_slash {
-            self.segments
-                .into_iter()
-                .fold(String::from("/"), |mut acc, s| {
-                    acc.push_str(&*s);
-                    acc.push('/');
-                    acc
-                }).parse()
-                .expect("this is a bug.")
-        } else {
-            self.segments
-                .into_iter()
-                .enumerate()
-                .fold(String::from("/"), |mut acc, (i, s)| {
-                    if i > 0 {
-                        acc.push('/');
+            methods: self.methods,
+            extractor: Chain::new(
+                self.extractor,
+                crate::extractor::ready(|input| match input.params {
+                    Some(ref params) => {
+                        let s = params.get_wildcard().ok_or_else(|| {
+                            crate::error::internal_server_error(
+                                "the catch-all parameter is not available",
+                            )
+                        })?;
+                        T::from_param(EncodedStr::new(s)).map_err(Into::into)
                     }
-                    acc.push_str(&*s);
-                    acc
-                }).parse()
-                .expect("this is a bug.")
-        };
-        eprintln!("[dbg] uri = {:?}", uri);
-
-        Builder::new(ExtractParams(self.extractor), (), uri)
+                    None => Err(crate::error::internal_server_error("missing Params")),
+                }),
+            ),
+            modifier: self.modifier,
+            _marker: PhantomData,
+        })
     }
-}
-
-pub mod path {
-    use super::{Builder, PathBuilder, Uri};
-
-    pub fn root() -> Builder<(), ()> {
-        Builder::new((), (), Uri::root())
-    }
-
-    pub fn asterisk() -> Builder<(), ()> {
-        Builder::new((), (), Uri::asterisk())
-    }
-
-    pub fn builder() -> PathBuilder<()> {
-        PathBuilder::default()
-    }
-}
-
-/// A builder of `Scope` to register a route, which is matched to the requests
-/// with a certain path and method(s) and will return its response.
-#[derive(Debug, Default)]
-pub struct Builder<E: Extractor = (), M = ()> {
-    extractor: E,
-    modifier: M,
-    uri: Uri,
-    methods: Methods,
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
-impl<E, M> Builder<E, M>
+impl<E, M, T> Builder<E, M, T>
 where
     E: Extractor,
 {
-    fn new(extractor: E, modifier: M, uri: Uri) -> Self {
-        Builder {
-            extractor,
-            modifier,
-            uri,
-            methods: Methods(IndexSet::new()),
-        }
-    }
-
     /// Sets the HTTP methods that this route accepts.
     pub fn methods<M2>(self, methods: M2) -> super::Result<Self>
     where
@@ -374,33 +304,29 @@ where
     }
 
     /// Appends an `Extractor` to this builder.
-    pub fn extract<U>(
-        self,
-        other: U,
-    ) -> Builder<
-        impl Extractor<Output = <E::Output as Combine<U::Output>>::Out, Error = crate::Error>,
-        M,
-    >
+    pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>, M, T>
     where
-        U: Extractor,
-        E::Output: Combine<U::Output> + Send + 'static,
-        U::Output: Send + 'static,
+        E2: Extractor,
+        E::Output: Combine<E2::Output> + Send + 'static,
+        E2::Output: Send + 'static,
     {
         Builder {
             extractor: Chain::new(self.extractor, other),
             modifier: self.modifier,
             uri: self.uri,
             methods: self.methods,
+            _marker: PhantomData,
         }
     }
 
     /// Appends a `Modifier` to this builder.
-    pub fn modify<M2>(self, modifier: M2) -> Builder<E, Chain<M, M2>> {
+    pub fn modify<M2>(self, modifier: M2) -> Builder<E, Chain<M, M2>, T> {
         Builder {
             extractor: self.extractor,
             modifier: Chain::new(self.modifier, modifier),
             uri: self.uri,
             methods: self.methods,
+            _marker: PhantomData,
         }
     }
 
@@ -415,12 +341,7 @@ where
             modifier: self.modifier,
         }
     }
-}
 
-impl<E, M> Builder<E, M>
-where
-    E: Extractor,
-{
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The provided function always succeeds and immediately returns a value of `Responder`.
@@ -618,7 +539,7 @@ where
     }
 }
 
-impl<E, M> Builder<E, M>
+impl<E, M, T> Builder<E, M, T>
 where
     E: Extractor<Output = ()>,
 {
@@ -649,9 +570,9 @@ where
     }
 
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<T>(self, output: T) -> Route<impl Handler<Output = T, Error = crate::Error>, M>
+    pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R, Error = crate::Error>, M>
     where
-        T: Responder + Clone + Send + Sync + 'static,
+        R: Responder + Clone + Send + Sync + 'static,
     {
         self.reply(move || output.clone())
     }

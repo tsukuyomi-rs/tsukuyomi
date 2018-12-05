@@ -111,7 +111,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
                 }) //
                 .with(path::root().say("")),
         ) //
-        .with(path::builder().segment("path2").end().say(""))
+        .with(path::root().segment("path2")?.say(""))
         .build_server()?
         .into_test_server()?;
 
