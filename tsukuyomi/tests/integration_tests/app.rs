@@ -1,7 +1,7 @@
 use {
     http::{header, Request, StatusCode},
     tsukuyomi::{
-        app::directives::*, //
+        app::{mount, route, App},
         extractor,
         test::ResponseExt,
     },
@@ -22,7 +22,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(path::root().segment("hello")?.reply(|| "Tsukuyomi"))
+        .with(route::root().segment("hello")?.reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
 
@@ -42,7 +42,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
     let mut server = App::with_prefix("/api/v1")?
-        .with(path::root().segment("hello")?.reply(|| "Tsukuyomi"))
+        .with(route::root().segment("hello")?.reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
 
@@ -56,7 +56,7 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            path::root()
+            route::root()
                 .segment("hello")?
                 .methods("POST")?
                 .extract(tsukuyomi::extractor::body::plain())
@@ -90,7 +90,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            path::root()
+            route::root()
                 .segment("login")?
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
@@ -103,7 +103,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 })).reply(|| "Logged in"),
         ) //
         .with(
-            path::root()
+            route::root()
                 .segment("logout")?
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
@@ -142,9 +142,9 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(path::root().segment("path")?.reply(|| "get"))
+        .with(route::root().segment("path")?.reply(|| "get"))
         .with(
-            path::root()
+            route::root()
                 .segment("path")?
                 .methods("POST")?
                 .reply(|| "post"),
@@ -182,7 +182,12 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                         tsukuyomi::app::fallback::default(cx)
                     }
                 }) //
-                .with(path::root().segment("posts")?.methods("POST")?.say("posts")),
+                .with(
+                    route::root()
+                        .segment("posts")?
+                        .methods("POST")?
+                        .say("posts"),
+                ),
         ) //
         .build_server()?
         .into_test_server()?;

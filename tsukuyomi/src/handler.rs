@@ -247,18 +247,18 @@ where
     }
 }
 
-impl<M1, M2, H> ModifyHandler<H> for Chain<M1, M2>
+impl<I, O, H> ModifyHandler<H> for Chain<I, O>
 where
-    M1: ModifyHandler<M2::Handler>,
-    M2: ModifyHandler<H>,
     H: Handler,
+    I: ModifyHandler<H>,
+    O: ModifyHandler<I::Handler>,
 {
-    type Output = M1::Output;
-    type Error = M1::Error;
-    type Handler = M1::Handler;
+    type Output = O::Output;
+    type Error = O::Error;
+    type Handler = O::Handler;
 
     #[inline]
     fn modify(&self, input: H) -> Self::Handler {
-        self.left.modify(self.right.modify(input))
+        self.right.modify(self.left.modify(input))
     }
 }

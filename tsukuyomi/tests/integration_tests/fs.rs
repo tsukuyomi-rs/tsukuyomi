@@ -1,11 +1,11 @@
-use tsukuyomi::app::directives::*;
+use tsukuyomi::app::{route, App};
 
 #[test]
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
     App::builder()
         .with(
-            path::root()
+            route::root()
                 .segment("index.html")?
                 .send_file("/path/to/index.html", None),
         ) //

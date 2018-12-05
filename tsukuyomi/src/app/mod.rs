@@ -1,18 +1,12 @@
 //! Components for constructing HTTP applications.
 
 pub mod fallback;
-pub mod mount;
 pub mod route;
-
-/// A *prelude* for using the primitive `Scope`s.
-pub mod directives {
-    #[doc(no_inline)]
-    pub use super::{mount::mount, route::path, App};
-}
 
 mod builder;
 mod error;
 pub(crate) mod imp;
+mod mount;
 mod router;
 mod uri;
 
@@ -23,6 +17,7 @@ use self::uri::Uri;
 pub use self::{
     builder::{Builder, Scope},
     error::{Error, Result},
+    mount::{mount, Mount},
 };
 use {
     self::router::Router,

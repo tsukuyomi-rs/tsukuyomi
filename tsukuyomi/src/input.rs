@@ -7,8 +7,75 @@ pub use {
 
 use {
     futures::{Future, IntoFuture, Poll},
-    std::{cell::Cell, ptr::NonNull},
+    std::{borrow::Cow, cell::Cell, mem, ptr::NonNull, str::Utf8Error},
+    url::percent_encoding::percent_decode,
 };
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct PercentEncoded(str);
+
+impl PercentEncoded {
+    pub unsafe fn new_unchecked<'a>(s: &'a str) -> &'a Self {
+        mem::transmute(s)
+    }
+
+    pub fn decode_utf8<'a>(&'a self) -> Result<Cow<'a, str>, Utf8Error> {
+        percent_decode(self.0.as_bytes()).decode_utf8()
+    }
+
+    pub fn decode_utf8_lossy<'a>(&'a self) -> Cow<'a, str> {
+        percent_decode(self.0.as_bytes()).decode_utf8_lossy()
+    }
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub trait FromPercentEncoded: Sized {
+    type Error: Into<crate::Error>;
+
+    fn from_percent_encoded(s: &PercentEncoded) -> Result<Self, Self::Error>;
+}
+
+macro_rules! impl_from_percent_encoded {
+    ($($t:ty),*) => {$(
+        impl FromPercentEncoded for $t {
+            type Error = crate::Error;
+
+            #[inline]
+            fn from_percent_encoded(s: &PercentEncoded) -> Result<Self, Self::Error> {
+                s.decode_utf8()
+                    .map_err(crate::error::bad_request)?
+                    .parse()
+                    .map_err(crate::error::bad_request)
+            }
+        }
+    )*};
+}
+
+impl_from_percent_encoded!(bool, char, f32, f64, String);
+impl_from_percent_encoded!(i8, i16, i32, i64, i128, isize);
+impl_from_percent_encoded!(u8, u16, u32, u64, u128, usize);
+impl_from_percent_encoded!(
+    std::net::SocketAddr,
+    std::net::SocketAddrV4,
+    std::net::SocketAddrV6,
+    std::net::IpAddr,
+    std::net::Ipv4Addr,
+    std::net::Ipv6Addr,
+    url::Url,
+    uuid::Uuid
+);
+
+impl FromPercentEncoded for std::path::PathBuf {
+    type Error = crate::Error;
+
+    #[inline]
+    fn from_percent_encoded(s: &PercentEncoded) -> Result<Self, Self::Error> {
+        s.decode_utf8()
+            .map(|s| Self::from(s.into_owned()))
+            .map_err(crate::error::bad_request)
+    }
+}
 
 /// Creates a `Future` from the specified closure that process an abritrary asynchronous computation.
 pub fn poll_fn<F, T, E>(mut f: F) -> impl Future<Item = T, Error = E>

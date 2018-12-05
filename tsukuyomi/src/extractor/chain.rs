@@ -1,11 +1,9 @@
 use {
-    super::{
-        generic::{Combine, Tuple},
-        Extractor,
-    },
+    super::Extractor,
     crate::{
         common::{Chain, MaybeDone, MaybeFuture},
         error::Error,
+        generic::{Combine, Tuple},
         input::Input,
     },
     futures::{Async, Future, Poll},

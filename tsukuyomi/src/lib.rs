@@ -53,6 +53,7 @@ extern crate tower_web;
 extern crate matches;
 
 mod common;
+mod generic;
 
 pub mod app;
 pub mod error;
@@ -69,7 +70,7 @@ pub mod test;
 #[doc(inline)]
 pub use crate::{
     app::App,
-    common::{MaybeFuture, Never, NeverFuture, TryFrom},
+    common::{Chain, MaybeFuture, Never, NeverFuture, TryFrom},
     error::{
         Error, //
         HttpError,

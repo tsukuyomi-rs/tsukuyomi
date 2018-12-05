@@ -14,7 +14,13 @@ pub fn mount<T>(prefix: T) -> super::Result<Mount<(), ()>>
 where
     Uri: TryFrom<T>,
 {
-    Ok(Mount::new((), (), Uri::try_from(prefix)?))
+    let prefix = Uri::try_from(prefix)?;
+    Ok(Mount {
+        scope: (),
+        modifier: (),
+        fallback: None,
+        prefix,
+    })
 }
 
 /// An instance of `Scope` that represents a sub-scope with a specific prefix.
@@ -28,16 +34,6 @@ pub struct Mount<S = (), M = ()> {
 
 #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S, M> Mount<S, M> {
-    /// Create a new `Mount` with the specified components.
-    pub fn new(scope: S, modifier: M, prefix: Uri) -> Self {
-        Mount {
-            scope,
-            modifier,
-            fallback: None,
-            prefix,
-        }
-    }
-
     /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
     pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M> {
         Mount {
@@ -65,17 +61,6 @@ impl<S, M> Mount<S, M> {
             fallback: Some(fallback.into()),
             ..self
         }
-    }
-
-    /// Sets the prefix of the URL appended to the all routes in the inner scope.
-    pub fn prefix<T>(self, prefix: T) -> super::Result<Self>
-    where
-        Uri: TryFrom<T>,
-    {
-        Ok(Self {
-            prefix: Uri::try_from(prefix)?,
-            ..self
-        })
     }
 }
 

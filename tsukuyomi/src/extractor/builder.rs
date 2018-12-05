@@ -1,11 +1,9 @@
 use {
-    super::{
-        generic::{Combine, Func},
-        Extract, Extractor,
-    },
+    super::Extractor,
     crate::{
         common::{Chain, MaybeFuture, Never},
         error::Error,
+        generic::{Combine, Func},
         input::Input,
     },
     futures::{Future, Poll},
@@ -175,7 +173,7 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
         self.extractor.extract(input)
     }
 }

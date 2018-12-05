@@ -5,10 +5,11 @@ use {
     },
     crate::{
         common::{Chain, MaybeFuture, Never, TryFrom},
-        extractor::{Combine, Extractor, Func, Tuple},
+        extractor::Extractor,
         fs::NamedFile,
+        generic::{Combine, Func, Tuple},
         handler::{Handler, MakeHandler, ModifyHandler},
-        input::Input,
+        input::{FromPercentEncoded, Input, PercentEncoded},
         output::{redirect::Redirect, Responder},
     },
     futures::{Future, IntoFuture, Poll},
@@ -18,76 +19,9 @@ use {
         borrow::Cow,
         marker::PhantomData,
         path::{Path, PathBuf},
-        str::Utf8Error,
         sync::Arc,
     },
-    url::percent_encoding::percent_decode,
 };
-
-#[derive(Debug)]
-pub struct EncodedStr<'a>(&'a str);
-
-impl<'a> EncodedStr<'a> {
-    pub(crate) fn new(s: &'a str) -> Self {
-        EncodedStr(s)
-    }
-
-    pub fn decode_utf8(&self) -> Result<Cow<'a, str>, Utf8Error> {
-        percent_decode(self.0.as_bytes()).decode_utf8()
-    }
-
-    pub fn decode_utf8_lossy(&self) -> Cow<'a, str> {
-        percent_decode(self.0.as_bytes()).decode_utf8_lossy()
-    }
-}
-
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-pub trait FromParam: Sized + Send + 'static {
-    type Error: Into<crate::Error>;
-
-    fn from_param(s: EncodedStr<'_>) -> Result<Self, Self::Error>;
-}
-
-macro_rules! impl_from_param {
-    ($($t:ty),*) => {$(
-        impl FromParam for $t {
-            type Error = crate::Error;
-
-            #[inline]
-            fn from_param(s: EncodedStr<'_>) -> Result<Self, Self::Error> {
-                s.decode_utf8()
-                    .map_err(crate::error::bad_request)?
-                    .parse()
-                    .map_err(crate::error::bad_request)
-            }
-        }
-    )*};
-}
-
-impl_from_param!(bool, char, f32, f64, String);
-impl_from_param!(i8, i16, i32, i64, i128, isize);
-impl_from_param!(u8, u16, u32, u64, u128, usize);
-impl_from_param!(
-    std::net::SocketAddr,
-    std::net::SocketAddrV4,
-    std::net::SocketAddrV6,
-    std::net::IpAddr,
-    std::net::Ipv4Addr,
-    std::net::Ipv6Addr,
-    url::Url,
-    uuid::Uuid
-);
-
-impl FromParam for PathBuf {
-    type Error = crate::Error;
-
-    #[inline]
-    fn from_param(s: EncodedStr<'_>) -> Result<Self, Self::Error> {
-        s.decode_utf8()
-            .map(|s| Self::from(s.into_owned()))
-            .map_err(crate::error::bad_request)
-    }
-}
 
 /// A set of request methods that a route accepts.
 #[derive(Debug, Default)]
@@ -141,40 +75,38 @@ impl<'a> TryFrom<&'a str> for Methods {
     }
 }
 
-pub mod path {
-    use super::{Builder, Methods, Uri};
+mod tags {
+    #[derive(Debug)]
+    pub struct Completed(());
 
-    pub fn root() -> Builder<(), (), super::Incomplete> {
-        Builder {
-            uri: Uri::root(),
-            methods: Methods::default(),
-            extractor: (),
-            modifier: (),
-            _marker: std::marker::PhantomData,
-        }
-    }
+    #[derive(Debug)]
+    pub struct Incomplete(());
+}
 
-    pub fn asterisk() -> Builder<(), (), super::Completed> {
-        Builder {
-            uri: Uri::asterisk(),
-            methods: Methods::default(),
-            extractor: (),
-            modifier: (),
-            _marker: std::marker::PhantomData,
-        }
+pub fn root() -> Builder<(), (), self::tags::Incomplete> {
+    Builder {
+        uri: Uri::root(),
+        methods: Methods::default(),
+        extractor: (),
+        modifier: (),
+        _marker: std::marker::PhantomData,
     }
 }
 
-#[derive(Debug)]
-pub struct Completed(());
-
-#[derive(Debug)]
-pub struct Incomplete(());
+pub fn asterisk() -> Builder<(), (), self::tags::Completed> {
+    Builder {
+        uri: Uri::asterisk(),
+        methods: Methods::default(),
+        extractor: (),
+        modifier: (),
+        _marker: std::marker::PhantomData,
+    }
+}
 
 /// A builder of `Scope` to register a route, which is matched to the requests
 /// with a certain path and method(s) and will return its response.
 #[derive(Debug)]
-pub struct Builder<E: Extractor = (), M = (), T = Incomplete> {
+pub struct Builder<E: Extractor = (), M = (), T = self::tags::Incomplete> {
     uri: Uri,
     methods: Methods,
     extractor: E,
@@ -182,7 +114,7 @@ pub struct Builder<E: Extractor = (), M = (), T = Incomplete> {
     _marker: PhantomData<T>,
 }
 
-impl<E, M> Builder<E, M, Incomplete>
+impl<E, M> Builder<E, M, self::tags::Incomplete>
 where
     E: Extractor,
 {
@@ -191,7 +123,7 @@ where
         Ok(self)
     }
 
-    pub fn slash(self) -> Builder<E, M, Completed> {
+    pub fn slash(self) -> Builder<E, M, self::tags::Completed> {
         Builder {
             uri: {
                 let mut uri = self.uri;
@@ -212,11 +144,11 @@ where
         Builder<
             impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>,
             M,
-            Incomplete,
+            self::tags::Incomplete,
         >,
     >
     where
-        T: FromParam + Send + 'static,
+        T: FromPercentEncoded + Send + 'static,
         E::Output: Combine<(T,)> + Send + 'static,
     {
         let name = name.into();
@@ -234,7 +166,8 @@ where
                         let s = params.name(&name).ok_or_else(|| {
                             crate::error::internal_server_error("invalid paramter name")
                         })?;
-                        T::from_param(EncodedStr::new(s)).map_err(Into::into)
+                        T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
+                            .map_err(Into::into)
                     }
                     None => Err(crate::error::internal_server_error("missing Params")),
                 }),
@@ -251,11 +184,11 @@ where
         Builder<
             impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>,
             M,
-            Completed,
+            self::tags::Completed,
         >,
     >
     where
-        T: FromParam + Send + 'static,
+        T: FromPercentEncoded + Send + 'static,
         E::Output: Combine<(T,)> + Send + 'static,
     {
         let name = name.into();
@@ -275,7 +208,8 @@ where
                                 "the catch-all parameter is not available",
                             )
                         })?;
-                        T::from_param(EncodedStr::new(s)).map_err(Into::into)
+                        T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
+                            .map_err(Into::into)
                     }
                     None => Err(crate::error::internal_server_error("missing Params")),
                 }),

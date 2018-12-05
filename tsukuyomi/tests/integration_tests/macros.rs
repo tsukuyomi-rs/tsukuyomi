@@ -2,7 +2,7 @@ mod responder {
     use {
         std::fmt,
         tsukuyomi::{
-            app::directives::*, //
+            app::{route, App},
             test::ResponseExt,
         },
     };
@@ -99,7 +99,7 @@ mod responder {
         }
 
         let mut server = App::builder()
-            .with(path::root().reply(|| Foo("Foo".into()))) //
+            .with(route::root().reply(|| Foo("Foo".into()))) //
             .build_server()?
             .into_test_server()?;
 

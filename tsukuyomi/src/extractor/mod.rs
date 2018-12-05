@@ -4,7 +4,6 @@
 
 mod builder;
 mod chain;
-mod generic;
 
 pub mod body;
 pub mod extension;
@@ -14,19 +13,16 @@ pub mod query;
 pub mod verb;
 
 pub use self::builder::Builder;
-pub(crate) use self::generic::{Combine, Func, Tuple};
 
 use {
     crate::{
         common::{MaybeFuture, Never, NeverFuture},
         error::Error,
+        generic::Tuple,
         input::Input,
     },
     futures::{Future, IntoFuture},
 };
-
-/// A type alias representing the return type of `Extractor::extract`.
-pub type Extract<E> = MaybeFuture<<E as Extractor>::Future>;
 
 /// A trait abstracting the extraction of values from `Input`.
 pub trait Extractor: Send + Sync + 'static {
@@ -40,7 +36,7 @@ pub trait Extractor: Send + Sync + 'static {
     type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
     /// Performs extraction from the specified `Input`.
-    fn extract(&self, input: &mut Input<'_>) -> Extract<Self>;
+    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future>;
 
     fn into_builder(self) -> Builder<Self>
     where
@@ -59,7 +55,7 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
         (**self).extract(input)
     }
 }
@@ -73,7 +69,7 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
         (**self).extract(input)
     }
 }
@@ -84,7 +80,7 @@ impl Extractor for () {
     type Future = NeverFuture<Self::Output, Self::Error>;
 
     #[inline]
-    fn extract(&self, _: &mut Input<'_>) -> Extract<Self> {
+    fn extract(&self, _: &mut Input<'_>) -> MaybeFuture<Self::Future> {
         MaybeFuture::ok(())
     }
 }
@@ -118,7 +114,7 @@ where
         type Future = R;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+        fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
             (self.0)(input)
         }
     }

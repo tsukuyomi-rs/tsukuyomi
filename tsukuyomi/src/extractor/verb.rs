@@ -3,7 +3,7 @@
 #![allow(missing_docs)]
 
 use {
-    super::{Extract, Extractor},
+    super::Extractor,
     crate::{common::MaybeFuture, error::Error, input::Input},
     futures::Future,
     http::Method,
@@ -26,7 +26,7 @@ where
         type Future = futures::future::MapErr<E::Future, fn(E::Error) -> Error>;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> Extract<Self> {
+        fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
             if input.request.method() != self.1 {
                 return MaybeFuture::err(crate::error::method_not_allowed("rejected by extractor"));
             }
