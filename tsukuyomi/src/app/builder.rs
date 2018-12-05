@@ -6,8 +6,7 @@ use {
     },
     crate::{
         common::{Chain, Never},
-        handler::Handler,
-        modifier::Modifier,
+        handler::{Handler, ModifyHandler},
     },
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
@@ -170,7 +169,7 @@ impl<'a, M> Context<'a, M> {
     ) -> super::Result<()>
     where
         H: Handler,
-        M: Modifier<H>,
+        M: ModifyHandler<H>,
     {
         // build absolute URI.
         let uri = { self.scope.prefix.join(&uri)? };

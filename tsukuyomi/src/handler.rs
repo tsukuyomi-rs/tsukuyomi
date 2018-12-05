@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        common::{MaybeFuture, Never, NeverFuture},
+        common::{Chain, MaybeFuture, Never, NeverFuture},
         error::Error, //
         extractor::Extractor,
         input::Input,
@@ -185,10 +185,80 @@ impl BoxedHandler {
     }
 }
 
+/// A trait representing a factory of `Handler` from an instance of `Extractor`.
 pub trait MakeHandler<E: Extractor> {
+    type Output: Responder;
+    type Error: Into<Error>;
+    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
+
+    fn make_handler(self, extractor: E) -> Self::Handler;
+}
+
+/// A trait representing a type for modifying the instance of `Handler`.
+pub trait ModifyHandler<H: Handler> {
     type Output: Responder;
     type Error: Into<crate::Error>;
     type Handler: Handler<Output = Self::Output, Error = Self::Error>;
 
-    fn make_handler(self, extractor: E) -> Self::Handler;
+    fn modify(&self, input: H) -> Self::Handler;
+}
+
+impl<'a, M, H> ModifyHandler<H> for &'a M
+where
+    M: ModifyHandler<H> + 'a,
+    H: Handler,
+{
+    type Output = M::Output;
+    type Error = M::Error;
+    type Handler = M::Handler;
+
+    #[inline]
+    fn modify(&self, input: H) -> Self::Handler {
+        (*self).modify(input)
+    }
+}
+
+impl<M, H> ModifyHandler<H> for std::rc::Rc<M>
+where
+    M: ModifyHandler<H>,
+    H: Handler,
+{
+    type Output = M::Output;
+    type Error = M::Error;
+    type Handler = M::Handler;
+
+    #[inline]
+    fn modify(&self, input: H) -> Self::Handler {
+        (**self).modify(input)
+    }
+}
+
+impl<H> ModifyHandler<H> for ()
+where
+    H: Handler,
+{
+    type Output = H::Output;
+    type Error = H::Error;
+    type Handler = H;
+
+    #[inline]
+    fn modify(&self, input: H) -> Self::Handler {
+        input
+    }
+}
+
+impl<M1, M2, H> ModifyHandler<H> for Chain<M1, M2>
+where
+    M1: ModifyHandler<M2::Handler>,
+    M2: ModifyHandler<H>,
+    H: Handler,
+{
+    type Output = M1::Output;
+    type Error = M1::Error;
+    type Handler = M1::Handler;
+
+    #[inline]
+    fn modify(&self, input: H) -> Self::Handler {
+        self.left.modify(self.right.modify(input))
+    }
 }

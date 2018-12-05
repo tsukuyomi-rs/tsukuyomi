@@ -2,9 +2,8 @@ use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         app::directives::*, //
-        Handler,
+        handler::{Handler, ModifyHandler},
         MaybeFuture,
-        Modifier,
     },
 };
 
@@ -14,13 +13,12 @@ struct MockModifier {
     name: &'static str,
 }
 
-impl<H> Modifier<H> for MockModifier
-where
-    H: Handler + Send + Sync + 'static,
-{
-    type Out = MockHandler<H>;
+impl<H: Handler> ModifyHandler<H> for MockModifier {
+    type Output = H::Output;
+    type Error = H::Error;
+    type Handler = MockHandler<H>;
 
-    fn modify(&self, inner: H) -> Self::Out {
+    fn modify(&self, inner: H) -> Self::Handler {
         MockHandler {
             inner,
             marker: self.marker.clone(),

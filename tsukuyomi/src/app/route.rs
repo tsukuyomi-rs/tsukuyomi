@@ -7,9 +7,8 @@ use {
         common::{Chain, MaybeFuture, Never, TryFrom},
         extractor::{Combine, Extractor, Func, Tuple},
         fs::NamedFile,
-        handler::{Handler, MakeHandler},
+        handler::{Handler, MakeHandler, ModifyHandler},
         input::Input,
-        modifier::Modifier,
         output::{redirect::Redirect, Responder},
     },
     futures::{Future, IntoFuture, Poll},
@@ -319,7 +318,7 @@ where
         }
     }
 
-    /// Appends a `Modifier` to this builder.
+    /// Appends a `ModifyHandler` to this builder.
     pub fn modify<M2>(self, modifier: M2) -> Builder<E, Chain<M, M2>, T> {
         Builder {
             extractor: self.extractor,
@@ -624,8 +623,8 @@ pub struct Route<H, M> {
 impl<H, M1, M2> Scope<M1> for Route<H, M2>
 where
     H: Handler,
-    M2: Modifier<H>,
-    M1: Modifier<M2::Out>,
+    M2: ModifyHandler<H>,
+    M1: ModifyHandler<M2::Handler>,
 {
     type Error = super::Error;
 

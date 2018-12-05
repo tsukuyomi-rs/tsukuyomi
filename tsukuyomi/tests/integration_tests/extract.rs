@@ -225,7 +225,10 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::{handler::Handler, localmap::local_key, Modifier};
+    use tsukuyomi::{
+        handler::{Handler, ModifyHandler},
+        localmap::local_key,
+    };
 
     #[derive(Clone)]
     struct MyData(String);
@@ -236,24 +239,22 @@ fn local_data() -> tsukuyomi::test::Result<()> {
         }
     }
 
-    #[derive(Clone)]
-    struct MyModifier;
-    impl<H> Modifier<H> for MyModifier
-    where
-        H: Handler + Send + Sync + 'static,
-    {
-        type Out = MyHandler<H>;
+    #[derive(Clone, Default)]
+    struct InsertMyData(());
 
-        fn modify(&self, inner: H) -> Self::Out {
-            MyHandler(inner)
+    impl<H: Handler> ModifyHandler<H> for InsertMyData {
+        type Output = H::Output;
+        type Error = H::Error;
+        type Handler = InsertMyDataHandler<H>;
+
+        fn modify(&self, inner: H) -> Self::Handler {
+            InsertMyDataHandler(inner)
         }
     }
 
-    struct MyHandler<H>(H);
-    impl<H> Handler for MyHandler<H>
-    where
-        H: Handler,
-    {
+    struct InsertMyDataHandler<H>(H);
+
+    impl<H: Handler> Handler for InsertMyDataHandler<H> {
         type Output = H::Output;
         type Error = H::Error;
         type Future = H::Future;
@@ -265,7 +266,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::builder()
-        .modifier(MyModifier)
+        .modifier(InsertMyData::default())
         .with(
             path::root()
                 .extract(extractor::local::remove(&MyData::KEY))

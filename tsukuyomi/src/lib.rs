@@ -61,7 +61,6 @@ pub mod fs;
 pub mod handler;
 pub mod input;
 pub mod localmap;
-pub mod modifier;
 pub mod output;
 pub mod rt;
 pub mod server;
@@ -77,9 +76,12 @@ pub use crate::{
         Result,
     },
     extractor::Extractor,
-    handler::Handler,
+    handler::{
+        Handler, //
+        MakeHandler,
+        ModifyHandler,
+    },
     input::Input,
-    modifier::Modifier,
     output::{
         Output, //
         Responder,
