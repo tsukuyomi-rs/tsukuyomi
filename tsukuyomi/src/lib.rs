@@ -32,7 +32,6 @@ extern crate tokio;
 extern crate tokio_threadpool;
 extern crate tower_service;
 extern crate url;
-extern crate uuid;
 
 #[cfg(feature = "use-native-tls")]
 extern crate tokio_tls;

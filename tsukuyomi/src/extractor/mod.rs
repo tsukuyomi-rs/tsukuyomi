@@ -9,7 +9,6 @@ pub mod body;
 pub mod extension;
 pub mod header;
 pub mod local;
-pub mod param;
 pub mod query;
 pub mod verb;
 

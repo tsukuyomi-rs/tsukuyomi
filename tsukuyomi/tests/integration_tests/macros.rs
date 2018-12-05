@@ -99,10 +99,7 @@ mod responder {
         }
 
         let mut server = App::builder()
-            .with(
-                route("/")? //
-                    .reply(|| Foo("Foo".into())),
-            ) //
+            .with(path::root().reply(|| Foo("Foo".into()))) //
             .build_server()?
             .into_test_server()?;
 

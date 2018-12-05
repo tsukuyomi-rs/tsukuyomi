@@ -22,7 +22,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(route("/hello")?.reply(|| "Tsukuyomi"))
+        .with(path::builder().segment("hello").end().reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
 
@@ -42,7 +42,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
     let mut server = App::with_prefix("/api/v1")?
-        .with(route("/hello")?.reply(|| "Tsukuyomi"))
+        .with(path::builder().segment("hello").end().reply(|| "Tsukuyomi"))
         .build_server()?
         .into_test_server()?;
 
@@ -56,7 +56,9 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
-            route("/hello")?
+            path::builder()
+                .segment("hello")
+                .end()
                 .methods("POST")?
                 .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body),
@@ -89,7 +91,9 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(
-            route("/login")?
+            path::builder()
+                .segment("login")
+                .end()
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
                         Cookie::build("session", "dummy_session_id")
@@ -101,7 +105,9 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 })).reply(|| "Logged in"),
         ) //
         .with(
-            route("/logout")?
+            path::builder()
+                .segment("logout")
+                .end()
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(())
@@ -139,9 +145,14 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
-        .with(route("/path")?.reply(|| "get"))
-        .with(route("/path")?.methods("POST")?.reply(|| "post"))
-        .build_server()?
+        .with(path::builder().segment("path").end().reply(|| "get"))
+        .with(
+            path::builder()
+                .segment("path")
+                .end()
+                .methods("POST")?
+                .reply(|| "post"),
+        ).build_server()?
         .into_test_server()?;
 
     let response = server.perform(Request::options("/path"))?;
@@ -175,7 +186,13 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                         tsukuyomi::app::fallback::default(cx)
                     }
                 }) //
-                .with(route("/posts")?.methods("POST")?.say("posts")),
+                .with(
+                    path::builder()
+                        .segment("posts")
+                        .end()
+                        .methods("POST")?
+                        .say("posts"),
+                ),
         ) //
         .build_server()?
         .into_test_server()?;

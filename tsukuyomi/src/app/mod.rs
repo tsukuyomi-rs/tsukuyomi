@@ -7,7 +7,7 @@ pub mod route;
 /// A *prelude* for using the primitive `Scope`s.
 pub mod directives {
     #[doc(no_inline)]
-    pub use super::{mount::mount, route::route, App};
+    pub use super::{mount::mount, route::path, App};
 }
 
 mod builder;

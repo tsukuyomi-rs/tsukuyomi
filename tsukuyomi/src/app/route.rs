@@ -8,7 +8,7 @@ use {
         extractor::{Combine, Extractor, Func, Tuple},
         fs::NamedFile,
         handler::{Handler, MakeHandler},
-        input::Input,
+        input::{Input, Params},
         modifier::Modifier,
         output::{redirect::Redirect, Responder},
     },
@@ -17,10 +17,78 @@ use {
     indexmap::{indexset, IndexSet},
     std::{
         borrow::Cow,
+        marker::PhantomData,
         path::{Path, PathBuf},
+        str::Utf8Error,
         sync::Arc,
     },
+    url::percent_encoding::percent_decode,
 };
+
+#[derive(Debug)]
+pub struct EncodedStr<'a>(&'a str);
+
+impl<'a> EncodedStr<'a> {
+    pub(crate) fn new(s: &'a str) -> Self {
+        EncodedStr(s)
+    }
+
+    pub fn decode_utf8(&self) -> Result<Cow<'a, str>, Utf8Error> {
+        percent_decode(self.0.as_bytes()).decode_utf8()
+    }
+
+    pub fn decode_utf8_lossy(&self) -> Cow<'a, str> {
+        percent_decode(self.0.as_bytes()).decode_utf8_lossy()
+    }
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+pub trait FromParam: Sized + Send + 'static {
+    type Error: Into<crate::Error>;
+
+    fn from_param(s: EncodedStr<'_>) -> Result<Self, Self::Error>;
+}
+
+macro_rules! impl_from_param {
+    ($($t:ty),*) => {$(
+        impl FromParam for $t {
+            type Error = crate::Error;
+
+            #[inline]
+            fn from_param(s: EncodedStr<'_>) -> Result<Self, Self::Error> {
+                s.decode_utf8()
+                    .map_err(crate::error::bad_request)?
+                    .parse()
+                    .map_err(crate::error::bad_request)
+            }
+        }
+    )*};
+}
+
+impl_from_param!(bool, char, f32, f64, String);
+impl_from_param!(i8, i16, i32, i64, i128, isize);
+impl_from_param!(u8, u16, u32, u64, u128, usize);
+impl_from_param!(
+    std::net::SocketAddr,
+    std::net::SocketAddrV4,
+    std::net::SocketAddrV6,
+    std::net::IpAddr,
+    std::net::Ipv4Addr,
+    std::net::Ipv6Addr,
+    url::Url,
+    uuid::Uuid
+);
+
+impl FromParam for PathBuf {
+    type Error = crate::Error;
+
+    #[inline]
+    fn from_param(s: EncodedStr<'_>) -> Result<Self, Self::Error> {
+        s.decode_utf8()
+            .map(|s| Self::from(s.into_owned()))
+            .map_err(crate::error::bad_request)
+    }
+}
 
 /// A set of request methods that a route accepts.
 #[derive(Debug, Default)]
@@ -74,13 +142,200 @@ impl<'a> TryFrom<&'a str> for Methods {
     }
 }
 
-/// Creates a `Route` for building a `Scope` that registers a route within the scope.
-pub fn route<T>(uri: T) -> super::Result<Builder<(), ()>>
+pub trait PathExtractor: Send + Sync + 'static {
+    type Output: Tuple;
+
+    fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output>;
+}
+
+impl PathExtractor for () {
+    type Output = ();
+
+    #[inline]
+    fn extract(&self, _: &Params<'_>) -> crate::Result<Self::Output> {
+        Ok(())
+    }
+}
+
+impl<E1, E2> PathExtractor for Chain<E1, E2>
 where
-    Uri: TryFrom<T>,
+    E1: PathExtractor,
+    E2: PathExtractor,
+    E1::Output: Combine<E2::Output>,
 {
-    let uri = Uri::try_from(uri)?;
-    Ok(Builder::new((), (), uri))
+    type Output = <E1::Output as Combine<E2::Output>>::Out;
+
+    #[inline]
+    fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output> {
+        let x = self.left.extract(params)?;
+        let y = self.right.extract(params)?;
+        Ok(x.combine(y))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct PathBuilder<E: PathExtractor = ()> {
+    extractor: E,
+    segments: Vec<String>,
+}
+
+impl<E: PathExtractor> PathBuilder<E> {
+    pub fn segment(mut self, s: impl AsRef<str>) -> Self {
+        self.segments.push(s.as_ref().into());
+        self
+    }
+
+    pub fn param<T>(
+        self,
+        name: impl AsRef<str>,
+    ) -> PathBuilder<impl PathExtractor<Output = <E::Output as Combine<(T,)>>::Out>>
+    where
+        T: FromParam,
+        E::Output: Combine<(T,)>,
+    {
+        #[allow(missing_debug_implementations)]
+        struct ExtractParam<T>(String, PhantomData<fn() -> T>);
+
+        impl<T> PathExtractor for ExtractParam<T>
+        where
+            T: FromParam,
+        {
+            type Output = (T,);
+
+            fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output> {
+                let s = params
+                    .name(&self.0)
+                    .ok_or_else(|| crate::error::internal_server_error("unknown parameter name"))?;
+                T::from_param(EncodedStr::new(s))
+                    .map(|x| (x,))
+                    .map_err(Into::into)
+            }
+        }
+
+        PathBuilder {
+            segments: {
+                let mut segments = self.segments;
+                segments.push(format!(":{}", name.as_ref()));
+                segments
+            },
+            extractor: Chain::new(
+                self.extractor,
+                ExtractParam(name.as_ref().into(), PhantomData),
+            ),
+        }
+    }
+
+    pub fn catch_all<T>(
+        self,
+        name: impl AsRef<str>,
+    ) -> Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>, ()>
+    where
+        T: FromParam,
+        E::Output: Combine<(T,)>,
+    {
+        #[allow(missing_debug_implementations)]
+        struct ExtractCatchAll<T>(PhantomData<fn() -> T>);
+
+        impl<T> PathExtractor for ExtractCatchAll<T>
+        where
+            T: FromParam,
+        {
+            type Output = (T,);
+
+            fn extract(&self, params: &Params<'_>) -> crate::Result<Self::Output> {
+                let s = params.get_wildcard().ok_or_else(|| {
+                    crate::error::internal_server_error("missing wildcard_parameter")
+                })?;
+                T::from_param(EncodedStr::new(s))
+                    .map(|x| (x,))
+                    .map_err(Into::into)
+            }
+        }
+
+        (PathBuilder {
+            segments: {
+                let mut segments = self.segments;
+                segments.push(format!("*{}", name.as_ref()));
+                segments
+            },
+            extractor: Chain::new(self.extractor, ExtractCatchAll(PhantomData)),
+        }).finalize(false)
+    }
+
+    pub fn end(self) -> Builder<impl Extractor<Output = E::Output, Error = crate::Error>, ()> {
+        self.finalize(false)
+    }
+
+    pub fn slash(self) -> Builder<impl Extractor<Output = E::Output, Error = crate::Error>, ()> {
+        self.finalize(true)
+    }
+
+    fn finalize(
+        self,
+        trailing_slash: bool,
+    ) -> Builder<impl Extractor<Output = E::Output, Error = crate::Error>, ()> {
+        #[derive(Debug)]
+        struct ExtractParams<E>(E);
+
+        impl<E> Extractor for ExtractParams<E>
+        where
+            E: PathExtractor,
+        {
+            type Output = E::Output;
+            type Error = crate::Error;
+            type Future = crate::common::NeverFuture<Self::Output, Self::Error>;
+
+            #[inline]
+            fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+                match input.params {
+                    Some(params) => MaybeFuture::Ready(self.0.extract(&params)),
+                    None => MaybeFuture::err(crate::error::internal_server_error("missing params")),
+                }
+            }
+        }
+
+        let uri = if trailing_slash {
+            self.segments
+                .into_iter()
+                .fold(String::from("/"), |mut acc, s| {
+                    acc.push_str(&*s);
+                    acc.push('/');
+                    acc
+                }).parse()
+                .expect("this is a bug.")
+        } else {
+            self.segments
+                .into_iter()
+                .enumerate()
+                .fold(String::from("/"), |mut acc, (i, s)| {
+                    if i > 0 {
+                        acc.push('/');
+                    }
+                    acc.push_str(&*s);
+                    acc
+                }).parse()
+                .expect("this is a bug.")
+        };
+        eprintln!("[dbg] uri = {:?}", uri);
+
+        Builder::new(ExtractParams(self.extractor), (), uri)
+    }
+}
+
+pub mod path {
+    use super::{Builder, PathBuilder, Uri};
+
+    pub fn root() -> Builder<(), ()> {
+        Builder::new((), (), Uri::root())
+    }
+
+    pub fn asterisk() -> Builder<(), ()> {
+        Builder::new((), (), Uri::asterisk())
+    }
+
+    pub fn builder() -> PathBuilder<()> {
+        PathBuilder::default()
+    }
 }
 
 /// A builder of `Scope` to register a route, which is matched to the requests
@@ -98,24 +353,13 @@ impl<E, M> Builder<E, M>
 where
     E: Extractor,
 {
-    pub fn new(extractor: E, modifier: M, uri: Uri) -> Self {
+    fn new(extractor: E, modifier: M, uri: Uri) -> Self {
         Builder {
             extractor,
             modifier,
             uri,
             methods: Methods(IndexSet::new()),
         }
-    }
-
-    /// Sets the URI of this route.
-    pub fn uri<T>(self, uri: T) -> super::Result<Self>
-    where
-        Uri: TryFrom<T>,
-    {
-        Ok(Builder {
-            uri: Uri::try_from(uri)?,
-            ..self
-        })
     }
 
     /// Sets the HTTP methods that this route accepts.
@@ -378,7 +622,10 @@ where
     }
 }
 
-impl<M> Builder<(), M> {
+impl<E, M> Builder<E, M>
+where
+    E: Extractor<Output = ()>,
+{
     /// Builds a `Route` that uses the specified `Handler` directly.
     pub fn raw<H>(self, handler: H) -> Route<H, M>
     where
@@ -387,8 +634,9 @@ impl<M> Builder<(), M> {
         #[allow(missing_debug_implementations)]
         struct Raw<H>(H);
 
-        impl<H> MakeHandler<()> for Raw<H>
+        impl<H, E> MakeHandler<E> for Raw<H>
         where
+            E: Extractor<Output = ()>,
             H: Handler,
         {
             type Output = H::Output;
@@ -396,19 +644,14 @@ impl<M> Builder<(), M> {
             type Handler = H;
 
             #[inline]
-            fn make_handler(self, _: ()) -> Self::Handler {
+            fn make_handler(self, _: E) -> Self::Handler {
                 self.0
             }
         }
 
         self.finish(Raw(handler))
     }
-}
 
-impl<E, M> Builder<E, M>
-where
-    E: Extractor<Output = ()>,
-{
     /// Creates a `Route` that just replies with the specified `Responder`.
     pub fn say<T>(self, output: T) -> Route<impl Handler<Output = T, Error = crate::Error>, M>
     where

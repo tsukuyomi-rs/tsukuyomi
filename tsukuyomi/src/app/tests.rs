@@ -1,6 +1,6 @@
 use {
     super::{
-        directives::{mount, route},
+        directives::{mount, path},
         router::{ResourceId, Route},
         App, Result,
     },
@@ -18,7 +18,7 @@ fn empty() -> Result<()> {
 #[test]
 fn route_single_method() -> Result<()> {
     let app = App::builder() //
-        .with(route("/")?.say(""))
+        .with(path::root().say(""))
         .build()?;
 
     assert_matches!(
@@ -45,8 +45,8 @@ fn route_single_method() -> Result<()> {
 #[test]
 fn route_multiple_method() -> Result<()> {
     let app = App::builder()
-        .with(route("/")?.say(""))
-        .with(route("/")?.methods(Method::POST)?.say(""))
+        .with(path::root().say(""))
+        .with(path::root().methods(Method::POST)?.say(""))
         .build()?;
 
     assert_matches!(
@@ -74,7 +74,7 @@ fn route_multiple_method() -> Result<()> {
 #[test]
 fn route_multiple_method_at_same_endpoint() -> Result<()> {
     let app = App::builder()
-        .with(route("/")?.methods("GET, POST")?.say(""))
+        .with(path::root().methods("GET, POST")?.say(""))
         .build()?;
 
     assert_matches!(
@@ -103,7 +103,7 @@ fn route_multiple_method_at_same_endpoint() -> Result<()> {
 fn asterisk_route() -> Result<()> {
     let app = App::builder()
         .with(
-            route("*")?
+            path::asterisk()
                 .methods(Method::OPTIONS)?
                 .say("explicit OPTIONS handler"),
         ) //
@@ -122,14 +122,14 @@ fn asterisk_route() -> Result<()> {
 #[test]
 fn asterisk_route_with_normal_routes() -> Result<()> {
     let app = App::builder()
-        .with(route("/")?.say(""))
+        .with(path::root().say(""))
         .with(
             mount("/api")?
-                .with(route("/posts")?.say(""))
-                .with(route("/events")?.say("")),
+                .with(path::builder().segment("posts").end().say(""))
+                .with(path::builder().segment("events").end().say("")),
         ) //
         .with(
-            route("*")?
+            path::asterisk()
                 .methods(Method::OPTIONS)?
                 .say("explicit OPTIONS handler"),
         ) //
@@ -150,14 +150,14 @@ fn scope_simple() -> Result<()> {
     let app = App::builder() //
         .with(
             mount("/")?
-                .with(route("/a")?.say(""))
-                .with(route("/b")?.say("")),
+                .with(path::builder().segment("a").end().say(""))
+                .with(path::builder().segment("b").end().say("")),
         ) //
-        .with(route("/foo")?.say(""))
+        .with(path::builder().segment("foo").end().say(""))
         .with(
             mount("/c")?
-                .with(route("/d")?.say(""))
-                .with(route("/d")?.methods("POST")?.say("")),
+                .with(path::builder().segment("d").end().say(""))
+                .with(path::builder().segment("d").end().methods("POST")?.say("")),
         ) //
         .build()?;
 
@@ -200,19 +200,19 @@ fn scope_nested() -> Result<()> {
     let app = App::builder()
         .with(
             mount("/")? // 0
-                .with(route("/foo")?.reply(|| "")) // /foo
-                .with(route("/bar")?.reply(|| "")) // /bar
-                .with(route("/foo")?.methods("POST")?.say("")), // foo (POST)
+                .with(path::builder().segment("foo").end().reply(|| "")) // /foo
+                .with(path::builder().segment("bar").end().reply(|| "")) // /bar
+                .with(path::builder().segment("foo").end().methods("POST")?.say("")), // foo (POST)
         ) //
         .with(
             mount("/baz")? // 1
-                .with(route("/")?.reply(|| "")) // /baz
+                .with(path::root().reply(|| "")) // /baz
                 .with(
                     mount("/")? // 2
-                        .with(route("/foobar")?.reply(|| "")), // /baz/foobar
+                        .with(path::builder().segment("foobar").end().reply(|| "")), // /baz/foobar
                 ), //
         ) //
-        .with(route("/hoge")?.reply(|| "")) // /hoge
+        .with(path::builder().segment("hoge").end().reply(|| "")) // /hoge
         .build()?;
 
     assert_matches!(
@@ -263,8 +263,8 @@ fn scope_nested() -> Result<()> {
 #[test]
 fn failcase_duplicate_uri_and_method() -> Result<()> {
     let app = App::builder()
-        .with(route("/path")?.reply(|| ""))
-        .with(route("/path")?.reply(|| ""))
+        .with(path::builder().segment("path").end().reply(|| ""))
+        .with(path::builder().segment("path").end().reply(|| ""))
         .build();
     assert!(app.is_err());
     Ok(())
@@ -273,10 +273,16 @@ fn failcase_duplicate_uri_and_method() -> Result<()> {
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::builder()
-        .with(route("/path")?.reply(|| ""))
+        .with(path::builder().segment("path").end().reply(|| ""))
         .with(
             mount("/")? //
-                .with(route("/path")?.reply(|| "")),
+                .with(
+                    path::builder()
+                        .segment("path")
+                        .end()
+                        .methods("POST")?
+                        .reply(|| ""),
+                ),
         ) //
         .build();
     assert!(app.is_err());
@@ -286,7 +292,7 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
 #[test]
 fn failcase_asterisk_with_prefix() -> Result<()> {
     let app = App::with_prefix("/api/v1")?
-        .with(route("*")?.reply(|| ""))
+        .with(path::asterisk().reply(|| ""))
         .build();
     assert!(app.is_err());
     Ok(())
@@ -294,7 +300,7 @@ fn failcase_asterisk_with_prefix() -> Result<()> {
 
 #[test]
 fn failcase_asterisk_without_explicit_options() -> Result<()> {
-    let app = App::builder().with(route("*")?.reply(|| "")).build();
+    let app = App::builder().with(path::asterisk().reply(|| "")).build();
     assert!(app.is_err());
     Ok(())
 }
@@ -303,7 +309,7 @@ fn failcase_asterisk_without_explicit_options() -> Result<()> {
 fn failcase_asterisk_with_explicit_get_handler() -> Result<()> {
     let app = App::builder()
         .with(
-            route("*")? //
+            path::asterisk() //
                 .methods(vec![Method::GET, Method::OPTIONS])?
                 .reply(|| ""),
         ).build();

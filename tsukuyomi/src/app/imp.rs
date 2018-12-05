@@ -77,18 +77,11 @@ macro_rules! input {
             request: &$self.request,
             params: {
                 &if let Some(resource_id) = $self.resource_id {
-                    if let (Some(names), &Some(ref captures)) = (
-                        $self.inner.router.resource(resource_id).uri.capture_names(),
-                        &$self.captures,
-                    ) {
-                        Some(Params {
-                            path: $self.request.uri().path(),
-                            names,
-                            captures,
-                        })
-                    } else {
-                        None
-                    }
+                    Some(Params {
+                        path: $self.request.uri().path(),
+                        names: $self.inner.router.resource(resource_id).uri.capture_names(),
+                        captures: $self.captures.as_ref(),
+                    })
                 } else {
                     None
                 }
@@ -290,25 +283,27 @@ mod secure {
 #[derive(Debug)]
 pub struct Params<'input> {
     path: &'input str,
-    names: &'input CaptureNames,
-    captures: &'input Captures,
+    names: Option<&'input CaptureNames>,
+    captures: Option<&'input Captures>,
 }
 
 impl<'input> Params<'input> {
     /// Returns `true` if the extracted paramater exists.
     pub fn is_empty(&self) -> bool {
-        self.captures.params().is_empty() && self.captures.wildcard().is_none()
+        self.captures.map_or(true, |captures| {
+            captures.params().is_empty() && captures.wildcard().is_none()
+        })
     }
 
     /// Returns the value of `i`-th parameter, if exists.
     pub fn get(&self, i: usize) -> Option<&str> {
-        let &(s, e) = self.captures.params().get(i)?;
+        let &(s, e) = self.captures?.params().get(i)?;
         self.path.get(s..e)
     }
 
     /// Returns the value of wildcard parameter, if exists.
     pub fn get_wildcard(&self) -> Option<&str> {
-        let (s, e) = self.captures.wildcard()?;
+        let (s, e) = self.captures?.wildcard()?;
         self.path.get(s..e)
     }
 
@@ -316,7 +311,7 @@ impl<'input> Params<'input> {
     pub fn name(&self, name: &str) -> Option<&str> {
         match name {
             "*" => self.get_wildcard(),
-            name => self.get(self.names.position(name)?),
+            name => self.get(self.names?.position(name)?),
         }
     }
 }
