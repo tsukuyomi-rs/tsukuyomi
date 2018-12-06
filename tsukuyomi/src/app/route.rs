@@ -10,7 +10,10 @@ use {
         future::{Future, MaybeFuture, Poll},
         generic::{Combine, Func, Tuple},
         handler::{Handler, MakeHandler, ModifyHandler},
-        input::{FromPercentEncoded, Input, PercentEncoded},
+        input::{
+            param::{FromPercentEncoded, PercentEncoded},
+            Input,
+        },
         output::{redirect::Redirect, Responder},
     },
     http::{HttpTryFrom, Method, StatusCode},
@@ -203,7 +206,7 @@ where
                 self.extractor,
                 crate::extractor::ready(|input| match input.params {
                     Some(ref params) => {
-                        let s = params.get_wildcard().ok_or_else(|| {
+                        let s = params.catch_all().ok_or_else(|| {
                             crate::error::internal_server_error(
                                 "the catch-all parameter is not available",
                             )

@@ -19,14 +19,16 @@ pub use self::{
     mount::{mount, Mount},
 };
 
+pub(crate) use self::{recognizer::Captures, uri::CaptureNames};
+
 use {
     self::{
         fallback::Fallback,
-        recognizer::{Captures, RecognizeError, Recognizer},
+        recognizer::{RecognizeError, Recognizer},
         uri::Uri,
     },
     crate::handler::BoxedHandler,
-    crate::{core::TryFrom, error::Critical, input::RequestBody, output::ResponseBody},
+    crate::{core::TryFrom, error::Critical, input::body::RequestBody, output::ResponseBody},
     bytes::BytesMut,
     futures01::{Async, Poll},
     http::header::HeaderValue,

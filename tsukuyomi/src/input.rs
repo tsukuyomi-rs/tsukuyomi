@@ -1,79 +1,90 @@
-//! Components for accessing HTTP requests and global/request-local data.
+//! Components for accessing the incoming request data.
 
 pub mod body;
+pub mod header;
 pub mod localmap;
-
-pub use {
-    self::body::RequestBody,
-    crate::app::imp::{Cookies, Input, Params},
-};
+pub mod param;
 
 use {
-    std::{borrow::Cow, str::Utf8Error},
-    url::percent_encoding::percent_decode,
+    self::{localmap::LocalMap, param::Params},
+    cookie::{Cookie, CookieJar},
+    http::Request,
+    std::{marker::PhantomData, rc::Rc},
 };
 
+/// A proxy object for accessing the incoming HTTP request data.
 #[derive(Debug)]
-#[repr(C)]
-pub struct PercentEncoded(str);
+pub struct Input<'task> {
+    /// The information of incoming request without the message body.
+    pub request: &'task Request<()>,
 
-impl PercentEncoded {
-    pub unsafe fn new_unchecked(s: &str) -> &Self {
-        &*(s as *const str as *const Self)
-    }
+    /// A set of extracted parameters from inner.
+    pub params: &'task Option<Params<'task>>,
 
-    pub fn decode_utf8(&self) -> Result<Cow<'_, str>, Utf8Error> {
-        percent_decode(self.0.as_bytes()).decode_utf8()
-    }
+    /// A proxy object for accessing Cookie values.
+    pub cookies: &'task mut Cookies<'task>,
 
-    pub fn decode_utf8_lossy(&self) -> Cow<'_, str> {
-        percent_decode(self.0.as_bytes()).decode_utf8_lossy()
-    }
+    /// A typemap that holds arbitrary request-local inner.
+    pub locals: &'task mut LocalMap,
+
+    pub(crate) _marker: PhantomData<Rc<()>>,
 }
 
-pub trait FromPercentEncoded: Sized {
-    type Error: Into<crate::Error>;
-
-    fn from_percent_encoded(s: &PercentEncoded) -> Result<Self, Self::Error>;
+/// A proxy object for accessing Cookie values.
+#[derive(Debug)]
+pub struct Cookies<'task> {
+    jar: &'task mut Option<CookieJar>,
+    request: &'task Request<()>,
+    _marker: PhantomData<Rc<()>>,
 }
 
-macro_rules! impl_from_percent_encoded {
-    ($($t:ty),*) => {$(
-        impl FromPercentEncoded for $t {
-            type Error = crate::Error;
+impl<'task> Cookies<'task> {
+    pub(crate) fn new(jar: &'task mut Option<CookieJar>, request: &'task Request<()>) -> Self {
+        Self {
+            jar,
+            request,
+            _marker: PhantomData,
+        }
+    }
 
-            #[inline]
-            fn from_percent_encoded(s: &PercentEncoded) -> Result<Self, Self::Error> {
-                s.decode_utf8()
+    /// Returns the mutable reference to the inner `CookieJar` if available.
+    pub fn jar(&mut self) -> crate::error::Result<&mut CookieJar> {
+        if let Some(ref mut jar) = self.jar {
+            return Ok(jar);
+        }
+
+        let jar = self.jar.get_or_insert_with(CookieJar::new);
+
+        for raw in self.request.headers().get_all(http::header::COOKIE) {
+            let raw_s = raw.to_str().map_err(crate::error::bad_request)?;
+            for s in raw_s.split(';').map(|s| s.trim()) {
+                let cookie = Cookie::parse_encoded(s)
                     .map_err(crate::error::bad_request)?
-                    .parse()
-                    .map_err(crate::error::bad_request)
+                    .into_owned();
+                jar.add_original(cookie);
             }
         }
-    )*};
+
+        Ok(jar)
+    }
 }
 
-impl_from_percent_encoded!(bool, char, f32, f64, String);
-impl_from_percent_encoded!(i8, i16, i32, i64, i128, isize);
-impl_from_percent_encoded!(u8, u16, u32, u64, u128, usize);
-impl_from_percent_encoded!(
-    std::net::SocketAddr,
-    std::net::SocketAddrV4,
-    std::net::SocketAddrV6,
-    std::net::IpAddr,
-    std::net::Ipv4Addr,
-    std::net::Ipv6Addr,
-    url::Url,
-    uuid::Uuid
-);
+#[cfg(feature = "secure")]
+mod secure {
+    use crate::error::Result;
+    use cookie::{Key, PrivateJar, SignedJar};
 
-impl FromPercentEncoded for std::path::PathBuf {
-    type Error = crate::Error;
+    impl<'a> super::Cookies<'a> {
+        /// Creates a `SignedJar` with the specified secret key.
+        #[inline]
+        pub fn signed_jar(&mut self, key: &Key) -> Result<SignedJar<'_>> {
+            Ok(self.jar()?.signed(key))
+        }
 
-    #[inline]
-    fn from_percent_encoded(s: &PercentEncoded) -> Result<Self, Self::Error> {
-        s.decode_utf8()
-            .map(|s| Self::from(s.into_owned()))
-            .map_err(crate::error::bad_request)
+        /// Creates a `PrivateJar` with the specified secret key.
+        #[inline]
+        pub fn private_jar(&mut self, key: &Key) -> Result<PrivateJar<'_>> {
+            Ok(self.jar()?.private(key))
+        }
     }
 }

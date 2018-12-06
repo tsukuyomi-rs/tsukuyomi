@@ -1,6 +1,7 @@
 //! Components for receiving incoming request bodies.
 
 use {
+    super::localmap::local_key,
     crate::error::Critical,
     bytes::{Buf, BufMut, Bytes, BytesMut},
     futures01::{Async, Future, Poll, Stream},
@@ -13,8 +14,13 @@ use {
 pub struct RequestBody(Body);
 
 impl RequestBody {
+    local_key! {
+        /// The local key to manage the request body stored in the current context.
+        pub const KEY: Self;
+    }
+
     #[inline]
-    pub(crate) fn on_upgrade(self) -> OnUpgrade {
+    pub fn on_upgrade(self) -> OnUpgrade {
         OnUpgrade(self.0.on_upgrade())
     }
 
@@ -144,7 +150,7 @@ impl tokio::io::AsyncWrite for UpgradedIo {
 }
 
 #[derive(Debug)]
-pub(crate) struct OnUpgrade(hyper::upgrade::OnUpgrade);
+pub struct OnUpgrade(hyper::upgrade::OnUpgrade);
 
 impl Future for OnUpgrade {
     type Item = UpgradedIo;

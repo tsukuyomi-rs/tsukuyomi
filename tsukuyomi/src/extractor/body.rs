@@ -5,7 +5,7 @@ use {
         error::Error,
         extractor::Extractor,
         future::{Async, Compat01, MaybeFuture},
-        input::body::RequestBody,
+        input::{body::RequestBody, header::ContentType},
     },
     bytes::Bytes,
     futures01::Future as _Future01,
@@ -132,7 +132,7 @@ where
     D: self::decode::Decoder<T> + Send + Sync + 'static,
 {
     super::raw(move |input| {
-        if let Err(err) = input.content_type().and_then(|mime_opt| {
+        if let Err(err) = crate::input::header::parse::<ContentType>(input).and_then(|mime_opt| {
             decoder
                 .validate_mime(mime_opt)
                 .map_err(crate::error::bad_request)?;
@@ -141,7 +141,7 @@ where
             return MaybeFuture::err(err);
         }
 
-        input.body().map_or_else(
+        input.locals.remove(&RequestBody::KEY).map_or_else(
             || MaybeFuture::err(stolen_payload()),
             |body| {
                 let mut read_all = body.read_all();
@@ -182,7 +182,7 @@ where
 
 pub fn raw() -> impl Extractor<Output = (Bytes,)> {
     super::raw(|input| {
-        input.body().map_or_else(
+        input.locals.remove(&RequestBody::KEY).map_or_else(
             || MaybeFuture::err(stolen_payload()),
             |body| {
                 MaybeFuture::from(Compat01::from(
@@ -194,7 +194,12 @@ pub fn raw() -> impl Extractor<Output = (Bytes,)> {
 }
 
 pub fn stream() -> impl Extractor<Output = (RequestBody,)> {
-    super::ready(|input| input.body().ok_or_else(stolen_payload))
+    super::ready(|input| {
+        input
+            .locals
+            .remove(&RequestBody::KEY)
+            .ok_or_else(stolen_payload)
+    })
 }
 
 fn stolen_payload() -> crate::error::Error {

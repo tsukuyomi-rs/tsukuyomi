@@ -1,25 +1,23 @@
 use {
-    super::uri::CaptureNames,
     super::{
         fallback::{Context as FallbackContext, FallbackKind},
         recognizer::Captures,
         AppInner, ResourceId, Route,
     },
     crate::{
-        error::{Critical, Error},
+        error::Critical,
         handler::{Handle, HandleFn, HandleInner},
-        input::{body::RequestBody, localmap::LocalMap},
+        input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::{Output, ResponseBody},
     },
-    cookie::{Cookie, CookieJar},
-    futures01::{Async, Future, IntoFuture, Poll},
+    cookie::CookieJar,
+    futures01::{Async, Future, Poll},
     http::{
-        header::{self, HeaderMap, HeaderValue},
+        header::{self, HeaderValue},
         Request, Response,
     },
     hyper::body::Payload,
-    mime::Mime,
-    std::{fmt, marker::PhantomData, mem, ops::Index, rc::Rc, sync::Arc},
+    std::{fmt, marker::PhantomData, sync::Arc},
 };
 
 macro_rules! ready {
@@ -38,7 +36,6 @@ macro_rules! ready {
 pub struct AppFuture {
     request: Request<()>,
     inner: Arc<AppInner>,
-    body: BodyState,
     cookie_jar: Option<CookieJar>,
     locals: LocalMap,
     resource_id: Option<ResourceId>,
@@ -62,13 +59,6 @@ impl fmt::Debug for AppFutureState {
     }
 }
 
-#[derive(Debug)]
-enum BodyState {
-    Some(RequestBody),
-    Gone,
-    Upgraded,
-}
-
 macro_rules! input {
     ($self:expr) => {
         &mut Input {
@@ -84,13 +74,8 @@ macro_rules! input {
                     None
                 }
             },
-            cookies: &mut Cookies {
-                jar: &mut $self.cookie_jar,
-                request_headers: &$self.request.headers(),
-                _marker: PhantomData,
-            },
+            cookies: &mut Cookies::new(&mut $self.cookie_jar, &$self.request),
             locals: &mut $self.locals,
-            body: &mut $self.body,
             _marker: PhantomData,
         }
     };
@@ -99,12 +84,13 @@ macro_rules! input {
 impl AppFuture {
     pub(super) fn new(request: Request<RequestBody>, inner: Arc<AppInner>) -> Self {
         let (parts, body) = request.into_parts();
+        let mut locals = LocalMap::default();
+        locals.insert(&RequestBody::KEY, body);
         Self {
             request: Request::from_parts(parts, ()),
             inner,
-            body: BodyState::Some(body),
             cookie_jar: None,
-            locals: LocalMap::default(),
+            locals,
             resource_id: None,
             captures: None,
             state: AppFutureState::Init,
@@ -222,194 +208,5 @@ impl Future for AppFuture {
         self.process_before_reply(&mut output);
 
         Ok(Async::Ready(output))
-    }
-}
-
-/// A proxy object for accessing Cookie values.
-#[derive(Debug)]
-pub struct Cookies<'task> {
-    jar: &'task mut Option<CookieJar>,
-    request_headers: &'task HeaderMap,
-    _marker: PhantomData<Rc<()>>,
-}
-
-impl<'task> Cookies<'task> {
-    /// Returns the mutable reference to the inner `CookieJar` if available.
-    pub fn jar(&mut self) -> crate::error::Result<&mut CookieJar> {
-        if let Some(ref mut jar) = self.jar {
-            return Ok(jar);
-        }
-
-        let jar = self.jar.get_or_insert_with(CookieJar::new);
-
-        for raw in self.request_headers.get_all(http::header::COOKIE) {
-            let raw_s = raw.to_str().map_err(crate::error::bad_request)?;
-            for s in raw_s.split(';').map(|s| s.trim()) {
-                let cookie = Cookie::parse_encoded(s)
-                    .map_err(crate::error::bad_request)?
-                    .into_owned();
-                jar.add_original(cookie);
-            }
-        }
-
-        Ok(jar)
-    }
-}
-
-#[cfg(feature = "secure")]
-mod secure {
-    use crate::error::Result;
-    use cookie::{Key, PrivateJar, SignedJar};
-
-    impl<'a> super::Cookies<'a> {
-        /// Creates a `SignedJar` with the specified secret key.
-        #[inline]
-        pub fn signed_jar(&mut self, key: &Key) -> Result<SignedJar<'_>> {
-            Ok(self.jar()?.signed(key))
-        }
-
-        /// Creates a `PrivateJar` with the specified secret key.
-        #[inline]
-        pub fn private_jar(&mut self, key: &Key) -> Result<PrivateJar<'_>> {
-            Ok(self.jar()?.private(key))
-        }
-    }
-}
-
-/// A proxy object for accessing extracted parameters.
-#[derive(Debug)]
-pub struct Params<'input> {
-    path: &'input str,
-    names: Option<&'input CaptureNames>,
-    captures: Option<&'input Captures>,
-}
-
-impl<'input> Params<'input> {
-    /// Returns `true` if the extracted paramater exists.
-    pub fn is_empty(&self) -> bool {
-        self.captures.map_or(true, |captures| {
-            captures.params().is_empty() && captures.wildcard().is_none()
-        })
-    }
-
-    /// Returns the value of `i`-th parameter, if exists.
-    pub fn get(&self, i: usize) -> Option<&str> {
-        let &(s, e) = self.captures?.params().get(i)?;
-        self.path.get(s..e)
-    }
-
-    /// Returns the value of wildcard parameter, if exists.
-    pub fn get_wildcard(&self) -> Option<&str> {
-        let (s, e) = self.captures?.wildcard()?;
-        self.path.get(s..e)
-    }
-
-    /// Returns the value of parameter whose name is equal to `name`, if exists.
-    pub fn name(&self, name: &str) -> Option<&str> {
-        match name {
-            "*" => self.get_wildcard(),
-            name => self.get(self.names?.position(name)?),
-        }
-    }
-}
-
-impl<'input> Index<usize> for Params<'input> {
-    type Output = str;
-
-    fn index(&self, i: usize) -> &Self::Output {
-        self.get(i).expect("Out of range")
-    }
-}
-
-impl<'input, 'a> Index<&'a str> for Params<'input> {
-    type Output = str;
-
-    fn index(&self, name: &'a str) -> &Self::Output {
-        self.name(name).expect("Out of range")
-    }
-}
-
-/// A proxy object for accessing the contextual information about incoming HTTP request
-/// and global/request-local state.
-#[derive(Debug)]
-pub struct Input<'task> {
-    /// The information of incoming request without the message body.
-    pub request: &'task Request<()>,
-
-    /// A set of extracted parameters from inner.
-    pub params: &'task Option<Params<'task>>,
-
-    /// A proxy object for accessing Cookie values.
-    pub cookies: &'task mut Cookies<'task>,
-
-    /// A typemap that holds arbitrary request-local inner.
-    pub locals: &'task mut LocalMap,
-
-    body: &'task mut BodyState,
-    _marker: PhantomData<Rc<()>>,
-}
-
-impl<'task> Input<'task> {
-    /// Takes a raw instance of incoming message body from the context.
-    pub fn body(&mut self) -> Option<RequestBody> {
-        match mem::replace(self.body, BodyState::Gone) {
-            BodyState::Some(body) => Some(body),
-            _ => None,
-        }
-    }
-
-    /// Registers the upgrade handler to the context.
-    #[inline]
-    pub fn upgrade<F, R>(&mut self, on_upgrade: F) -> Result<(), F>
-    where
-        F: FnOnce(crate::input::body::UpgradedIo) -> R + Send + 'static,
-        R: IntoFuture<Item = (), Error = ()>,
-        R::Future: Send + 'static,
-    {
-        let body = match mem::replace(self.body, BodyState::Upgraded) {
-            BodyState::Some(body) => body,
-            _ => return Err(on_upgrade),
-        };
-
-        crate::rt::spawn(
-            body.on_upgrade()
-                .map_err(|_| ())
-                .and_then(move |upgraded| on_upgrade(upgraded).into_future()),
-        );
-
-        Ok(())
-    }
-
-    /// Returns 'true' if the context has already upgraded.
-    pub fn is_upgraded(&self) -> bool {
-        match self.body {
-            BodyState::Upgraded => true,
-            _ => false,
-        }
-    }
-
-    /// Parses the header field `Content-type` and stores it into the localmap.
-    pub fn content_type(&mut self) -> Result<Option<&Mime>, Error> {
-        use crate::input::localmap::{local_key, Entry};
-
-        local_key! {
-            static KEY: Option<Mime>;
-        }
-
-        match self.locals.entry(&KEY) {
-            Entry::Occupied(entry) => Ok(entry.into_mut().as_ref()),
-            Entry::Vacant(entry) => {
-                let mime = match self.request.headers().get(http::header::CONTENT_TYPE) {
-                    Some(h) => h
-                        .to_str()
-                        .map_err(crate::error::bad_request)?
-                        .parse()
-                        .map(Some)
-                        .map_err(crate::error::bad_request)?,
-                    None => None,
-                };
-                Ok(entry.insert(mime).as_ref())
-            }
-        }
     }
 }
