@@ -1,7 +1,7 @@
-//! Definition of compatible layer with `futures`.
+//! Compatible layer with `futures`.
 
 use {
-    crate::{common::Never, error::Error, input::Input},
+    crate::{core::Never, error::Error, input::Input},
     std::{fmt, marker::PhantomData},
 };
 

@@ -26,7 +26,7 @@ use {
         uri::Uri,
     },
     crate::handler::BoxedHandler,
-    crate::{common::TryFrom, error::Critical, input::RequestBody, output::ResponseBody},
+    crate::{core::TryFrom, error::Critical, input::RequestBody, output::ResponseBody},
     bytes::BytesMut,
     futures01::{Async, Poll},
     http::header::HeaderValue,

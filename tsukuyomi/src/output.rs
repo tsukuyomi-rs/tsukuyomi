@@ -3,7 +3,7 @@
 pub use tsukuyomi_macros::Responder;
 use {
     crate::{
-        common::Never,
+        core::Never,
         error::Error,
         input::{body::RequestBody, Input},
     },
@@ -386,7 +386,7 @@ pub mod redirect {
 pub mod responder {
     use {
         super::ResponseBody,
-        crate::{common::Never, error::Error, input::Input},
+        crate::{core::Never, error::Error, input::Input},
         http::Response,
         serde::Serialize,
     };

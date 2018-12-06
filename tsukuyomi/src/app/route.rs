@@ -4,7 +4,7 @@ use {
         uri::{Uri, UriComponent},
     },
     crate::{
-        common::{Chain, Never, TryFrom},
+        core::{Chain, Never, TryFrom},
         extractor::Extractor,
         fs::NamedFile,
         future::{Future, MaybeFuture, Poll},

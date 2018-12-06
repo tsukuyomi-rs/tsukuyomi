@@ -1,7 +1,7 @@
 use {
     super::Extractor,
     crate::{
-        common::Never,
+        core::Never,
         error::Error,
         future::{Async, Future, MaybeFuture, Poll},
         generic::Func,

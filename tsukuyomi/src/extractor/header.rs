@@ -2,7 +2,7 @@
 
 use {
     super::Extractor,
-    crate::{common::Never, error::Error},
+    crate::{core::Never, error::Error},
     http::header::{HeaderMap, HeaderName, HeaderValue},
     mime::Mime,
 };

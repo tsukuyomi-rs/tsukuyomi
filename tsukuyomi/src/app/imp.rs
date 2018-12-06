@@ -8,8 +8,7 @@ use {
     crate::{
         error::{Critical, Error},
         handler::{Handle, HandleFn, HandleInner},
-        input::RequestBody,
-        localmap::LocalMap,
+        input::{body::RequestBody, localmap::LocalMap},
         output::{Output, ResponseBody},
     },
     cookie::{Cookie, CookieJar},
@@ -391,7 +390,7 @@ impl<'task> Input<'task> {
 
     /// Parses the header field `Content-type` and stores it into the localmap.
     pub fn content_type(&mut self) -> Result<Option<&Mime>, Error> {
-        use crate::localmap::{local_key, Entry};
+        use crate::input::localmap::{local_key, Entry};
 
         local_key! {
             static KEY: Option<Mime>;

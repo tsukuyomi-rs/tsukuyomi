@@ -1,6 +1,6 @@
 //! Extractors for parsing query string.
 
-use {super::Extractor, crate::common::Never, serde::de::DeserializeOwned};
+use {super::Extractor, crate::core::Never, serde::de::DeserializeOwned};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]

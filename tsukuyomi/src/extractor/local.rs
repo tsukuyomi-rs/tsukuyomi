@@ -1,6 +1,6 @@
 //! Extractors for accessing the request-local data.
 
-use {super::Extractor, crate::localmap::LocalKey};
+use {super::Extractor, crate::input::localmap::LocalKey};
 
 pub fn remove<T>(key: &'static LocalKey<T>) -> impl Extractor<Output = (T,)>
 where

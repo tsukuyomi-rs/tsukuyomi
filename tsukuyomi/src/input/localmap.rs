@@ -27,12 +27,12 @@ macro_rules! local_key {
 
     (@declare $(#[$m:meta])* ($($vis:tt)*) $kw:tt $NAME:ident : $t:ty) => {
         $(#[$m])*
-        $($vis)* $kw $NAME: $crate::localmap::LocalKey<$t> = {
+        $($vis)* $kw $NAME: $crate::input::localmap::LocalKey<$t> = {
             fn __type_id() -> std::any::TypeId {
                 struct __A;
                 std::any::TypeId::of::<__A>()
             }
-            $crate::localmap::LocalKey {
+            $crate::input::localmap::LocalKey {
                 __type_id,
                 __marker: std::marker::PhantomData,
             }

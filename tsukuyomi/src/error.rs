@@ -16,7 +16,7 @@
 
 use {
     crate::{
-        common::Never,
+        core::Never,
         output::{Output, ResponseBody},
     },
     http::{Request, Response, StatusCode},

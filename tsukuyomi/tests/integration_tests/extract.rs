@@ -228,7 +228,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 fn local_data() -> tsukuyomi::test::Result<()> {
     use tsukuyomi::{
         handler::{Handler, ModifyHandler},
-        localmap::local_key,
+        input::localmap::local_key,
     };
 
     #[derive(Clone)]
@@ -285,7 +285,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn missing_local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::localmap::local_key;
+    use tsukuyomi::input::localmap::local_key;
 
     #[derive(Clone)]
     struct MyData(String);

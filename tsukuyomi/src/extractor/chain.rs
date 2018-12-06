@@ -1,7 +1,7 @@
 use {
     super::Extractor,
     crate::{
-        common::Chain,
+        core::Chain,
         error::Error,
         future::{Async, Future, MaybeDone, MaybeFuture, Poll},
         generic::{Combine, Tuple},

@@ -1,4 +1,4 @@
-//! High level API for accessing request data and context information.
+//! API for extracting the incoming request information from the request context.
 
 #![allow(missing_docs)]
 
@@ -15,7 +15,7 @@ pub mod verb;
 pub use self::ext::ExtractorExt;
 
 use crate::{
-    common::Never,
+    core::Never,
     error::Error,
     future::{Future, MaybeFuture, NeverFuture},
     generic::Tuple,

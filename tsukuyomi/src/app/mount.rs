@@ -6,7 +6,7 @@ use {
         fallback::Fallback,
         Uri,
     },
-    crate::common::{Chain, TryFrom},
+    crate::core::{Chain, TryFrom},
 };
 
 /// A function that creates a `Mount` with the empty scope items.

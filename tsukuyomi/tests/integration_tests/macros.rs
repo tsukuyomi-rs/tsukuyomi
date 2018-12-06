@@ -72,7 +72,7 @@ mod responder {
     mod sub {
         use {
             http::Response,
-            tsukuyomi::{Input, Never},
+            tsukuyomi::{core::Never, Input},
         };
 
         pub fn respond_to<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>

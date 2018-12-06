@@ -1,3 +1,5 @@
+//! Definition of commonly used components.
+
 use std::{error::Error as StdError, fmt};
 
 /// A helper type which emulates the standard `never_type` (`!`).
@@ -21,7 +23,11 @@ impl StdError for Never {
     }
 }
 
-/// A trait representing the arbitrary conversion into `Self`.
+/// A trait representing the conversion from the arbitrary types.
+///
+/// This trait is an emulation of the standard [`TryFrom`].
+///
+/// [`TryFrom`]: https://doc.rust-lang.org/nightly/std/convert/trait.TryFrom.html
 pub trait TryFrom<T>: Sized {
     type Error: Into<failure::Error>;
 

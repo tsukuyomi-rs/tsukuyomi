@@ -2,9 +2,8 @@
 
 use {
     crate::{
-        common::{Chain, Never},
-        error::Error, //
-        extractor::Extractor,
+        core::{Chain, Never}, //
+        error::Error,
         future::{Async, Future, MaybeFuture, NeverFuture, Poll},
         input::Input,
         output::{Output, Responder},
@@ -177,12 +176,26 @@ impl BoxedHandler {
     }
 }
 
-/// A trait representing a factory of `Handler` from an instance of `Extractor`.
-pub trait MakeHandler<E: Extractor> {
+/// A trait representing a creator of `Handler`.
+pub trait MakeHandler<T> {
     type Output: Responder;
     type Handler: Handler<Output = Self::Output>;
 
-    fn make_handler(self, extractor: E) -> Self::Handler;
+    fn make_handler(self, input: T) -> Self::Handler;
+}
+
+impl<F, T, H> MakeHandler<T> for F
+where
+    F: FnOnce(T) -> H,
+    H: Handler,
+{
+    type Output = H::Output;
+    type Handler = H;
+
+    #[inline]
+    fn make_handler(self, input: T) -> Self::Handler {
+        self(input)
+    }
 }
 
 /// A trait representing a type for modifying the instance of `Handler`.
@@ -193,9 +206,24 @@ pub trait ModifyHandler<H: Handler> {
     fn modify(&self, input: H) -> Self::Handler;
 }
 
-impl<'a, M, H> ModifyHandler<H> for &'a M
+impl<F, In, Out> ModifyHandler<In> for F
 where
-    M: ModifyHandler<H> + 'a,
+    F: Fn(In) -> Out,
+    In: Handler,
+    Out: Handler,
+{
+    type Output = Out::Output;
+    type Handler = Out;
+
+    #[inline]
+    fn modify(&self, input: In) -> Self::Handler {
+        (*self)(input)
+    }
+}
+
+impl<M, H> ModifyHandler<H> for std::rc::Rc<M>
+where
+    M: ModifyHandler<H>,
     H: Handler,
 {
     type Output = M::Output;
@@ -203,11 +231,11 @@ where
 
     #[inline]
     fn modify(&self, input: H) -> Self::Handler {
-        (*self).modify(input)
+        (**self).modify(input)
     }
 }
 
-impl<M, H> ModifyHandler<H> for std::rc::Rc<M>
+impl<M, H> ModifyHandler<H> for std::sync::Arc<M>
 where
     M: ModifyHandler<H>,
     H: Handler,

@@ -4,7 +4,7 @@ use {
         Uri,
     },
     crate::{
-        common::{Chain, Never},
+        core::{Chain, Never},
         handler::{Handler, ModifyHandler},
     },
     http::{header::HeaderValue, Method},

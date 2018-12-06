@@ -13,17 +13,16 @@
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
-mod common;
 mod generic;
 
 pub mod app;
+pub mod core;
 pub mod error;
 pub mod extractor;
 pub mod fs;
 pub mod future;
 pub mod handler;
 pub mod input;
-pub mod localmap;
 pub mod output;
 pub mod rt;
 pub mod server;
@@ -32,18 +31,13 @@ pub mod test;
 #[doc(inline)]
 pub use crate::{
     app::App,
-    common::{Chain, Never, TryFrom},
     error::{
         Error, //
         HttpError,
         Result,
     },
     extractor::Extractor,
-    handler::{
-        Handler, //
-        MakeHandler,
-        ModifyHandler,
-    },
+    handler::Handler,
     input::Input,
     output::{
         Output, //
