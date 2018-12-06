@@ -2,8 +2,8 @@ use {
     super::uri::CaptureNames,
     super::{
         fallback::{Context as FallbackContext, FallbackKind},
-        router::{Captures, ResourceId, Route},
-        AppInner,
+        recognizer::Captures,
+        AppInner, ResourceId, Route,
     },
     crate::{
         error::{Critical, Error},
@@ -78,7 +78,7 @@ macro_rules! input {
                 &if let Some(resource_id) = $self.resource_id {
                     Some(Params {
                         path: $self.request.uri().path(),
-                        names: $self.inner.router.resource(resource_id).uri.capture_names(),
+                        names: $self.inner.resource(resource_id).uri.capture_names(),
                         captures: $self.captures.as_ref(),
                     })
                 } else {
@@ -115,7 +115,6 @@ impl AppFuture {
     fn process_recognize(&mut self) -> Handle {
         match self
             .inner
-            .router
             .route(self.request.uri().path(), self.request.method())
         {
             Route::FoundEndpoint {
@@ -155,7 +154,7 @@ impl AppFuture {
                 self.resource_id = None;
                 self.captures = captures;
                 let kind = FallbackKind::NotFound(resources);
-                match self.inner.router.global_fallback {
+                match self.inner.global_fallback {
                     Some(ref fallback) => fallback.call(&mut FallbackContext {
                         input: input!(self),
                         kind: &kind,

@@ -1,9 +1,8 @@
 use {
+    super::Resource,
     crate::{handler::Handle, input::Input, output::Output},
     http::{Method, StatusCode},
 };
-
-pub use super::router::Resource;
 
 #[derive(Debug)]
 pub enum FallbackKind<'a> {

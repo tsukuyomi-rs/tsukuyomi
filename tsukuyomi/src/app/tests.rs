@@ -1,10 +1,5 @@
 use {
-    super::{
-        mount::mount,
-        route,
-        router::{ResourceId, Route},
-        App, Result,
-    },
+    super::{mount::mount, route, App, ResourceId, Result, Route},
     http::Method,
     matches::assert_matches,
 };
@@ -12,7 +7,7 @@ use {
 #[test]
 fn empty() -> Result<()> {
     let app = App::builder().build()?;
-    assert_matches!(app.inner.router.route("/", &Method::GET), Route::NotFound { .. });
+    assert_matches!(app.inner.route("/", &Method::GET), Route::NotFound { .. });
     Ok(())
 }
 
@@ -23,19 +18,19 @@ fn route_single_method() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("/", &Method::GET),
+        app.inner.route("/", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
 
     assert_matches!(
-        app.inner.router.route("/path/to", &Method::GET),
+        app.inner.route("/path/to", &Method::GET),
         Route::NotFound { .. }
     );
 
     assert_matches!(
-        app.inner.router.route("/", &Method::POST),
+        app.inner.route("/", &Method::POST),
         Route::FoundResource { resource, .. }
             if resource.id == ResourceId(0)
     );
@@ -51,20 +46,20 @@ fn route_multiple_method() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("/", &Method::GET),
+        app.inner.route("/", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/", &Method::POST),
+        app.inner.route("/", &Method::POST),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 1
     );
 
     assert_matches!(
-        app.inner.router.route("/", &Method::PUT),
+        app.inner.route("/", &Method::PUT),
         Route::FoundResource { resource, .. }
             if resource.id == ResourceId(0)
     );
@@ -79,20 +74,20 @@ fn route_multiple_method_at_same_endpoint() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("/", &Method::GET),
+        app.inner.route("/", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/", &Method::POST),
+        app.inner.route("/", &Method::POST),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
 
     assert_matches!(
-        app.inner.router.route("/", &Method::PUT),
+        app.inner.route("/", &Method::PUT),
         Route::FoundResource { resource, .. }
             if resource.id == ResourceId(0)
     );
@@ -111,7 +106,7 @@ fn asterisk_route() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("*", &Method::OPTIONS),
+        app.inner.route("*", &Method::OPTIONS),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
@@ -137,7 +132,7 @@ fn asterisk_route_with_normal_routes() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("*", &Method::OPTIONS),
+        app.inner.route("*", &Method::OPTIONS),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 0
@@ -163,31 +158,31 @@ fn scope_simple() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("/a", &Method::GET),
+        app.inner.route("/a", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/b", &Method::GET),
+        app.inner.route("/b", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(1)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/foo", &Method::GET),
+        app.inner.route("/foo", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(2)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/c/d", &Method::GET),
+        app.inner.route("/c/d", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/c/d", &Method::POST),
+        app.inner.route("/c/d", &Method::POST),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 1
@@ -217,44 +212,44 @@ fn scope_nested() -> Result<()> {
         .build()?;
 
     assert_matches!(
-        app.inner.router.route("/foo", &Method::GET),
+        app.inner.route("/foo", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/bar", &Method::GET),
+        app.inner.route("/bar", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(1)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/foo", &Method::POST),
+        app.inner.route("/foo", &Method::POST),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 1
     );
     assert_matches!(
-        app.inner.router.route("/baz", &Method::GET),
+        app.inner.route("/baz", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId( 2)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/baz/foobar", &Method::GET),
+        app.inner.route("/baz/foobar", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 0
     );
     assert_matches!(
-        app.inner.router.route("/hoge", &Method::GET),
+        app.inner.route("/hoge", &Method::GET),
         Route::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(4)
             && endpoint.id == 0
     );
 
     assert_matches!(
-        app.inner.router.route("/baz/", &Method::GET),
+        app.inner.route("/baz/", &Method::GET),
         Route::NotFound { .. }
     );
 

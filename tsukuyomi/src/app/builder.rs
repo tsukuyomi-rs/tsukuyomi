@@ -1,8 +1,7 @@
 use {
     super::{
-        fallback::Fallback,
-        router::{Endpoint, Recognizer, Resource, ResourceId, Router},
-        App, AppInner, Uri,
+        fallback::Fallback, recognizer::Recognizer, App, AppInner, Endpoint, Resource, ResourceId,
+        Uri,
     },
     crate::{
         common::{Chain, Never},
@@ -106,10 +105,8 @@ impl<S, M> Builder<S, M> {
 
         Ok(App {
             inner: Arc::new(AppInner {
-                router: Router {
-                    recognizer,
-                    global_fallback,
-                },
+                recognizer,
+                global_fallback,
             }),
         })
     }
