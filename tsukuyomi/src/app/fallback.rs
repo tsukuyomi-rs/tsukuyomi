@@ -1,7 +1,6 @@
 use {
     crate::{handler::Handle, input::Input, output::Output},
     http::{Method, StatusCode},
-    std::fmt,
 };
 
 pub use super::router::Resource;
@@ -32,33 +31,6 @@ where
 {
     fn call(&self, cx: &mut Context<'_>) -> Handle {
         (*self)(cx).into()
-    }
-}
-
-pub(super) struct BoxedFallback {
-    inner: Box<dyn Fn(&mut Context<'_>) -> Handle + Send + Sync + 'static>,
-}
-
-impl fmt::Debug for BoxedFallback {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BoxedFallback").finish()
-    }
-}
-
-impl<F> From<F> for BoxedFallback
-where
-    F: Fallback,
-{
-    fn from(fallback: F) -> Self {
-        BoxedFallback {
-            inner: Box::new(move |cx| fallback.call(cx)),
-        }
-    }
-}
-
-impl BoxedFallback {
-    pub(crate) fn call(&self, cx: &mut Context<'_>) -> Handle {
-        (self.inner)(cx)
     }
 }
 

@@ -1,6 +1,6 @@
 use {
     super::{
-        fallback::{BoxedFallback, Fallback},
+        fallback::Fallback,
         router::{Endpoint, Recognizer, Resource, ResourceId, Router},
         App, AppInner, Uri,
     },
@@ -18,7 +18,7 @@ use {
 pub struct Builder<S = (), M = ()> {
     scope: S,
     modifier: M,
-    fallback: Option<BoxedFallback>,
+    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
     prefix: Uri,
 }
 
@@ -65,10 +65,10 @@ impl<S, M> Builder<S, M> {
     /// Sets the instance of `Fallback` to the global scope.
     pub fn fallback<F>(self, fallback: F) -> Self
     where
-        F: Fallback,
+        F: Fallback + Send + Sync + 'static,
     {
         Builder {
-            fallback: Some(fallback.into()),
+            fallback: Some(Box::new(fallback)),
             ..self
         }
     }
@@ -145,11 +145,19 @@ struct ContextInner {
     num_scopes: usize,
 }
 
-#[derive(Debug)]
 struct ScopeData {
     id: usize,
     prefix: Uri,
-    fallback: Option<Arc<BoxedFallback>>,
+    fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
+}
+
+impl fmt::Debug for ScopeData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScopeData")
+            .field("id", &self.id)
+            .field("prefix", &self.prefix)
+            .finish()
+    }
 }
 
 /// A type representing the contextual information in `Scope::configure`.
@@ -238,7 +246,7 @@ impl<'a, M> Context<'a, M> {
         &mut self,
         prefix: &Uri,
         modifier: M2,
-        fallback: Option<BoxedFallback>,
+        fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
         new_scope: S,
     ) -> super::Result<()>
     where

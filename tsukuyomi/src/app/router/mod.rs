@@ -2,7 +2,7 @@ mod recognizer;
 
 use {
     self::recognizer::RecognizeError,
-    super::{fallback::BoxedFallback, Uri},
+    super::{fallback::Fallback, Uri},
     crate::handler::BoxedHandler,
     bytes::BytesMut,
     http::{header::HeaderValue, Method},
@@ -12,10 +12,17 @@ use {
 
 pub(super) use self::recognizer::{Captures, Recognizer};
 
-#[derive(Debug)]
 pub(super) struct Router {
     pub(super) recognizer: Recognizer<Resource>,
-    pub(super) global_fallback: Option<Arc<BoxedFallback>>,
+    pub(super) global_fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
+}
+
+impl fmt::Debug for Router {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Router")
+            .field("recognizer", &self.recognizer)
+            .finish()
+    }
 }
 
 impl Router {
@@ -64,7 +71,7 @@ pub struct Resource {
     pub(super) id: ResourceId,
     pub(super) uri: Uri,
     pub(super) endpoints: Vec<Endpoint>,
-    pub(super) fallback: Option<Arc<BoxedFallback>>,
+    pub(super) fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
     pub(super) allowed_methods: IndexMap<Method, usize>,
     pub(super) allowed_methods_value: HeaderValue,
 }
