@@ -1,6 +1,8 @@
+//! Definition of compatible layer with `futures`.
+
 use {
     crate::{common::Never, error::Error, input::Input},
-    std::marker::PhantomData,
+    std::{fmt, marker::PhantomData},
 };
 
 #[doc(no_inline)]
@@ -18,6 +20,16 @@ impl<'task> Context<'task> {
     }
 }
 
+/// A trait representing the asynchronous computation in Tsukuyomi.
+///
+/// The signature of this trait is intentionally imitates [`Future`],
+/// but thereare the following differences:
+///
+/// * The implementors can access the request context (`&mut Input`) directly
+///   through the reference to `Context` passed as an argument of `poll_ready`.
+/// * The error type must implements the conversion into `Error`.
+///
+/// [`Future`]: https://docs.rs/futures/0.1/futures/trait.Future.html
 pub trait Future {
     type Output;
     type Error: Into<Error>;
@@ -25,16 +37,21 @@ pub trait Future {
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Self::Output, Self::Error>;
 }
 
+/// A wrapper struct for providing the implementation of [`Future`] to the type
+/// that implements [`Future`][Future01].
+///
+/// [`Future`]: ./trait.Future.html
+/// [Future01]: https://docs.rs/futures/0.1/futures/trait.Future.html
 #[derive(Debug)]
 #[must_use = "futures do nothing unless polled."]
 pub struct Compat01<F>(F);
 
-impl<F> Compat01<F>
+impl<F> From<F> for Compat01<F>
 where
     F: futures01::Future,
     F::Error: Into<Error>,
 {
-    pub fn new(future: F) -> Self {
+    fn from(future: F) -> Self {
         Compat01(future)
     }
 }
@@ -48,14 +65,79 @@ where
     type Error = F::Error;
 
     #[inline]
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Self::Output, Self::Error> {
+        self.0.poll()
+    }
+}
+
+/// A function to create a `Future` from a function that represents the polling.
+pub fn poll_fn<Op, T, E>(op: Op) -> PollFn<Op>
+where
+    Op: FnMut(&mut Context<'_>) -> Poll<T, E>,
+    E: Into<Error>,
+{
+    PollFn(op)
+}
+
+#[derive(Debug)]
+#[must_use = "futures do nothing unless polled."]
+pub struct PollFn<Op>(Op);
+
+impl<Op, T, E> Future for PollFn<Op>
+where
+    Op: FnMut(&mut Context<'_>) -> Poll<T, E>,
+    E: Into<Error>,
+{
+    type Output = T;
+    type Error = E;
+
+    #[inline]
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Self::Output, Self::Error> {
-        let input = &mut *cx.input;
-        input.with_set_current(|| self.0.poll())
+        (self.0)(cx)
+    }
+}
+
+/// A function to create a `Future` from a function that produces a `Future`.
+pub fn lazy<Op, R>(op: Op) -> Lazy<Op, R>
+where
+    Op: FnOnce(&mut Context<'_>) -> R,
+    R: Future,
+{
+    Lazy(LazyInner::First(Some(op)))
+}
+
+#[derive(Debug)]
+#[must_use = "futures do nothing unless polled."]
+pub struct Lazy<Op, R>(LazyInner<Op, R>);
+
+#[derive(Debug)]
+enum LazyInner<Op, R> {
+    First(Option<Op>),
+    Second(R),
+}
+
+impl<Op, R> Future for Lazy<Op, R>
+where
+    Op: FnOnce(&mut Context<'_>) -> R,
+    R: Future,
+{
+    type Output = R::Output;
+    type Error = R::Error;
+
+    #[inline]
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Self::Output, Self::Error> {
+        loop {
+            self.0 = match self.0 {
+                LazyInner::First(ref mut op) => LazyInner::Second((op.take().unwrap())(cx)),
+                LazyInner::Second(ref mut future) => return future.poll_ready(cx),
+            }
+        }
     }
 }
 
 /// An enum that represents arbitrary results that may not be completed.
 #[derive(Debug)]
+#[must_use = "the internal future do nothing unless polled."]
 pub enum MaybeFuture<F: Future> {
     Ready(Result<F::Output, F::Error>),
     Future(F),
@@ -191,11 +273,16 @@ where
 }
 
 /// A helper struct representing a `Future` that will be *never* constructed.
-#[doc(hidden)]
-#[derive(Debug)]
+#[must_use = "futures do nothing unless polled."]
 pub struct NeverFuture<T, E> {
     never: Never,
     _marker: PhantomData<fn() -> (T, E)>,
+}
+
+impl<T, E> fmt::Debug for NeverFuture<T, E> {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.never {}
+    }
 }
 
 impl<T, E> Future for NeverFuture<T, E>
@@ -212,6 +299,7 @@ where
 }
 
 #[derive(Debug)]
+#[must_use = "futures do nothing unless polled."]
 pub enum MaybeDone<F: Future> {
     Ready(F::Output),
     Pending(F),

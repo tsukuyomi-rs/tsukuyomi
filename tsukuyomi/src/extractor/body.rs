@@ -4,7 +4,7 @@ use {
     crate::{
         error::Error,
         extractor::Extractor,
-        future::{Async, MaybeFuture},
+        future::{Async, Compat01, MaybeFuture},
         input::body::RequestBody,
     },
     bytes::Bytes,
@@ -145,14 +145,12 @@ where
             || MaybeFuture::err(stolen_payload()),
             |body| {
                 let mut read_all = body.read_all();
-                MaybeFuture::from(crate::future::Compat01::new(futures01::future::poll_fn(
-                    move || {
-                        let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
-                        D::decode(&data)
-                            .map(|out| Async::Ready((out,)))
-                            .map_err(crate::error::bad_request)
-                    },
-                )))
+                MaybeFuture::from(Compat01::from(futures01::future::poll_fn(move || {
+                    let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
+                    D::decode(&data)
+                        .map(|out| Async::Ready((out,)))
+                        .map_err(crate::error::bad_request)
+                })))
             },
         )
     })
@@ -187,7 +185,7 @@ pub fn raw() -> impl Extractor<Output = (Bytes,)> {
         input.body().map_or_else(
             || MaybeFuture::err(stolen_payload()),
             |body| {
-                MaybeFuture::from(crate::future::Compat01::new(
+                MaybeFuture::from(Compat01::from(
                     body.read_all().map(|out| (out,)).map_err(Error::critical),
                 ))
             },

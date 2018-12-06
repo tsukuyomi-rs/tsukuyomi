@@ -535,7 +535,7 @@ where
         };
 
         self.call(move || {
-            crate::future::Compat01::new(match config {
+            crate::future::Compat01::from(match config {
                 Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
                 None => NamedFile::open(path.clone()),
             })
