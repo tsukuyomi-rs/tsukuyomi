@@ -202,7 +202,7 @@ impl Uri {
                 UriComponent::Param(name, param_kind) => UriKind::Segments(
                     format!("/{}{}", param_kind, name),
                     Some(CaptureNames {
-                        params: indexset!{ name.to_string() },
+                        params: indexset! { name.to_string() },
                         has_wildcard: param_kind == '*',
                     }),
                 ),
@@ -348,7 +348,7 @@ impl CaptureNames {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(non_ascii_literal))]
+#[allow(clippy::non_ascii_literal)]
 #[cfg(test)]
 mod tests {
     use {super::*, indexmap::indexset};
@@ -471,7 +471,7 @@ mod tests {
         let names = uri.capture_names().expect("should be Some");
         assert_eq!(
             names.params,
-            indexset!{ "id".into(), "name".into(), "path".into() }
+            indexset! { "id".into(), "name".into(), "path".into() }
         );
         assert!(names.has_wildcard);
 
@@ -486,7 +486,7 @@ mod tests {
         assert_eq!(uri.as_str(), "/:id");
 
         let names = uri.capture_names().expect("should be Some");
-        assert_eq!(names.params, indexset!{ "id".into(), });
+        assert_eq!(names.params, indexset! { "id".into(), });
         assert!(!names.has_wildcard);
 
         Ok(())
@@ -500,7 +500,7 @@ mod tests {
         assert_eq!(uri.as_str(), "/*path");
 
         let names = uri.capture_names().expect("should be Some");
-        assert_eq!(names.params, indexset!{ "path".into(), });
+        assert_eq!(names.params, indexset! { "path".into(), });
         assert!(names.has_wildcard);
 
         Ok(())

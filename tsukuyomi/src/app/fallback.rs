@@ -51,7 +51,7 @@ where
 {
     fn from(fallback: F) -> Self {
         BoxedFallback {
-            inner: Box::new(move |cx| fallback.call(cx).into()),
+            inner: Box::new(move |cx| fallback.call(cx)),
         }
     }
 }

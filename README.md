@@ -5,7 +5,7 @@
 ---
 
 [![Crates.io][crates-io-badge]][crates-io]
-[![Minimal Rust Version: 1.30.0][rust-version-badge]][rust-version]
+[![Minimal Rust Version: 1.31.0][rust-version-badge]][rust-version]
 [![dependency status][deps-rs-badge]][deps-rs]
 [![Build Status][azure-pipelines-badge]][azure-pipelines]
 [![Coverage Status][codecov-badge]][codecov]
@@ -71,7 +71,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
-[rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
+[rust-version-badge]: https://img.shields.io/badge/rustc-1.31.0+-yellow.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
 [deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi

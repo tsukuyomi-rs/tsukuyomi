@@ -7,7 +7,6 @@ use {
 
 pub trait Input: InputImpl {}
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait InputImpl {
     fn build_request(self) -> http::Result<Request<Body>>;
 }

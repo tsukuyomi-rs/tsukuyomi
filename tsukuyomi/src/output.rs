@@ -2,14 +2,14 @@
 
 pub use tsukuyomi_macros::Responder;
 use {
-    bytes::{Buf, Bytes, IntoBuf},
     crate::{
         common::Never,
         error::Error,
         input::{body::RequestBody, Input},
     },
+    bytes::{Buf, Bytes, IntoBuf},
     either::Either,
-    futures::{Poll, Stream},
+    futures01::{Poll, Stream},
     http::{header::HeaderMap, Response, StatusCode},
     hyper::body::{Body, Payload},
     serde::Serialize,
@@ -204,7 +204,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<T, E> Responder for Result<T, E>
 where
     T: Responder,
@@ -221,7 +220,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<T> Responder for Response<T>
 where
     T: Into<ResponseBody>,
@@ -275,7 +273,6 @@ where
     E: Into<Error>,
 {
     #[allow(missing_debug_implementations)]
-    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
     pub struct ResponderFn<F>(F);
 
     impl<F, T, E> Responder for ResponderFn<F>

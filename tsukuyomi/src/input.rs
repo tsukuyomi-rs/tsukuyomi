@@ -6,8 +6,8 @@ pub use {
 };
 
 use {
-    futures::{Future, IntoFuture, Poll},
-    std::{borrow::Cow, cell::Cell, mem, ptr::NonNull, str::Utf8Error},
+    futures01::{Future, IntoFuture, Poll},
+    std::{borrow::Cow, cell::Cell, ptr::NonNull, str::Utf8Error},
     url::percent_encoding::percent_decode,
 };
 
@@ -16,20 +16,19 @@ use {
 pub struct PercentEncoded(str);
 
 impl PercentEncoded {
-    pub unsafe fn new_unchecked<'a>(s: &'a str) -> &'a Self {
-        mem::transmute(s)
+    pub unsafe fn new_unchecked(s: &str) -> &Self {
+        &*(s as *const str as *const Self)
     }
 
-    pub fn decode_utf8<'a>(&'a self) -> Result<Cow<'a, str>, Utf8Error> {
+    pub fn decode_utf8(&self) -> Result<Cow<'_, str>, Utf8Error> {
         percent_decode(self.0.as_bytes()).decode_utf8()
     }
 
-    pub fn decode_utf8_lossy<'a>(&'a self) -> Cow<'a, str> {
+    pub fn decode_utf8_lossy(&self) -> Cow<'_, str> {
         percent_decode(self.0.as_bytes()).decode_utf8_lossy()
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait FromPercentEncoded: Sized {
     type Error: Into<crate::Error>;
 
@@ -82,7 +81,7 @@ pub fn poll_fn<F, T, E>(mut f: F) -> impl Future<Item = T, Error = E>
 where
     F: FnMut(&mut Input<'_>) -> Poll<T, E>,
 {
-    futures::future::poll_fn(move || with_get_current(|input| f(input)))
+    futures01::future::poll_fn(move || with_get_current(|input| f(input)))
 }
 
 /// Creates a `Future` which has the same result as the future returned from the specified function.
@@ -91,7 +90,7 @@ where
     F: FnOnce(&mut Input<'_>) -> R,
     R: IntoFuture,
 {
-    futures::future::lazy(move || with_get_current(f))
+    futures01::future::lazy(move || with_get_current(f))
 }
 
 thread_local! {
@@ -120,7 +119,7 @@ impl<'task> Input<'task> {
     ///
     /// The stored reference to `Input` can be accessed by using `input::with_get_current`.
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn with_set_current<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce() -> R,
@@ -172,16 +171,15 @@ pub fn with_get_current<R>(f: impl FnOnce(&mut Input<'_>) -> R) -> R {
 /// Components for receiving incoming request bodies.
 pub mod body {
     use {
-        bytes::{Buf, BufMut, Bytes, BytesMut},
         crate::error::Critical,
-        futures::{Async, Future, Poll, Stream},
+        bytes::{Buf, BufMut, Bytes, BytesMut},
+        futures01::{Async, Future, Poll, Stream},
         http::header::HeaderMap,
         hyper::body::{Body, Payload},
         std::{io, mem},
     };
 
     #[derive(Debug)]
-    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
     pub struct RequestBody(Body);
 
     impl RequestBody {
@@ -362,7 +360,7 @@ pub mod body {
             loop {
                 match self.state {
                     Receiving(ref mut body, ref mut buf) => {
-                        while let Some(chunk) = futures::try_ready!(body.poll_data()) {
+                        while let Some(chunk) = futures01::try_ready!(body.poll_data()) {
                             let chunk = chunk.into_inner();
                             buf.extend_from_slice(&*chunk);
                         }

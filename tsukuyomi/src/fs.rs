@@ -1,15 +1,15 @@
 //! The basic components for serving static files.
 
 use {
-    bytes::{BufMut, Bytes, BytesMut},
     crate::{
         error::Error,
         input::Input,
         output::{Responder, ResponseBody},
         rt::poll_blocking,
     },
+    bytes::{BufMut, Bytes, BytesMut},
     filetime::FileTime,
-    futures::{Async, Future, Poll, Stream},
+    futures01::{Async, Future, Poll, Stream},
     http::{
         header::{self, HeaderMap},
         Response, StatusCode,
@@ -154,7 +154,7 @@ impl NamedFile {
         }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_sign_loss))]
+    #[allow(clippy::cast_sign_loss)]
     fn is_modified(&self, headers: &HeaderMap) -> Result<bool, Error> {
         if let Some(h) = headers.get(header::IF_NONE_MATCH) {
             trace!("NamedFile::is_modified(): validate If-None-Match");
@@ -203,7 +203,7 @@ impl NamedFile {
         }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_possible_wrap))]
+    #[allow(clippy::cast_possible_wrap)]
     fn last_modified(&self) -> Result<String, time::ParseError> {
         let tm = time::at(Timespec::new(
             self.last_modified.seconds(),
@@ -261,7 +261,7 @@ where
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (file, meta) = futures::try_ready!(blocking_io(|| {
+        let (file, meta) = futures01::try_ready!(blocking_io(|| {
             let file = File::open(&self.path)?;
             let meta = file.metadata()?;
             Ok((file, meta))
@@ -316,7 +316,7 @@ impl Stream for ReadStream {
                 } => {
                     trace!("ReadStream::poll(): polling on the mode State::Reading");
 
-                    let buf = futures::try_ready!(blocking_io(|| {
+                    let buf = futures01::try_ready!(blocking_io(|| {
                         let mut buf = BytesMut::with_capacity(buf_size);
                         if !buf.has_remaining_mut() {
                             buf.reserve(buf_size);
@@ -359,7 +359,7 @@ fn blocking_io<T>(f: impl FnOnce() -> io::Result<T>) -> Poll<T, io::Error> {
 }
 
 // FIXME: replace usize to u64
-#[cfg_attr(feature = "cargo-clippy", allow(cast_possible_truncation))]
+#[allow(clippy::cast_possible_truncation)]
 fn finalize_block_size(buf_size: Option<usize>, meta: &Metadata) -> usize {
     match buf_size {
         Some(n) => cmp::min(meta.len(), n as u64) as usize,

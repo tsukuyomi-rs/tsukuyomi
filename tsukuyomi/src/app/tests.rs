@@ -278,7 +278,8 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
             route::root() //
                 .segment("path")?
                 .reply(|| ""),
-        ).with(
+        )
+        .with(
             mount("/")? //
                 .with(
                     route::root() //
@@ -315,7 +316,8 @@ fn failcase_asterisk_with_explicit_get_handler() -> Result<()> {
             route::asterisk() //
                 .methods(vec![Method::GET, Method::OPTIONS])?
                 .reply(|| ""),
-        ).build();
+        )
+        .build();
     assert!(app.is_err());
     Ok(())
 }

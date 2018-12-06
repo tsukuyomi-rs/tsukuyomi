@@ -100,7 +100,8 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                             .finish(),
                     );
                     Ok::<_, tsukuyomi::error::Error>(())
-                })).reply(|| "Logged in"),
+                }))
+                .reply(|| "Logged in"),
         ) //
         .with(
             route::root()
@@ -108,7 +109,8 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(())
-                })).reply(|| "Logged out"),
+                }))
+                .reply(|| "Logged out"),
         ) //
         .build_server()?
         .into_test_server()?;
@@ -148,7 +150,8 @@ fn default_options() -> tsukuyomi::test::Result<()> {
                 .segment("path")?
                 .methods("POST")?
                 .reply(|| "post"),
-        ).build_server()?
+        )
+        .build_server()?
         .into_test_server()?;
 
     let response = server.perform(Request::options("/path"))?;

@@ -1,10 +1,10 @@
 use {
-    futures::{Async, Future, IntoFuture, Poll},
+    futures01::{Async, Future, IntoFuture, Poll},
     std::{error::Error as StdError, fmt, marker::PhantomData},
 };
 
 /// A helper type which emulates the standard `never_type` (`!`).
-#[cfg_attr(feature = "cargo-clippy", allow(empty_enum))]
+#[allow(clippy::empty_enum)]
 #[derive(Debug)]
 pub enum Never {}
 
@@ -25,7 +25,6 @@ impl StdError for Never {
 }
 
 /// A trait representing the arbitrary conversion into `Self`.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait TryFrom<T>: Sized {
     type Error: Into<failure::Error>;
 
@@ -135,11 +134,11 @@ impl<F: Future> MaybeFuture<F> {
         R: IntoFuture<Error = F::Error>,
     {
         match self {
-            MaybeFuture::Ready(result) => {
-                MaybeFuture::Future(futures::future::Either::A(result.into_future().and_then(f)))
-            }
+            MaybeFuture::Ready(result) => MaybeFuture::Future(futures01::future::Either::A(
+                result.into_future().and_then(f),
+            )),
             MaybeFuture::Future(future) => {
-                MaybeFuture::Future(futures::future::Either::B(future.and_then(f)))
+                MaybeFuture::Future(futures01::future::Either::B(future.and_then(f)))
             }
         }
     }

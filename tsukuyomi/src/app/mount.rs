@@ -32,7 +32,6 @@ pub struct Mount<S = (), M = ()> {
     prefix: Uri,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S, M> Mount<S, M> {
     /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
     pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M> {
@@ -72,6 +71,6 @@ where
     type Error = super::Error;
 
     fn configure(self, cx: &mut Context<'_, M1>) -> std::result::Result<(), Self::Error> {
-        cx.add_scope(self.prefix, self.modifier, self.fallback, self.scope)
+        cx.add_scope(&self.prefix, self.modifier, self.fallback, self.scope)
     }
 }

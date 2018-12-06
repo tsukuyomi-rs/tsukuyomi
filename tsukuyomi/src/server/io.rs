@@ -1,6 +1,6 @@
 use {
     super::CritError,
-    futures::{Future, IntoFuture, Stream},
+    futures01::{Future, IntoFuture, Stream},
     http::Extensions,
     std::fmt,
     tokio::io::{AsyncRead, AsyncWrite},
@@ -82,11 +82,11 @@ where
 {
     type Conn = T;
     type Error = std::io::Error;
-    type Accept = futures::future::FutureResult<Self::Conn, Self::Error>;
+    type Accept = futures01::future::FutureResult<Self::Conn, Self::Error>;
 
     #[inline]
     fn accept(&self, io: T) -> Self::Accept {
-        futures::future::ok(io)
+        futures01::future::ok(io)
     }
 }
 
@@ -114,7 +114,6 @@ mod tcp {
     }
 
     #[allow(missing_debug_implementations)]
-    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
     pub struct TcpConnectionInfo {
         peer_addr: SocketAddr,
     }
@@ -125,7 +124,6 @@ mod tcp {
         }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(use_self))]
     impl Listener for SocketAddr {
         type Conn = TcpStream;
         type Error = io::Error;
@@ -201,7 +199,6 @@ mod uds {
     }
 
     #[allow(missing_debug_implementations)]
-    #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
     pub struct UdsConnectionInfo {
         peer_addr: SocketAddr,
     }

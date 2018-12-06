@@ -1,9 +1,9 @@
 //! Extractors for parsing message body.
 
 use {
-    bytes::Bytes,
     crate::{common::MaybeFuture, error::Error, extractor::Extractor, input::body::RequestBody},
-    futures::{Async, Future},
+    bytes::Bytes,
+    futures01::{Async, Future},
     mime::Mime,
     serde::de::DeserializeOwned,
     std::str,
@@ -27,10 +27,7 @@ pub enum ExtractBodyError {
     #[fail(display = "charset in `Content-type` must be equal to `utf-8`")]
     NotUtf8Charset,
 
-    #[fail(
-        display = "the content of message body is invalid: {}",
-        cause
-    )]
+    #[fail(display = "the content of message body is invalid: {}", cause)]
     InvalidContent { cause: failure::Error },
 }
 
@@ -143,8 +140,8 @@ where
             || MaybeFuture::err(stolen_payload()),
             |body| {
                 let mut read_all = body.read_all();
-                MaybeFuture::from(futures::future::poll_fn(move || {
-                    let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
+                MaybeFuture::from(futures01::future::poll_fn(move || {
+                    let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
                     D::decode(&data)
                         .map(|out| Async::Ready((out,)))
                         .map_err(crate::error::bad_request)

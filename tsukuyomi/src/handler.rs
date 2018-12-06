@@ -8,7 +8,7 @@ use {
         input::Input,
         output::{Output, Responder},
     },
-    futures::{Async, Future, Poll},
+    futures01::{Async, Future, Poll},
     std::{fmt, sync::Arc},
 };
 
@@ -162,14 +162,14 @@ where
     H: Handler,
 {
     fn from(handler: H) -> Self {
-        BoxedHandler {
+        Self {
             inner: Box::new(move |input| match handler.call(input) {
                 MaybeFuture::Ready(Ok(x)) => {
                     Handle::ready(crate::output::internal::respond_to(x, input))
                 }
                 MaybeFuture::Ready(Err(e)) => Handle::err(e.into()),
                 MaybeFuture::Future(mut future) => Handle::poll_fn(move |input| {
-                    let x = futures::try_ready!(
+                    let x = futures01::try_ready!(
                         input.with_set_current(|| future.poll().map_err(Into::into))
                     );
                     crate::output::internal::respond_to(x, input).map(Async::Ready)

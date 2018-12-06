@@ -3,8 +3,8 @@ mod recognizer;
 use {
     self::recognizer::RecognizeError,
     super::{fallback::BoxedFallback, Uri},
-    bytes::BytesMut,
     crate::handler::BoxedHandler,
+    bytes::BytesMut,
     http::{header::HeaderValue, Method},
     indexmap::{IndexMap, IndexSet},
     std::{fmt, sync::Arc},
@@ -31,7 +31,7 @@ impl Router {
                 return Route::NotFound {
                     resources: vec![],
                     captures,
-                }
+                };
             }
             Err(RecognizeError::PartiallyMatched(candidates)) => {
                 return Route::NotFound {
@@ -40,7 +40,7 @@ impl Router {
                         .filter_map(|i| self.recognizer.get(i))
                         .collect(),
                     captures,
-                }
+                };
             }
         };
 

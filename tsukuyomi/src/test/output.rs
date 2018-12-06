@@ -1,6 +1,6 @@
 use {
     bytes::{Buf, Bytes},
-    futures::{Async, Poll},
+    futures01::{Async, Poll},
     http::header::HeaderMap,
     hyper::body::Payload,
     std::{borrow::Cow, mem, str},
@@ -43,9 +43,9 @@ impl<Bd: Payload> Receive<Bd> {
                     ref mut end_of_chunks,
                 } => {
                     if *end_of_chunks {
-                        futures::try_ready!(body.poll_trailers())
+                        futures01::try_ready!(body.poll_trailers())
                     } else {
-                        while let Some(chunk) = futures::try_ready!(body.poll_data()) {
+                        while let Some(chunk) = futures01::try_ready!(body.poll_data()) {
                             chunks.push(chunk.collect());
                         }
                         *end_of_chunks = true;

@@ -79,7 +79,8 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
         .modifier(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        }).modifier(MockModifier {
+        })
+        .modifier(MockModifier {
             marker: marker.clone(),
             name: "M2",
         }) //

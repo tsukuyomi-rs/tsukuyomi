@@ -37,7 +37,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S, M> Builder<S, M> {
     /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
     pub fn with<S2>(self, next_scope: S2) -> Builder<Chain<S, S2>, M> {
@@ -95,7 +94,8 @@ impl<S, M> Builder<S, M> {
                 app: &mut cx,
                 scope: &global_scope,
                 modifier: self.modifier,
-            }).map_err(Into::into)?;
+            })
+            .map_err(Into::into)?;
 
         // create a route recognizer.
         let mut recognizer = Recognizer::default();
@@ -163,7 +163,7 @@ pub struct Context<'a, M> {
 impl<'a, M> Context<'a, M> {
     pub(super) fn add_endpoint<H>(
         &mut self,
-        uri: Uri,
+        uri: &Uri,
         mut methods: IndexSet<Method>,
         handler: H,
     ) -> super::Result<()>
@@ -203,12 +203,14 @@ impl<'a, M> Context<'a, M> {
             if !methods.contains(&Method::OPTIONS) {
                 return Err(failure::format_err!(
                     "the route with asterisk URI must explicitly handles OPTIONS"
-                ).into());
+                )
+                .into());
             }
             if methods.iter().any(|method| method != Method::OPTIONS) {
                 return Err(failure::format_err!(
                     "the route with asterisk URI must not accept any methods other than OPTIONS"
-                ).into());
+                )
+                .into());
             }
         }
 
@@ -234,7 +236,7 @@ impl<'a, M> Context<'a, M> {
 
     pub(super) fn add_scope<S, M2>(
         &mut self,
-        prefix: Uri,
+        prefix: &Uri,
         modifier: M2,
         fallback: Option<BoxedFallback>,
         new_scope: S,
@@ -259,7 +261,8 @@ impl<'a, M> Context<'a, M> {
                 app: &mut *self.app,
                 scope: &data,
                 modifier,
-            }).map_err(Into::into)?;
+            })
+            .map_err(Into::into)?;
 
         Ok(())
     }

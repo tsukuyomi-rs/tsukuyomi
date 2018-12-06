@@ -21,7 +21,7 @@ use {
         generic::Tuple,
         input::Input,
     },
-    futures::{Future, IntoFuture},
+    futures01::{Future, IntoFuture},
 };
 
 /// A trait abstracting the extraction of values from `Input`.
@@ -87,10 +87,6 @@ impl Extractor for () {
 
 // ==== primitives ====
 
-pub fn unit() -> impl Extractor<Output = (), Error = Never> {
-    ()
-}
-
 pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Item, Error = R::Error>
 where
     F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
@@ -101,7 +97,7 @@ where
     #[derive(Debug, Copy, Clone)]
     struct Raw<F>(F);
 
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+    #[allow(clippy::type_complexity)]
     impl<F, R> Extractor for Raw<F>
     where
         F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,

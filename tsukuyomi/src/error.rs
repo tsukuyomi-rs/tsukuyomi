@@ -48,7 +48,6 @@ impl std::error::Error for Critical {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// A trait representing error values to be converted into an HTTP response.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static {
     /// Returns an HTTP status code associated with this value.
     fn status_code(&self) -> StatusCode;
@@ -130,7 +129,6 @@ pub struct Custom<D> {
 }
 
 #[allow(missing_docs)]
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<D> Custom<D>
 where
     D: fmt::Debug + fmt::Display + Send + 'static,
@@ -235,7 +233,8 @@ where
         let mut response = Response::new(msg);
         *response.status_mut() = status;
         response
-    }).into()
+    })
+    .into()
 }
 
 #[allow(missing_docs)]

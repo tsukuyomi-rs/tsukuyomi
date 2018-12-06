@@ -346,7 +346,7 @@ impl<'a> RecognizeContext<'a> {
                 },
                 NodeKind::Param => {
                     let span = self.path[offset..]
-                        .into_iter()
+                        .iter()
                         .position(|&b| b == b'/')
                         .unwrap_or(self.path.len() - offset);
                     self.captures
@@ -392,8 +392,8 @@ impl<'a> RecognizeContext<'a> {
 
 /// Calculate the endpoint of longest common prefix between the two slices.
 fn longest_common_prefix(s1: &[u8], s2: &[u8]) -> usize {
-    s1.into_iter()
-        .zip(s2.into_iter())
+    s1.iter()
+        .zip(s2)
         .position(|(s1, s2)| s1 != s2)
         .unwrap_or_else(|| cmp::min(s1.len(), s2.len()))
 }
@@ -403,7 +403,7 @@ fn compare_length<T>(s1: &[T], s2: &[T]) -> Ordering {
 }
 
 fn find_wildcard_begin(path: &[u8], offset: usize) -> usize {
-    path.into_iter()
+    path.iter()
         .skip(offset)
         .position(|&b| b == b':' || b == b'*')
         .map_or_else(|| path.len(), |i| i + offset)

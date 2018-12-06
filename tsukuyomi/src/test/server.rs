@@ -5,12 +5,12 @@ use {
         input::Input,
         output::{Output, Receive},
     },
-    cookie::Cookie,
     crate::server::{
         service::{HttpService, Identity, MakeHttpService, ModifyHttpService},
         CritError,
     },
-    futures::{Future, Poll},
+    cookie::Cookie,
+    futures01::{Future, Poll},
     http::{
         header::{COOKIE, SET_COOKIE},
         Request, Response,
@@ -149,7 +149,8 @@ mod threadpool {
             let service = block_on(
                 &mut self.runtime,
                 self.new_service.make_http_service().map_err(Into::into),
-            ).map_err(failure::Error::from_boxed_compat)?;
+            )
+            .map_err(failure::Error::from_boxed_compat)?;
 
             Ok(Session::new(
                 self.modify_service.modify_http_service(service),
@@ -239,7 +240,7 @@ mod current_thread {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 enum TestResponseFuture<F, Bd: Payload> {
     Initial(F),
@@ -261,11 +262,11 @@ where
         loop {
             let response = match *self {
                 Initial(ref mut f) => {
-                    let response = futures::try_ready!(f.poll().map_err(Into::into));
+                    let response = futures01::try_ready!(f.poll().map_err(Into::into));
                     Some(response)
                 }
                 Receive(_, ref mut receive) => {
-                    futures::try_ready!(receive.poll_ready().map_err(Into::into));
+                    futures01::try_ready!(receive.poll_ready().map_err(Into::into));
                     None
                 }
                 _ => unreachable!("unexpected state"),

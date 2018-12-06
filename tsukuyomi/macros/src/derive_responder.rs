@@ -154,7 +154,7 @@ impl ResponderInput {
             (None, syn::Data::Struct(ref data)) => self.derive_struct(data)?,
             (None, syn::Data::Enum(ref data)) => self.derive_enum(data)?,
             (None, syn::Data::Union(..)) => {
-                return Err(parse_error("tagged union is not supported."))
+                return Err(parse_error("tagged union is not supported."));
             }
         };
 

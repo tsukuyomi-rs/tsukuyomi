@@ -12,7 +12,7 @@ use {
         input::{FromPercentEncoded, Input, PercentEncoded},
         output::{redirect::Redirect, Responder},
     },
-    futures::{Future, IntoFuture, Poll},
+    futures01::{Future, IntoFuture, Poll},
     http::{HttpTryFrom, Method, StatusCode},
     indexmap::{indexset, IndexSet},
     std::{
@@ -220,7 +220,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<E, M, T> Builder<E, M, T>
 where
     E: Extractor,
@@ -302,7 +301,7 @@ where
 
             #[inline]
             fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-                let args = futures::try_ready!(self.future.poll().map_err(Into::into));
+                let args = futures01::try_ready!(self.future.poll().map_err(Into::into));
                 Ok(self.f.call(args).into())
             }
         }
@@ -405,7 +404,7 @@ where
                 loop {
                     self.state = match self.state {
                         State::First(ref mut f1, ref f) => {
-                            let args = futures::try_ready!(f1.poll().map_err(Into::into));
+                            let args = futures01::try_ready!(f1.poll().map_err(Into::into));
                             State::Second(f.call(args).into_future())
                         }
                         State::Second(ref mut f2) => return f2.poll(),
@@ -541,7 +540,8 @@ where
             match config {
                 Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
                 None => NamedFile::open(path.clone()),
-            }.map_err(Into::into)
+            }
+            .map_err(Into::into)
         })
     }
 }
@@ -563,7 +563,11 @@ where
     type Error = super::Error;
 
     fn configure(self, cx: &mut Context<'_, M1>) -> Result<(), Self::Error> {
-        cx.add_endpoint(self.uri, self.methods.0, self.modifier.modify(self.handler))
+        cx.add_endpoint(
+            &self.uri,
+            self.methods.0,
+            self.modifier.modify(self.handler),
+        )
     }
 }
 

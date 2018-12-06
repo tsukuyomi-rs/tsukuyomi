@@ -6,7 +6,7 @@ use {
         generic::{Combine, Func},
         input::Input,
     },
-    futures::{Future, Poll},
+    futures01::{Future, Poll},
 };
 
 #[derive(Debug)]
@@ -14,7 +14,6 @@ pub struct Builder<E> {
     extractor: E,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<E> Builder<E>
 where
     E: Extractor,
@@ -81,7 +80,7 @@ where
         T: Extractor<Output = E::Output>,
     {
         #[allow(missing_debug_implementations)]
-        #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+        #[allow(clippy::type_complexity)]
         enum OrFuture<L, R>
         where
             L: Future,
@@ -92,9 +91,9 @@ where
             Left(L),
             Right(R),
             Both(
-                futures::future::Select<
-                    futures::future::MapErr<L, fn(L::Error) -> Error>,
-                    futures::future::MapErr<R, fn(R::Error) -> Error>,
+                futures01::future::Select<
+                    futures01::future::MapErr<L, fn(L::Error) -> Error>,
+                    futures01::future::MapErr<R, fn(R::Error) -> Error>,
                 >,
             ),
         }
@@ -130,15 +129,15 @@ where
                     MaybeFuture::Ready(Ok(left)) => return MaybeFuture::ok(left),
                     MaybeFuture::Ready(Err(..)) => match right.extract(input) {
                         MaybeFuture::Ready(result) => {
-                            return MaybeFuture::Ready(result.map_err(Into::into))
+                            return MaybeFuture::Ready(result.map_err(Into::into));
                         }
                         MaybeFuture::Future(future) => {
-                            return MaybeFuture::Future(OrFuture::Right(future))
+                            return MaybeFuture::Future(OrFuture::Right(future));
                         }
                     },
                 };
                 match right.extract(input) {
-                    MaybeFuture::Ready(Ok(right)) => return MaybeFuture::ok(right),
+                    MaybeFuture::Ready(Ok(right)) => MaybeFuture::ok(right),
                     MaybeFuture::Ready(Err(..)) => MaybeFuture::Future(OrFuture::Left(left)),
                     MaybeFuture::Future(right) => MaybeFuture::Future(OrFuture::Both(
                         left.map_err(Into::into as fn(E::Error) -> Error)

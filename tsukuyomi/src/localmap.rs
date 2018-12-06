@@ -106,7 +106,6 @@ trait BoxDowncastExt {
     unsafe fn downcast_unchecked<T: Send + 'static>(self) -> Box<T>;
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl BoxDowncastExt for Box<dyn Opaque> {
     unsafe fn downcast_unchecked<T: Send + 'static>(self) -> Box<T> {
         Box::from_raw(Box::into_raw(self) as *mut T)

@@ -16,7 +16,7 @@ use {
         runtime::Runtime,
         service::{HttpService, MakeHttpService, ModifyHttpService, ModifyService, NewService},
     },
-    futures::{Future, Stream},
+    futures01::{Future, Stream},
     http::Request,
     hyper::{body::Body, server::conn::Http},
     std::{net::SocketAddr, rc::Rc, sync::Arc},
@@ -58,7 +58,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S, M, L, A, R> Server<S, M, L, A, R> {
     /// Sets the transport used by the server.
     ///
@@ -205,7 +204,8 @@ macro_rules! serve {
                             service
                                 .ready_http()
                                 .map_err(|e| log::error!("service error: {}", e.into()))
-                        }).map(move |service| LiftedHttpService { service, info })
+                        })
+                        .map(move |service| LiftedHttpService { service, info })
                         .and_then(move |service| {
                             protocol
                                 .serve_connection(io, service)

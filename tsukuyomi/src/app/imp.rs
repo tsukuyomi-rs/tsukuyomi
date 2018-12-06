@@ -5,7 +5,6 @@ use {
         router::{Captures, ResourceId, Route},
         AppInner,
     },
-    cookie::{Cookie, CookieJar},
     crate::{
         error::{Critical, Error},
         handler::{Handle, HandleFn, HandleInner},
@@ -13,7 +12,8 @@ use {
         localmap::LocalMap,
         output::{Output, ResponseBody},
     },
-    futures::{Async, Future, IntoFuture, Poll},
+    cookie::{Cookie, CookieJar},
+    futures01::{Async, Future, IntoFuture, Poll},
     http::{
         header::{self, HeaderMap, HeaderValue},
         Request, Response,
@@ -47,7 +47,7 @@ pub struct AppFuture {
     state: AppFutureState,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 enum AppFutureState {
     Init,
     InFlight(Box<HandleFn>),
@@ -210,7 +210,7 @@ impl Future for AppFuture {
                     HandleInner::PollFn(in_flight) => AppFutureState::InFlight(in_flight),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
-                    break ready!((*in_flight)(input!(self)))
+                    break ready!((*in_flight)(input!(self)));
                 }
                 AppFutureState::Done => panic!("the future has already polled."),
             };
@@ -261,8 +261,8 @@ impl<'task> Cookies<'task> {
 
 #[cfg(feature = "secure")]
 mod secure {
-    use cookie::{Key, PrivateJar, SignedJar};
     use crate::error::Result;
+    use cookie::{Key, PrivateJar, SignedJar};
 
     impl<'a> super::Cookies<'a> {
         /// Creates a `SignedJar` with the specified secret key.

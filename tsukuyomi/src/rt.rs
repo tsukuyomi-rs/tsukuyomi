@@ -2,7 +2,7 @@
 
 #[doc(no_inline)]
 pub use {
-    futures::{sync::oneshot::SpawnHandle, Async, Future, Poll},
+    futures01::{sync::oneshot::SpawnHandle, Async, Future, Poll},
     tokio::executor::{spawn, DefaultExecutor, Executor, Spawn, SpawnError},
     tokio_threadpool::{blocking as poll_blocking, BlockingError},
 };
@@ -15,7 +15,7 @@ where
     F::Item: Send + 'static,
     F::Error: Send + 'static,
 {
-    futures::sync::oneshot::spawn(future, &DefaultExecutor::current())
+    futures01::sync::oneshot::spawn(future, &DefaultExecutor::current())
 }
 
 /// Creates a `Future` to execute the specified function that will block the current thread.
@@ -27,7 +27,7 @@ where
 /// [blocking]: https://docs.rs/tokio-threadpool/0.1/tokio_threadpool/fn.blocking.html
 pub fn blocking<T>(op: impl FnOnce() -> T) -> impl Future<Item = T, Error = BlockingError> {
     let mut op = Some(op);
-    futures::future::poll_fn(move || {
+    futures01::future::poll_fn(move || {
         poll_blocking(|| {
             let op = op.take().expect("The future has already polled");
             op()

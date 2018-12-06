@@ -6,7 +6,7 @@ use {
         generic::{Combine, Tuple},
         input::Input,
     },
-    futures::{Async, Future, Poll},
+    futures01::{Async, Future, Poll},
 };
 
 impl<L, R> Extractor for Chain<L, R>
@@ -54,8 +54,8 @@ where
     R::Item: Tuple,
 {
     fn poll_ready(&mut self) -> Poll<(), Error> {
-        futures::try_ready!(self.left.poll_ready().map_err(Into::into));
-        futures::try_ready!(self.right.poll_ready().map_err(Into::into));
+        futures01::try_ready!(self.left.poll_ready().map_err(Into::into));
+        futures01::try_ready!(self.right.poll_ready().map_err(Into::into));
         Ok(Async::Ready(()))
     }
 }

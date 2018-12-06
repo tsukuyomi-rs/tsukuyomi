@@ -6,7 +6,7 @@ pub use self::tower::Compat;
 
 use {
     super::CritError,
-    futures::{Future, Poll},
+    futures01::{Future, Poll},
     http::{Request, Response},
     hyper::body::{Body, Payload},
 };
@@ -15,7 +15,6 @@ use {
 ///
 /// This trait has the same signature as `tower_web::middleware::Middleware`,
 /// and eventually be replaced to it in the future version.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait ModifyService<S> {
     type Request;
     type Response;
@@ -95,7 +94,6 @@ mod tower {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait HttpService {
     type RequestBody: From<Body>;
     type ResponseBody: Payload;
@@ -125,17 +123,15 @@ where
     type Error = S::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures::try_ready!(
-            self.0
-                .as_mut()
-                .expect("the future has already polled")
-                .poll_ready_http()
-        );
-        Ok(futures::Async::Ready(self.0.take().unwrap()))
+        futures01::try_ready!(self
+            .0
+            .as_mut()
+            .expect("the future has already polled")
+            .poll_ready_http());
+        Ok(futures01::Async::Ready(self.0.take().unwrap()))
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S, RequestBody, ResponseBody> HttpService for S
 where
     S: Service<Request = Request<RequestBody>, Response = Response<ResponseBody>>,
@@ -157,7 +153,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait MakeHttpService {
     type RequestBody: From<Body>;
     type ResponseBody: Payload;
@@ -173,7 +168,6 @@ pub trait MakeHttpService {
     fn make_http_service(&self) -> Self::Future;
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<S, RequestBody, ResponseBody> MakeHttpService for S
 where
     S: NewService<Request = Request<RequestBody>, Response = Response<ResponseBody>>,
@@ -194,7 +188,6 @@ where
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub trait ModifyHttpService<S> {
     type RequestBody: From<Body>;
     type ResponseBody: Payload;
@@ -208,7 +201,6 @@ pub trait ModifyHttpService<S> {
     fn modify_http_service(&self, inner: S) -> Self::Service;
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<M, S, RequestBody, ResponseBody> ModifyHttpService<S> for M
 where
     M: ModifyService<S, Request = Request<RequestBody>, Response = Response<ResponseBody>>,

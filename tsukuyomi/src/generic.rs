@@ -131,7 +131,6 @@ pub trait Combine<T: Tuple>: Tuple {
     fn combine(self, other: T) -> Self::Out;
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<H: Tuple, T: Tuple> Combine<T> for H
 where
     H::HList: CombineHList<T::HList>,
@@ -161,7 +160,6 @@ impl<T: HList> CombineHList<T> for HNil {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl<H, T: HList, U: HList> CombineHList<U> for HCons<H, T>
 where
     T: CombineHList<U>,

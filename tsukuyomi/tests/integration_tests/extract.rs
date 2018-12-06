@@ -75,7 +75,8 @@ fn route_macros() -> tsukuyomi::test::Result<()> {
                         drop(path);
                         "dummy"
                     }),
-            ).build()?,
+            )
+            .build()?,
     );
 
     Ok(())

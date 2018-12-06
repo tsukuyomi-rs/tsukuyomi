@@ -5,7 +5,7 @@
 use {
     super::Extractor,
     crate::{common::MaybeFuture, error::Error, input::Input},
-    futures::Future,
+    futures01::Future,
     http::Method,
 };
 
@@ -16,14 +16,14 @@ where
     #[allow(missing_debug_implementations)]
     struct Wrapped<E>(E, Method);
 
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+    #[allow(clippy::type_complexity)]
     impl<E> Extractor for Wrapped<E>
     where
         E: Extractor,
     {
         type Output = E::Output;
         type Error = Error;
-        type Future = futures::future::MapErr<E::Future, fn(E::Error) -> Error>;
+        type Future = futures01::future::MapErr<E::Future, fn(E::Error) -> Error>;
 
         #[inline]
         fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
