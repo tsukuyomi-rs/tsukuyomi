@@ -22,7 +22,7 @@ impl FromHeaderValue for String {
     }
 }
 
-pub fn header<T>(name: HeaderName) -> impl Extractor<Output = (T,), Error = Error>
+pub fn header<T>(name: HeaderName) -> impl Extractor<Output = (T,)>
 where
     T: FromHeaderValue + Send,
 {
@@ -35,7 +35,7 @@ where
     })
 }
 
-pub fn exact<T>(name: HeaderName, value: T) -> impl Extractor<Output = (), Error = Error>
+pub fn exact<T>(name: HeaderName, value: T) -> impl Extractor<Output = ()>
 where
     T: PartialEq<HeaderValue> + Send + Sync + 'static,
 {
@@ -53,7 +53,7 @@ where
 }
 
 /// Creates an extractor which parses the header field `Content-type`.
-pub fn content_type() -> impl Extractor<Output = (Mime,), Error = Error> {
+pub fn content_type() -> impl Extractor<Output = (Mime,)> {
     super::ready(|input| {
         input
             .content_type()?
@@ -62,6 +62,6 @@ pub fn content_type() -> impl Extractor<Output = (Mime,), Error = Error> {
     })
 }
 
-pub fn clone_headers() -> impl Extractor<Output = (HeaderMap,), Error = Never> {
-    super::ready(|input| Ok(input.request.headers().clone()))
+pub fn clone_headers() -> impl Extractor<Output = (HeaderMap,)> {
+    super::ready(|input| Ok::<_, Never>(input.request.headers().clone()))
 }

@@ -2,8 +2,8 @@ use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         app::{mount, route, App},
+        future::MaybeFuture,
         handler::{Handler, ModifyHandler},
-        MaybeFuture,
     },
 };
 
@@ -15,7 +15,6 @@ struct MockModifier {
 
 impl<H: Handler> ModifyHandler<H> for MockModifier {
     type Output = H::Output;
-    type Error = H::Error;
     type Handler = MockHandler<H>;
 
     fn modify(&self, inner: H) -> Self::Handler {
@@ -38,7 +37,6 @@ where
     H: Handler,
 {
     type Output = H::Output;
-    type Error = H::Error;
     type Future = H::Future;
 
     fn call(&self, input: &mut tsukuyomi::Input<'_>) -> MaybeFuture<Self::Future> {

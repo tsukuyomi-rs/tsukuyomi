@@ -2,8 +2,8 @@
 
 #![allow(missing_docs)]
 
-mod builder;
 mod chain;
+mod ext;
 
 pub mod body;
 pub mod extension;
@@ -12,16 +12,14 @@ pub mod local;
 pub mod query;
 pub mod verb;
 
-pub use self::builder::Builder;
+pub use self::ext::ExtractorExt;
 
-use {
-    crate::{
-        common::{MaybeFuture, Never, NeverFuture},
-        error::Error,
-        generic::Tuple,
-        input::Input,
-    },
-    futures01::{Future, IntoFuture},
+use crate::{
+    common::Never,
+    error::Error,
+    future::{Future, MaybeFuture, NeverFuture},
+    generic::Tuple,
+    input::Input,
 };
 
 /// A trait abstracting the extraction of values from `Input`.
@@ -29,21 +27,11 @@ pub trait Extractor: Send + Sync + 'static {
     /// The type of output value from this extractor.
     type Output: Tuple;
 
-    /// The error type which will be returned from this extractor.
-    type Error: Into<Error>;
-
     /// The type representing asyncrhonous computations performed during extraction.
-    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
+    type Future: Future<Output = Self::Output> + Send + 'static;
 
     /// Performs extraction from the specified `Input`.
     fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future>;
-
-    fn into_builder(self) -> Builder<Self>
-    where
-        Self: Sized,
-    {
-        Builder::new(self)
-    }
 }
 
 impl<E> Extractor for Box<E>
@@ -51,7 +39,6 @@ where
     E: Extractor,
 {
     type Output = E::Output;
-    type Error = E::Error;
     type Future = E::Future;
 
     #[inline]
@@ -65,7 +52,6 @@ where
     E: Extractor,
 {
     type Output = E::Output;
-    type Error = E::Error;
     type Future = E::Future;
 
     #[inline]
@@ -76,8 +62,7 @@ where
 
 impl Extractor for () {
     type Output = ();
-    type Error = Never;
-    type Future = NeverFuture<Self::Output, Self::Error>;
+    type Future = NeverFuture<Self::Output, Never>;
 
     #[inline]
     fn extract(&self, _: &mut Input<'_>) -> MaybeFuture<Self::Future> {
@@ -87,12 +72,11 @@ impl Extractor for () {
 
 // ==== primitives ====
 
-pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Item, Error = R::Error>
+pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Output>
 where
     F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
     R: Future + Send + 'static,
-    R::Item: Tuple,
-    R::Error: Into<Error>,
+    R::Output: Tuple,
 {
     #[derive(Debug, Copy, Clone)]
     struct Raw<F>(F);
@@ -102,11 +86,9 @@ where
     where
         F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
         R: Future + Send + 'static,
-        R::Item: Tuple,
-        R::Error: Into<Error>,
+        R::Output: Tuple,
     {
-        type Output = R::Item;
-        type Error = R::Error;
+        type Output = R::Output;
         type Future = R;
 
         #[inline]
@@ -118,7 +100,7 @@ where
     Raw(f)
 }
 
-pub fn guard<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
+pub fn guard<F, E>(f: F) -> impl Extractor<Output = ()>
 where
     F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
     E: Into<Error> + 'static,
@@ -126,7 +108,7 @@ where
     self::raw(move |input| MaybeFuture::Ready::<NeverFuture<_, _>>(f(input)))
 }
 
-pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,), Error = E>
+pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,)>
 where
     F: Fn(&mut Input<'_>) -> Result<T, E> + Send + Sync + 'static,
     T: 'static,
@@ -135,32 +117,21 @@ where
     self::raw(move |input| MaybeFuture::Ready::<NeverFuture<_, _>>(f(input).map(|x| (x,))))
 }
 
-pub fn lazy<F, R>(f: F) -> impl Extractor<Output = (R::Item,), Error = R::Error>
-where
-    F: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
-    R: IntoFuture,
-    R::Future: Send + 'static,
-    R::Item: 'static,
-    R::Error: Into<Error> + 'static,
-{
-    self::raw(move |input| MaybeFuture::from(f(input).into_future().map(|output| (output,))))
-}
-
-pub fn value<T>(value: T) -> impl Extractor<Output = (T,), Error = Never>
+pub fn value<T>(value: T) -> impl Extractor<Output = (T,)>
 where
     T: Clone + Send + Sync + 'static,
 {
-    self::raw(move |_| MaybeFuture::<NeverFuture<_, _>>::ok((value.clone(),)))
+    self::raw(move |_| MaybeFuture::<NeverFuture<_, Never>>::ok((value.clone(),)))
 }
 
-pub fn method() -> impl Extractor<Output = (http::Method,), Error = Never> {
-    self::ready(|input| Ok(input.request.method().clone()))
+pub fn method() -> impl Extractor<Output = (http::Method,)> {
+    self::ready(|input| Ok::<_, Never>(input.request.method().clone()))
 }
 
-pub fn uri() -> impl Extractor<Output = (http::Uri,), Error = Never> {
-    self::ready(|input| Ok(input.request.uri().clone()))
+pub fn uri() -> impl Extractor<Output = (http::Uri,)> {
+    self::ready(|input| Ok::<_, Never>(input.request.uri().clone()))
 }
 
-pub fn version() -> impl Extractor<Output = (http::Version,), Error = Never> {
-    self::ready(|input| Ok(input.request.version()))
+pub fn version() -> impl Extractor<Output = (http::Version,)> {
+    self::ready(|input| Ok::<_, Never>(input.request.version()))
 }

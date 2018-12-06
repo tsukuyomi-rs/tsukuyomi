@@ -3,7 +3,7 @@ use {
     tsukuyomi::{
         app::{route, App}, //
         extractor,
-        Extractor,
+        extractor::ExtractorExt,
     },
 };
 
@@ -245,7 +245,6 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
     impl<H: Handler> ModifyHandler<H> for InsertMyData {
         type Output = H::Output;
-        type Error = H::Error;
         type Handler = InsertMyDataHandler<H>;
 
         fn modify(&self, inner: H) -> Self::Handler {
@@ -257,10 +256,12 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
     impl<H: Handler> Handler for InsertMyDataHandler<H> {
         type Output = H::Output;
-        type Error = H::Error;
         type Future = H::Future;
 
-        fn call(&self, input: &mut tsukuyomi::Input<'_>) -> tsukuyomi::MaybeFuture<Self::Future> {
+        fn call(
+            &self,
+            input: &mut tsukuyomi::Input<'_>,
+        ) -> tsukuyomi::future::MaybeFuture<Self::Future> {
             input.locals.insert(&MyData::KEY, MyData("dummy".into()));
             self.0.call(input)
         }
@@ -318,14 +319,14 @@ fn optional() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let extractor = extractor::Builder::new(extractor::body::json()).optional();
+    let extractor = ExtractorExt::new(extractor::body::json()).optional();
 
     let mut server = App::builder()
         .with(
             route::root()
                 .methods("POST")?
                 .extract(extractor) //
-                .call(|params: Option<Params>| {
+                .reply(|params: Option<Params>| {
                     if let Some(params) = params {
                         Ok(format!("{},{}", params.id, params.name))
                     } else {
@@ -363,10 +364,9 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let params_extractor = extractor::verb::get(extractor::query::query())
-        .into_builder()
-        .or(extractor::verb::post(extractor::body::json()))
-        .or(extractor::verb::post(extractor::body::urlencoded()));
+    let params_extractor = ExtractorExt::new(extractor::verb::get(extractor::query::query()))
+        .either_or(extractor::verb::post(extractor::body::json()))
+        .either_or(extractor::verb::post(extractor::body::urlencoded()));
 
     let mut server = App::builder()
         .with(

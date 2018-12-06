@@ -20,6 +20,7 @@ pub mod app;
 pub mod error;
 pub mod extractor;
 pub mod fs;
+pub mod future;
 pub mod handler;
 pub mod input;
 pub mod localmap;
@@ -31,7 +32,7 @@ pub mod test;
 #[doc(inline)]
 pub use crate::{
     app::App,
-    common::{Chain, MaybeFuture, Never, NeverFuture, TryFrom},
+    common::{Chain, Never, TryFrom},
     error::{
         Error, //
         HttpError,

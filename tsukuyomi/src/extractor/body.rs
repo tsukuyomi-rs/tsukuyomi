@@ -1,9 +1,14 @@
 //! Extractors for parsing message body.
 
 use {
-    crate::{common::MaybeFuture, error::Error, extractor::Extractor, input::body::RequestBody},
+    crate::{
+        error::Error,
+        extractor::Extractor,
+        future::{Async, MaybeFuture},
+        input::body::RequestBody,
+    },
     bytes::Bytes,
-    futures01::{Async, Future},
+    futures01::Future as _Future01,
     mime::Mime,
     serde::de::DeserializeOwned,
     std::str,
@@ -121,7 +126,7 @@ mod decode {
     }
 }
 
-fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,), Error = Error>
+fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,)>
 where
     T: 'static,
     D: self::decode::Decoder<T> + Send + Sync + 'static,
@@ -140,19 +145,21 @@ where
             || MaybeFuture::err(stolen_payload()),
             |body| {
                 let mut read_all = body.read_all();
-                MaybeFuture::from(futures01::future::poll_fn(move || {
-                    let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
-                    D::decode(&data)
-                        .map(|out| Async::Ready((out,)))
-                        .map_err(crate::error::bad_request)
-                }))
+                MaybeFuture::from(crate::future::Compat01::new(futures01::future::poll_fn(
+                    move || {
+                        let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
+                        D::decode(&data)
+                            .map(|out| Async::Ready((out,)))
+                            .map_err(crate::error::bad_request)
+                    },
+                )))
             },
         )
     })
 }
 
 #[inline]
-pub fn plain<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn plain<T>() -> impl Extractor<Output = (T,)>
 where
     T: DeserializeOwned + 'static,
 {
@@ -160,7 +167,7 @@ where
 }
 
 #[inline]
-pub fn json<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn json<T>() -> impl Extractor<Output = (T,)>
 where
     T: DeserializeOwned + 'static,
 {
@@ -168,23 +175,27 @@ where
 }
 
 #[inline]
-pub fn urlencoded<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn urlencoded<T>() -> impl Extractor<Output = (T,)>
 where
     T: DeserializeOwned + 'static,
 {
     self::decoded(self::decode::UrlencodedDecoder::default())
 }
 
-pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
+pub fn raw() -> impl Extractor<Output = (Bytes,)> {
     super::raw(|input| {
         input.body().map_or_else(
             || MaybeFuture::err(stolen_payload()),
-            |body| MaybeFuture::from(body.read_all().map(|out| (out,)).map_err(Error::critical)),
+            |body| {
+                MaybeFuture::from(crate::future::Compat01::new(
+                    body.read_all().map(|out| (out,)).map_err(Error::critical),
+                ))
+            },
         )
     })
 }
 
-pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
+pub fn stream() -> impl Extractor<Output = (RequestBody,)> {
     super::ready(|input| input.body().ok_or_else(stolen_payload))
 }
 

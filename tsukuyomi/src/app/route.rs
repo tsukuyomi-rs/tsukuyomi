@@ -4,15 +4,15 @@ use {
         uri::{Uri, UriComponent},
     },
     crate::{
-        common::{Chain, MaybeFuture, Never, TryFrom},
+        common::{Chain, Never, TryFrom},
         extractor::Extractor,
         fs::NamedFile,
+        future::{Future, MaybeFuture, Poll},
         generic::{Combine, Func, Tuple},
         handler::{Handler, MakeHandler, ModifyHandler},
         input::{FromPercentEncoded, Input, PercentEncoded},
         output::{redirect::Redirect, Responder},
     },
-    futures01::{Future, IntoFuture, Poll},
     http::{HttpTryFrom, Method, StatusCode},
     indexmap::{indexset, IndexSet},
     std::{
@@ -142,7 +142,7 @@ where
         name: impl Into<String>,
     ) -> super::Result<
         Builder<
-            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>,
+            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>,
             M,
             self::tags::Incomplete,
         >,
@@ -182,7 +182,7 @@ where
         name: impl Into<String>,
     ) -> super::Result<
         Builder<
-            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out, Error = crate::Error>,
+            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>,
             M,
             self::tags::Completed,
         >,
@@ -277,7 +277,7 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The provided function always succeeds and immediately returns a value of `Responder`.
-    pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out, Error = crate::Error>, M>
+    pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>, M>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
         F::Out: Responder,
@@ -291,17 +291,19 @@ where
         impl<Fut, F> Future for ReplyHandlerFuture<Fut, F>
         where
             Fut: Future,
-            Fut::Item: Tuple,
-            Fut::Error: Into<crate::Error>,
-            F: Func<Fut::Item>,
+            Fut::Output: Tuple,
+            F: Func<Fut::Output>,
             F::Out: Responder,
         {
-            type Item = F::Out;
+            type Output = F::Out;
             type Error = crate::Error;
 
             #[inline]
-            fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-                let args = futures01::try_ready!(self.future.poll().map_err(Into::into));
+            fn poll_ready(
+                &mut self,
+                cx: &mut crate::future::Context<'_>,
+            ) -> Poll<Self::Output, Self::Error> {
+                let args = futures01::try_ready!(self.future.poll_ready(cx).map_err(Into::into));
                 Ok(self.f.call(args).into())
             }
         }
@@ -319,7 +321,6 @@ where
             F::Out: Responder,
         {
             type Output = F::Out;
-            type Error = crate::Error;
             type Future = ReplyHandlerFuture<E::Future, F>;
 
             fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
@@ -345,7 +346,6 @@ where
             F::Out: Responder,
         {
             type Output = F::Out;
-            type Error = crate::Error;
             type Handler = ReplyHandler<E, F>;
 
             fn make_handler(self, extractor: E) -> Self::Handler {
@@ -362,24 +362,22 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The result of provided function is returned by `Future`.
-    pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Item, Error = crate::Error>, M>
+    pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Output>, M>
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-        R: IntoFuture<Error = crate::Error>,
-        R::Future: Send + 'static,
-        R::Item: Responder,
+        R: Future + Send + 'static,
+        R::Output: Responder,
     {
         #[allow(missing_debug_implementations)]
         struct CallHandlerFuture<Fut, F>
         where
             Fut: Future,
-            Fut::Item: Tuple,
-            Fut::Error: Into<crate::Error>,
-            F: Func<Fut::Item>,
-            F::Out: IntoFuture<Error = crate::Error>,
-            <F::Out as IntoFuture>::Item: Responder,
+            Fut::Output: Tuple,
+            F: Func<Fut::Output>,
+            F::Out: Future,
+            <F::Out as Future>::Output: Responder,
         {
-            state: State<Fut, <F::Out as IntoFuture>::Future, F>,
+            state: State<Fut, F::Out, F>,
         }
 
         enum State<F1, F2, F> {
@@ -390,24 +388,26 @@ where
         impl<Fut, F> Future for CallHandlerFuture<Fut, F>
         where
             Fut: Future,
-            Fut::Item: Tuple,
-            Fut::Error: Into<crate::Error>,
-            F: Func<Fut::Item>,
-            F::Out: IntoFuture<Error = crate::Error>,
-            <F::Out as IntoFuture>::Item: Responder,
+            Fut::Output: Tuple,
+            F: Func<Fut::Output>,
+            F::Out: Future,
+            <F::Out as Future>::Output: Responder,
         {
-            type Item = <F::Out as IntoFuture>::Item;
+            type Output = <F::Out as Future>::Output;
             type Error = crate::Error;
 
             #[inline]
-            fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            fn poll_ready(
+                &mut self,
+                cx: &mut crate::future::Context<'_>,
+            ) -> Poll<Self::Output, Self::Error> {
                 loop {
                     self.state = match self.state {
                         State::First(ref mut f1, ref f) => {
-                            let args = futures01::try_ready!(f1.poll().map_err(Into::into));
-                            State::Second(f.call(args).into_future())
+                            let args = futures01::try_ready!(f1.poll_ready(cx).map_err(Into::into));
+                            State::Second(f.call(args))
                         }
-                        State::Second(ref mut f2) => return f2.poll(),
+                        State::Second(ref mut f2) => return f2.poll_ready(cx).map_err(Into::into),
                     }
                 }
             }
@@ -423,18 +423,16 @@ where
         where
             E: Extractor,
             F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error>,
-            R::Future: Send + 'static,
-            R::Item: Responder,
+            R: Future + Send + 'static,
+            R::Output: Responder,
         {
-            type Output = R::Item;
-            type Error = crate::Error;
+            type Output = R::Output;
             type Future = CallHandlerFuture<E::Future, F>;
 
             fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
                 match self.extractor.extract(input) {
                     MaybeFuture::Ready(Ok(args)) => MaybeFuture::Future(CallHandlerFuture {
-                        state: State::Second(self.f.call(args).into_future()),
+                        state: State::Second(self.f.call(args)),
                     }),
                     MaybeFuture::Ready(Err(err)) => MaybeFuture::err(err.into()),
                     MaybeFuture::Future(future) => MaybeFuture::Future(CallHandlerFuture {
@@ -451,12 +449,10 @@ where
         where
             E: Extractor,
             F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: IntoFuture<Error = crate::Error>,
-            R::Future: Send + 'static,
-            R::Item: Responder,
+            R: Future + Send + 'static,
+            R::Output: Responder,
         {
-            type Output = R::Item;
-            type Error = crate::Error;
+            type Output = R::Output;
             type Handler = CallHandler<E, F>;
 
             fn make_handler(self, extractor: E) -> Self::Handler {
@@ -489,7 +485,6 @@ where
             H: Handler,
         {
             type Output = H::Output;
-            type Error = H::Error;
             type Handler = H;
 
             #[inline]
@@ -502,7 +497,7 @@ where
     }
 
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R, Error = crate::Error>, M>
+    pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>, M>
     where
         R: Responder + Clone + Send + Sync + 'static,
     {
@@ -510,11 +505,14 @@ where
     }
 
     /// Creates a `Route` that just replies with a redirection response.
-    pub fn redirect(
+    pub fn redirect<L>(
         self,
-        location: impl Into<Cow<'static, str>>,
+        location: L,
         status: StatusCode,
-    ) -> Route<impl Handler<Output = Redirect, Error = crate::Error>, M> {
+    ) -> Route<impl Handler<Output = Redirect>, M>
+    where
+        L: Into<Cow<'static, str>>,
+    {
         self.say(Redirect::new(status, location))
     }
 
@@ -523,7 +521,7 @@ where
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
-    ) -> Route<impl Handler<Output = NamedFile, Error = crate::Error>, M> {
+    ) -> Route<impl Handler<Output = NamedFile>, M> {
         let path = {
             #[derive(Clone)]
             #[allow(missing_debug_implementations)]
@@ -537,11 +535,10 @@ where
         };
 
         self.call(move || {
-            match config {
+            crate::future::Compat01::new(match config {
                 Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
                 None => NamedFile::open(path.clone()),
-            }
-            .map_err(Into::into)
+            })
         })
     }
 }

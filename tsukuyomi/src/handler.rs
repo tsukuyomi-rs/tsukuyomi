@@ -2,21 +2,20 @@
 
 use {
     crate::{
-        common::{Chain, MaybeFuture, Never, NeverFuture},
+        common::{Chain, Never},
         error::Error, //
         extractor::Extractor,
+        future::{Async, Future, MaybeFuture, NeverFuture, Poll},
         input::Input,
         output::{Output, Responder},
     },
-    futures01::{Async, Future, Poll},
     std::{fmt, sync::Arc},
 };
 
 /// A trait representing the handler associated with the specified endpoint.
 pub trait Handler: Send + Sync + 'static {
     type Output: Responder;
-    type Error: Into<Error>;
-    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
+    type Future: Future<Output = Self::Output> + Send + 'static;
 
     /// Creates an `AsyncResult` which handles the incoming request.
     fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future>;
@@ -27,7 +26,6 @@ where
     H: Handler,
 {
     type Output = H::Output;
-    type Error = H::Error;
     type Future = H::Future;
 
     #[inline]
@@ -58,11 +56,10 @@ mod either {
 
 pub fn raw<R>(
     f: impl Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
-) -> impl Handler<Output = R::Item, Error = R::Error>
+) -> impl Handler<Output = R::Output>
 where
     R: Future + Send + 'static,
-    R::Item: Responder,
-    R::Error: Into<Error>,
+    R::Output: Responder,
 {
     #[allow(missing_debug_implementations)]
     struct Raw<F>(F);
@@ -71,11 +68,9 @@ where
     where
         F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
         R: Future + Send + 'static,
-        R::Item: Responder,
-        R::Error: Into<Error>,
+        R::Output: Responder,
     {
-        type Output = R::Item;
-        type Error = R::Error;
+        type Output = R::Output;
         type Future = R;
 
         #[inline]
@@ -87,18 +82,17 @@ where
     Raw(f)
 }
 
-pub fn ready<T>(
-    f: impl Fn(&mut Input<'_>) -> T + Send + Sync + 'static,
-) -> impl Handler<Output = T, Error = Never>
+pub fn ready<T>(f: impl Fn(&mut Input<'_>) -> T + Send + Sync + 'static) -> impl Handler<Output = T>
 where
     T: Responder + 'static,
 {
-    self::raw(move |input| MaybeFuture::<NeverFuture<_, _>>::ok(f(input)))
+    self::raw(move |input| MaybeFuture::<NeverFuture<_, Never>>::ok(f(input)))
 }
 
 // ==== boxed ====
 
-pub(crate) type HandleFn = dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static;
+pub(crate) type HandleFn =
+    dyn FnMut(&mut crate::future::Context<'_>) -> Poll<Output, Error> + Send + 'static;
 
 pub(crate) enum HandleInner {
     Ready(Result<Output, Error>),
@@ -135,10 +129,10 @@ impl Handle {
     }
 
     pub fn poll_fn(
-        future: impl FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static,
+        f: impl FnMut(&mut crate::future::Context<'_>) -> Poll<Output, Error> + Send + 'static,
     ) -> Self {
         Self {
-            inner: HandleInner::PollFn(Box::new(future)),
+            inner: HandleInner::PollFn(Box::new(f)),
         }
     }
 
@@ -167,12 +161,10 @@ where
                 MaybeFuture::Ready(Ok(x)) => {
                     Handle::ready(crate::output::internal::respond_to(x, input))
                 }
-                MaybeFuture::Ready(Err(e)) => Handle::err(e.into()),
-                MaybeFuture::Future(mut future) => Handle::poll_fn(move |input| {
-                    let x = futures01::try_ready!(
-                        input.with_set_current(|| future.poll().map_err(Into::into))
-                    );
-                    crate::output::internal::respond_to(x, input).map(Async::Ready)
+                MaybeFuture::Ready(Err(err)) => Handle::err(err.into()),
+                MaybeFuture::Future(mut future) => Handle::poll_fn(move |cx| {
+                    let x = futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
+                    crate::output::internal::respond_to(x, &mut *cx.input).map(Async::Ready)
                 }),
             }),
         }
@@ -188,8 +180,7 @@ impl BoxedHandler {
 /// A trait representing a factory of `Handler` from an instance of `Extractor`.
 pub trait MakeHandler<E: Extractor> {
     type Output: Responder;
-    type Error: Into<Error>;
-    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
+    type Handler: Handler<Output = Self::Output>;
 
     fn make_handler(self, extractor: E) -> Self::Handler;
 }
@@ -197,8 +188,7 @@ pub trait MakeHandler<E: Extractor> {
 /// A trait representing a type for modifying the instance of `Handler`.
 pub trait ModifyHandler<H: Handler> {
     type Output: Responder;
-    type Error: Into<crate::Error>;
-    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
+    type Handler: Handler<Output = Self::Output>;
 
     fn modify(&self, input: H) -> Self::Handler;
 }
@@ -209,7 +199,6 @@ where
     H: Handler,
 {
     type Output = M::Output;
-    type Error = M::Error;
     type Handler = M::Handler;
 
     #[inline]
@@ -224,7 +213,6 @@ where
     H: Handler,
 {
     type Output = M::Output;
-    type Error = M::Error;
     type Handler = M::Handler;
 
     #[inline]
@@ -238,7 +226,6 @@ where
     H: Handler,
 {
     type Output = H::Output;
-    type Error = H::Error;
     type Handler = H;
 
     #[inline]
@@ -254,7 +241,6 @@ where
     O: ModifyHandler<I::Handler>,
 {
     type Output = O::Output;
-    type Error = O::Error;
     type Handler = O::Handler;
 
     #[inline]

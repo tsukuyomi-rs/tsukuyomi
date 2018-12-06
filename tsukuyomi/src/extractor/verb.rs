@@ -4,12 +4,15 @@
 
 use {
     super::Extractor,
-    crate::{common::MaybeFuture, error::Error, input::Input},
-    futures01::Future,
+    crate::{
+        error::Error,
+        future::{Future, MaybeFuture},
+        input::Input,
+    },
     http::Method,
 };
 
-pub fn verb<E>(extractor: E, method: Method) -> impl Extractor<Output = E::Output, Error = Error>
+pub fn verb<E>(extractor: E, method: Method) -> impl Extractor<Output = E::Output>
 where
     E: Extractor,
 {
@@ -22,20 +25,14 @@ where
         E: Extractor,
     {
         type Output = E::Output;
-        type Error = Error;
-        type Future = futures01::future::MapErr<E::Future, fn(E::Error) -> Error>;
+        type Future = crate::future::MapErr<E::Future, fn(<E::Future as Future>::Error) -> Error>;
 
         #[inline]
         fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
             if input.request.method() != self.1 {
                 return MaybeFuture::err(crate::error::method_not_allowed("rejected by extractor"));
             }
-            match self.0.extract(input) {
-                MaybeFuture::Ready(result) => MaybeFuture::Ready(result.map_err(Into::into)),
-                MaybeFuture::Future(future) => {
-                    MaybeFuture::from(future.map_err(Into::into as fn(E::Error) -> Error))
-                }
-            }
+            self.0.extract(input).map_err(Into::into)
         }
     }
 
@@ -44,7 +41,7 @@ where
 
 macro_rules! define_http_method_extractors {
     ($( $name:ident => $METHOD:ident; )*) => {$(
-        pub fn $name<E>(extractor: E) -> impl Extractor<Output = E::Output, Error = Error>
+        pub fn $name<E>(extractor: E) -> impl Extractor<Output = E::Output>
         where
             E: Extractor,
         {

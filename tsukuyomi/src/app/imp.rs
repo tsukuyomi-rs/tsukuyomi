@@ -47,7 +47,6 @@ pub struct AppFuture {
     state: AppFutureState,
 }
 
-#[allow(clippy::large_enum_variant)]
 enum AppFutureState {
     Init,
     InFlight(Box<HandleFn>),
@@ -210,7 +209,7 @@ impl Future for AppFuture {
                     HandleInner::PollFn(in_flight) => AppFutureState::InFlight(in_flight),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
-                    break ready!((*in_flight)(input!(self)));
+                    break ready!((*in_flight)(&mut crate::future::Context::new(input!(self))));
                 }
                 AppFutureState::Done => panic!("the future has already polled."),
             };

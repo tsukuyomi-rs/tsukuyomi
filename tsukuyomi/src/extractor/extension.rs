@@ -1,8 +1,8 @@
 //! Extractors for accessing the protocol extensions.
 
-use crate::{error::Error, extractor::Extractor};
+use crate::extractor::Extractor;
 
-pub fn clone<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn clone<T>() -> impl Extractor<Output = (T,)>
 where
     T: Clone + Send + Sync + 'static,
 {

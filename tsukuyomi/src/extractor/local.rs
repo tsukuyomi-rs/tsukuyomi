@@ -1,11 +1,8 @@
 //! Extractors for accessing the request-local data.
 
-use {
-    super::Extractor,
-    crate::{error::Error, localmap::LocalKey},
-};
+use {super::Extractor, crate::localmap::LocalKey};
 
-pub fn remove<T>(key: &'static LocalKey<T>) -> impl Extractor<Output = (T,), Error = Error>
+pub fn remove<T>(key: &'static LocalKey<T>) -> impl Extractor<Output = (T,)>
 where
     T: Send + 'static,
 {
@@ -17,7 +14,7 @@ where
     })
 }
 
-pub fn clone<T>(key: &'static LocalKey<T>) -> impl Extractor<Output = (T,), Error = Error>
+pub fn clone<T>(key: &'static LocalKey<T>) -> impl Extractor<Output = (T,)>
 where
     T: Clone + Send + 'static,
 {
