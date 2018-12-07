@@ -33,7 +33,7 @@ impl<T> Arena<T> {
         Self {
             root: Node {
                 id: NodeId::root(),
-                parents: vec![],
+                ancestors: vec![],
                 data,
             },
             nodes: vec![],
@@ -47,10 +47,14 @@ impl<T> Arena<T> {
 
         let parent = &self[parent];
 
-        let mut parents = parent.parents.clone();
-        parents.push(parent.id);
+        let mut ancestors = parent.ancestors.clone();
+        ancestors.push(parent.id);
 
-        self.nodes.push(Node { id, parents, data });
+        self.nodes.push(Node {
+            id,
+            ancestors,
+            data,
+        });
 
         Ok(id)
     }
@@ -79,7 +83,7 @@ impl<T> IndexMut<NodeId> for Arena<T> {
 #[derive(Debug)]
 pub(super) struct Node<T> {
     id: NodeId,
-    parents: Vec<NodeId>,
+    ancestors: Vec<NodeId>,
     data: T,
 }
 
@@ -90,5 +94,9 @@ impl<T> Node<T> {
 
     pub(super) fn data(&self) -> &T {
         &self.data
+    }
+
+    pub(super) fn ancestors<'a>(&'a self) -> impl Iterator<Item = NodeId> + 'a {
+        self.ancestors.iter().cloned()
     }
 }

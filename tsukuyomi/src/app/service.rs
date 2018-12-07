@@ -2,7 +2,6 @@ use {
     super::{
         fallback::{Context as FallbackContext, FallbackKind},
         recognizer::Captures,
-        tree::NodeId,
         AppInner, ResourceId, Route,
     },
     crate::{
@@ -123,10 +122,10 @@ impl AppFuture {
     }
 
     fn process_recognize(&mut self) -> Handle {
-        match self
-            .inner
-            .route(self.request.uri().path(), self.request.method())
-        {
+        let (kind, scope) = match {
+            self.inner
+                .route(self.request.uri().path(), self.request.method())
+        } {
             Route::FoundEndpoint {
                 endpoint,
                 resource,
@@ -135,48 +134,36 @@ impl AppFuture {
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-                endpoint.handler.call(input!(self))
+                return endpoint.handler.call(input!(self));
             }
-
             Route::FoundResource {
-                resource, captures, ..
+                resource,
+                captures,
+                scope,
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-                let kind = FallbackKind::FoundResource(resource);
-                match self.inner.scope(resource.scope).fallback {
-                    Some(ref fallback) => fallback.call(&mut FallbackContext {
-                        input: input!(self),
-                        kind: &kind,
-                        _priv: (),
-                    }),
-                    None => super::fallback::default(&mut FallbackContext {
-                        input: input!(self),
-                        kind: &kind,
-                        _priv: (),
-                    }),
-                }
+                (FallbackKind::FoundResource(resource), scope)
             }
             Route::NotFound {
                 resources,
                 captures,
+                scope,
             } => {
                 self.resource_id = None;
                 self.captures = captures;
-                let kind = FallbackKind::NotFound(resources);
-                match self.inner.scope(NodeId::root()).fallback {
-                    Some(ref fallback) => fallback.call(&mut FallbackContext {
-                        input: input!(self),
-                        kind: &kind,
-                        _priv: (),
-                    }),
-                    None => super::fallback::default(&mut FallbackContext {
-                        input: input!(self),
-                        kind: &kind,
-                        _priv: (),
-                    }),
-                }
+                (FallbackKind::NotFound(resources), scope)
             }
+        };
+
+        let mut cx = FallbackContext {
+            input: input!(self),
+            kind: &kind,
+            _priv: (),
+        };
+        match scope.fallback {
+            Some(ref fallback) => fallback.call(&mut cx),
+            None => super::fallback::default(&mut cx),
         }
     }
 

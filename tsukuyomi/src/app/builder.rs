@@ -174,6 +174,7 @@ impl<'a, M> Context<'a, M> {
                 .or_insert_with(|| Resource {
                     id,
                     scope: scope.id(),
+                    ancestors: scope.ancestors().chain(Some(scope.id())).collect(),
                     uri: uri.clone(),
                     endpoints: vec![],
                     allowed_methods: IndexMap::new(),

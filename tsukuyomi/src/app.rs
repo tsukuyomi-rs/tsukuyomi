@@ -63,6 +63,37 @@ impl AppInner {
         self.recognizer.get(id.0).expect("the wrong resource ID")
     }
 
+    /// Infers the scope where the input path belongs from the extracted candidates.
+    fn infer_scope(&self, path: &str, resources: &[&Resource]) -> &ScopeData {
+        // First, extract a series of common ancestors of candidates.
+        let ancestors = {
+            let mut ancestors: Option<&[NodeId]> = None;
+            for resource in resources {
+                let ancestors = ancestors.get_or_insert(&resource.ancestors);
+                let n = (*ancestors)
+                    .iter()
+                    .zip(&resource.ancestors)
+                    .position(|(a, b)| a != b)
+                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), resource.ancestors.len()));
+                *ancestors = &ancestors[..n];
+            }
+            ancestors
+        };
+
+        // Then, find the oldest ancestor that with the input path as the prefix of URI.
+        let node_id = ancestors
+            .and_then(|ancestors| {
+                ancestors
+                    .into_iter()
+                    .find(|&&scope| self.scope(scope).prefix.as_str().starts_with(path)) //
+                    .or_else(|| ancestors.last())
+                    .cloned()
+            })
+            .unwrap_or_else(NodeId::root);
+
+        self.scope(node_id)
+    }
+
     fn route(&self, path: &str, method: &Method) -> Route<'_> {
         let mut captures = None;
         let resource = match self.recognizer.recognize(path, &mut captures) {
@@ -70,15 +101,19 @@ impl AppInner {
             Err(RecognizeError::NotMatched) => {
                 return Route::NotFound {
                     resources: vec![],
+                    scope: self.scope(NodeId::root()),
                     captures,
                 };
             }
             Err(RecognizeError::PartiallyMatched(candidates)) => {
+                let resources: Vec<_> = candidates
+                    .iter()
+                    .filter_map(|i| self.recognizer.get(i))
+                    .collect();
+                let scope = self.infer_scope(path, &resources);
                 return Route::NotFound {
-                    resources: candidates
-                        .iter()
-                        .filter_map(|i| self.recognizer.get(i))
-                        .collect(),
+                    resources,
+                    scope,
                     captures,
                 };
             }
@@ -91,7 +126,11 @@ impl AppInner {
                 captures,
             }
         } else {
-            Route::FoundResource { resource, captures }
+            Route::FoundResource {
+                resource,
+                scope: self.scope(resource.scope),
+                captures,
+            }
         }
     }
 }
@@ -143,25 +182,15 @@ impl fmt::Debug for ScopeData {
 struct ResourceId(usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
+#[derive(Debug)]
 pub struct Resource {
     id: ResourceId,
     scope: NodeId,
+    ancestors: Vec<NodeId>,
     uri: Uri,
     endpoints: Vec<Endpoint>,
     allowed_methods: IndexMap<Method, usize>,
     allowed_methods_value: HeaderValue,
-}
-
-impl fmt::Debug for Resource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Resource")
-            .field("id", &self.id)
-            .field("uri", &self.uri)
-            .field("endpoints", &self.endpoints)
-            .field("allowed_methods", &self.allowed_methods)
-            .field("allowed_methods_value", &self.allowed_methods_value)
-            .finish()
-    }
 }
 
 impl Resource {
@@ -230,12 +259,14 @@ enum Route<'a> {
     /// the URI is matched, but the method is disallowed.
     FoundResource {
         resource: &'a Resource,
+        scope: &'a ScopeData,
         captures: Option<Captures>,
     },
 
     /// The URI is not matched to any endpoints.
     NotFound {
         resources: Vec<&'a Resource>,
+        scope: &'a ScopeData,
         captures: Option<Captures>,
     },
 }
