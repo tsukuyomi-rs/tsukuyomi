@@ -20,29 +20,12 @@ use {
         output::{Output, ResponseBody},
     },
     http::{Request, Response, StatusCode},
-    std::{any::TypeId, fmt, io},
+    std::{
+        any::TypeId,
+        fmt, io,
+        ops::{Deref, DerefMut},
+    },
 };
-
-#[derive(Debug)]
-pub struct Critical(failure::Error);
-
-impl Critical {
-    pub(crate) fn new(cause: impl Into<failure::Error>) -> Self {
-        Critical(cause.into())
-    }
-}
-
-impl fmt::Display for Critical {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for Critical {
-    fn description(&self) -> &str {
-        "critical error"
-    }
-}
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -64,6 +47,31 @@ pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static {
     #[doc(hidden)]
     fn __private_type_id__(&self) -> TypeId {
         TypeId::of::<Self>()
+    }
+}
+
+impl dyn HttpError {
+    /// Returns `true` if the type of inner error value is equal to `T`.
+    pub fn is<T: HttpError>(&self) -> bool {
+        self.__private_type_id__() == TypeId::of::<T>()
+    }
+
+    /// Attempts to downcast this error value to the specified concrete type by reference.
+    pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
+        if self.is::<T>() {
+            unsafe { Some(&*(self as *const dyn HttpError as *const T)) }
+        } else {
+            None
+        }
+    }
+
+    /// Attempts to downcast this error value to the specified concrete type by reference.
+    pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
+        if self.is::<T>() {
+            unsafe { Some(&mut *(self as *mut dyn HttpError as *mut T)) }
+        } else {
+            None
+        }
     }
 }
 
@@ -108,6 +116,19 @@ impl HttpError for failure::Error {
 
     fn status_code(&self) -> StatusCode {
         StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+impl HttpError for hyper::Error {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn to_response(&mut self, _: &Request<()>) -> Output {
+        Response::builder()
+            .status(self.status_code())
+            .body(format!("hyper error: {}", self).into())
+            .expect("should be a valid response")
     }
 }
 
@@ -163,7 +184,7 @@ where
     }
 }
 
-impl<D> std::ops::Deref for Custom<D>
+impl<D> Deref for Custom<D>
 where
     D: fmt::Debug + fmt::Display + Send + 'static,
 {
@@ -175,7 +196,7 @@ where
     }
 }
 
-impl<D> std::ops::DerefMut for Custom<D>
+impl<D> DerefMut for Custom<D>
 where
     D: fmt::Debug + fmt::Display + Send + 'static,
 {
@@ -285,107 +306,46 @@ define_errors! {
 
 /// A type which holds all kinds of errors occurring in handlers.
 #[derive(Debug)]
-pub struct Error(::std::result::Result<Box<dyn HttpError>, Critical>);
+pub struct Error(Box<dyn HttpError>);
 
 impl<E> From<E> for Error
 where
     E: HttpError,
 {
     fn from(err: E) -> Self {
-        Self::new(Box::new(err) as Box<dyn HttpError>)
+        Error(Box::new(err))
+    }
+}
+
+impl Deref for Error {
+    type Target = dyn HttpError;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
 impl Error {
-    /// Creates an `Error` from the specified value implementing `HttpError`.
-    pub fn new(err: impl Into<Box<dyn HttpError>>) -> Self {
-        Error(Ok(err.into()))
-    }
-
-    /// Creates a *critical* error from an error value.
-    ///
-    /// The word "critical" means that the error will not be converted into an HTTP response.
-    /// If the framework receives this kind of error, it wlll abort the current connection abruptly
-    /// without sending an HTTP response.
-    ///
-    /// See [the documentation at hyper][hyper-service-error] for details.
-    ///
-    /// [hyper-service-error]:
-    /// https://docs.rs/hyper/0.12.*/hyper/service/trait.Service.html#associatedtype.Error
-    pub fn critical(err: Critical) -> Self {
-        Error(Err(err))
-    }
-
-    /// Returns `true` if this error is a *critical* error.
-    pub fn is_critical(&self) -> bool {
-        self.0.is_err()
-    }
-
-    /// Returns the representation as `HttpError` of this error value by reference.
-    ///
-    /// If the value is a criticial error, it will return a `None`.
-    pub fn as_http_error(&self) -> Option<&dyn HttpError> {
-        match self.0 {
-            Ok(ref e) => Some(&**e),
-            Err(..) => None,
-        }
-    }
-
     /// Deconstructs `self` into inner error representation.
-    pub fn into_http_error(self) -> std::result::Result<Box<dyn HttpError>, Critical> {
+    pub fn into_http_error(self) -> Box<dyn HttpError> {
         self.0
     }
 
     /// Attempts to downcast this error value into the specified concrete type.
     pub fn downcast<T: HttpError>(self) -> std::result::Result<T, Self> {
-        match self.0 {
-            Ok(e) => {
-                if e.__private_type_id__() == TypeId::of::<T>() {
-                    unsafe { Ok(*Box::from_raw(Box::into_raw(e) as *mut T)) }
-                } else {
-                    Err(Error(Ok(e)))
-                }
-            }
-            Err(e) => Err(Error(Err(e))),
+        if self.0.__private_type_id__() == TypeId::of::<T>() {
+            unsafe { Ok(*Box::from_raw(Box::into_raw(self.0) as *mut T)) }
+        } else {
+            Err(self)
         }
     }
 
-    /// Attempts to downcast this error value to the specified concrete type by reference.
-    pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
-        match self.0 {
-            Ok(ref e) if e.__private_type_id__() == TypeId::of::<T>() => unsafe {
-                Some(&*(&**e as *const dyn HttpError as *const T))
-            },
-            _ => None,
-        }
-    }
-
-    /// Attempts to downcast this error value to the specified concrete type by reference.
-    pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
-        match self.0 {
-            Ok(ref mut e) if e.__private_type_id__() == TypeId::of::<T>() => unsafe {
-                Some(&mut *(&mut **e as *mut dyn HttpError as *mut T))
-            },
-            _ => None,
-        }
-    }
-
-    /// Returns `true` if the type of inner error value is equal to `T`.
-    pub fn is<T: HttpError>(&self) -> bool {
-        match self.0 {
-            Ok(ref e) => e.__private_type_id__() == TypeId::of::<T>(),
-            Err(..) => TypeId::of::<T>() == TypeId::of::<Critical>(),
-        }
-    }
-
-    pub(crate) fn into_response(
-        self,
-        request: &Request<()>,
-    ) -> std::result::Result<Output, Critical> {
-        let mut err = self.0?;
+    pub(crate) fn into_response(self, request: &Request<()>) -> Output {
+        let mut err = self.0;
         let status = err.status_code();
         let mut response = err.to_response(request);
         *response.status_mut() = status;
-        Ok(response)
+        response
     }
 }

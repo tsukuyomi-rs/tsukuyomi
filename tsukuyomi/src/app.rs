@@ -28,15 +28,11 @@ use {
         tree::{Arena, NodeId},
         uri::Uri,
     },
-    crate::handler::BoxedHandler,
-    crate::{error::Critical, input::body::RequestBody, output::ResponseBody},
+    crate::{core::Never, handler::BoxedHandler, input::body::RequestBody, output::ResponseBody},
     bytes::BytesMut,
-    http::header::HeaderValue,
-    http::Method,
-    http::{Request, Response},
+    http::{header::HeaderValue, Method, Request, Response},
     indexmap::{IndexMap, IndexSet},
-    std::fmt,
-    std::sync::Arc,
+    std::{fmt, sync::Arc},
     tower_service::NewService,
 };
 
@@ -61,9 +57,9 @@ impl App {
 impl NewService for App {
     type Request = Request<RequestBody>;
     type Response = Response<ResponseBody>;
-    type Error = Critical;
+    type Error = Never;
     type Service = AppService;
-    type InitError = Critical;
+    type InitError = Never;
     type Future = futures01::future::FutureResult<Self::Service, Self::InitError>;
 
     fn new_service(&self) -> Self::Future {

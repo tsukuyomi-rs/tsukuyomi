@@ -5,7 +5,7 @@ use {
         AppInner, ResourceId, RouterResult,
     },
     crate::{
-        error::Critical,
+        core::Never,
         handler::{Handle, HandleFn, HandleInner},
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::{Output, ResponseBody},
@@ -40,7 +40,7 @@ pub struct AppService {
 impl Service for AppService {
     type Request = Request<RequestBody>;
     type Response = Response<ResponseBody>;
-    type Error = Critical;
+    type Error = Never;
     type Future = AppFuture;
 
     #[inline]
@@ -195,7 +195,7 @@ impl AppFuture {
 
 impl Future for AppFuture {
     type Item = Response<ResponseBody>;
-    type Error = Critical;
+    type Error = Never;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let polled = loop {
@@ -214,7 +214,7 @@ impl Future for AppFuture {
 
         let mut output = match polled {
             Ok(output) => output,
-            Err(err) => err.into_response(&self.request)?,
+            Err(err) => err.into_response(&self.request),
         };
 
         self.process_before_reply(&mut output);

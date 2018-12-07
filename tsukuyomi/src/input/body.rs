@@ -2,7 +2,6 @@
 
 use {
     super::localmap::local_key,
-    crate::error::Critical,
     bytes::{Buf, BufMut, Bytes, BytesMut},
     futures01::{Async, Future, Poll, Stream},
     http::header::HeaderMap,
@@ -42,20 +41,17 @@ impl From<Body> for RequestBody {
 }
 
 impl Payload for RequestBody {
-    type Data = io::Cursor<Bytes>;
-    type Error = Critical;
+    type Data = hyper::Chunk;
+    type Error = hyper::Error;
 
     #[inline]
     fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
-        self.0
-            .poll_data()
-            .map(|x| x.map(|data_opt| data_opt.map(|data| io::Cursor::new(data.into_bytes()))))
-            .map_err(Critical::new)
+        self.0.poll_data()
     }
 
     #[inline]
     fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
-        self.0.poll_trailers().map_err(Critical::new)
+        self.0.poll_trailers()
     }
 
     #[inline]
@@ -70,8 +66,8 @@ impl Payload for RequestBody {
 }
 
 impl Stream for RequestBody {
-    type Item = io::Cursor<Bytes>;
-    type Error = Critical;
+    type Item = hyper::Chunk;
+    type Error = hyper::Error;
 
     #[inline]
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -154,13 +150,10 @@ pub struct OnUpgrade(hyper::upgrade::OnUpgrade);
 
 impl Future for OnUpgrade {
     type Item = UpgradedIo;
-    type Error = Critical;
+    type Error = hyper::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.0
-            .poll()
-            .map(|x| x.map(UpgradedIo))
-            .map_err(Critical::new)
+        self.0.poll().map(|x| x.map(UpgradedIo))
     }
 }
 
@@ -189,7 +182,7 @@ impl ReadAll {
 
 impl Future for ReadAll {
     type Item = Bytes;
-    type Error = Critical;
+    type Error = hyper::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         use self::ReadAllState::*;
@@ -197,7 +190,6 @@ impl Future for ReadAll {
             match self.state {
                 Receiving(ref mut body, ref mut buf) => {
                     while let Some(chunk) = futures01::try_ready!(body.poll_data()) {
-                        let chunk = chunk.into_inner();
                         buf.extend_from_slice(&*chunk);
                     }
                 }

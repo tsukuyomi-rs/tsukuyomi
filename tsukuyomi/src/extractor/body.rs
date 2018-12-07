@@ -149,7 +149,7 @@ where
         let mut read_all: Option<ReadAll> = None;
         MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
             if let Some(ref mut read_all) = read_all {
-                let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
+                let data = futures01::try_ready!(read_all.poll());
                 return D::decode(&data)
                     .map(|out| Async::Ready((out,)))
                     .map_err(crate::error::bad_request);
@@ -194,7 +194,7 @@ pub fn raw() -> impl Extractor<Output = (Bytes,)> {
         let mut read_all: Option<ReadAll> = None;
         crate::future::poll_fn(move |cx| loop {
             if let Some(ref mut read_all) = read_all {
-                return read_all.poll().map_err(Error::critical);
+                return read_all.poll().map_err(Error::from);
             }
             read_all = Some(
                 cx.input
