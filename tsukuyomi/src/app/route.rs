@@ -11,16 +11,11 @@ use {
         generic::{Combine, Func},
         handler::{Handler, MakeHandler, ModifyHandler},
         input::param::{FromPercentEncoded, PercentEncoded},
-        output::{redirect::Redirect, Responder},
+        output::Responder,
     },
-    http::{HttpTryFrom, Method, StatusCode},
+    http::{HttpTryFrom, Method},
     indexmap::{indexset, IndexSet},
-    std::{
-        borrow::Cow,
-        marker::PhantomData,
-        path::{Path, PathBuf},
-        sync::Arc,
-    },
+    std::{marker::PhantomData, path::Path},
 };
 
 /// A set of request methods that a route accepts.
@@ -276,7 +271,7 @@ where
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
-    /// The provided function always succeeds and immediately returns a value of `Responder`.
+    /// The provided function always succeeds and immediately returns a value.
     pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>, M>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
@@ -332,35 +327,20 @@ where
     }
 }
 
-impl<E, M, T> Builder<E, M, T>
-where
-    E: Extractor<Output = ()>,
-{
+impl<M, T> Builder<(), M, T> {
     /// Builds a `Route` that uses the specified `Handler` directly.
     pub fn raw<H>(self, handler: H) -> Route<H, M>
     where
         H: Handler,
     {
-        #[allow(missing_debug_implementations)]
-        struct Raw<H>(H);
-
-        impl<H, E> MakeHandler<E> for Raw<H>
-        where
-            E: Extractor<Output = ()>,
-            H: Handler,
-        {
-            type Output = H::Output;
-            type Handler = H;
-
-            #[inline]
-            fn make_handler(self, _: E) -> Self::Handler {
-                self.0
-            }
-        }
-
-        self.finish(Raw(handler))
+        self.finish(|_: ()| handler)
     }
+}
 
+impl<E, M, T> Builder<E, M, T>
+where
+    E: Extractor<Output = ()>,
+{
     /// Creates a `Route` that just replies with the specified `Responder`.
     pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>, M>
     where
@@ -369,35 +349,13 @@ where
         self.reply(move || output.clone())
     }
 
-    /// Creates a `Route` that just replies with a redirection response.
-    pub fn redirect<L>(
-        self,
-        location: L,
-        status: StatusCode,
-    ) -> Route<impl Handler<Output = Redirect>, M>
-    where
-        L: Into<Cow<'static, str>>,
-    {
-        self.say(Redirect::new(status, location))
-    }
-
     /// Creates a `Route` that sends the contents of file located at the specified path.
     pub fn send_file(
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
     ) -> Route<impl Handler<Output = NamedFile>, M> {
-        let path = {
-            #[derive(Clone)]
-            #[allow(missing_debug_implementations)]
-            struct ArcPath(Arc<PathBuf>);
-            impl AsRef<Path> for ArcPath {
-                fn as_ref(&self) -> &Path {
-                    (*self.0).as_ref()
-                }
-            }
-            ArcPath(Arc::new(path.as_ref().to_path_buf()))
-        };
+        let path = crate::fs::ArcPath::from(path.as_ref().to_path_buf());
 
         self.call(move || {
             crate::future::Compat01::from(match config {

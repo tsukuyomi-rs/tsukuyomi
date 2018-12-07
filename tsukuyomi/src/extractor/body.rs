@@ -4,8 +4,11 @@ use {
     crate::{
         error::Error,
         extractor::Extractor,
-        future::{Async, Compat01, MaybeFuture},
-        input::{body::RequestBody, header::ContentType},
+        future::{Async, MaybeFuture},
+        input::{
+            body::{ReadAll, RequestBody},
+            header::ContentType,
+        },
     },
     bytes::Bytes,
     futures01::Future as _Future01,
@@ -132,27 +135,33 @@ where
     D: self::decode::Decoder<T> + Send + Sync + 'static,
 {
     super::raw(move |input| {
-        if let Err(err) = crate::input::header::parse::<ContentType>(input).and_then(|mime_opt| {
-            decoder
-                .validate_mime(mime_opt)
-                .map_err(crate::error::bad_request)?;
-            Ok(mime_opt)
-        }) {
+        if let Err(err) = {
+            crate::input::header::parse::<ContentType>(input) //
+                .and_then(|mime_opt| {
+                    decoder
+                        .validate_mime(mime_opt)
+                        .map_err(crate::error::bad_request)
+                })
+        } {
             return MaybeFuture::err(err);
         }
 
-        input.locals.remove(&RequestBody::KEY).map_or_else(
-            || MaybeFuture::err(stolen_payload()),
-            |body| {
-                let mut read_all = body.read_all();
-                MaybeFuture::from(Compat01::from(futures01::future::poll_fn(move || {
-                    let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
-                    D::decode(&data)
-                        .map(|out| Async::Ready((out,)))
-                        .map_err(crate::error::bad_request)
-                })))
-            },
-        )
+        let mut read_all: Option<ReadAll> = None;
+        MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
+            if let Some(ref mut read_all) = read_all {
+                let data = futures01::try_ready!(read_all.poll().map_err(Error::critical));
+                return D::decode(&data)
+                    .map(|out| Async::Ready((out,)))
+                    .map_err(crate::error::bad_request);
+            }
+            read_all = Some(
+                cx.input
+                    .locals
+                    .remove(&RequestBody::KEY)
+                    .ok_or_else(stolen_payload)?
+                    .read_all(),
+            );
+        }))
     })
 }
 
@@ -181,24 +190,32 @@ where
 }
 
 pub fn raw() -> impl Extractor<Output = (Bytes,)> {
-    super::raw(|input| {
-        input.locals.remove(&RequestBody::KEY).map_or_else(
-            || MaybeFuture::err(stolen_payload()),
-            |body| {
-                MaybeFuture::from(Compat01::from(
-                    body.read_all().map(|out| (out,)).map_err(Error::critical),
-                ))
-            },
-        )
+    super::lazy(|_| {
+        let mut read_all: Option<ReadAll> = None;
+        crate::future::poll_fn(move |cx| loop {
+            if let Some(ref mut read_all) = read_all {
+                return read_all.poll().map_err(Error::critical);
+            }
+            read_all = Some(
+                cx.input
+                    .locals
+                    .remove(&RequestBody::KEY)
+                    .ok_or_else(stolen_payload)?
+                    .read_all(),
+            );
+        })
     })
 }
 
 pub fn stream() -> impl Extractor<Output = (RequestBody,)> {
-    super::ready(|input| {
-        input
-            .locals
-            .remove(&RequestBody::KEY)
-            .ok_or_else(stolen_payload)
+    super::lazy(|_| {
+        crate::future::poll_fn(|cx| {
+            cx.input
+                .locals
+                .remove(&RequestBody::KEY)
+                .map(Async::Ready)
+                .ok_or_else(stolen_payload)
+        })
     })
 }
 

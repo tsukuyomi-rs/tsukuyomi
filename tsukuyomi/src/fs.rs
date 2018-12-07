@@ -378,9 +378,8 @@ fn block_size(_: &Metadata) -> u64 {
     DEFAULT_BUF_SIZE
 }
 
-#[allow(missing_debug_implementations)]
-#[derive(Clone)]
-struct ArcPath(Arc<PathBuf>);
+#[derive(Debug, Clone)]
+pub(crate) struct ArcPath(Arc<PathBuf>);
 
 impl From<PathBuf> for ArcPath {
     fn from(path: PathBuf) -> Self {

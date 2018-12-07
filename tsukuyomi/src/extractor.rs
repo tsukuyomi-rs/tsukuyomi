@@ -117,6 +117,14 @@ where
     self::raw(move |input| MaybeFuture::Ready::<NeverFuture<_, _>>(f(input).map(|x| (x,))))
 }
 
+pub fn lazy<Op, R>(op: Op) -> impl Extractor<Output = (R::Output,)>
+where
+    Op: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
+    R: Future + Send + 'static,
+{
+    self::raw(move |input| MaybeFuture::Future(op(input)).map_ok(|x| (x,)))
+}
+
 pub fn value<T>(value: T) -> impl Extractor<Output = (T,)>
 where
     T: Clone + Send + Sync + 'static,
