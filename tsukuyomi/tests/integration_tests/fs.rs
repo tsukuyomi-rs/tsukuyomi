@@ -1,4 +1,7 @@
-use tsukuyomi::app::{route, App};
+use tsukuyomi::{
+    app::{route, App},
+    fs::Staticfiles,
+};
 
 #[test]
 #[ignore]
@@ -13,15 +16,11 @@ fn compiletest() -> tsukuyomi::app::Result<()> {
         .map(drop)
 }
 
-/*
 #[test]
 #[ignore]
-fn compiletest_staticfiles() {
-    drop(
-        App::builder()
-            .with(Staticfiles::new("./public")) //
-            .build()
-            .unwrap(),
-    );
+fn compiletest_staticfiles() -> tsukuyomi::app::Result<()> {
+    App::builder()
+        .with(Staticfiles::new("./public"))
+        .build()
+        .map(drop)
 }
-*/

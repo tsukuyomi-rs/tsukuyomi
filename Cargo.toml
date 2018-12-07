@@ -43,7 +43,7 @@ members = [
   # "examples/routing",
   # "examples/rustls",
   # "examples/session",
-  # "examples/staticfile",
+  "examples/staticfile",
   "examples/template-askama",
   # "examples/template-tera",
   # "examples/tower-middleware",

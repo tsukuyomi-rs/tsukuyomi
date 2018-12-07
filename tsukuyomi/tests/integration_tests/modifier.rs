@@ -51,7 +51,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(route::root().say("")) //
-        .modifier(MockModifier {
+        .modify(MockModifier {
             marker: marker.clone(),
             name: "M",
         }) //
@@ -74,11 +74,11 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::builder()
         .with(route::root().say(""))
-        .modifier(MockModifier {
+        .modify(MockModifier {
             marker: marker.clone(),
             name: "M1",
         })
-        .modifier(MockModifier {
+        .modify(MockModifier {
             marker: marker.clone(),
             name: "M2",
         }) //
@@ -96,13 +96,13 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = App::builder()
-        .modifier(MockModifier {
+        .modify(MockModifier {
             marker: marker.clone(),
             name: "M1",
         }) //
         .with(
             mount("/path1")?
-                .modifier(MockModifier {
+                .modify(MockModifier {
                     marker: marker.clone(),
                     name: "M2",
                 }) //
@@ -129,20 +129,20 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let mut server = App::builder()
         .with(
             mount("/path")?
-                .modifier(MockModifier {
+                .modify(MockModifier {
                     marker: marker.clone(),
                     name: "M1",
                 }) //
                 .with(
                     mount("/to")?
-                        .modifier(MockModifier {
+                        .modify(MockModifier {
                             marker: marker.clone(),
                             name: "M2",
                         }) //
                         .with(route::root().say(""))
                         .with(
                             mount("/a")?
-                                .modifier(MockModifier {
+                                .modify(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
                                 }) //

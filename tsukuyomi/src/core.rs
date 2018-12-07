@@ -34,6 +34,24 @@ pub trait TryFrom<T>: Sized {
     fn try_from(value: T) -> Result<Self, Self::Error>;
 }
 
+pub trait TryInto<T> {
+    type Error: Into<failure::Error>;
+
+    fn try_into(self) -> Result<T, Self::Error>;
+}
+
+impl<T, U> TryInto<U> for T
+where
+    U: TryFrom<T>,
+{
+    type Error = <U as TryFrom<T>>::Error;
+
+    #[inline]
+    fn try_into(self) -> Result<U, Self::Error> {
+        U::try_from(self)
+    }
+}
+
 /// A pair of structs representing arbitrary chain structure.
 #[derive(Debug, Clone)]
 pub struct Chain<L, R> {

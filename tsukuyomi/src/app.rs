@@ -5,7 +5,6 @@ pub mod route;
 
 mod builder;
 mod error;
-mod mount;
 mod recognizer;
 mod service;
 mod tree;
@@ -15,9 +14,8 @@ mod uri;
 mod tests;
 
 pub use self::{
-    builder::{Builder, Scope},
+    builder::{mount, Builder, Mount, Scope, ScopeContext},
     error::{Error, Result},
-    mount::{mount, Mount},
     service::AppService,
 };
 
@@ -31,7 +29,7 @@ use {
         uri::Uri,
     },
     crate::handler::BoxedHandler,
-    crate::{core::TryFrom, error::Critical, input::body::RequestBody, output::ResponseBody},
+    crate::{error::Critical, input::body::RequestBody, output::ResponseBody},
     bytes::BytesMut,
     http::header::HeaderValue,
     http::Method,
@@ -46,6 +44,33 @@ use {
 #[derive(Debug, Clone)]
 pub struct App {
     inner: Arc<AppInner>,
+}
+
+impl App {
+    /// Create a `Builder` to configure the instance of `App`.
+    pub fn builder() -> Builder<()> {
+        Builder::default()
+    }
+
+    /// Create a `Builder` with the specified prefix.
+    pub fn with_prefix(prefix: impl AsRef<str>) -> Result<Builder<()>> {
+        Self::builder().prefix(prefix)
+    }
+}
+
+impl NewService for App {
+    type Request = Request<RequestBody>;
+    type Response = Response<ResponseBody>;
+    type Error = Critical;
+    type Service = AppService;
+    type InitError = Critical;
+    type Future = futures01::future::FutureResult<Self::Service, Self::InitError>;
+
+    fn new_service(&self) -> Self::Future {
+        futures01::future::ok(AppService {
+            inner: self.inner.clone(),
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -94,12 +119,12 @@ impl AppInner {
         self.scope(node_id)
     }
 
-    fn route(&self, path: &str, method: &Method) -> Route<'_> {
+    fn route(&self, path: &str, method: &Method) -> RouterResult<'_> {
         let mut captures = None;
         let resource = match self.recognizer.recognize(path, &mut captures) {
             Ok(resource) => resource,
             Err(RecognizeError::NotMatched) => {
-                return Route::NotFound {
+                return RouterResult::NotFound {
                     resources: vec![],
                     scope: self.scope(NodeId::root()),
                     captures,
@@ -111,7 +136,7 @@ impl AppInner {
                     .filter_map(|i| self.recognizer.get(i))
                     .collect();
                 let scope = self.infer_scope(path, &resources);
-                return Route::NotFound {
+                return RouterResult::NotFound {
                     resources,
                     scope,
                     captures,
@@ -120,13 +145,13 @@ impl AppInner {
         };
 
         if let Some(endpoint) = resource.recognize(method) {
-            Route::FoundEndpoint {
+            RouterResult::FoundEndpoint {
                 endpoint,
                 resource,
                 captures,
             }
         } else {
-            Route::FoundResource {
+            RouterResult::FoundResource {
                 resource,
                 scope: self.scope(resource.scope),
                 captures,
@@ -135,45 +160,16 @@ impl AppInner {
     }
 }
 
-impl App {
-    /// Create a `Builder` to configure the instance of `App`.
-    pub fn builder() -> Builder<()> {
-        Builder::default()
-    }
-
-    /// Create a `Builder` with the specified prefix.
-    pub fn with_prefix<T>(prefix: T) -> Result<Builder<()>>
-    where
-        Uri: TryFrom<T>,
-    {
-        Ok(Self::builder().prefix(Uri::try_from(prefix)?))
-    }
-}
-
-impl NewService for App {
-    type Request = Request<RequestBody>;
-    type Response = Response<ResponseBody>;
-    type Error = Critical;
-    type Service = AppService;
-    type InitError = Critical;
-    type Future = futures01::future::FutureResult<Self::Service, Self::InitError>;
-
-    fn new_service(&self) -> Self::Future {
-        futures01::future::ok(AppService {
-            inner: self.inner.clone(),
-        })
-    }
-}
-
 struct ScopeData {
     prefix: Uri,
-    fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
+    fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
 }
 
 impl fmt::Debug for ScopeData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopeData")
             .field("prefix", &self.prefix)
+            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
             .finish()
     }
 }
@@ -248,7 +244,7 @@ impl fmt::Debug for Endpoint {
 }
 
 #[derive(Debug)]
-enum Route<'a> {
+enum RouterResult<'a> {
     /// The URI is matched and a route associated with the specified method is found.
     FoundEndpoint {
         endpoint: &'a Endpoint,

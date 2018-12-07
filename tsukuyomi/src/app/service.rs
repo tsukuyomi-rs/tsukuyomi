@@ -2,7 +2,7 @@ use {
     super::{
         fallback::{Context as FallbackContext, FallbackKind},
         recognizer::Captures,
-        AppInner, ResourceId, Route,
+        AppInner, ResourceId, RouterResult,
     },
     crate::{
         error::Critical,
@@ -126,7 +126,7 @@ impl AppFuture {
             self.inner
                 .route(self.request.uri().path(), self.request.method())
         } {
-            Route::FoundEndpoint {
+            RouterResult::FoundEndpoint {
                 endpoint,
                 resource,
                 captures,
@@ -136,7 +136,7 @@ impl AppFuture {
                 self.captures = captures;
                 return endpoint.handler.call(input!(self));
             }
-            Route::FoundResource {
+            RouterResult::FoundResource {
                 resource,
                 captures,
                 scope,
@@ -145,7 +145,7 @@ impl AppFuture {
                 self.captures = captures;
                 (FallbackKind::FoundResource(resource), scope)
             }
-            Route::NotFound {
+            RouterResult::NotFound {
                 resources,
                 captures,
                 scope,

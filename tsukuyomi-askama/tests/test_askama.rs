@@ -43,7 +43,7 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::builder()
-        .modifier(tsukuyomi_askama::Renderer::default())
+        .modify(tsukuyomi_askama::Renderer::default())
         .with(route::root().reply(|| Index { name: "Alice" })) //
         .build_server()?
         .into_test_server()?;

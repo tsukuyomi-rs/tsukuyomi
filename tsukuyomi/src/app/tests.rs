@@ -1,5 +1,5 @@
 use {
-    super::{mount::mount, route, App, ResourceId, Result, Route},
+    super::{mount, route, App, ResourceId, Result, RouterResult},
     http::Method,
     matches::assert_matches,
 };
@@ -7,7 +7,7 @@ use {
 #[test]
 fn empty() -> Result<()> {
     let app = App::builder().build()?;
-    assert_matches!(app.inner.route("/", &Method::GET), Route::NotFound { .. });
+    assert_matches!(app.inner.route("/", &Method::GET), RouterResult::NotFound { .. });
     Ok(())
 }
 
@@ -19,19 +19,19 @@ fn route_single_method() -> Result<()> {
 
     assert_matches!(
         app.inner.route("/", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
 
     assert_matches!(
         app.inner.route("/path/to", &Method::GET),
-        Route::NotFound { .. }
+        RouterResult::NotFound { .. }
     );
 
     assert_matches!(
         app.inner.route("/", &Method::POST),
-        Route::FoundResource { resource, .. }
+        RouterResult::FoundResource { resource, .. }
             if resource.id == ResourceId(0)
     );
 
@@ -47,20 +47,20 @@ fn route_multiple_method() -> Result<()> {
 
     assert_matches!(
         app.inner.route("/", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/", &Method::POST),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 1
     );
 
     assert_matches!(
         app.inner.route("/", &Method::PUT),
-        Route::FoundResource { resource, .. }
+        RouterResult::FoundResource { resource, .. }
             if resource.id == ResourceId(0)
     );
 
@@ -75,20 +75,20 @@ fn route_multiple_method_at_same_endpoint() -> Result<()> {
 
     assert_matches!(
         app.inner.route("/", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/", &Method::POST),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
 
     assert_matches!(
         app.inner.route("/", &Method::PUT),
-        Route::FoundResource { resource, .. }
+        RouterResult::FoundResource { resource, .. }
             if resource.id == ResourceId(0)
     );
 
@@ -98,16 +98,12 @@ fn route_multiple_method_at_same_endpoint() -> Result<()> {
 #[test]
 fn asterisk_route() -> Result<()> {
     let app = App::builder()
-        .with(
-            route::asterisk()
-                .methods(Method::OPTIONS)?
-                .say("explicit OPTIONS handler"),
-        ) //
+        .with(route::asterisk().say("explicit OPTIONS handler")) //
         .build()?;
 
     assert_matches!(
         app.inner.route("*", &Method::OPTIONS),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
@@ -124,16 +120,12 @@ fn asterisk_route_with_normal_routes() -> Result<()> {
                 .with(route::root().segment("posts")?.say(""))
                 .with(route::root().segment("events")?.say("")),
         ) //
-        .with(
-            route::asterisk()
-                .methods(Method::OPTIONS)?
-                .say("explicit OPTIONS handler"),
-        ) //
+        .with(route::asterisk().say("explicit OPTIONS handler")) //
         .build()?;
 
     assert_matches!(
         app.inner.route("*", &Method::OPTIONS),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 0
     );
@@ -159,31 +151,31 @@ fn scope_simple() -> Result<()> {
 
     assert_matches!(
         app.inner.route("/a", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/b", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(1)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/foo", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(2)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/c/d", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/c/d", &Method::POST),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 1
     );
@@ -213,44 +205,44 @@ fn scope_nested() -> Result<()> {
 
     assert_matches!(
         app.inner.route("/foo", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/bar", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(1)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/foo", &Method::POST),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(0)
             && endpoint.id == 1
     );
     assert_matches!(
         app.inner.route("/baz", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId( 2)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/baz/foobar", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(3)
             && endpoint.id == 0
     );
     assert_matches!(
         app.inner.route("/hoge", &Method::GET),
-        Route::FoundEndpoint { resource, endpoint, .. }
+        RouterResult::FoundEndpoint { resource, endpoint, .. }
             if resource.id == ResourceId(4)
             && endpoint.id == 0
     );
 
     assert_matches!(
         app.inner.route("/baz/", &Method::GET),
-        Route::NotFound { .. }
+        RouterResult::NotFound { .. }
     );
 
     Ok(())
@@ -292,26 +284,6 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
 fn failcase_asterisk_with_prefix() -> Result<()> {
     let app = App::with_prefix("/api/v1")?
         .with(route::asterisk().reply(|| ""))
-        .build();
-    assert!(app.is_err());
-    Ok(())
-}
-
-#[test]
-fn failcase_asterisk_without_explicit_options() -> Result<()> {
-    let app = App::builder().with(route::asterisk().reply(|| "")).build();
-    assert!(app.is_err());
-    Ok(())
-}
-
-#[test]
-fn failcase_asterisk_with_explicit_get_handler() -> Result<()> {
-    let app = App::builder()
-        .with(
-            route::asterisk() //
-                .methods(vec![Method::GET, Method::OPTIONS])?
-                .reply(|| ""),
-        )
         .build();
     assert!(app.is_err());
     Ok(())

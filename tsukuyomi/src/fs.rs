@@ -3,6 +3,8 @@
 use {
     crate::{
         error::Error,
+        future::{Compat01, MaybeFuture},
+        handler::{Handler, ModifyHandler},
         input::Input,
         output::{Responder, ResponseBody},
         rt::poll_blocking,
@@ -258,7 +260,7 @@ where
     P: AsRef<Path>,
 {
     type Item = NamedFile;
-    type Error = io::Error;
+    type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let (file, meta) = futures01::try_ready!(blocking_io(|| {
@@ -379,7 +381,7 @@ fn block_size(_: &Metadata) -> u64 {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ArcPath(Arc<PathBuf>);
+pub struct ArcPath(Arc<PathBuf>);
 
 impl From<PathBuf> for ArcPath {
     fn from(path: PathBuf) -> Self {
@@ -399,6 +401,38 @@ impl Deref for ArcPath {
     #[inline]
     fn deref(&self) -> &Self::Target {
         (*self.0).as_ref()
+    }
+}
+
+#[derive(Debug)]
+pub struct ServeFile {
+    path: ArcPath,
+    config: Option<OpenConfig>,
+    extract_path: bool,
+}
+
+impl Handler for ServeFile {
+    type Output = NamedFile;
+    type Future = Compat01<OpenFuture<ArcPath>>;
+
+    fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+        let path = if self.extract_path {
+            match input.params.as_ref().and_then(|params| params.catch_all()) {
+                Some(ref path) => self.path.join(path).into(),
+                None => {
+                    return MaybeFuture::err(crate::error::internal_server_error("missing params"))
+                }
+            }
+        } else {
+            self.path.clone()
+        };
+
+        let open_future = match self.config {
+            Some(ref config) => NamedFile::open_with_config(path, config.clone()),
+            None => NamedFile::open(path),
+        };
+
+        MaybeFuture::Future(Compat01::from(open_future))
     }
 }
 
@@ -430,51 +464,57 @@ where
     }
 }
 
-// impl<P, M> crate::app::scope::Scope<M> for Staticfiles<P>
-// where
-//     P: AsRef<Path>,
-//     M: Modifier,
-// {
-//     type Error = crate::app::Error;
+impl<P, M> crate::app::Scope<M> for Staticfiles<P>
+where
+    P: AsRef<Path>,
+    M: ModifyHandler<ServeFile>,
+    M::Output: Responder,
+    M::Handler: Send + Sync + 'static,
+{
+    type Error = crate::app::Error;
 
-//     fn configure(self, cx: &mut crate::app::scope::Context<'_, M>) -> crate::app::Result<()> {
-//         let Self { root_dir, config } = self;
+    fn configure(self, cx: &mut crate::app::ScopeContext<'_, M>) -> crate::app::Result<()> {
+        let Self { root_dir, config } = self;
 
-//         for entry in std::fs::read_dir(root_dir)? {
-//             let entry = entry?;
-//             let file_type = entry.file_type()?;
-//             let name = entry.file_name();
-//             let name = name.to_str().ok_or_else(|| {
-//                 io::Error::new(io::ErrorKind::Other, "the filename must be UTF-8")
-//             })?;
-//             let path = entry
-//                 .path()
-//                 .canonicalize()
-//                 .map(|path| ArcPath(Arc::new(path)))?;
-//             let config = config.clone();
+        for entry in std::fs::read_dir(root_dir)? {
+            let entry = entry?;
 
-//             if file_type.is_file() {
-//                 crate::app::directives::route(format!("/{}", name))?
-//                     .send_file(path, config)
-//                     .configure(cx)?;
-//             } else if file_type.is_dir() {
-//                 let root_dir = path;
-//                 crate::app::directives::route(format!("/{}/*path", name))?
-//                     .extract(crate::extractor::param::wildcard())
-//                     .call(move |suffix: PathBuf| {
-//                         let path = root_dir.join(suffix);
-//                         if let Some(ref config) = config {
-//                             NamedFile::open_with_config(path, config.clone()).map_err(Into::into)
-//                         } else {
-//                             NamedFile::open(path).map_err(Into::into)
-//                         }
-//                     }) //
-//                     .configure(cx)?;
-//             } else {
-//                 return Err(io::Error::new(io::ErrorKind::Other, "unexpected file type").into());
-//             }
-//         }
+            let name = entry.file_name();
+            let name = name
+                .to_str() //
+                .ok_or_else(|| failure::format_err!("the filename must be UTF-8"))?;
 
-//         Ok(())
-//     }
-// }
+            let path = entry
+                .path()
+                .canonicalize()
+                .map(|path| ArcPath(Arc::new(path)))?;
+
+            let file_type = entry.file_type()?;
+            if file_type.is_file() {
+                cx.add_route(
+                    format!("/{}", name),
+                    "GET",
+                    ServeFile {
+                        path,
+                        config: config.clone(),
+                        extract_path: false,
+                    },
+                )?;
+            } else if file_type.is_dir() {
+                cx.add_route(
+                    format!("/{}/*path", name),
+                    "GET",
+                    ServeFile {
+                        path,
+                        config: config.clone(),
+                        extract_path: true,
+                    },
+                )?;
+            } else {
+                return Err(failure::format_err!("unexpected file type").into());
+            }
+        }
+
+        Ok(())
+    }
+}

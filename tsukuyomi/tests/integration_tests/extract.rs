@@ -268,7 +268,7 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::builder()
-        .modifier(InsertMyData::default())
+        .modify(InsertMyData::default())
         .with(
             route::root()
                 .extract(extractor::local::remove(&MyData::KEY))

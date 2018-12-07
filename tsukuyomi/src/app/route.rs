@@ -1,10 +1,10 @@
 use {
     super::{
-        builder::{Context, Scope},
+        builder::{Scope, ScopeContext},
         uri::{Uri, UriComponent},
     },
     crate::{
-        core::{Chain, Never, TryFrom},
+        core::{Chain, Never, TryFrom, TryInto},
         extractor::Extractor,
         fs::NamedFile,
         future::{Future, MaybeFuture},
@@ -20,7 +20,7 @@ use {
 
 /// A set of request methods that a route accepts.
 #[derive(Debug, Default)]
-pub struct Methods(IndexSet<Method>);
+pub struct Methods(pub(super) IndexSet<Method>);
 
 impl TryFrom<Self> for Methods {
     type Error = Never;
@@ -78,22 +78,20 @@ mod tags {
     pub struct Incomplete(());
 }
 
-pub fn root() -> Builder<(), (), self::tags::Incomplete> {
+pub fn root() -> Builder<(), self::tags::Incomplete> {
     Builder {
         uri: Uri::root(),
         methods: Methods::default(),
         extractor: (),
-        modifier: (),
         _marker: std::marker::PhantomData,
     }
 }
 
-pub fn asterisk() -> Builder<(), (), self::tags::Completed> {
+pub fn asterisk() -> Builder<(), self::tags::Completed> {
     Builder {
         uri: Uri::asterisk(),
-        methods: Methods::default(),
+        methods: Methods(indexset! { Method::OPTIONS }),
         extractor: (),
-        modifier: (),
         _marker: std::marker::PhantomData,
     }
 }
@@ -101,24 +99,33 @@ pub fn asterisk() -> Builder<(), (), self::tags::Completed> {
 /// A builder of `Scope` to register a route, which is matched to the requests
 /// with a certain path and method(s) and will return its response.
 #[derive(Debug)]
-pub struct Builder<E: Extractor = (), M = (), T = self::tags::Incomplete> {
+pub struct Builder<E: Extractor = (), T = self::tags::Incomplete> {
     uri: Uri,
     methods: Methods,
     extractor: E,
-    modifier: M,
     _marker: PhantomData<T>,
 }
 
-impl<E, M> Builder<E, M, self::tags::Incomplete>
+impl<E> Builder<E, self::tags::Incomplete>
 where
     E: Extractor,
 {
+    /// Sets the HTTP methods that this route accepts.
+    pub fn methods(self, methods: impl TryInto<Methods>) -> super::Result<Self> {
+        Ok(Builder {
+            methods: methods.try_into()?,
+            ..self
+        })
+    }
+
+    /// Appends a *static* segment into this route.
     pub fn segment(mut self, s: impl Into<String>) -> super::Result<Self> {
         self.uri.push(UriComponent::Static(s.into()))?;
         Ok(self)
     }
 
-    pub fn slash(self) -> Builder<E, M, self::tags::Completed> {
+    /// Appends a trailing slash to the path of this route.
+    pub fn slash(self) -> Builder<E, self::tags::Completed> {
         Builder {
             uri: {
                 let mut uri = self.uri;
@@ -127,20 +134,16 @@ where
             },
             methods: self.methods,
             extractor: self.extractor,
-            modifier: self.modifier,
             _marker: PhantomData,
         }
     }
 
+    /// Appends a parameter with the specified name to the path of this route.
     pub fn param<T>(
         self,
         name: impl Into<String>,
     ) -> super::Result<
-        Builder<
-            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>,
-            M,
-            self::tags::Incomplete,
-        >,
+        Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>, self::tags::Incomplete>,
     >
     where
         T: FromPercentEncoded + Send + 'static,
@@ -167,20 +170,16 @@ where
                     None => Err(crate::error::internal_server_error("missing Params")),
                 }),
             ),
-            modifier: self.modifier,
             _marker: PhantomData,
         })
     }
 
+    /// Appends a *catch-all* parameter with the specified name to the path of this route.
     pub fn catch_all<T>(
         self,
         name: impl Into<String>,
     ) -> super::Result<
-        Builder<
-            impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>,
-            M,
-            self::tags::Completed,
-        >,
+        Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>, self::tags::Completed>,
     >
     where
         T: FromPercentEncoded + Send + 'static,
@@ -209,29 +208,17 @@ where
                     None => Err(crate::error::internal_server_error("missing Params")),
                 }),
             ),
-            modifier: self.modifier,
             _marker: PhantomData,
         })
     }
 }
 
-impl<E, M, T> Builder<E, M, T>
+impl<E, T> Builder<E, T>
 where
     E: Extractor,
 {
-    /// Sets the HTTP methods that this route accepts.
-    pub fn methods<M2>(self, methods: M2) -> super::Result<Self>
-    where
-        Methods: TryFrom<M2>,
-    {
-        Ok(Builder {
-            methods: Methods::try_from(methods).map_err(Into::into)?,
-            ..self
-        })
-    }
-
-    /// Appends an `Extractor` to this builder.
-    pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>, M, T>
+    /// Appends a supplemental `Extractor` to this route.
+    pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>, T>
     where
         E2: Extractor,
         E::Output: Combine<E2::Output> + Send + 'static,
@@ -239,25 +226,14 @@ where
     {
         Builder {
             extractor: Chain::new(self.extractor, other),
-            modifier: self.modifier,
             uri: self.uri,
             methods: self.methods,
             _marker: PhantomData,
         }
     }
 
-    /// Appends a `ModifyHandler` to this builder.
-    pub fn modify<M2>(self, modifier: M2) -> Builder<E, Chain<M, M2>, T> {
-        Builder {
-            extractor: self.extractor,
-            modifier: Chain::new(self.modifier, modifier),
-            uri: self.uri,
-            methods: self.methods,
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn finish<F>(self, make_handler: F) -> Route<F::Handler, M>
+    /// Finalize the configuration in this route and creates the instance of `Route`.
+    pub fn finish<F>(self, make_handler: F) -> Route<F::Handler>
     where
         F: MakeHandler<E>,
     {
@@ -265,14 +241,14 @@ where
             uri: self.uri,
             methods: self.methods,
             handler: make_handler.make_handler(self.extractor),
-            modifier: self.modifier,
+            modifier: (),
         }
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The provided function always succeeds and immediately returns a value.
-    pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>, M>
+    pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>>
     where
         F: Func<E::Output> + Clone + Send + 'static,
     {
@@ -295,7 +271,7 @@ where
     /// Creates an instance of `Route` with the current configuration and the specified function.
     ///
     /// The result of provided function is returned by `Future`.
-    pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Output>, M>
+    pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Output>>
     where
         F: Func<E::Output, Out = R> + Clone + Send + 'static,
         R: Future + Send + 'static,
@@ -327,9 +303,9 @@ where
     }
 }
 
-impl<M, T> Builder<(), M, T> {
+impl<T> Builder<(), T> {
     /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(self, handler: H) -> Route<H, M>
+    pub fn raw<H>(self, handler: H) -> Route<H>
     where
         H: Handler,
     {
@@ -337,12 +313,12 @@ impl<M, T> Builder<(), M, T> {
     }
 }
 
-impl<E, M, T> Builder<E, M, T>
+impl<E, T> Builder<E, T>
 where
     E: Extractor<Output = ()>,
 {
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>, M>
+    pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>>
     where
         R: Clone + Send + 'static,
     {
@@ -354,7 +330,7 @@ where
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
-    ) -> Route<impl Handler<Output = NamedFile>, M> {
+    ) -> Route<impl Handler<Output = NamedFile>> {
         let path = crate::fs::ArcPath::from(path.as_ref().to_path_buf());
 
         self.call(move || {
@@ -367,11 +343,30 @@ where
 }
 
 #[derive(Debug)]
-pub struct Route<H, M> {
+pub struct Route<H, M = ()> {
     methods: Methods,
     uri: Uri,
     handler: H,
     modifier: M,
+}
+
+impl<H, M> Route<H, M>
+where
+    H: Handler,
+    M: ModifyHandler<H>,
+{
+    /// Appends a `ModifyHandler` to this route.
+    pub fn modify<M2>(self, modifier: M2) -> Route<H, Chain<M, M2>>
+    where
+        Chain<M, M2>: ModifyHandler<H>,
+    {
+        Route {
+            methods: self.methods,
+            uri: self.uri,
+            handler: self.handler,
+            modifier: Chain::new(self.modifier, modifier),
+        }
+    }
 }
 
 impl<H, M1, M2> Scope<M1> for Route<H, M2>
@@ -384,12 +379,8 @@ where
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Context<'_, M1>) -> Result<(), Self::Error> {
-        cx.add_endpoint(
-            &self.uri,
-            self.methods.0,
-            self.modifier.modify(self.handler),
-        )
+    fn configure(self, cx: &mut ScopeContext<'_, M1>) -> Result<(), Self::Error> {
+        cx.add_route(self.uri, self.methods, self.modifier.modify(self.handler))
     }
 }
 

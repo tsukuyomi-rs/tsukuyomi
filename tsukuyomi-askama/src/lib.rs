@@ -96,7 +96,7 @@ pub struct Renderer(());
 impl<H> ModifyHandler<H> for Renderer
 where
     H: Handler,
-    H::Output: Template,
+    H::Output: Template + 'static,
 {
     type Output = Rendered<H::Output>;
     type Handler = RenderedHandler<H>;
@@ -115,7 +115,7 @@ pub struct RenderedHandler<H> {
 impl<H> Handler for RenderedHandler<H>
 where
     H: Handler,
-    H::Output: Template,
+    H::Output: Template + 'static,
 {
     type Output = Rendered<H::Output>;
     type Future = tsukuyomi::future::MapOk<H::Future, fn(H::Output) -> Rendered<H::Output>>;

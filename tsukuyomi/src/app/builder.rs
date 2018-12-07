@@ -2,65 +2,38 @@ use {
     super::{
         fallback::Fallback,
         recognizer::Recognizer,
+        route::Methods,
         tree::{Arena, NodeId},
         App, AppInner, Endpoint, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
-        core::{Chain, Never},
+        core::{Chain, Never, TryInto},
         handler::{Handler, ModifyHandler},
         output::Responder,
     },
     http::{header::HeaderValue, Method},
-    indexmap::{IndexMap, IndexSet},
+    indexmap::IndexMap,
     std::{fmt, sync::Arc},
 };
 
 /// A builder object for constructing an instance of `App`.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Builder<S = (), M = ()> {
-    scope: S,
-    modifier: M,
-    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
-    prefix: Uri,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl<S, M> fmt::Debug for Builder<S, M>
-where
-    S: fmt::Debug,
-    M: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Builder")
-            .field("scope", &self.scope)
-            .field("modifier", &self.modifier)
-            .field("prefix", &self.prefix)
-            .finish()
-    }
+    global_scope: Mount<S, M>,
 }
 
 impl<S, M> Builder<S, M> {
-    /// Merges the specified `Scope` into the global scope, *without* creating a new subscope.
-    pub fn with<S2>(self, next_scope: S2) -> Builder<Chain<S, S2>, M> {
+    /// Merges the specified `Scope` into the global scope.
+    pub fn with<S2>(self, scope: S2) -> Builder<Chain<S, S2>, M> {
         Builder {
-            prefix: self.prefix,
-            scope: Chain::new(self.scope, next_scope),
-            modifier: self.modifier,
-            fallback: self.fallback,
+            global_scope: self.global_scope.with(scope),
         }
     }
 
-    /// Sets the prefix URI of the global scope.
-    pub fn prefix(self, prefix: Uri) -> Self {
-        Self { prefix, ..self }
-    }
-
-    pub fn modifier<M2>(self, modifier: M2) -> Builder<S, Chain<M, M2>> {
+    /// Applies the specified `modifier` to the global scope.
+    pub fn modify<M2>(self, modifier: M2) -> Builder<S, Chain<M, M2>> {
         Builder {
-            prefix: self.prefix,
-            scope: self.scope,
-            modifier: Chain::new(self.modifier, modifier),
-            fallback: self.fallback,
+            global_scope: self.global_scope.modify(modifier),
         }
     }
 
@@ -69,10 +42,16 @@ impl<S, M> Builder<S, M> {
     where
         F: Fallback + Send + Sync + 'static,
     {
-        Builder {
-            fallback: Some(Box::new(fallback)),
-            ..self
+        Self {
+            global_scope: self.global_scope.fallback(fallback),
         }
+    }
+
+    /// Sets the prefix URI of the global scope.
+    pub fn prefix(self, prefix: impl AsRef<str>) -> super::Result<Self> {
+        Ok(Self {
+            global_scope: self.global_scope.prefix(prefix)?,
+        })
     }
 
     /// Creates an `App` using the current configuration.
@@ -80,25 +59,25 @@ impl<S, M> Builder<S, M> {
     where
         S: Scope<M>,
     {
-        let mut cx = ContextInner {
+        let mut inner = ScopeContextInner {
             resources: IndexMap::new(),
             scopes: Arena::new(ScopeData {
-                prefix: self.prefix,
-                fallback: self.fallback.map(Arc::new),
+                prefix: self.global_scope.prefix,
+                fallback: self.global_scope.fallback.map(Arc::from),
             }),
         };
-
-        self.scope
-            .configure(&mut Context {
-                app: &mut cx,
-                scope: NodeId::root(),
-                modifier: self.modifier,
+        self.global_scope
+            .scope
+            .configure(&mut ScopeContext {
+                inner: &mut inner,
+                scope_id: NodeId::root(),
+                modifier: self.global_scope.modifier,
             })
             .map_err(Into::into)?;
 
         // create a route recognizer.
         let mut recognizer = Recognizer::default();
-        for (uri, mut resource) in cx.resources {
+        for (uri, mut resource) in inner.resources {
             resource.update();
             recognizer.insert(uri.as_str(), resource)?;
         }
@@ -106,7 +85,7 @@ impl<S, M> Builder<S, M> {
         Ok(App {
             inner: Arc::new(AppInner {
                 recognizer,
-                scopes: cx.scopes,
+                scopes: inner.scopes,
             }),
         })
     }
@@ -120,14 +99,99 @@ impl<S, M> Builder<S, M> {
     }
 }
 
-/// A trait representing a set of configurations within the scope.
+/// A function that creates a `Mount` with the empty scope items.
+pub fn mount(prefix: impl AsRef<str>) -> super::Result<Mount<(), ()>> {
+    Ok(Mount {
+        scope: (),
+        modifier: (),
+        fallback: None,
+        prefix: prefix.as_ref().parse()?,
+    })
+}
+
+/// An instance of `Scope` that represents a sub-scope with a specific prefix.
+#[derive(Default)]
+pub struct Mount<S = (), M = ()> {
+    scope: S,
+    modifier: M,
+    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
+    prefix: Uri,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl<S, M> fmt::Debug for Mount<S, M>
+where
+    S: fmt::Debug,
+    M: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Mount")
+            .field("scope", &self.scope)
+            .field("modifier", &self.modifier)
+            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
+            .field("prefix", &self.prefix)
+            .finish()
+    }
+}
+
+impl<S, M> Mount<S, M> {
+    /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
+    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M> {
+        Mount {
+            scope: Chain::new(self.scope, next_scope),
+            modifier: self.modifier,
+            fallback: self.fallback,
+            prefix: self.prefix,
+        }
+    }
+
+    pub fn modify<M2>(self, modifier: M2) -> Mount<S, Chain<M, M2>> {
+        Mount {
+            scope: self.scope,
+            modifier: Chain::new(self.modifier, modifier),
+            fallback: self.fallback,
+            prefix: self.prefix,
+        }
+    }
+
+    pub fn fallback<F>(self, fallback: F) -> Self
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        Self {
+            fallback: Some(Box::new(fallback)),
+            ..self
+        }
+    }
+
+    pub fn prefix(self, prefix: impl AsRef<str>) -> super::Result<Self> {
+        Ok(Self {
+            prefix: prefix.as_ref().parse()?,
+            ..self
+        })
+    }
+}
+
+impl<S, M1, M2> Scope<M1> for Mount<S, M2>
+where
+    M1: Clone,
+    S: Scope<Chain<M1, M2>>,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut ScopeContext<'_, M1>) -> std::result::Result<(), Self::Error> {
+        cx.add_scope(self)
+    }
+}
+
+/// A trait representing a set of elements that will be registered into a certain scope.
 pub trait Scope<M> {
     type Error: Into<super::Error>;
 
     /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error>;
+    fn configure(self, cx: &mut ScopeContext<'_, M>) -> Result<(), Self::Error>;
 
-    /// Consumes itself and returns a new `Scope` combined with the specified configuration.
+    /// Creates a new `Scope` combined with itself and the specified instance of `Scope`.
     fn chain<S>(self, next: S) -> Chain<Self, S>
     where
         Self: Sized,
@@ -136,25 +200,48 @@ pub trait Scope<M> {
     }
 }
 
+impl<M> Scope<M> for () {
+    type Error = Never;
+
+    fn configure(self, _: &mut ScopeContext<'_, M>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl<S1, S2, M> Scope<M> for Chain<S1, S2>
+where
+    S1: Scope<M>,
+    S2: Scope<M>,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut ScopeContext<'_, M>) -> Result<(), Self::Error> {
+        self.left.configure(cx).map_err(Into::into)?;
+        self.right.configure(cx).map_err(Into::into)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
-struct ContextInner {
+struct ScopeContextInner {
     resources: IndexMap<Uri, Resource>,
     scopes: Arena<ScopeData>,
 }
 
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
-pub struct Context<'a, M> {
-    app: &'a mut ContextInner,
-    scope: NodeId,
+pub struct ScopeContext<'a, M> {
+    inner: &'a mut ScopeContextInner,
+    scope_id: NodeId,
     modifier: M,
 }
 
-impl<'a, M> Context<'a, M> {
-    pub(super) fn add_endpoint<H>(
+impl<'a, M> ScopeContext<'a, M> {
+    #[doc(hidden)]
+    pub fn add_route<H>(
         &mut self,
-        uri: &Uri,
-        mut methods: IndexSet<Method>,
+        uri: impl TryInto<Uri>,
+        methods: impl TryInto<Methods>,
         handler: H,
     ) -> super::Result<()>
     where
@@ -163,13 +250,15 @@ impl<'a, M> Context<'a, M> {
         M::Handler: Send + Sync + 'static,
         M::Output: Responder,
     {
-        // build absolute URI.
-        let uri = self.app.scopes[self.scope].data().prefix.join(&uri)?;
+        let uri = uri.try_into()?;
+        let mut methods = methods.try_into()?.0;
+
+        let uri = self.inner.scopes[self.scope_id].data().prefix.join(&uri)?;
 
         let resource = {
-            let id = ResourceId(self.app.resources.len());
-            let scope = &self.app.scopes[self.scope];
-            self.app
+            let id = ResourceId(self.inner.resources.len());
+            let scope = &self.inner.scopes[self.scope_id];
+            self.inner
                 .resources
                 .entry(uri.clone())
                 .or_insert_with(|| Resource {
@@ -182,7 +271,8 @@ impl<'a, M> Context<'a, M> {
                     allowed_methods_value: HeaderValue::from_static(""),
                 })
         };
-        if self.scope != resource.scope {
+
+        if self.scope_id != resource.scope {
             return Err(failure::format_err!("different scope id").into());
         }
 
@@ -225,55 +315,31 @@ impl<'a, M> Context<'a, M> {
         Ok(())
     }
 
-    pub(super) fn add_scope<S, M2>(
-        &mut self,
-        prefix: &Uri,
-        modifier: M2,
-        fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
-        new_scope: S,
-    ) -> super::Result<()>
+    pub(super) fn add_scope<S, M2>(&mut self, mount: Mount<S, M2>) -> super::Result<()>
     where
         M: Clone,
         S: Scope<Chain<M, M2>>,
     {
-        let scope = self.app.scopes.add_node(self.scope, {
-            let parent = self.app.scopes[self.scope].data();
+        let scope_id = self.inner.scopes.add_node(self.scope_id, {
+            let parent = self.inner.scopes[self.scope_id].data();
             ScopeData {
-                prefix: parent.prefix.join(prefix)?,
-                fallback: fallback.map(Arc::new).or_else(|| parent.fallback.clone()),
+                prefix: parent.prefix.join(mount.prefix)?,
+                fallback: mount
+                    .fallback
+                    .map(Arc::from)
+                    .or_else(|| parent.fallback.clone()),
             }
         })?;
 
-        new_scope
-            .configure(&mut Context {
-                app: &mut *self.app,
-                scope,
-                modifier: Chain::new(self.modifier.clone(), modifier),
+        mount
+            .scope
+            .configure(&mut ScopeContext {
+                inner: &mut *self.inner,
+                scope_id,
+                modifier: Chain::new(self.modifier.clone(), mount.modifier),
             })
             .map_err(Into::into)?;
 
-        Ok(())
-    }
-}
-
-impl<M> Scope<M> for () {
-    type Error = Never;
-
-    fn configure(self, _: &mut Context<'_, M>) -> Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-impl<S1, S2, M> Scope<M> for Chain<S1, S2>
-where
-    S1: Scope<M>,
-    S2: Scope<M>,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
-        self.left.configure(cx).map_err(Into::into)?;
-        self.right.configure(cx).map_err(Into::into)?;
         Ok(())
     }
 }
