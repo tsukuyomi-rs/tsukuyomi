@@ -1,10 +1,9 @@
-extern crate askama;
-extern crate tsukuyomi;
-extern crate tsukuyomi_askama;
-
 use {
     askama::Template,
-    tsukuyomi::{app::directives::*, output::Responder},
+    tsukuyomi::{
+        app::{route, App},
+        output::Responder,
+    },
 };
 
 #[derive(Template, Responder)]
@@ -16,10 +15,7 @@ struct Index {
 
 fn main() -> tsukuyomi::server::Result<()> {
     App::builder()
-        .with(
-            route!("/:name") //
-                .reply(|name| Index { name }),
-        ) //
+        .with(route::root().param("name")?.reply(|name| Index { name })) //
         .build_server()?
         .run()
 }

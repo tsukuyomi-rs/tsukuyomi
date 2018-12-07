@@ -24,7 +24,7 @@ members = [
   "tsukuyomi",
   "tsukuyomi/macros",
 
-  # "tsukuyomi-askama",
+  "tsukuyomi-askama",
   # "tsukuyomi-cors",
   # "tsukuyomi-juniper",
   # "tsukuyomi-session",
@@ -44,7 +44,7 @@ members = [
   # "examples/rustls",
   # "examples/session",
   # "examples/staticfile",
-  # "examples/template-askama",
+  "examples/template-askama",
   # "examples/template-tera",
   # "examples/tower-middleware",
   # "examples/unix-socket",
@@ -53,7 +53,7 @@ members = [
 
 [patch.crates-io]
 tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
-# tsukuyomi-askama = { version = "0.1.0", path = "tsukuyomi-askama" }
+tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }
 # tsukuyomi-cors = { version = "0.1.0", path = "tsukuyomi-cors" }
 # tsukuyomi-juniper = { version = "0.2.0", path = "tsukuyomi-juniper" }
 # tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
