@@ -160,6 +160,7 @@ impl<'a, M> Context<'a, M> {
     where
         H: Handler,
         M: ModifyHandler<H>,
+        M::Handler: Send + Sync + 'static,
         M::Output: Responder,
     {
         // build absolute URI.

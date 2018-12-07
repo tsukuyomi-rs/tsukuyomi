@@ -12,7 +12,7 @@ use {
 };
 
 /// A trait representing the handler associated with the specified endpoint.
-pub trait Handler: Send + Sync + 'static {
+pub trait Handler {
     type Output;
     type Future: Future<Output = Self::Output> + Send + 'static;
 
@@ -53,9 +53,7 @@ mod either {
     // }
 }
 
-pub fn raw<R>(
-    f: impl Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
-) -> impl Handler<Output = R::Output>
+pub fn raw<R>(f: impl Fn(&mut Input<'_>) -> MaybeFuture<R>) -> impl Handler<Output = R::Output>
 where
     R: Future + Send + 'static,
 {
@@ -64,7 +62,7 @@ where
 
     impl<F, R> Handler for Raw<F>
     where
-        F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
+        F: Fn(&mut Input<'_>) -> MaybeFuture<R>,
         R: Future + Send + 'static,
     {
         type Output = R::Output;
@@ -79,9 +77,7 @@ where
     Raw(f)
 }
 
-pub fn ready<T: 'static>(
-    f: impl Fn(&mut Input<'_>) -> T + Send + Sync + 'static,
-) -> impl Handler<Output = T> {
+pub fn ready<T: 'static>(f: impl Fn(&mut Input<'_>) -> T) -> impl Handler<Output = T> {
     self::raw(move |input| MaybeFuture::<NeverFuture<_, Never>>::ok(f(input)))
 }
 
@@ -149,7 +145,7 @@ impl fmt::Debug for BoxedHandler {
 
 impl<H> From<H> for BoxedHandler
 where
-    H: Handler,
+    H: Handler + Send + Sync + 'static,
     H::Output: Responder,
 {
     fn from(handler: H) -> Self {

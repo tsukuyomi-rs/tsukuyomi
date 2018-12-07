@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// A trait abstracting the extraction of values from `Input`.
-pub trait Extractor: Send + Sync + 'static {
+pub trait Extractor {
     /// The type of output value from this extractor.
     type Output: Tuple;
 
@@ -35,6 +35,19 @@ pub trait Extractor: Send + Sync + 'static {
 }
 
 impl<E> Extractor for Box<E>
+where
+    E: Extractor,
+{
+    type Output = E::Output;
+    type Future = E::Future;
+
+    #[inline]
+    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+        (**self).extract(input)
+    }
+}
+
+impl<E> Extractor for std::rc::Rc<E>
 where
     E: Extractor,
 {
@@ -74,7 +87,7 @@ impl Extractor for () {
 
 pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Output>
 where
-    F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> MaybeFuture<R>,
     R: Future + Send + 'static,
     R::Output: Tuple,
 {
@@ -84,7 +97,7 @@ where
     #[allow(clippy::type_complexity)]
     impl<F, R> Extractor for Raw<F>
     where
-        F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
+        F: Fn(&mut Input<'_>) -> MaybeFuture<R>,
         R: Future + Send + 'static,
         R::Output: Tuple,
     {
@@ -102,7 +115,7 @@ where
 
 pub fn guard<F, E>(f: F) -> impl Extractor<Output = ()>
 where
-    F: Fn(&mut Input<'_>) -> Result<(), E> + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> Result<(), E>,
     E: Into<Error> + 'static,
 {
     self::raw(move |input| MaybeFuture::Ready::<NeverFuture<_, _>>(f(input)))
@@ -110,7 +123,7 @@ where
 
 pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,)>
 where
-    F: Fn(&mut Input<'_>) -> Result<T, E> + Send + Sync + 'static,
+    F: Fn(&mut Input<'_>) -> Result<T, E>,
     T: 'static,
     E: Into<Error> + 'static,
 {
@@ -119,7 +132,7 @@ where
 
 pub fn lazy<Op, R>(op: Op) -> impl Extractor<Output = (R::Output,)>
 where
-    Op: Fn(&mut Input<'_>) -> R + Send + Sync + 'static,
+    Op: Fn(&mut Input<'_>) -> R,
     R: Future + Send + 'static,
 {
     self::raw(move |input| MaybeFuture::Future(op(input)).map_ok(|x| (x,)))
@@ -127,7 +140,7 @@ where
 
 pub fn value<T>(value: T) -> impl Extractor<Output = (T,)>
 where
-    T: Clone + Send + Sync + 'static,
+    T: Clone + 'static,
 {
     self::raw(move |_| MaybeFuture::<NeverFuture<_, Never>>::ok((value.clone(),)))
 }

@@ -14,7 +14,7 @@ pub enum ExtractQueryError {
 
 pub fn query<T>() -> impl Extractor<Output = (T,)>
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned + 'static,
 {
     super::ready(|input| {
         if let Some(query_str) = input.request.uri().query() {
@@ -31,7 +31,7 @@ where
 
 pub fn optional<T>() -> impl Extractor<Output = (Option<T>,)>
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned + 'static,
 {
     super::ready(|input| {
         if let Some(query_str) = input.request.uri().query() {

@@ -132,7 +132,7 @@ mod decode {
 fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,)>
 where
     T: 'static,
-    D: self::decode::Decoder<T> + Send + Sync + 'static,
+    D: self::decode::Decoder<T>,
 {
     super::raw(move |input| {
         if let Err(err) = {

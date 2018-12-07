@@ -122,7 +122,7 @@ where
 
     pub fn map<F>(self, f: F) -> ExtractorExt<impl Extractor<Output = (F::Out,)>>
     where
-        F: Func<E::Output> + Clone + Send + Sync + 'static,
+        F: Func<E::Output> + Clone + Send + 'static,
     {
         ExtractorExt {
             0: super::raw(move |input| {

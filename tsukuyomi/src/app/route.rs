@@ -274,7 +274,7 @@ where
     /// The provided function always succeeds and immediately returns a value.
     pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>, M>
     where
-        F: Func<E::Output> + Clone + Send + Sync + 'static,
+        F: Func<E::Output> + Clone + Send + 'static,
     {
         self.finish(|extractor: E| {
             crate::handler::raw(move |input| match extractor.extract(input) {
@@ -297,7 +297,7 @@ where
     /// The result of provided function is returned by `Future`.
     pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Output>, M>
     where
-        F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
+        F: Func<E::Output, Out = R> + Clone + Send + 'static,
         R: Future + Send + 'static,
     {
         #[allow(missing_debug_implementations)]
@@ -344,7 +344,7 @@ where
     /// Creates a `Route` that just replies with the specified `Responder`.
     pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>, M>
     where
-        R: Clone + Send + Sync + 'static,
+        R: Clone + Send + 'static,
     {
         self.reply(move || output.clone())
     }
@@ -380,6 +380,7 @@ where
     M2: ModifyHandler<H>,
     M1: ModifyHandler<M2::Handler>,
     M1::Output: Responder,
+    M1::Handler: Send + Sync + 'static,
 {
     type Error = super::Error;
 

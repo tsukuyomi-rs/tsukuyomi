@@ -20,7 +20,7 @@ where
 
 pub fn exact<T>(name: HeaderName, value: T) -> impl Extractor<Output = ()>
 where
-    T: PartialEq<HeaderValue> + Send + Sync + 'static,
+    T: PartialEq<HeaderValue>,
 {
     super::guard(move |input| match input.request.headers().get(&name) {
         Some(h) if value.eq(h) => Ok(()),
