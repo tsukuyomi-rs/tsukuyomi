@@ -1,7 +1,9 @@
 use {
     super::{
-        fallback::Fallback, recognizer::Recognizer, App, AppInner, Endpoint, Resource, ResourceId,
-        Uri,
+        fallback::Fallback,
+        recognizer::Recognizer,
+        tree::{Arena, NodeId},
+        App, AppInner, Endpoint, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never},
@@ -78,28 +80,25 @@ impl<S, M> Builder<S, M> {
     where
         S: Scope<M>,
     {
-        let global_fallback = self.fallback.map(Arc::new);
-
         let mut cx = ContextInner {
             resources: IndexMap::new(),
-            num_scopes: 1,
+            scopes: Arena::new(ScopeData {
+                prefix: self.prefix,
+                fallback: self.fallback.map(Arc::new),
+            }),
         };
-        let global_scope = ScopeData {
-            id: 0,
-            prefix: self.prefix,
-            fallback: global_fallback.clone(),
-        };
+
         self.scope
             .configure(&mut Context {
                 app: &mut cx,
-                scope: &global_scope,
+                scope: NodeId::root(),
                 modifier: self.modifier,
             })
             .map_err(Into::into)?;
 
         // create a route recognizer.
         let mut recognizer = Recognizer::default();
-        for (uri, (_, mut resource)) in cx.resources {
+        for (uri, mut resource) in cx.resources {
             resource.update();
             recognizer.insert(uri.as_str(), resource)?;
         }
@@ -107,7 +106,7 @@ impl<S, M> Builder<S, M> {
         Ok(App {
             inner: Arc::new(AppInner {
                 recognizer,
-                global_fallback,
+                scopes: cx.scopes,
             }),
         })
     }
@@ -139,30 +138,15 @@ pub trait Scope<M> {
 
 #[derive(Debug)]
 struct ContextInner {
-    resources: IndexMap<Uri, (usize, Resource)>,
-    num_scopes: usize,
-}
-
-struct ScopeData {
-    id: usize,
-    prefix: Uri,
-    fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
-}
-
-impl fmt::Debug for ScopeData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ScopeData")
-            .field("id", &self.id)
-            .field("prefix", &self.prefix)
-            .finish()
-    }
+    resources: IndexMap<Uri, Resource>,
+    scopes: Arena<ScopeData>,
 }
 
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
 pub struct Context<'a, M> {
     app: &'a mut ContextInner,
-    scope: &'a ScopeData,
+    scope: NodeId,
     modifier: M,
 }
 
@@ -179,26 +163,24 @@ impl<'a, M> Context<'a, M> {
         M::Output: Responder,
     {
         // build absolute URI.
-        let uri = { self.scope.prefix.join(&uri)? };
+        let uri = self.app.scopes[self.scope].data().prefix.join(&uri)?;
 
-        let &mut (scope_id, ref mut resource) = {
+        let resource = {
             let id = ResourceId(self.app.resources.len());
-            let scope = &self.scope;
-            self.app.resources.entry(uri.clone()).or_insert_with(|| {
-                (
-                    scope.id,
-                    Resource {
-                        id,
-                        uri: uri.clone(),
-                        endpoints: vec![],
-                        fallback: scope.fallback.clone(),
-                        allowed_methods: IndexMap::new(),
-                        allowed_methods_value: HeaderValue::from_static(""),
-                    },
-                )
-            })
+            let scope = &self.app.scopes[self.scope];
+            self.app
+                .resources
+                .entry(uri.clone())
+                .or_insert_with(|| Resource {
+                    id,
+                    scope: scope.id(),
+                    uri: uri.clone(),
+                    endpoints: vec![],
+                    allowed_methods: IndexMap::new(),
+                    allowed_methods_value: HeaderValue::from_static(""),
+                })
         };
-        if self.scope.id != scope_id {
+        if self.scope != resource.scope {
             return Err(failure::format_err!("different scope id").into());
         }
 
@@ -252,22 +234,19 @@ impl<'a, M> Context<'a, M> {
         M: Clone,
         S: Scope<Chain<M, M2>>,
     {
-        let modifier = Chain::new(self.modifier.clone(), modifier);
-
-        let data = ScopeData {
-            id: self.app.num_scopes,
-            prefix: self.scope.prefix.join(&prefix)?,
-            fallback: fallback
-                .map(Arc::new)
-                .or_else(|| self.scope.fallback.clone()),
-        };
-        self.app.num_scopes += 1;
+        let scope = self.app.scopes.add_node(self.scope, {
+            let parent = self.app.scopes[self.scope].data();
+            ScopeData {
+                prefix: parent.prefix.join(prefix)?,
+                fallback: fallback.map(Arc::new).or_else(|| parent.fallback.clone()),
+            }
+        })?;
 
         new_scope
             .configure(&mut Context {
                 app: &mut *self.app,
-                scope: &data,
-                modifier,
+                scope,
+                modifier: Chain::new(self.modifier.clone(), modifier),
             })
             .map_err(Into::into)?;
 

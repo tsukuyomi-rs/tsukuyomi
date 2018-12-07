@@ -8,6 +8,7 @@ mod error;
 mod mount;
 mod recognizer;
 mod service;
+mod tree;
 mod uri;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ use {
     self::{
         fallback::Fallback,
         recognizer::{RecognizeError, Recognizer},
+        tree::{Arena, NodeId},
         uri::Uri,
     },
     crate::handler::BoxedHandler,
@@ -46,20 +48,17 @@ pub struct App {
     inner: Arc<AppInner>,
 }
 
+#[derive(Debug)]
 struct AppInner {
     recognizer: Recognizer<Resource>,
-    global_fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
-}
-
-impl fmt::Debug for AppInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AppInner")
-            .field("recognizer", &self.recognizer)
-            .finish()
-    }
+    scopes: Arena<ScopeData>,
 }
 
 impl AppInner {
+    fn scope(&self, id: NodeId) -> &ScopeData {
+        self.scopes[id].data()
+    }
+
     fn resource(&self, id: ResourceId) -> &Resource {
         self.recognizer.get(id.0).expect("the wrong resource ID")
     }
@@ -127,15 +126,28 @@ impl NewService for App {
     }
 }
 
+struct ScopeData {
+    prefix: Uri,
+    fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
+}
+
+impl fmt::Debug for ScopeData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScopeData")
+            .field("prefix", &self.prefix)
+            .finish()
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct ResourceId(usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
 pub struct Resource {
     id: ResourceId,
+    scope: NodeId,
     uri: Uri,
     endpoints: Vec<Endpoint>,
-    fallback: Option<Arc<Box<dyn Fallback + Send + Sync + 'static>>>,
     allowed_methods: IndexMap<Method, usize>,
     allowed_methods_value: HeaderValue,
 }
@@ -146,7 +158,6 @@ impl fmt::Debug for Resource {
             .field("id", &self.id)
             .field("uri", &self.uri)
             .field("endpoints", &self.endpoints)
-            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
             .field("allowed_methods", &self.allowed_methods)
             .field("allowed_methods_value", &self.allowed_methods_value)
             .finish()

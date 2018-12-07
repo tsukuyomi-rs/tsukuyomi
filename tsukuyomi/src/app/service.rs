@@ -2,6 +2,7 @@ use {
     super::{
         fallback::{Context as FallbackContext, FallbackKind},
         recognizer::Captures,
+        tree::NodeId,
         AppInner, ResourceId, Route,
     },
     crate::{
@@ -143,7 +144,7 @@ impl AppFuture {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
                 let kind = FallbackKind::FoundResource(resource);
-                match resource.fallback {
+                match self.inner.scope(resource.scope).fallback {
                     Some(ref fallback) => fallback.call(&mut FallbackContext {
                         input: input!(self),
                         kind: &kind,
@@ -163,7 +164,7 @@ impl AppFuture {
                 self.resource_id = None;
                 self.captures = captures;
                 let kind = FallbackKind::NotFound(resources);
-                match self.inner.global_fallback {
+                match self.inner.scope(NodeId::root()).fallback {
                     Some(ref fallback) => fallback.call(&mut FallbackContext {
                         input: input!(self),
                         kind: &kind,
