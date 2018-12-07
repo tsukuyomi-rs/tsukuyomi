@@ -13,7 +13,7 @@ use {
 
 /// A trait representing the handler associated with the specified endpoint.
 pub trait Handler: Send + Sync + 'static {
-    type Output: Responder;
+    type Output;
     type Future: Future<Output = Self::Output> + Send + 'static;
 
     /// Creates an `AsyncResult` which handles the incoming request.
@@ -58,7 +58,6 @@ pub fn raw<R>(
 ) -> impl Handler<Output = R::Output>
 where
     R: Future + Send + 'static,
-    R::Output: Responder,
 {
     #[allow(missing_debug_implementations)]
     struct Raw<F>(F);
@@ -67,7 +66,6 @@ where
     where
         F: Fn(&mut Input<'_>) -> MaybeFuture<R> + Send + Sync + 'static,
         R: Future + Send + 'static,
-        R::Output: Responder,
     {
         type Output = R::Output;
         type Future = R;
@@ -81,10 +79,9 @@ where
     Raw(f)
 }
 
-pub fn ready<T>(f: impl Fn(&mut Input<'_>) -> T + Send + Sync + 'static) -> impl Handler<Output = T>
-where
-    T: Responder + 'static,
-{
+pub fn ready<T: 'static>(
+    f: impl Fn(&mut Input<'_>) -> T + Send + Sync + 'static,
+) -> impl Handler<Output = T> {
     self::raw(move |input| MaybeFuture::<NeverFuture<_, Never>>::ok(f(input)))
 }
 
@@ -153,6 +150,7 @@ impl fmt::Debug for BoxedHandler {
 impl<H> From<H> for BoxedHandler
 where
     H: Handler,
+    H::Output: Responder,
 {
     fn from(handler: H) -> Self {
         Self {
@@ -178,7 +176,7 @@ impl BoxedHandler {
 
 /// A trait representing a creator of `Handler`.
 pub trait MakeHandler<T> {
-    type Output: Responder;
+    type Output;
     type Handler: Handler<Output = Self::Output>;
 
     fn make_handler(self, input: T) -> Self::Handler;
@@ -200,7 +198,7 @@ where
 
 /// A trait representing a type for modifying the instance of `Handler`.
 pub trait ModifyHandler<H: Handler> {
-    type Output: Responder;
+    type Output;
     type Handler: Handler<Output = Self::Output>;
 
     fn modify(&self, input: H) -> Self::Handler;

@@ -7,13 +7,10 @@ use {
         core::{Chain, Never, TryFrom},
         extractor::Extractor,
         fs::NamedFile,
-        future::{Future, MaybeFuture, Poll},
-        generic::{Combine, Func, Tuple},
+        future::{Future, MaybeFuture},
+        generic::{Combine, Func},
         handler::{Handler, MakeHandler, ModifyHandler},
-        input::{
-            param::{FromPercentEncoded, PercentEncoded},
-            Input,
-        },
+        input::param::{FromPercentEncoded, PercentEncoded},
         output::{redirect::Redirect, Responder},
     },
     http::{HttpTryFrom, Method, StatusCode},
@@ -283,83 +280,21 @@ where
     pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>, M>
     where
         F: Func<E::Output> + Clone + Send + Sync + 'static,
-        F::Out: Responder,
     {
-        #[allow(missing_debug_implementations)]
-        struct ReplyHandlerFuture<Fut, F> {
-            future: Fut,
-            f: F,
-        }
-
-        impl<Fut, F> Future for ReplyHandlerFuture<Fut, F>
-        where
-            Fut: Future,
-            Fut::Output: Tuple,
-            F: Func<Fut::Output>,
-            F::Out: Responder,
-        {
-            type Output = F::Out;
-            type Error = crate::Error;
-
-            #[inline]
-            fn poll_ready(
-                &mut self,
-                cx: &mut crate::future::Context<'_>,
-            ) -> Poll<Self::Output, Self::Error> {
-                let args = futures01::try_ready!(self.future.poll_ready(cx).map_err(Into::into));
-                Ok(self.f.call(args).into())
-            }
-        }
-
-        #[allow(missing_debug_implementations)]
-        struct ReplyHandler<E, F> {
-            extractor: E,
-            f: F,
-        }
-
-        impl<E, F> Handler for ReplyHandler<E, F>
-        where
-            E: Extractor,
-            F: Func<E::Output> + Clone + Send + Sync + 'static,
-            F::Out: Responder,
-        {
-            type Output = F::Out;
-            type Future = ReplyHandlerFuture<E::Future, F>;
-
-            fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-                match self.extractor.extract(input) {
-                    MaybeFuture::Ready(result) => {
-                        MaybeFuture::Ready(result.map(|args| self.f.call(args)).map_err(Into::into))
-                    }
-                    MaybeFuture::Future(future) => MaybeFuture::Future(ReplyHandlerFuture {
-                        future,
-                        f: self.f.clone(),
-                    }),
+        self.finish(|extractor: E| {
+            crate::handler::raw(move |input| match extractor.extract(input) {
+                MaybeFuture::Ready(result) => {
+                    MaybeFuture::Ready(result.map(|args| f.call(args)).map_err(Into::into))
                 }
-            }
-        }
-
-        #[allow(missing_debug_implementations)]
-        struct Reply<F>(F);
-
-        impl<F, E> MakeHandler<E> for Reply<F>
-        where
-            E: Extractor,
-            F: Func<E::Output> + Clone + Send + Sync + 'static,
-            F::Out: Responder,
-        {
-            type Output = F::Out;
-            type Handler = ReplyHandler<E, F>;
-
-            fn make_handler(self, extractor: E) -> Self::Handler {
-                ReplyHandler {
-                    extractor,
-                    f: self.0,
-                }
-            }
-        }
-
-        self.finish(Reply(f))
+                MaybeFuture::Future(mut future) => MaybeFuture::Future({
+                    let f = f.clone();
+                    crate::future::poll_fn(move |cx| {
+                        let args = futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
+                        Ok(f.call(args).into())
+                    })
+                }),
+            })
+        })
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
@@ -369,104 +304,31 @@ where
     where
         F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
         R: Future + Send + 'static,
-        R::Output: Responder,
     {
         #[allow(missing_debug_implementations)]
-        struct CallHandlerFuture<Fut, F>
-        where
-            Fut: Future,
-            Fut::Output: Tuple,
-            F: Func<Fut::Output>,
-            F::Out: Future,
-            <F::Out as Future>::Output: Responder,
-        {
-            state: State<Fut, F::Out, F>,
-        }
-
         enum State<F1, F2, F> {
             First(F1, F),
             Second(F2),
         }
 
-        impl<Fut, F> Future for CallHandlerFuture<Fut, F>
-        where
-            Fut: Future,
-            Fut::Output: Tuple,
-            F: Func<Fut::Output>,
-            F::Out: Future,
-            <F::Out as Future>::Output: Responder,
-        {
-            type Output = <F::Out as Future>::Output;
-            type Error = crate::Error;
-
-            #[inline]
-            fn poll_ready(
-                &mut self,
-                cx: &mut crate::future::Context<'_>,
-            ) -> Poll<Self::Output, Self::Error> {
-                loop {
-                    self.state = match self.state {
+        self.finish(|extractor: E| {
+            crate::handler::raw(move |input| {
+                let mut state = match extractor.extract(input) {
+                    MaybeFuture::Ready(Ok(args)) => State::Second(f.call(args)),
+                    MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
+                    MaybeFuture::Future(future) => State::First(future, f.clone()),
+                };
+                MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
+                    state = match state {
                         State::First(ref mut f1, ref f) => {
                             let args = futures01::try_ready!(f1.poll_ready(cx).map_err(Into::into));
                             State::Second(f.call(args))
                         }
                         State::Second(ref mut f2) => return f2.poll_ready(cx).map_err(Into::into),
                     }
-                }
-            }
-        }
-
-        #[allow(missing_debug_implementations)]
-        struct CallHandler<E, F> {
-            extractor: E,
-            f: F,
-        }
-
-        impl<E, F, R> Handler for CallHandler<E, F>
-        where
-            E: Extractor,
-            F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: Future + Send + 'static,
-            R::Output: Responder,
-        {
-            type Output = R::Output;
-            type Future = CallHandlerFuture<E::Future, F>;
-
-            fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-                match self.extractor.extract(input) {
-                    MaybeFuture::Ready(Ok(args)) => MaybeFuture::Future(CallHandlerFuture {
-                        state: State::Second(self.f.call(args)),
-                    }),
-                    MaybeFuture::Ready(Err(err)) => MaybeFuture::err(err.into()),
-                    MaybeFuture::Future(future) => MaybeFuture::Future(CallHandlerFuture {
-                        state: State::First(future, self.f.clone()),
-                    }),
-                }
-            }
-        }
-
-        #[allow(missing_debug_implementations)]
-        struct Call<F>(F);
-
-        impl<F, E, R> MakeHandler<E> for Call<F>
-        where
-            E: Extractor,
-            F: Func<E::Output, Out = R> + Clone + Send + Sync + 'static,
-            R: Future + Send + 'static,
-            R::Output: Responder,
-        {
-            type Output = R::Output;
-            type Handler = CallHandler<E, F>;
-
-            fn make_handler(self, extractor: E) -> Self::Handler {
-                CallHandler {
-                    extractor,
-                    f: self.0,
-                }
-            }
-        }
-
-        self.finish(Call(f))
+                }))
+            })
+        })
     }
 }
 
@@ -502,7 +364,7 @@ where
     /// Creates a `Route` that just replies with the specified `Responder`.
     pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>, M>
     where
-        R: Responder + Clone + Send + Sync + 'static,
+        R: Clone + Send + Sync + 'static,
     {
         self.reply(move || output.clone())
     }
@@ -559,6 +421,7 @@ where
     H: Handler,
     M2: ModifyHandler<H>,
     M1: ModifyHandler<M2::Handler>,
+    M1::Output: Responder,
 {
     type Error = super::Error;
 
