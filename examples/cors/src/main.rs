@@ -4,7 +4,10 @@ extern crate tsukuyomi_cors;
 
 use {
     serde::{Deserialize, Serialize},
-    tsukuyomi::{app::directives::*, extractor, Responder},
+    tsukuyomi::{
+        app::{fallback, route, App},
+        extractor, Responder,
+    },
     tsukuyomi_cors::CORS,
 };
 
@@ -26,12 +29,13 @@ fn main() -> tsukuyomi::server::Result<()> {
         .build();
 
     App::builder()
-        .with(cors)
         .with(
-            route!("/user/info")
+            route::root()
                 .methods("POST")?
+                .segment("user")?
+                .segment("info")?
                 .extract(extractor::body::json())
-                .call(|info: UserInfo| -> tsukuyomi::Result<_> {
+                .reply(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
                         return Err(tsukuyomi::error::bad_request(
                             "the field confirm_password is not matched to password.",
@@ -40,6 +44,8 @@ fn main() -> tsukuyomi::server::Result<()> {
                     Ok(info)
                 }),
         ) //
+        .with(fallback(cors.clone()))
+        .modify(cors)
         .build_server()?
         .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
         .run()

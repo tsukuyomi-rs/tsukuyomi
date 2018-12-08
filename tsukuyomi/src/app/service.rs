@@ -13,7 +13,7 @@ use {
     cookie::CookieJar,
     futures01::{Async, Future, Poll},
     http::{
-        header::{self, HeaderValue},
+        header::{self, HeaderMap, HeaderValue},
         Request, Response,
     },
     hyper::body::Payload,
@@ -61,6 +61,7 @@ pub struct AppFuture {
     request: Request<()>,
     inner: Arc<AppInner>,
     cookie_jar: Option<CookieJar>,
+    response_headers: Option<HeaderMap>,
     locals: LocalMap,
     resource_id: Option<ResourceId>,
     captures: Option<Captures>,
@@ -100,6 +101,7 @@ macro_rules! input {
             },
             cookies: &mut Cookies::new(&mut $self.cookie_jar, &$self.request),
             locals: &mut $self.locals,
+            response_headers: &mut $self.response_headers,
             _marker: PhantomData,
         }
     };
@@ -114,6 +116,7 @@ impl AppFuture {
             request: Request::from_parts(parts, ()),
             inner,
             cookie_jar: None,
+            response_headers: None,
             locals,
             resource_id: None,
             captures: None,
@@ -176,6 +179,13 @@ impl AppFuture {
                     header::SET_COOKIE,
                     cookie.encoded().to_string().parse().unwrap(),
                 );
+            }
+        }
+
+        // append supplemental response headers.
+        if let Some(mut hdrs) = self.response_headers.take() {
+            for (k, v) in hdrs.drain() {
+                output.headers_mut().extend(v.map(|v| (k.clone(), v)));
             }
         }
 

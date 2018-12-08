@@ -25,7 +25,7 @@ members = [
   "tsukuyomi/macros",
 
   "tsukuyomi-askama",
-  # "tsukuyomi-cors",
+  "tsukuyomi-cors",
   # "tsukuyomi-juniper",
   # "tsukuyomi-session",
   # "tsukuyomi-tungstenite",
@@ -33,7 +33,7 @@ members = [
   # "testcrates/doctest",
 
   # "examples/basic",
-  # "examples/cors",
+  "examples/cors",
   # "examples/diesel",
   # "examples/http-proxy",
   # "examples/juniper",
@@ -54,7 +54,7 @@ members = [
 [patch.crates-io]
 tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
 tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }
-# tsukuyomi-cors = { version = "0.1.0", path = "tsukuyomi-cors" }
+tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
 # tsukuyomi-juniper = { version = "0.2.0", path = "tsukuyomi-juniper" }
 # tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
 # tsukuyomi-tungstenite = { version = "0.1.0", path = "tsukuyomi-tungstenite" }

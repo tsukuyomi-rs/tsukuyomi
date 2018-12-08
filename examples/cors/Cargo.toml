@@ -1,6 +1,7 @@
 [package]
 name = "example-cors"
-version = "0.1.0"
+version = "0.0.0"
+edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
@@ -10,6 +11,6 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.4.0"
-tsukuyomi-cors = "0.1.0"
+tsukuyomi = "0.5.0-dev"
+tsukuyomi-cors = "0.2.0-dev"
 serde = { version = "1", features = ["derive"] }

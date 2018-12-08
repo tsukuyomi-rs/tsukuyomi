@@ -8,7 +8,7 @@ pub mod param;
 use {
     self::{localmap::LocalMap, param::Params},
     cookie::{Cookie, CookieJar},
-    http::Request,
+    http::{header::HeaderMap, Request},
     std::{marker::PhantomData, rc::Rc},
 };
 
@@ -26,6 +26,8 @@ pub struct Input<'task> {
 
     /// A typemap that holds arbitrary request-local inner.
     pub locals: &'task mut LocalMap,
+
+    pub response_headers: &'task mut Option<HeaderMap>,
 
     pub(crate) _marker: PhantomData<Rc<()>>,
 }
