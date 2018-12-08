@@ -1,7 +1,7 @@
 use {
     http::{header, Request, StatusCode},
     tsukuyomi::{
-        app::{mount, route, App},
+        app::{fallback, mount, route, App},
         extractor,
         test::ResponseExt,
     },
@@ -169,27 +169,35 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = App::builder()
-        .fallback({
+        .with(fallback({
             let marker = marker.clone();
-            move |cx: &mut tsukuyomi::app::fallback::Context<'_>| {
+            move |cx: &mut fallback::Context<'_>| {
                 marker.lock().unwrap().push("F1");
-                tsukuyomi::app::fallback::default(cx)
+                fallback::default(cx)
             }
-        }) //
+        })) //
         .with(
             mount("/api/v1/")?
-                .fallback({
+                .with(fallback({
                     let marker = marker.clone();
-                    move |cx: &mut tsukuyomi::app::fallback::Context<'_>| {
+                    move |cx: &mut fallback::Context<'_>| {
                         marker.lock().unwrap().push("F2");
-                        tsukuyomi::app::fallback::default(cx)
+                        fallback::default(cx)
                     }
-                }) //
+                })) //
                 .with(
                     route::root()
                         .segment("posts")?
                         .methods("POST")?
                         .say("posts"),
+                )
+                .with(
+                    mount("/events")?.with(
+                        route::root()
+                            .segment("new")?
+                            .methods("POST")?
+                            .say("new_event"),
+                    ),
                 ),
         ) //
         .build_server()?
@@ -204,6 +212,10 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
 
     marker.lock().unwrap().clear();
     let _ = server.perform("/api/v1/posts")?;
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
+
+    marker.lock().unwrap().clear();
+    let _ = server.perform("/api/v1/events/new")?;
     assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
 
     Ok(())

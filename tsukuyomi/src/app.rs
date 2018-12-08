@@ -14,8 +14,9 @@ mod uri;
 mod tests;
 
 pub use self::{
-    builder::{mount, Builder, Mount, Scope, ScopeContext},
+    builder::{fallback, mount, Builder, Mount, Scope, ScopeContext},
     error::{Error, Result},
+    fallback::Fallback,
     service::AppService,
 };
 
@@ -23,9 +24,8 @@ pub(crate) use self::{recognizer::Captures, uri::CaptureNames};
 
 use {
     self::{
-        fallback::Fallback,
         recognizer::{RecognizeError, Recognizer},
-        tree::{Arena, NodeId},
+        tree::{Arena, Node, NodeId},
         uri::Uri,
     },
     crate::{core::Never, handler::BoxedHandler, input::body::RequestBody, output::ResponseBody},
@@ -76,8 +76,8 @@ struct AppInner {
 }
 
 impl AppInner {
-    fn scope(&self, id: NodeId) -> &ScopeData {
-        self.scopes[id].data()
+    fn scope(&self, id: NodeId) -> &Node<ScopeData> {
+        &self.scopes[id]
     }
 
     fn resource(&self, id: ResourceId) -> &Resource {
@@ -85,7 +85,7 @@ impl AppInner {
     }
 
     /// Infers the scope where the input path belongs from the extracted candidates.
-    fn infer_scope(&self, path: &str, resources: &[&Resource]) -> &ScopeData {
+    fn infer_scope(&self, path: &str, resources: &[&Resource]) -> &Node<ScopeData> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[NodeId]> = None;
@@ -106,13 +106,26 @@ impl AppInner {
             .and_then(|ancestors| {
                 ancestors
                     .into_iter()
-                    .find(|&&scope| self.scope(scope).prefix.as_str().starts_with(path)) //
+                    .find(|&&scope| self.scope(scope).data.prefix.as_str().starts_with(path)) //
                     .or_else(|| ancestors.last())
                     .cloned()
             })
             .unwrap_or_else(NodeId::root);
 
         self.scope(node_id)
+    }
+
+    fn find_fallback(&self, start: NodeId) -> Option<&(dyn Fallback + Send + Sync + 'static)> {
+        let scope = self.scope(start);
+        if let Some(ref f) = scope.data.fallback {
+            return Some(&**f);
+        }
+        scope
+            .ancestors()
+            .into_iter()
+            .rev()
+            .filter_map(|&id| self.scope(id).data.fallback.as_ref().map(|f| &**f))
+            .next()
     }
 
     fn route(&self, path: &str, method: &Method) -> RouterResult<'_> {
@@ -122,8 +135,8 @@ impl AppInner {
             Err(RecognizeError::NotMatched) => {
                 return RouterResult::NotFound {
                     resources: vec![],
-                    scope: self.scope(NodeId::root()),
                     captures,
+                    scope: self.scope(NodeId::root()),
                 };
             }
             Err(RecognizeError::PartiallyMatched(candidates)) => {
@@ -131,34 +144,38 @@ impl AppInner {
                     .iter()
                     .filter_map(|i| self.recognizer.get(i))
                     .collect();
+
                 let scope = self.infer_scope(path, &resources);
+
                 return RouterResult::NotFound {
                     resources,
-                    scope,
                     captures,
+                    scope,
                 };
             }
         };
 
         if let Some(endpoint) = resource.recognize(method) {
-            RouterResult::FoundEndpoint {
+            return RouterResult::FoundEndpoint {
                 endpoint,
                 resource,
                 captures,
-            }
-        } else {
-            RouterResult::FoundResource {
-                resource,
-                scope: self.scope(resource.scope),
-                captures,
-            }
+            };
+        }
+
+        let scope = self.scope(resource.scope);
+
+        RouterResult::FoundResource {
+            resource,
+            captures,
+            scope,
         }
     }
 }
 
 struct ScopeData {
     prefix: Uri,
-    fallback: Option<Arc<dyn Fallback + Send + Sync + 'static>>,
+    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
 }
 
 impl fmt::Debug for ScopeData {
@@ -251,14 +268,14 @@ enum RouterResult<'a> {
     /// the URI is matched, but the method is disallowed.
     FoundResource {
         resource: &'a Resource,
-        scope: &'a ScopeData,
         captures: Option<Captures>,
+        scope: &'a Node<ScopeData>,
     },
 
     /// The URI is not matched to any endpoints.
     NotFound {
         resources: Vec<&'a Resource>,
-        scope: &'a ScopeData,
         captures: Option<Captures>,
+        scope: &'a Node<ScopeData>,
     },
 }

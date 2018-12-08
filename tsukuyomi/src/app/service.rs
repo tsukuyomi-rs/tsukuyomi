@@ -161,8 +161,9 @@ impl AppFuture {
             kind: &kind,
             _priv: (),
         };
-        match scope.fallback {
-            Some(ref fallback) => fallback.call(&mut cx),
+
+        match self.inner.find_fallback(scope.id()) {
+            Some(fallback) => fallback.call(&mut cx),
             None => super::fallback::default(&mut cx),
         }
     }

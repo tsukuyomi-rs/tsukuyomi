@@ -84,7 +84,7 @@ impl<T> IndexMut<NodeId> for Arena<T> {
 pub(super) struct Node<T> {
     id: NodeId,
     ancestors: Vec<NodeId>,
-    data: T,
+    pub(super) data: T,
 }
 
 impl<T> Node<T> {
@@ -92,11 +92,7 @@ impl<T> Node<T> {
         self.id
     }
 
-    pub(super) fn data(&self) -> &T {
-        &self.data
-    }
-
-    pub(super) fn ancestors<'a>(&'a self) -> impl Iterator<Item = NodeId> + 'a {
-        self.ancestors.iter().cloned()
+    pub(super) fn ancestors(&self) -> &[NodeId] {
+        &self.ancestors[..]
     }
 }

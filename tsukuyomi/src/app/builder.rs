@@ -37,16 +37,6 @@ impl<S, M> Builder<S, M> {
         }
     }
 
-    /// Sets the instance of `Fallback` to the global scope.
-    pub fn fallback<F>(self, fallback: F) -> Self
-    where
-        F: Fallback + Send + Sync + 'static,
-    {
-        Self {
-            global_scope: self.global_scope.fallback(fallback),
-        }
-    }
-
     /// Sets the prefix URI of the global scope.
     pub fn prefix(self, prefix: impl AsRef<str>) -> super::Result<Self> {
         Ok(Self {
@@ -63,7 +53,7 @@ impl<S, M> Builder<S, M> {
             resources: IndexMap::new(),
             scopes: Arena::new(ScopeData {
                 prefix: self.global_scope.prefix,
-                fallback: self.global_scope.fallback.map(Arc::from),
+                fallback: None,
             }),
         };
         self.global_scope
@@ -96,91 +86,6 @@ impl<S, M> Builder<S, M> {
         S: Scope<M>,
     {
         self.build().map(crate::server::Server::new)
-    }
-}
-
-/// A function that creates a `Mount` with the empty scope items.
-pub fn mount(prefix: impl AsRef<str>) -> super::Result<Mount<(), ()>> {
-    Ok(Mount {
-        scope: (),
-        modifier: (),
-        fallback: None,
-        prefix: prefix.as_ref().parse()?,
-    })
-}
-
-/// An instance of `Scope` that represents a sub-scope with a specific prefix.
-#[derive(Default)]
-pub struct Mount<S = (), M = ()> {
-    scope: S,
-    modifier: M,
-    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
-    prefix: Uri,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl<S, M> fmt::Debug for Mount<S, M>
-where
-    S: fmt::Debug,
-    M: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Mount")
-            .field("scope", &self.scope)
-            .field("modifier", &self.modifier)
-            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
-            .field("prefix", &self.prefix)
-            .finish()
-    }
-}
-
-impl<S, M> Mount<S, M> {
-    /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
-    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M> {
-        Mount {
-            scope: Chain::new(self.scope, next_scope),
-            modifier: self.modifier,
-            fallback: self.fallback,
-            prefix: self.prefix,
-        }
-    }
-
-    pub fn modify<M2>(self, modifier: M2) -> Mount<S, Chain<M, M2>> {
-        Mount {
-            scope: self.scope,
-            modifier: Chain::new(self.modifier, modifier),
-            fallback: self.fallback,
-            prefix: self.prefix,
-        }
-    }
-
-    pub fn fallback<F>(self, fallback: F) -> Self
-    where
-        F: Fallback + Send + Sync + 'static,
-    {
-        Self {
-            fallback: Some(Box::new(fallback)),
-            ..self
-        }
-    }
-
-    pub fn prefix(self, prefix: impl AsRef<str>) -> super::Result<Self> {
-        Ok(Self {
-            prefix: prefix.as_ref().parse()?,
-            ..self
-        })
-    }
-}
-
-impl<S, M1, M2> Scope<M1> for Mount<S, M2>
-where
-    M1: Clone,
-    S: Scope<Chain<M1, M2>>,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut ScopeContext<'_, M1>) -> std::result::Result<(), Self::Error> {
-        cx.add_scope(self)
     }
 }
 
@@ -253,7 +158,7 @@ impl<'a, M> ScopeContext<'a, M> {
         let uri = uri.try_into()?;
         let mut methods = methods.try_into()?.0;
 
-        let uri = self.inner.scopes[self.scope_id].data().prefix.join(&uri)?;
+        let uri = self.inner.scopes[self.scope_id].data.prefix.join(&uri)?;
 
         let resource = {
             let id = ResourceId(self.inner.resources.len());
@@ -264,7 +169,12 @@ impl<'a, M> ScopeContext<'a, M> {
                 .or_insert_with(|| Resource {
                     id,
                     scope: scope.id(),
-                    ancestors: scope.ancestors().chain(Some(scope.id())).collect(),
+                    ancestors: scope
+                        .ancestors()
+                        .into_iter()
+                        .cloned()
+                        .chain(Some(scope.id()))
+                        .collect(),
                     uri: uri.clone(),
                     endpoints: vec![],
                     allowed_methods: IndexMap::new(),
@@ -315,31 +225,142 @@ impl<'a, M> ScopeContext<'a, M> {
         Ok(())
     }
 
-    pub(super) fn add_scope<S, M2>(&mut self, mount: Mount<S, M2>) -> super::Result<()>
+    #[doc(hidden)]
+    pub fn set_fallback<F>(&mut self, fallback: F) -> super::Result<()>
+    where
+        F: Fallback + Send + Sync + 'static,
+    {
+        self.inner.scopes[self.scope_id].data.fallback = Some(Box::new(fallback));
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    pub fn add_scope<S>(&mut self, prefix: Uri, scope: S) -> super::Result<()>
     where
         M: Clone,
-        S: Scope<Chain<M, M2>>,
+        S: Scope<M>,
     {
         let scope_id = self.inner.scopes.add_node(self.scope_id, {
-            let parent = self.inner.scopes[self.scope_id].data();
+            let parent = &self.inner.scopes[self.scope_id].data;
             ScopeData {
-                prefix: parent.prefix.join(mount.prefix)?,
-                fallback: mount
-                    .fallback
-                    .map(Arc::from)
-                    .or_else(|| parent.fallback.clone()),
+                prefix: parent.prefix.join(&prefix)?,
+                fallback: None,
             }
         })?;
 
-        mount
-            .scope
+        scope
             .configure(&mut ScopeContext {
                 inner: &mut *self.inner,
                 scope_id,
-                modifier: Chain::new(self.modifier.clone(), mount.modifier),
+                modifier: self.modifier.clone(),
             })
             .map_err(Into::into)?;
 
         Ok(())
+    }
+
+    fn with_modifier<M2>(&mut self, outer: M2) -> ScopeContext<'_, Chain<M, M2>>
+    where
+        M: Clone,
+    {
+        ScopeContext {
+            inner: &mut *self.inner,
+            scope_id: self.scope_id,
+            modifier: Chain::new(self.modifier.clone(), outer),
+        }
+    }
+}
+
+/// Creates a `Scope` that registers the specified `Fallback` onto the scope.
+pub fn fallback<F>(fallback: F) -> WithFallback<F>
+where
+    F: Fallback + Send + Sync + 'static,
+{
+    WithFallback(fallback)
+}
+
+#[derive(Debug)]
+pub struct WithFallback<F>(F);
+
+impl<F, M> Scope<M> for WithFallback<F>
+where
+    F: Fallback + Send + Sync + 'static,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut ScopeContext<'_, M>) -> Result<(), Self::Error> {
+        cx.set_fallback(self.0)
+    }
+}
+
+/// A function that creates a `Mount` with the empty scope items.
+pub fn mount(prefix: impl AsRef<str>) -> super::Result<Mount<(), ()>> {
+    Ok(Mount {
+        prefix: prefix.as_ref().parse()?,
+        scope: (),
+        modifier: (),
+    })
+}
+
+/// An instance of `Scope` that represents a sub-scope with a specific prefix.
+#[derive(Default)]
+pub struct Mount<S = (), M = ()> {
+    prefix: Uri,
+    scope: S,
+    modifier: M,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl<S, M> fmt::Debug for Mount<S, M>
+where
+    S: fmt::Debug,
+    M: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Mount")
+            .field("scope", &self.scope)
+            .field("modifier", &self.modifier)
+            .field("prefix", &self.prefix)
+            .finish()
+    }
+}
+
+impl<S, M> Mount<S, M> {
+    /// Merges the specified `Scope` into the inner scope, *without* creating a new subscope.
+    pub fn with<S2>(self, next_scope: S2) -> Mount<Chain<S, S2>, M> {
+        Mount {
+            scope: Chain::new(self.scope, next_scope),
+            modifier: self.modifier,
+            prefix: self.prefix,
+        }
+    }
+
+    pub fn modify<M2>(self, modifier: M2) -> Mount<S, Chain<M, M2>> {
+        Mount {
+            scope: self.scope,
+            modifier: Chain::new(self.modifier, modifier),
+            prefix: self.prefix,
+        }
+    }
+
+    pub fn prefix(self, prefix: impl AsRef<str>) -> super::Result<Self> {
+        Ok(Self {
+            prefix: prefix.as_ref().parse()?,
+            ..self
+        })
+    }
+}
+
+impl<S, M1, M2> Scope<M1> for Mount<S, M2>
+where
+    M1: Clone,
+    M2: Clone,
+    S: Scope<Chain<M1, M2>>,
+{
+    type Error = super::Error;
+
+    fn configure(self, cx: &mut ScopeContext<'_, M1>) -> std::result::Result<(), Self::Error> {
+        cx.with_modifier(self.modifier)
+            .add_scope(self.prefix, self.scope)
     }
 }
