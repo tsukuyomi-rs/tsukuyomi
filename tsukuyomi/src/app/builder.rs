@@ -235,7 +235,7 @@ impl<'a, M> ScopeContext<'a, M> {
     }
 
     #[doc(hidden)]
-    pub fn add_scope<S>(&mut self, prefix: Uri, scope: S) -> super::Result<()>
+    pub fn add_scope<S>(&mut self, prefix: &Uri, scope: S) -> super::Result<()>
     where
         M: Clone,
         S: Scope<M>,
@@ -259,7 +259,8 @@ impl<'a, M> ScopeContext<'a, M> {
         Ok(())
     }
 
-    fn with_modifier<M2>(&mut self, outer: M2) -> ScopeContext<'_, Chain<M, M2>>
+    #[doc(hidden)]
+    pub fn with_modifier<M2>(&mut self, outer: M2) -> ScopeContext<'_, Chain<M, M2>>
     where
         M: Clone,
     {
@@ -361,6 +362,6 @@ where
 
     fn configure(self, cx: &mut ScopeContext<'_, M1>) -> std::result::Result<(), Self::Error> {
         cx.with_modifier(self.modifier)
-            .add_scope(self.prefix, self.scope)
+            .add_scope(&self.prefix, self.scope)
     }
 }
