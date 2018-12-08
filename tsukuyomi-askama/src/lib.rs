@@ -7,8 +7,9 @@
 //!
 //! use askama::Template;
 //! use tsukuyomi::{
-//!     app::{App, route},
+//!     app::config::prelude::*,
 //!     output::Responder,
+//!     App,
 //! };
 //!
 //! #[derive(Template, Responder)]
@@ -19,13 +20,11 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
-//! App::builder()
-//!     .with(
-//!         route::root()
-//!             .param("name")?
-//!             .reply(|name| Index { name })
-//!     )
-//!     .build()
+//! App::configure(
+//!     route::root()
+//!         .param("name")?
+//!         .reply(|name| Index { name })
+//! )
 //! #   .map(drop)
 //! # }
 //! ```

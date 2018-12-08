@@ -14,8 +14,11 @@ struct Index {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::builder()
-        .with(route::root().param("name")?.reply(|name| Index { name })) //
-        .build_server()?
-        .run()
+    App::configure(
+        route::root() //
+            .param("name")?
+            .reply(|name| Index { name }),
+    )
+    .map(tsukuyomi::server::Server::new)?
+    .run()
 }

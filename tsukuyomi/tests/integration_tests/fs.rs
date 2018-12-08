@@ -1,26 +1,18 @@
-use tsukuyomi::{
-    app::{route, App},
-    fs::Staticfiles,
-};
+use tsukuyomi::{app::config::prelude::*, fs::Staticfiles, App};
 
 #[test]
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
-    App::builder()
-        .with(
-            route::root()
-                .segment("index.html")?
-                .send_file("/path/to/index.html", None),
-        ) //
-        .build()
-        .map(drop)
+    App::configure({
+        route::root()
+            .segment("index.html")?
+            .send_file("/path/to/index.html", None)
+    })
+    .map(drop)
 }
 
 #[test]
 #[ignore]
 fn compiletest_staticfiles() -> tsukuyomi::app::Result<()> {
-    App::builder()
-        .with(Staticfiles::new("./public"))
-        .build()
-        .map(drop)
+    App::configure(Staticfiles::new("./public")).map(drop)
 }

@@ -1,9 +1,9 @@
 //! Components for constructing HTTP applications.
 
+pub mod config;
 pub mod fallback;
 pub mod route;
 
-mod builder;
 mod error;
 mod recognizer;
 mod service;
@@ -14,7 +14,7 @@ mod uri;
 mod tests;
 
 pub use self::{
-    builder::{fallback, mount, Builder, Mount, Scope, ScopeContext},
+    config::AppConfig,
     error::{Error, Result},
     fallback::Fallback,
     service::AppService,
@@ -43,14 +43,12 @@ pub struct App {
 }
 
 impl App {
-    /// Create a `Builder` to configure the instance of `App`.
-    pub fn builder() -> Builder<()> {
-        Builder::default()
+    pub fn configure(config: impl AppConfig<()>) -> Result<Self> {
+        Self::with_prefix("/", config)
     }
 
-    /// Create a `Builder` with the specified prefix.
-    pub fn with_prefix(prefix: impl AsRef<str>) -> Result<Builder<()>> {
-        Self::builder().prefix(prefix)
+    pub fn with_prefix(prefix: impl AsRef<str>, config: impl AppConfig<()>) -> Result<Self> {
+        self::config::configure(prefix, config)
     }
 }
 

@@ -33,8 +33,8 @@ use {
     std::{collections::HashSet, sync::Arc, time::Duration},
     tsukuyomi::{
         app::{
+            config::{AppConfig, AppConfigContext},
             fallback::{self, Fallback},
-            Scope, ScopeContext,
         },
         core::Chain,
         future::MaybeFuture,
@@ -246,17 +246,19 @@ pub struct CORSScope<S> {
     scope: S,
 }
 
-impl<M, S> Scope<M> for CORSScope<S>
+impl<M, S> AppConfig<M> for CORSScope<S>
 where
     M: Clone,
-    Chain<S, CORS>: Scope<Chain<M, CORS>>,
+    S: AppConfig<Chain<M, CORS>>,
 {
     type Error = tsukuyomi::app::Error;
 
-    fn configure(self, cx: &mut ScopeContext<'_, M>) -> Result<(), Self::Error> {
-        Chain::new(self.scope, self.cors.clone())
+    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+        cx.set_fallback(self.cors.clone())?;
+        self.scope
             .configure(&mut cx.with_modifier(self.cors))
-            .map_err(Into::into)
+            .map_err(Into::into)?;
+        Ok(())
     }
 }
 

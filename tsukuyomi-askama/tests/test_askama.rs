@@ -1,9 +1,7 @@
 use {
     askama::Template,
     tsukuyomi::{
-        app::{route, App},
-        output::Responder,
-        test::ResponseExt,
+        app::config::prelude::*, output::Responder, server::Server, test::ResponseExt, App,
     },
 };
 
@@ -21,10 +19,11 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let mut server = App::builder()
-        .with(route::root().reply(|| Index { name: "Alice" })) //
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::configure(
+        route::root().reply(|| Index { name: "Alice" }), //
+    )
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -42,11 +41,12 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let mut server = App::builder()
-        .modify(tsukuyomi_askama::Renderer::default())
-        .with(route::root().reply(|| Index { name: "Alice" })) //
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::configure(with_modifier(
+        tsukuyomi_askama::Renderer::default(),
+        route::root().reply(|| Index { name: "Alice" }),
+    ))
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);

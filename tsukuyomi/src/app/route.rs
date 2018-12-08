@@ -1,6 +1,6 @@
 use {
     super::{
-        builder::{Scope, ScopeContext},
+        config::{AppConfig, AppConfigContext},
         uri::{Uri, UriComponent},
     },
     crate::{
@@ -241,7 +241,6 @@ where
             uri: self.uri,
             methods: self.methods,
             handler: make_handler.make_handler(self.extractor),
-            modifier: (),
         }
     }
 
@@ -343,44 +342,23 @@ where
 }
 
 #[derive(Debug)]
-pub struct Route<H, M = ()> {
+pub struct Route<H> {
     methods: Methods,
     uri: Uri,
     handler: H,
-    modifier: M,
 }
 
-impl<H, M> Route<H, M>
+impl<H, M> AppConfig<M> for Route<H>
 where
     H: Handler,
     M: ModifyHandler<H>,
-{
-    /// Appends a `ModifyHandler` to this route.
-    pub fn modify<M2>(self, modifier: M2) -> Route<H, Chain<M, M2>>
-    where
-        Chain<M, M2>: ModifyHandler<H>,
-    {
-        Route {
-            methods: self.methods,
-            uri: self.uri,
-            handler: self.handler,
-            modifier: Chain::new(self.modifier, modifier),
-        }
-    }
-}
-
-impl<H, M1, M2> Scope<M1> for Route<H, M2>
-where
-    H: Handler,
-    M2: ModifyHandler<H>,
-    M1: ModifyHandler<M2::Handler>,
-    M1::Output: Responder,
-    M1::Handler: Send + Sync + 'static,
+    M::Output: Responder,
+    M::Handler: Send + Sync + 'static,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut ScopeContext<'_, M1>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri, self.methods, self.modifier.modify(self.handler))
+    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+        cx.add_route(self.uri, self.methods, self.handler)
     }
 }
 

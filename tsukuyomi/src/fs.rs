@@ -464,7 +464,7 @@ where
     }
 }
 
-impl<P, M> crate::app::Scope<M> for Staticfiles<P>
+impl<P, M> crate::app::config::AppConfig<M> for Staticfiles<P>
 where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
@@ -473,7 +473,10 @@ where
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut crate::app::ScopeContext<'_, M>) -> crate::app::Result<()> {
+    fn configure(
+        self,
+        cx: &mut crate::app::config::AppConfigContext<'_, M>,
+    ) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir)? {

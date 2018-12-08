@@ -1,21 +1,21 @@
 use {
-    super::{mount, route, App, ResourceId, Result, RouterResult},
+    super::{config::prelude::*, App, ResourceId, Result, RouterResult},
     http::Method,
     matches::assert_matches,
 };
 
 #[test]
 fn empty() -> Result<()> {
-    let app = App::builder().build()?;
+    let app = App::configure(())?;
     assert_matches!(app.inner.route("/", &Method::GET), RouterResult::NotFound { .. });
     Ok(())
 }
 
 #[test]
 fn route_single_method() -> Result<()> {
-    let app = App::builder() //
-        .with(route::root().say(""))
-        .build()?;
+    let app = App::configure(
+        route::root().say(""), //
+    )?;
 
     assert_matches!(
         app.inner.route("/", &Method::GET),
@@ -40,10 +40,10 @@ fn route_single_method() -> Result<()> {
 
 #[test]
 fn route_multiple_method() -> Result<()> {
-    let app = App::builder()
-        .with(route::root().say(""))
-        .with(route::root().methods(Method::POST)?.say(""))
-        .build()?;
+    let app = App::configure(chain![
+        route::root().say(""),
+        route::root().methods(Method::POST)?.say(""),
+    ])?;
 
     assert_matches!(
         app.inner.route("/", &Method::GET),
@@ -69,9 +69,11 @@ fn route_multiple_method() -> Result<()> {
 
 #[test]
 fn route_multiple_method_at_same_endpoint() -> Result<()> {
-    let app = App::builder()
-        .with(route::root().methods("GET, POST")?.say(""))
-        .build()?;
+    let app = App::configure(
+        route::root() //
+            .methods("GET, POST")?
+            .say(""),
+    )?;
 
     assert_matches!(
         app.inner.route("/", &Method::GET),
@@ -97,9 +99,10 @@ fn route_multiple_method_at_same_endpoint() -> Result<()> {
 
 #[test]
 fn asterisk_route() -> Result<()> {
-    let app = App::builder()
-        .with(route::asterisk().say("explicit OPTIONS handler")) //
-        .build()?;
+    let app = App::configure(
+        route::asterisk() //
+            .say("explicit OPTIONS handler"),
+    )?;
 
     assert_matches!(
         app.inner.route("*", &Method::OPTIONS),
@@ -113,15 +116,17 @@ fn asterisk_route() -> Result<()> {
 
 #[test]
 fn asterisk_route_with_normal_routes() -> Result<()> {
-    let app = App::builder()
-        .with(route::root().say(""))
-        .with(
-            mount("/api")?
-                .with(route::root().segment("posts")?.say(""))
-                .with(route::root().segment("events")?.say("")),
-        ) //
-        .with(route::asterisk().say("explicit OPTIONS handler")) //
-        .build()?;
+    let app = App::configure(chain![
+        route::root().say(""),
+        mount(
+            "/api",
+            chain![
+                route::root().segment("posts")?.say(""),
+                route::root().segment("events")?.say(""),
+            ]
+        ),
+        route::asterisk().say("explicit OPTIONS handler"),
+    ])?;
 
     assert_matches!(
         app.inner.route("*", &Method::OPTIONS),
@@ -135,19 +140,23 @@ fn asterisk_route_with_normal_routes() -> Result<()> {
 
 #[test]
 fn scope_simple() -> Result<()> {
-    let app = App::builder() //
-        .with(
-            mount("/")?
-                .with(route::root().segment("a")?.say(""))
-                .with(route::root().segment("b")?.say("")),
-        ) //
-        .with(route::root().segment("foo")?.say(""))
-        .with(
-            mount("/c")?
-                .with(route::root().segment("d")?.say(""))
-                .with(route::root().segment("d")?.methods("POST")?.say("")),
-        ) //
-        .build()?;
+    let app = App::configure(chain![
+        mount(
+            "/",
+            chain![
+                route::root().segment("a")?.say(""),
+                route::root().segment("b")?.say(""),
+            ]
+        ),
+        route::root().segment("foo")?.say(""),
+        mount(
+            "/c",
+            chain![
+                route::root().segment("d")?.say(""),
+                route::root().segment("d")?.methods("POST")?.say(""),
+            ]
+        ),
+    ])?;
 
     assert_matches!(
         app.inner.route("/a", &Method::GET),
@@ -185,23 +194,32 @@ fn scope_simple() -> Result<()> {
 
 #[test]
 fn scope_nested() -> Result<()> {
-    let app = App::builder()
-        .with(
-            mount("/")? // 0
-                .with(route::root().segment("foo")?.reply(|| "")) // /foo
-                .with(route::root().segment("bar")?.reply(|| "")) // /bar
-                .with(route::root().segment("foo")?.methods("POST")?.say("")), // foo (POST)
-        ) //
-        .with(
-            mount("/baz")? // 1
-                .with(route::root().reply(|| "")) // /baz
-                .with(
-                    mount("/")? // 2
-                        .with(route::root().segment("foobar")?.reply(|| "")), // /baz/foobar
-                ), //
-        ) //
-        .with(route::root().segment("hoge")?.reply(|| "")) // /hoge
-        .build()?;
+    let app = App::configure(chain![
+        mount(
+            "/",
+            chain![
+                // 0
+                route::root().segment("foo")?.reply(|| ""), // /foo
+                route::root().segment("bar")?.reply(|| ""), // /bar
+                route::root().segment("foo")?.methods("POST")?.say(""), // foo (POST)
+            ]
+        ),
+        mount(
+            "/baz",
+            chain![
+                // 1
+                route::root().reply(|| ""), // /baz
+                mount(
+                    "/",
+                    chain![
+                        // 2
+                        route::root().segment("foobar")?.reply(|| ""), // /baz/foobar
+                    ]
+                )
+            ]
+        ), //
+        route::root().segment("hoge")?.reply(|| "") // /hoge
+    ])?;
 
     assert_matches!(
         app.inner.route("/foo", &Method::GET),
@@ -250,41 +268,37 @@ fn scope_nested() -> Result<()> {
 
 #[test]
 fn failcase_duplicate_uri_and_method() -> Result<()> {
-    let app = App::builder()
-        .with(route::root().segment("path")?.reply(|| ""))
-        .with(route::root().segment("path")?.reply(|| ""))
-        .build();
+    let app = App::configure(chain![
+        route::root().segment("path")?.reply(|| ""),
+        route::root().segment("path")?.reply(|| ""),
+    ]);
     assert!(app.is_err());
     Ok(())
 }
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
-    let app = App::builder()
-        .with(
+    let app = App::configure(chain![
+        route::root() //
+            .segment("path")?
+            .reply(|| ""),
+        mount(
+            "/",
             route::root() //
                 .segment("path")?
-                .reply(|| ""),
+                .methods("POST")?
+                .reply(|| "")
         )
-        .with(
-            mount("/")? //
-                .with(
-                    route::root() //
-                        .segment("path")?
-                        .methods("POST")?
-                        .reply(|| ""),
-                ),
-        ) //
-        .build();
+    ]);
     assert!(app.is_err());
     Ok(())
 }
 
 #[test]
 fn failcase_asterisk_with_prefix() -> Result<()> {
-    let app = App::with_prefix("/api/v1")?
-        .with(route::asterisk().reply(|| ""))
-        .build();
+    let app = App::with_prefix("/api/v1", {
+        route::asterisk().reply(|| "") //
+    });
     assert!(app.is_err());
     Ok(())
 }

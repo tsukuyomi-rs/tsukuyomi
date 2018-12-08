@@ -13,10 +13,12 @@
 #![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
 #![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
 
+#[macro_use]
+pub mod core;
+
 mod generic;
 
 pub mod app;
-pub mod core;
 pub mod error;
 pub mod extractor;
 pub mod fs;

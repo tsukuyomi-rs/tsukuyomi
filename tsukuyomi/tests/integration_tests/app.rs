@@ -1,16 +1,14 @@
 use {
     http::{header, Request, StatusCode},
     tsukuyomi::{
-        app::{fallback, mount, route, App},
-        extractor,
-        test::ResponseExt,
+        app::config::prelude::*, chain, extractor, server::Server, test::ResponseExt, App,
     },
 };
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {
-    let mut server = App::builder() //
-        .build_server()?
+    let mut server = App::configure(()) //
+        .map(Server::new)?
         .into_test_server()?;
 
     let response = server.perform("/")?;
@@ -21,10 +19,13 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
-    let mut server = App::builder()
-        .with(route::root().segment("hello")?.reply(|| "Tsukuyomi"))
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::configure(
+        route::root() //
+            .segment("hello")?
+            .reply(|| "Tsukuyomi"),
+    )
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform("/hello")?;
 
@@ -41,10 +42,14 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
-    let mut server = App::with_prefix("/api/v1")?
-        .with(route::root().segment("hello")?.reply(|| "Tsukuyomi"))
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::with_prefix(
+        "/api/v1",
+        route::root() //
+            .segment("hello")?
+            .reply(|| "Tsukuyomi"),
+    )
+    .map(Server::new)?
+    .into_test_server()?;
 
     assert_eq!(server.perform("/api/v1/hello")?.status(), 200);
     assert_eq!(server.perform("/hello")?.status(), 404);
@@ -54,16 +59,15 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
-    let mut server = App::builder()
-        .with(
-            route::root()
-                .segment("hello")?
-                .methods("POST")?
-                .extract(tsukuyomi::extractor::body::plain())
-                .reply(|body: String| body),
-        ) //
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::configure(
+        route::root()
+            .segment("hello")?
+            .methods("POST")?
+            .extract(tsukuyomi::extractor::body::plain())
+            .reply(|body: String| body),
+    )
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::post("/hello") //
@@ -88,32 +92,29 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let mut server = App::builder()
-        .with(
-            route::root()
-                .segment("login")?
-                .extract(extractor::guard(move |input| {
-                    input.cookies.jar()?.add(
-                        Cookie::build("session", "dummy_session_id")
-                            .domain("www.example.com")
-                            .expires(expires_in)
-                            .finish(),
-                    );
-                    Ok::<_, tsukuyomi::error::Error>(())
-                }))
-                .reply(|| "Logged in"),
-        ) //
-        .with(
-            route::root()
-                .segment("logout")?
-                .extract(extractor::guard(|input| {
-                    input.cookies.jar()?.remove(Cookie::named("session"));
-                    Ok::<_, tsukuyomi::error::Error>(())
-                }))
-                .reply(|| "Logged out"),
-        ) //
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        route::root()
+            .segment("login")?
+            .extract(extractor::guard(move |input| {
+                input.cookies.jar()?.add(
+                    Cookie::build("session", "dummy_session_id")
+                        .domain("www.example.com")
+                        .expires(expires_in)
+                        .finish(),
+                );
+                Ok::<_, tsukuyomi::error::Error>(())
+            }))
+            .reply(|| "Logged in"),
+        route::root()
+            .segment("logout")?
+            .extract(extractor::guard(|input| {
+                input.cookies.jar()?.remove(Cookie::named("session"));
+                Ok::<_, tsukuyomi::error::Error>(())
+            }))
+            .reply(|| "Logged out"),
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform("/login")?;
 
@@ -143,16 +144,15 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = App::builder()
-        .with(route::root().segment("path")?.reply(|| "get"))
-        .with(
-            route::root()
-                .segment("path")?
-                .methods("POST")?
-                .reply(|| "post"),
-        )
-        .build_server()?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        route::root().segment("path")?.reply(|| "get"),
+        route::root()
+            .segment("path")?
+            .methods("POST")?
+            .reply(|| "post"),
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(Request::options("/path"))?;
 
@@ -166,42 +166,44 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 #[test]
 fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     use std::sync::{Arc, Mutex};
+    use tsukuyomi::app::fallback;
+
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::builder()
-        .with(fallback({
+    let mut server = App::configure(chain![
+        with_fallback({
             let marker = marker.clone();
             move |cx: &mut fallback::Context<'_>| {
                 marker.lock().unwrap().push("F1");
                 fallback::default(cx)
             }
-        })) //
-        .with(
-            mount("/api/v1/")?
-                .with(fallback({
+        }),
+        mount(
+            "/api/v1/",
+            chain![
+                with_fallback({
                     let marker = marker.clone();
                     move |cx: &mut fallback::Context<'_>| {
                         marker.lock().unwrap().push("F2");
                         fallback::default(cx)
                     }
-                })) //
-                .with(
+                }),
+                route::root()
+                    .segment("posts")?
+                    .methods("POST")?
+                    .say("posts"),
+                mount(
+                    "/events",
                     route::root()
-                        .segment("posts")?
+                        .segment("new")?
                         .methods("POST")?
-                        .say("posts"),
-                )
-                .with(
-                    mount("/events")?.with(
-                        route::root()
-                            .segment("new")?
-                            .methods("POST")?
-                            .say("new_event"),
-                    ),
+                        .say("new_event"),
                 ),
-        ) //
-        .build_server()?
-        .into_test_server()?;
+            ],
+        ),
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let _ = server.perform("/")?;
     assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);

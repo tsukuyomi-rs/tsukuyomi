@@ -64,3 +64,14 @@ impl<L, R> Chain<L, R> {
         Self { left, right }
     }
 }
+
+#[macro_export]
+macro_rules! chain {
+    ($e:expr) => ( $e );
+    ($e:expr, ) => ( $e );
+    ($e1:expr, $e2:expr) => ( $crate::core::Chain::new($e1, $e2) );
+    ($e1:expr, $e2:expr, $($t:expr),*) => {
+        $crate::core::Chain::new($e1, chain!($e2, $($t),*))
+    };
+    ($e1:expr, $e2:expr, $($t:expr,)+) => ( chain!{ $e1, $e2, $($t),+ } );
+}
