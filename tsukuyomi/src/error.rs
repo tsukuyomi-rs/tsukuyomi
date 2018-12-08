@@ -1,17 +1,10 @@
-//! Components for constructing and handling HTTP errors.
-//!
-//! # Error Representation
+//! Error representation during handling the request.
 //!
 //! Tsukuyomi models the all errors generated during handling HTTP requests with a trait
-//! named [`HttpError`]. This trait is a sub trait of [`Fail`] with additional methods for
-//! converting itself to an HTTP response.
+//! named [`HttpError`]. This trait is a method for converting itself into an HTTP response.
+//! The design of this trait imitates the `failure` crate, but there are some specialization
+//! considering of the HTTP context.
 //!
-//! The all of handling errors are managed in the framework by converting into an [`Error`].
-//! They will be automatically converted to an HTTP response after all processeing will be
-//! completed.
-//!
-//! [`Error`]: ./struct.Error.html
-//! [`Fail`]: https://docs.rs/failure/0.1/failure/trait.Fail.html
 //! [`HttpError`]: ./trait.HttpError.html
 
 use {
@@ -33,8 +26,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// * `HttpError` cannot access the entire of request context.
 /// * `HttpError::into_response` is infallible.
-/// * The value of error values are stored as an object, and the conversion into
-///   HTTP responses will be deferred until just before replying to the client.
+/// * The error values are stored as an object, and the conversion into
+///   HTTP responses will be deferred until just before replying to the
+///   client.
 pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static + Sized {
     type Body: Into<ResponseBody>;
 
