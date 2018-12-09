@@ -1,7 +1,11 @@
 use {
     http::Request,
     tsukuyomi::{
-        app::config::prelude::*, chain, extractor, extractor::ExtractorExt, server::Server, App,
+        app::config::prelude::*,
+        chain, extractor,
+        extractor::{Extractor, ExtractorExt},
+        server::Server,
+        App,
     },
 };
 
@@ -347,9 +351,10 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let params_extractor = ExtractorExt::new(extractor::verb::get(extractor::query::query()))
-        .either_or(extractor::verb::post(extractor::body::json()))
-        .either_or(extractor::verb::post(extractor::body::urlencoded()));
+    let params_extractor =
+        ExtractorExt::new(extractor::method::get().chain(extractor::query::query()))
+            .either_or(extractor::method::post().chain(extractor::body::json()))
+            .either_or(extractor::method::post().chain(extractor::body::urlencoded()));
 
     let mut server = App::configure({
         route::root()
