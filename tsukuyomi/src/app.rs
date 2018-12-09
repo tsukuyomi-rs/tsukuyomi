@@ -27,7 +27,7 @@ use {
         uri::Uri,
     },
     crate::{core::Never, handler::BoxedHandler, input::body::RequestBody, output::ResponseBody},
-    http::{header::HeaderValue, Method, Request, Response},
+    http::{Method, Request, Response},
     indexmap::IndexSet,
     std::sync::Arc,
     tower_service::NewService,
@@ -158,13 +158,13 @@ pub struct Resource {
     scope: NodeId,
     ancestors: Vec<NodeId>,
     uri: Uri,
-    handler: BoxedHandler,
     allowed_methods: IndexSet<Method>,
-    allowed_methods_value: HeaderValue,
+    handler: BoxedHandler,
 }
 
 impl Resource {
-    pub fn allowed_methods<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
-        self.allowed_methods.iter()
+    #[doc(hidden)]
+    pub fn allowed_methods(&self) -> &IndexSet<Method> {
+        &self.allowed_methods
     }
 }

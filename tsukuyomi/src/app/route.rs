@@ -13,13 +13,13 @@ use {
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
-    http::{HttpTryFrom, Method},
+    http::{HttpTryFrom, Method, StatusCode},
     indexmap::{indexset, IndexSet},
     std::{marker::PhantomData, path::Path},
 };
 
 /// A set of request methods that a route accepts.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Methods(pub(super) IndexSet<Method>);
 
 impl TryFrom<Self> for Methods {
@@ -81,7 +81,7 @@ mod tags {
 pub fn root() -> Builder<(), self::tags::Incomplete> {
     Builder {
         uri: Uri::root(),
-        methods: Methods::default(),
+        methods: None,
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -90,7 +90,7 @@ pub fn root() -> Builder<(), self::tags::Incomplete> {
 pub fn asterisk() -> Builder<(), self::tags::Completed> {
     Builder {
         uri: Uri::asterisk(),
-        methods: Methods(indexset! { Method::OPTIONS }),
+        methods: Some(Methods(indexset! { Method::OPTIONS })),
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -101,7 +101,7 @@ pub fn asterisk() -> Builder<(), self::tags::Completed> {
 #[derive(Debug)]
 pub struct Builder<E: Extractor = (), T = self::tags::Incomplete> {
     uri: Uri,
-    methods: Methods,
+    methods: Option<Methods>,
     extractor: E,
     _marker: PhantomData<T>,
 }
@@ -113,7 +113,7 @@ where
     /// Sets the HTTP methods that this route accepts.
     pub fn methods(self, methods: impl TryInto<Methods>) -> super::Result<Self> {
         Ok(Builder {
-            methods: methods.try_into()?,
+            methods: Some(methods.try_into()?),
             ..self
         })
     }
@@ -233,14 +233,29 @@ where
     }
 
     /// Finalize the configuration in this route and creates the instance of `Route`.
-    pub fn finish<F>(self, make_handler: F) -> Route<F::Handler>
+    pub fn finish<F>(self, make_handler: F) -> Route<impl Handler<Output = F::Output>>
     where
         F: MakeHandler<E>,
     {
+        let allowed_methods = self
+            .methods
+            .unwrap_or_else(|| Methods(indexset! { Method::GET }));
+
+        let handler = {
+            let inner = make_handler.make_handler(self.extractor);
+            let allowed_methods = allowed_methods.0.clone();
+            crate::handler::raw(move |input| {
+                if !allowed_methods.contains(input.request.method()) {
+                    return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into());
+                }
+                inner.call(input).map_err(Into::into)
+            })
+        };
+
         Route {
             uri: self.uri,
-            methods: self.methods,
-            handler: make_handler.make_handler(self.extractor),
+            allowed_methods,
+            handler,
         }
     }
 
@@ -304,7 +319,7 @@ where
 
 impl<T> Builder<(), T> {
     /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(self, handler: H) -> Route<H>
+    pub fn raw<H>(self, handler: H) -> Route<impl Handler<Output = H::Output>>
     where
         H: Handler,
     {
@@ -343,8 +358,8 @@ where
 
 #[derive(Debug)]
 pub struct Route<H> {
-    methods: Methods,
     uri: Uri,
+    allowed_methods: Methods,
     handler: H,
 }
 
@@ -358,7 +373,7 @@ where
     type Error = super::Error;
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri, self.methods, self.handler)
+        cx.add_route(self.uri, self.allowed_methods, self.handler)
     }
 }
 

@@ -15,7 +15,7 @@ use {
         handler::{Handler, ModifyHandler},
         output::Responder,
     },
-    http::{header::HeaderValue, Method},
+    http::Method,
     indexmap::{indexset, IndexMap},
     std::sync::Arc,
 };
@@ -126,7 +126,7 @@ impl<'a, M> AppConfigContext<'a, M> {
     pub fn add_route<H>(
         &mut self,
         uri: impl TryInto<Uri>,
-        methods: impl TryInto<Methods>,
+        allowed_methods: impl TryInto<Methods>,
         handler: H,
     ) -> super::Result<()>
     where
@@ -144,9 +144,11 @@ impl<'a, M> AppConfigContext<'a, M> {
             )));
         }
 
-        let mut allowed_methods = methods.try_into()?.0;
+        let allowed_methods = allowed_methods.try_into()?.0;
         if allowed_methods.is_empty() {
-            allowed_methods.insert(Method::GET);
+            return Err(
+                failure::format_err!("the route must accept at least one HTTP method(s)").into(),
+            );
         }
 
         if uri.is_asterisk() && allowed_methods != indexset! { Method::OPTIONS } {
@@ -154,22 +156,6 @@ impl<'a, M> AppConfigContext<'a, M> {
                 failure::format_err!("the route with asterisk URI accepts only OPTIONS").into(),
             );
         }
-
-        let allowed_methods_value = {
-            let mut allowed_methods = allowed_methods.clone();
-            allowed_methods.insert(Method::OPTIONS);
-            let bytes = allowed_methods.iter().enumerate().fold(
-                bytes::BytesMut::new(),
-                |mut acc, (i, m)| {
-                    if i > 0 {
-                        acc.extend_from_slice(b", ");
-                    }
-                    acc.extend_from_slice(m.as_str().as_bytes());
-                    acc
-                },
-            );
-            unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-        };
 
         let id = ResourceId(self.inner.resources.len());
         let scope = &self.inner.scopes[self.scope_id];
@@ -185,9 +171,8 @@ impl<'a, M> AppConfigContext<'a, M> {
                     .chain(Some(scope.id()))
                     .collect(),
                 uri: uri.clone(),
-                handler: self.modifier.modify(handler).into(),
                 allowed_methods,
-                allowed_methods_value,
+                handler: self.modifier.modify(handler).into(),
             },
         );
 

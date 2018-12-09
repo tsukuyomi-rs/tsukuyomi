@@ -143,6 +143,27 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
+fn default_options() -> tsukuyomi::test::Result<()> {
+    let mut server = App::configure(with_modifier(
+        tsukuyomi::handler::modifiers::DefaultOptions::default(),
+        route::root()
+            .segment("path")?
+            .methods("GET, POST")?
+            .reply(|| "post"),
+    ))
+    .map(Server::new)?
+    .into_test_server()?;
+
+    let response = server.perform(Request::options("/path"))?;
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
+    assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
+
+    Ok(())
+}
+
+#[test]
 fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     use std::sync::{Arc, Mutex};
 
