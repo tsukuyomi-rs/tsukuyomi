@@ -143,49 +143,28 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(
-        route::root()
-            .segment("path")?
-            .methods("GET, POST")?
-            .reply(|| "post"),
-    )
-    .map(Server::new)?
-    .into_test_server()?;
-
-    let response = server.perform(Request::options("/path"))?;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
-    assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
-
-    Ok(())
-}
-
-#[test]
 fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     use std::sync::{Arc, Mutex};
-    use tsukuyomi::app::fallback;
 
     let marker = Arc::new(Mutex::new(vec![]));
 
     let mut server = App::configure(chain![
-        with_fallback({
+        default_handler({
             let marker = marker.clone();
-            move |cx: &mut fallback::Context<'_>| {
+            tsukuyomi::handler::ready(move |_| {
                 marker.lock().unwrap().push("F1");
-                fallback::default(cx)
-            }
+                "f1"
+            })
         }),
         mount(
             "/api/v1/",
             chain![
-                with_fallback({
+                default_handler({
                     let marker = marker.clone();
-                    move |cx: &mut fallback::Context<'_>| {
+                    tsukuyomi::handler::ready(move |_| {
                         marker.lock().unwrap().push("F2");
-                        fallback::default(cx)
-                    }
+                        "f2"
+                    })
                 }),
                 route::root()
                     .segment("posts")?
@@ -213,11 +192,11 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
 
     marker.lock().unwrap().clear();
     let _ = server.perform("/api/v1/posts")?;
-    assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
+    assert!(marker.lock().unwrap().is_empty());
 
     marker.lock().unwrap().clear();
     let _ = server.perform("/api/v1/events/new")?;
-    assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
+    assert!(marker.lock().unwrap().is_empty());
 
     Ok(())
 }

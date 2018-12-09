@@ -1,7 +1,6 @@
 //! Components for constructing HTTP applications.
 
 pub mod config;
-pub mod fallback;
 pub mod route;
 
 mod error;
@@ -16,7 +15,6 @@ mod tests;
 pub use self::{
     config::AppConfig,
     error::{Error, Result},
-    fallback::Fallback,
     service::AppService,
 };
 
@@ -31,7 +29,7 @@ use {
     crate::{core::Never, handler::BoxedHandler, input::body::RequestBody, output::ResponseBody},
     http::{header::HeaderValue, Method, Request, Response},
     indexmap::IndexSet,
-    std::{fmt, sync::Arc},
+    std::sync::Arc,
     tower_service::NewService,
 };
 
@@ -112,71 +110,42 @@ impl AppInner {
         self.scope(node_id)
     }
 
-    fn find_fallback(&self, start: NodeId) -> Option<&(dyn Fallback + Send + Sync + 'static)> {
+    fn find_fallback(&self, start: NodeId) -> Option<&BoxedHandler> {
         let scope = self.scope(start);
         if let Some(ref f) = scope.data.fallback {
-            return Some(&**f);
+            return Some(f);
         }
         scope
             .ancestors()
             .into_iter()
             .rev()
-            .filter_map(|&id| self.scope(id).data.fallback.as_ref().map(|f| &**f))
+            .filter_map(|&id| self.scope(id).data.fallback.as_ref())
             .next()
     }
 
-    fn route(&self, path: &str, method: &Method) -> RouterResult<'_> {
-        let mut captures = None;
-        let resource = match self.recognizer.recognize(path, &mut captures) {
-            Ok(resource) => resource,
-            Err(RecognizeError::NotMatched) => {
-                return RouterResult::NotFound {
-                    resources: vec![],
-                    captures,
-                    scope: self.scope(NodeId::root()),
-                };
-            }
+    fn route(
+        &self,
+        path: &str,
+        captures: &mut Option<Captures>,
+    ) -> std::result::Result<&Resource, &Node<ScopeData>> {
+        match self.recognizer.recognize(path, captures) {
+            Ok(resource) => Ok(resource),
+            Err(RecognizeError::NotMatched) => Err(self.scope(NodeId::root())),
             Err(RecognizeError::PartiallyMatched(candidates)) => {
                 let resources: Vec<_> = candidates
                     .iter()
                     .filter_map(|i| self.recognizer.get(i))
                     .collect();
-
-                let scope = self.infer_scope(path, &resources);
-
-                return RouterResult::NotFound {
-                    resources,
-                    captures,
-                    scope,
-                };
-            }
-        };
-
-        if resource.allowed_methods.contains(method) {
-            RouterResult::FoundEndpoint { resource, captures }
-        } else {
-            let scope = self.scope(resource.scope);
-            RouterResult::FoundResource {
-                resource,
-                captures,
-                scope,
+                Err(self.infer_scope(path, &resources))
             }
         }
     }
 }
 
+#[derive(Debug)]
 struct ScopeData {
     prefix: Uri,
-    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
-}
-
-impl fmt::Debug for ScopeData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ScopeData")
-            .field("prefix", &self.prefix)
-            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
-            .finish()
-    }
+    fallback: Option<BoxedHandler>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -198,27 +167,4 @@ impl Resource {
     pub fn allowed_methods<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
         self.allowed_methods.iter()
     }
-}
-
-#[derive(Debug)]
-enum RouterResult<'a> {
-    /// The URI is matched and a route associated with the specified method is found.
-    FoundEndpoint {
-        resource: &'a Resource,
-        captures: Option<Captures>,
-    },
-
-    /// the URI is matched, but the method is disallowed.
-    FoundResource {
-        resource: &'a Resource,
-        captures: Option<Captures>,
-        scope: &'a Node<ScopeData>,
-    },
-
-    /// The URI is not matched to any endpoints.
-    NotFound {
-        resources: Vec<&'a Resource>,
-        captures: Option<Captures>,
-        scope: &'a Node<ScopeData>,
-    },
 }

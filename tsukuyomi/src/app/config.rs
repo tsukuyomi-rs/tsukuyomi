@@ -1,11 +1,10 @@
 pub mod prelude {
     pub use super::super::route;
-    pub use super::{mount, with_fallback, with_modifier, AppConfig};
+    pub use super::{default_handler, mount, with_modifier, AppConfig};
 }
 
 use {
     super::{
-        fallback::Fallback,
         recognizer::Recognizer,
         route::Methods,
         tree::{Arena, NodeId},
@@ -196,11 +195,15 @@ impl<'a, M> AppConfigContext<'a, M> {
     }
 
     #[doc(hidden)]
-    pub fn set_fallback<F>(&mut self, fallback: F) -> super::Result<()>
+    pub fn set_default_handler<H>(&mut self, default_handler: H) -> super::Result<()>
     where
-        F: Fallback + Send + Sync + 'static,
+        H: Handler,
+        M: ModifyHandler<H>,
+        M::Handler: Send + Sync + 'static,
+        M::Output: Responder,
     {
-        self.inner.scopes[self.scope_id].data.fallback = Some(Box::new(fallback));
+        let handler = self.modifier.modify(default_handler);
+        self.inner.scopes[self.scope_id].data.fallback = Some(handler.into());
         Ok(())
     }
 
@@ -244,25 +247,25 @@ impl<'a, M> AppConfigContext<'a, M> {
     }
 }
 
-/// Creates a `Scope` that registers the specified `Fallback` onto the scope.
-pub fn with_fallback<F>(fallback: F) -> WithFallback<F>
-where
-    F: Fallback + Send + Sync + 'static,
-{
-    WithFallback(fallback)
+/// Creates a `Scope` that registers the default handler onto the scope.
+pub fn default_handler<H>(default_handler: H) -> DefaultHandler<H> {
+    DefaultHandler(default_handler)
 }
 
 #[derive(Debug)]
-pub struct WithFallback<F>(F);
+pub struct DefaultHandler<H>(H);
 
-impl<F, M> AppConfig<M> for WithFallback<F>
+impl<H, M> AppConfig<M> for DefaultHandler<H>
 where
-    F: Fallback + Send + Sync + 'static,
+    H: Handler,
+    M: ModifyHandler<H>,
+    M::Handler: Send + Sync + 'static,
+    M::Output: Responder,
 {
     type Error = super::Error;
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.set_fallback(self.0)
+        cx.set_default_handler(self.0)
     }
 }
 

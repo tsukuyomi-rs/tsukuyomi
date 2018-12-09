@@ -1,9 +1,5 @@
 use {
-    super::{
-        fallback::{Context as FallbackContext, FallbackKind},
-        recognizer::Captures,
-        AppInner, ResourceId, RouterResult,
-    },
+    super::{recognizer::Captures, AppInner, ResourceId},
     crate::{
         core::Never,
         handler::{Handle, HandleFn, HandleInner},
@@ -125,46 +121,21 @@ impl AppFuture {
     }
 
     fn process_recognize(&mut self) -> Handle {
-        let (kind, scope) = match {
+        self.resource_id = None;
+        self.captures = None;
+
+        match {
             self.inner
-                .route(self.request.uri().path(), self.request.method())
+                .route(self.request.uri().path(), &mut self.captures)
         } {
-            RouterResult::FoundEndpoint {
-                resource, captures, ..
-            } => {
+            Ok(resource) => {
                 self.resource_id = Some(resource.id);
-                self.captures = captures;
                 return resource.handler.call(input!(self));
             }
-            RouterResult::FoundResource {
-                resource,
-                captures,
-                scope,
-            } => {
-                self.resource_id = Some(resource.id);
-                self.captures = captures;
-                (FallbackKind::FoundResource(resource), scope)
-            }
-            RouterResult::NotFound {
-                resources,
-                captures,
-                scope,
-            } => {
-                self.resource_id = None;
-                self.captures = captures;
-                (FallbackKind::NotFound(resources), scope)
-            }
-        };
-
-        let mut cx = FallbackContext {
-            input: input!(self),
-            kind: &kind,
-            _priv: (),
-        };
-
-        match self.inner.find_fallback(scope.id()) {
-            Some(fallback) => fallback.call(&mut cx),
-            None => super::fallback::default(&mut cx),
+            Err(scope) => match self.inner.find_fallback(scope.id()) {
+                Some(fallback) => fallback.call(input!(self)),
+                None => Handle::err(http::StatusCode::NOT_FOUND.into()),
+            },
         }
     }
 
