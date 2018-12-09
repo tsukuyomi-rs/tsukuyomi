@@ -130,14 +130,11 @@ impl AppFuture {
                 .route(self.request.uri().path(), self.request.method())
         } {
             RouterResult::FoundEndpoint {
-                endpoint,
-                resource,
-                captures,
-                ..
+                resource, captures, ..
             } => {
                 self.resource_id = Some(resource.id);
                 self.captures = captures;
-                return endpoint.handler.call(input!(self));
+                return resource.handler.call(input!(self));
             }
             RouterResult::FoundResource {
                 resource,

@@ -39,11 +39,10 @@ pub fn default(cx: &mut Context<'_>) -> Handle {
         FallbackKind::NotFound(..) => Handle::err(StatusCode::NOT_FOUND.into()),
         FallbackKind::FoundResource(resource) => {
             if cx.input.request.method() == Method::HEAD {
-                return resource
-                    .allowed_methods
-                    .get(&Method::GET)
-                    .map(|&i| resource.endpoints[i].handler.call(&mut *cx.input))
-                    .unwrap_or_else(|| Handle::err(StatusCode::METHOD_NOT_ALLOWED.into()));
+                if resource.allowed_methods.contains(&Method::GET) {
+                    return Handle::err(StatusCode::METHOD_NOT_ALLOWED.into());
+                }
+                return resource.handler.call(&mut *cx.input);
             }
 
             if cx.input.request.method() == Method::OPTIONS {

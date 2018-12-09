@@ -144,13 +144,12 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(chain![
-        route::root().segment("path")?.reply(|| "get"),
+    let mut server = App::configure(
         route::root()
             .segment("path")?
-            .methods("POST")?
+            .methods("GET, POST")?
             .reply(|| "post"),
-    ])
+    )
     .map(Server::new)?
     .into_test_server()?;
 

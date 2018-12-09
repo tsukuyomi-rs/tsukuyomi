@@ -29,9 +29,8 @@ use {
         uri::Uri,
     },
     crate::{core::Never, handler::BoxedHandler, input::body::RequestBody, output::ResponseBody},
-    bytes::BytesMut,
     http::{header::HeaderValue, Method, Request, Response},
-    indexmap::{IndexMap, IndexSet},
+    indexmap::IndexSet,
     std::{fmt, sync::Arc},
     tower_service::NewService,
 };
@@ -153,20 +152,15 @@ impl AppInner {
             }
         };
 
-        if let Some(endpoint) = resource.recognize(method) {
-            return RouterResult::FoundEndpoint {
-                endpoint,
+        if resource.allowed_methods.contains(method) {
+            RouterResult::FoundEndpoint { resource, captures }
+        } else {
+            let scope = self.scope(resource.scope);
+            RouterResult::FoundResource {
                 resource,
                 captures,
-            };
-        }
-
-        let scope = self.scope(resource.scope);
-
-        RouterResult::FoundResource {
-            resource,
-            captures,
-            scope,
+                scope,
+            }
         }
     }
 }
@@ -195,62 +189,14 @@ pub struct Resource {
     scope: NodeId,
     ancestors: Vec<NodeId>,
     uri: Uri,
-    endpoints: Vec<Endpoint>,
-    allowed_methods: IndexMap<Method, usize>,
+    handler: BoxedHandler,
+    allowed_methods: IndexSet<Method>,
     allowed_methods_value: HeaderValue,
 }
 
 impl Resource {
     pub fn allowed_methods<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
-        self.allowed_methods.keys()
-    }
-
-    fn recognize(&self, method: &Method) -> Option<&Endpoint> {
-        self.allowed_methods
-            .get(method)
-            .map(|&pos| &self.endpoints[pos])
-    }
-
-    fn update(&mut self) {
-        self.allowed_methods_value = {
-            let allowed_methods: IndexSet<_> = self
-                .allowed_methods
-                .keys()
-                .chain(Some(&Method::OPTIONS))
-                .collect();
-            let bytes =
-                allowed_methods
-                    .iter()
-                    .enumerate()
-                    .fold(BytesMut::new(), |mut acc, (i, m)| {
-                        if i > 0 {
-                            acc.extend_from_slice(b", ");
-                        }
-                        acc.extend_from_slice(m.as_str().as_bytes());
-                        acc
-                    });
-            unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-        };
-    }
-}
-
-/// A struct representing a set of data associated with an endpoint.
-#[doc(hidden)]
-pub struct Endpoint {
-    id: usize,
-    uri: Uri,
-    methods: IndexSet<Method>,
-    handler: BoxedHandler,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Endpoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Endpoint")
-            .field("id", &self.id)
-            .field("uri", &self.uri)
-            .field("methods", &self.methods)
-            .finish()
+        self.allowed_methods.iter()
     }
 }
 
@@ -258,7 +204,6 @@ impl fmt::Debug for Endpoint {
 enum RouterResult<'a> {
     /// The URI is matched and a route associated with the specified method is found.
     FoundEndpoint {
-        endpoint: &'a Endpoint,
         resource: &'a Resource,
         captures: Option<Captures>,
     },

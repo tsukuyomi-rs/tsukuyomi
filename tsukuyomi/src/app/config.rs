@@ -9,7 +9,7 @@ use {
         recognizer::Recognizer,
         route::Methods,
         tree::{Arena, NodeId},
-        App, AppInner, Endpoint, Resource, ResourceId, ScopeData, Uri,
+        App, AppInner, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never, TryInto},
@@ -17,7 +17,7 @@ use {
         output::Responder,
     },
     http::{header::HeaderValue, Method},
-    indexmap::IndexMap,
+    indexmap::{indexset, IndexMap},
     std::sync::Arc,
 };
 
@@ -40,8 +40,7 @@ pub fn configure(prefix: impl AsRef<str>, config: impl AppConfig<()>) -> super::
 
     // create a route recognizer.
     let mut recognizer = Recognizer::default();
-    for (uri, mut resource) in inner.resources {
-        resource.update();
+    for (uri, resource) in inner.resources {
         recognizer.insert(uri.as_str(), resource)?;
     }
 
@@ -138,71 +137,60 @@ impl<'a, M> AppConfigContext<'a, M> {
         M::Output: Responder,
     {
         let uri = uri.try_into()?;
-        let mut methods = methods.try_into()?.0;
-
         let uri = self.inner.scopes[self.scope_id].data.prefix.join(&uri)?;
+        if self.inner.resources.contains_key(&uri) {
+            return Err(super::Error::from(failure::format_err!(
+                "detect the duplicated URI: {}",
+                uri
+            )));
+        }
 
-        let resource = {
-            let id = ResourceId(self.inner.resources.len());
-            let scope = &self.inner.scopes[self.scope_id];
-            self.inner
-                .resources
-                .entry(uri.clone())
-                .or_insert_with(|| Resource {
-                    id,
-                    scope: scope.id(),
-                    ancestors: scope
-                        .ancestors()
-                        .into_iter()
-                        .cloned()
-                        .chain(Some(scope.id()))
-                        .collect(),
-                    uri: uri.clone(),
-                    endpoints: vec![],
-                    allowed_methods: IndexMap::new(),
-                    allowed_methods_value: HeaderValue::from_static(""),
-                })
+        let mut allowed_methods = methods.try_into()?.0;
+        if allowed_methods.is_empty() {
+            allowed_methods.insert(Method::GET);
+        }
+
+        if uri.is_asterisk() && allowed_methods != indexset! { Method::OPTIONS } {
+            return Err(
+                failure::format_err!("the route with asterisk URI accepts only OPTIONS").into(),
+            );
+        }
+
+        let allowed_methods_value = {
+            let mut allowed_methods = allowed_methods.clone();
+            allowed_methods.insert(Method::OPTIONS);
+            let bytes = allowed_methods.iter().enumerate().fold(
+                bytes::BytesMut::new(),
+                |mut acc, (i, m)| {
+                    if i > 0 {
+                        acc.extend_from_slice(b", ");
+                    }
+                    acc.extend_from_slice(m.as_str().as_bytes());
+                    acc
+                },
+            );
+            unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
         };
 
-        if self.scope_id != resource.scope {
-            return Err(failure::format_err!("different scope id").into());
-        }
-
-        if methods.is_empty() {
-            methods.insert(Method::GET);
-        }
-
-        if uri.is_asterisk() {
-            if !methods.contains(&Method::OPTIONS) {
-                return Err(failure::format_err!(
-                    "the route with asterisk URI must explicitly handles OPTIONS"
-                )
-                .into());
-            }
-            if methods.iter().any(|method| method != Method::OPTIONS) {
-                return Err(failure::format_err!(
-                    "the route with asterisk URI must not accept any methods other than OPTIONS"
-                )
-                .into());
-            }
-        }
-
-        let endpoint_id = resource.allowed_methods.len();
-        for method in &methods {
-            if resource.allowed_methods.contains_key(method) {
-                return Err(super::Error::from(failure::format_err!(
-                    "the route with the same URI and method is not supported."
-                )));
-            }
-            resource.allowed_methods.insert(method.clone(), endpoint_id);
-        }
-
-        resource.endpoints.push(Endpoint {
-            id: endpoint_id,
-            uri,
-            methods,
-            handler: self.modifier.modify(handler).into(),
-        });
+        let id = ResourceId(self.inner.resources.len());
+        let scope = &self.inner.scopes[self.scope_id];
+        self.inner.resources.insert(
+            uri.clone(),
+            Resource {
+                id,
+                scope: scope.id(),
+                ancestors: scope
+                    .ancestors()
+                    .into_iter()
+                    .cloned()
+                    .chain(Some(scope.id()))
+                    .collect(),
+                uri: uri.clone(),
+                handler: self.modifier.modify(handler).into(),
+                allowed_methods,
+                allowed_methods_value,
+            },
+        );
 
         Ok(())
     }
