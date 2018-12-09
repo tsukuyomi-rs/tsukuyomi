@@ -254,9 +254,8 @@ where
 pub mod modifiers {
     use {
         super::*,
-        bytes::BytesMut,
         either::Either,
-        http::{header::HeaderValue, Method, StatusCode},
+        http::{Method, StatusCode},
     };
 
     #[derive(Debug, Default)]
@@ -284,34 +283,19 @@ pub mod modifiers {
     impl<H> DefaultOptionsHandler<H> {
         fn handle_default_options(&self, input: &mut Input<'_>) -> Option<Output> {
             let resource = (*input.resource)?;
+            let allowed_methods = resource.allowed_methods()?;
 
             if input.request.method() != Method::OPTIONS
-                || resource.allowed_methods().contains(&Method::OPTIONS)
+                || allowed_methods.contains(&Method::OPTIONS)
             {
                 return None;
             }
-
-            let allowed_methods_value = {
-                let bytes = resource
-                    .allowed_methods()
-                    .iter()
-                    .chain(Some(&Method::OPTIONS))
-                    .enumerate()
-                    .fold(BytesMut::new(), |mut acc, (i, m)| {
-                        if i > 0 {
-                            acc.extend_from_slice(b", ");
-                        }
-                        acc.extend_from_slice(m.as_str().as_bytes());
-                        acc
-                    });
-                unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-            };
 
             let mut output = Output::default();
             *output.status_mut() = StatusCode::NO_CONTENT;
             output
                 .headers_mut()
-                .insert(http::header::ALLOW, allowed_methods_value);
+                .insert(http::header::ALLOW, allowed_methods.render_with_options());
 
             Some(output)
         }

@@ -35,7 +35,7 @@ fn route_single_method() -> Result<()> {
 #[test]
 fn route_multiple_method() -> Result<()> {
     let app = App::configure(chain![route::root()
-        .methods(vec![Method::GET, Method::POST])?
+        .allowed_methods(vec![Method::GET, Method::POST])?
         .say(""),])?;
 
     assert_matches!(
@@ -191,10 +191,13 @@ fn scope_nested() -> Result<()> {
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
     let app = App::configure(chain![
-        route::root().segment("path")?.methods("GET")?.reply(|| ""),
         route::root()
             .segment("path")?
-            .methods("POST, PUT")?
+            .allowed_methods("GET")?
+            .reply(|| ""),
+        route::root()
+            .segment("path")?
+            .allowed_methods("POST, PUT")?
             .reply(|| ""),
     ]);
     assert!(app.is_err());
@@ -211,7 +214,7 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
             "/",
             route::root() //
                 .segment("path")?
-                .methods("POST")?
+                .allowed_methods("POST")?
                 .reply(|| "")
         )
     ]);

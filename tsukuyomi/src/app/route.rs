@@ -2,9 +2,10 @@ use {
     super::{
         config::{AppConfig, AppConfigContext},
         uri::{Uri, UriComponent},
+        AllowedMethods,
     },
     crate::{
-        core::{Chain, Never, TryFrom, TryInto},
+        core::{Chain, TryInto},
         extractor::Extractor,
         fs::NamedFile,
         future::{Future, MaybeFuture},
@@ -13,62 +14,9 @@ use {
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
-    http::{HttpTryFrom, Method, StatusCode},
-    indexmap::{indexset, IndexSet},
+    http::{Method, StatusCode},
     std::{marker::PhantomData, path::Path},
 };
-
-/// A set of request methods that a route accepts.
-#[derive(Debug)]
-pub struct Methods(pub(super) IndexSet<Method>);
-
-impl TryFrom<Self> for Methods {
-    type Error = Never;
-
-    #[inline]
-    fn try_from(methods: Self) -> Result<Self, Self::Error> {
-        Ok(methods)
-    }
-}
-
-impl TryFrom<Method> for Methods {
-    type Error = Never;
-
-    #[inline]
-    fn try_from(method: Method) -> Result<Self, Self::Error> {
-        Ok(Methods(indexset! { method }))
-    }
-}
-
-impl<M> TryFrom<Vec<M>> for Methods
-where
-    Method: HttpTryFrom<M>,
-{
-    type Error = http::Error;
-
-    #[inline]
-    fn try_from(methods: Vec<M>) -> Result<Self, Self::Error> {
-        let methods = methods
-            .into_iter()
-            .map(Method::try_from)
-            .collect::<Result<_, _>>()
-            .map_err(Into::into)?;
-        Ok(Methods(methods))
-    }
-}
-
-impl<'a> TryFrom<&'a str> for Methods {
-    type Error = failure::Error;
-
-    #[inline]
-    fn try_from(methods: &'a str) -> Result<Self, Self::Error> {
-        let methods = methods
-            .split(',')
-            .map(|s| Method::try_from(s.trim()).map_err(Into::into))
-            .collect::<http::Result<_>>()?;
-        Ok(Methods(methods))
-    }
-}
 
 mod tags {
     #[derive(Debug)]
@@ -81,7 +29,7 @@ mod tags {
 pub fn root() -> Builder<(), self::tags::Incomplete> {
     Builder {
         uri: Uri::root(),
-        methods: None,
+        allowed_methods: None,
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -90,7 +38,7 @@ pub fn root() -> Builder<(), self::tags::Incomplete> {
 pub fn asterisk() -> Builder<(), self::tags::Completed> {
     Builder {
         uri: Uri::asterisk(),
-        methods: Some(Methods(indexset! { Method::OPTIONS })),
+        allowed_methods: Some(AllowedMethods::from(Method::OPTIONS)),
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -101,7 +49,7 @@ pub fn asterisk() -> Builder<(), self::tags::Completed> {
 #[derive(Debug)]
 pub struct Builder<E: Extractor = (), T = self::tags::Incomplete> {
     uri: Uri,
-    methods: Option<Methods>,
+    allowed_methods: Option<AllowedMethods>,
     extractor: E,
     _marker: PhantomData<T>,
 }
@@ -111,9 +59,14 @@ where
     E: Extractor,
 {
     /// Sets the HTTP methods that this route accepts.
-    pub fn methods(self, methods: impl TryInto<Methods>) -> super::Result<Self> {
+    ///
+    /// By default, the route accepts *all* HTTP methods.
+    pub fn allowed_methods(
+        self,
+        allowed_methods: impl TryInto<AllowedMethods>,
+    ) -> super::Result<Self> {
         Ok(Builder {
-            methods: Some(methods.try_into()?),
+            allowed_methods: Some(allowed_methods.try_into()?),
             ..self
         })
     }
@@ -132,7 +85,7 @@ where
                 uri.push(UriComponent::Slash).expect("this is a bug.");
                 uri
             },
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             extractor: self.extractor,
             _marker: PhantomData,
         }
@@ -156,7 +109,7 @@ where
                 uri.push(UriComponent::Param(name.clone(), ':'))?;
                 uri
             },
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             extractor: Chain::new(
                 self.extractor,
                 crate::extractor::ready(move |input| match input.params {
@@ -192,7 +145,7 @@ where
                 uri.push(UriComponent::Param(name.clone(), '*'))?;
                 uri
             },
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             extractor: Chain::new(
                 self.extractor,
                 crate::extractor::ready(|input| match input.params {
@@ -227,7 +180,7 @@ where
         Builder {
             extractor: Chain::new(self.extractor, other),
             uri: self.uri,
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             _marker: PhantomData,
         }
     }
@@ -237,15 +190,16 @@ where
     where
         F: MakeHandler<E>,
     {
-        let allowed_methods = self
-            .methods
-            .unwrap_or_else(|| Methods(indexset! { Method::GET }));
+        let allowed_methods = self.allowed_methods;
 
         let handler = {
             let inner = make_handler.make_handler(self.extractor);
-            let allowed_methods = allowed_methods.0.clone();
+            let allowed_methods = allowed_methods.clone();
             crate::handler::raw(move |input| {
-                if !allowed_methods.contains(input.request.method()) {
+                if allowed_methods
+                    .as_ref()
+                    .map_or(false, |m| !m.contains(input.request.method()))
+                {
                     return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into());
                 }
                 inner.call(input).map_err(Into::into)
@@ -359,7 +313,7 @@ where
 #[derive(Debug)]
 pub struct Route<H> {
     uri: Uri,
-    allowed_methods: Methods,
+    allowed_methods: Option<AllowedMethods>,
     handler: H,
 }
 
@@ -374,39 +328,5 @@ where
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
         cx.add_route(self.uri, self.allowed_methods, self.handler)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_methods_try_from() {
-        assert_eq!(
-            Methods::try_from(Methods(indexset! { Method::GET }))
-                .unwrap()
-                .0,
-            indexset! { Method::GET }
-        );
-        assert_eq!(
-            Methods::try_from(Method::GET).unwrap().0,
-            indexset! { Method::GET }
-        );
-        assert_eq!(
-            Methods::try_from(vec![Method::GET, Method::POST])
-                .unwrap()
-                .0,
-            indexset! { Method::GET, Method::POST }
-        );
-        assert_eq!(
-            Methods::try_from("GET").unwrap().0,
-            indexset! { Method::GET }
-        );
-        assert_eq!(
-            Methods::try_from("GET, POST").unwrap().0,
-            indexset! { Method::GET , Method::POST }
-        );
-        assert!(Methods::try_from("").is_err());
     }
 }

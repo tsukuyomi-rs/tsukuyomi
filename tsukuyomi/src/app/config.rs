@@ -6,9 +6,8 @@ pub mod prelude {
 use {
     super::{
         recognizer::Recognizer,
-        route::Methods,
         tree::{Arena, NodeId},
-        App, AppInner, Resource, ResourceId, ScopeData, Uri,
+        AllowedMethods, App, AppInner, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never, TryInto},
@@ -126,7 +125,7 @@ impl<'a, M> AppConfigContext<'a, M> {
     pub fn add_route<H>(
         &mut self,
         uri: impl TryInto<Uri>,
-        allowed_methods: impl TryInto<Methods>,
+        allowed_methods: Option<impl TryInto<AllowedMethods>>,
         handler: H,
     ) -> super::Result<()>
     where
@@ -144,18 +143,28 @@ impl<'a, M> AppConfigContext<'a, M> {
             )));
         }
 
-        let allowed_methods = allowed_methods.try_into()?.0;
-        if allowed_methods.is_empty() {
-            return Err(
-                failure::format_err!("the route must accept at least one HTTP method(s)").into(),
-            );
-        }
+        let allowed_methods = match allowed_methods {
+            Some(methods) => {
+                let methods = methods.try_into()?;
 
-        if uri.is_asterisk() && allowed_methods != indexset! { Method::OPTIONS } {
-            return Err(
-                failure::format_err!("the route with asterisk URI accepts only OPTIONS").into(),
-            );
-        }
+                if methods.0.is_empty() {
+                    return Err(failure::format_err!(
+                        "the route must accept at least one HTTP method(s)"
+                    )
+                    .into());
+                }
+
+                if uri.is_asterisk() && *methods.0 != indexset! { Method::OPTIONS } {
+                    return Err(failure::format_err!(
+                        "the route with asterisk URI accepts only OPTIONS"
+                    )
+                    .into());
+                }
+
+                Some(methods)
+            }
+            None => None,
+        };
 
         let id = ResourceId(self.inner.resources.len());
         let scope = &self.inner.scopes[self.scope_id];

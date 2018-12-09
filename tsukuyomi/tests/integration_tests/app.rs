@@ -62,7 +62,7 @@ fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(
         route::root()
             .segment("hello")?
-            .methods("POST")?
+            .allowed_methods("POST")?
             .extract(tsukuyomi::extractor::body::plain())
             .reply(|body: String| body),
     )
@@ -148,7 +148,7 @@ fn default_options() -> tsukuyomi::test::Result<()> {
         tsukuyomi::handler::modifiers::DefaultOptions::default(),
         route::root()
             .segment("path")?
-            .methods("GET, POST")?
+            .allowed_methods("GET, POST")?
             .reply(|| "post"),
     ))
     .map(Server::new)?
@@ -189,13 +189,13 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                 }),
                 route::root()
                     .segment("posts")?
-                    .methods("POST")?
+                    .allowed_methods("POST")?
                     .say("posts"),
                 mount(
                     "/events",
                     route::root()
                         .segment("new")?
-                        .methods("POST")?
+                        .allowed_methods("POST")?
                         .say("new_event"),
                 ),
             ],

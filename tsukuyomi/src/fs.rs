@@ -496,7 +496,7 @@ where
             if file_type.is_file() {
                 cx.add_route(
                     format!("/{}", name),
-                    "GET",
+                    Some("GET"),
                     ServeFile {
                         path,
                         config: config.clone(),
@@ -506,7 +506,7 @@ where
             } else if file_type.is_dir() {
                 cx.add_route(
                     format!("/{}/*path", name),
-                    "GET",
+                    Some("GET"),
                     ServeFile {
                         path,
                         config: config.clone(),
