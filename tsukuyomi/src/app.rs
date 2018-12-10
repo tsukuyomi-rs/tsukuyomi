@@ -85,7 +85,11 @@ impl AppInner {
     }
 
     /// Infers the scope where the input path belongs from the extracted candidates.
-    fn infer_scope(&self, path: &str, resources: &[&Resource]) -> &Node<ScopeData> {
+    fn infer_scope<'a>(
+        &self,
+        path: &str,
+        resources: impl IntoIterator<Item = &'a Resource>,
+    ) -> &Node<ScopeData> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[NodeId]> = None;
@@ -136,13 +140,10 @@ impl AppInner {
         match self.recognizer.recognize(path, captures) {
             Ok(resource) => Ok(resource),
             Err(RecognizeError::NotMatched) => Err(self.scope(NodeId::root())),
-            Err(RecognizeError::PartiallyMatched(candidates)) => {
-                let resources: Vec<_> = candidates
-                    .iter()
-                    .filter_map(|i| self.recognizer.get(i))
-                    .collect();
-                Err(self.infer_scope(path, &resources))
-            }
+            Err(RecognizeError::PartiallyMatched(candidates)) => Err(self.infer_scope(
+                path,
+                candidates.iter().filter_map(|i| self.recognizer.get(i)),
+            )),
         }
     }
 }
