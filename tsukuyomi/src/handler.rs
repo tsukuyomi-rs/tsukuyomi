@@ -118,28 +118,6 @@ impl BoxedHandler {
     }
 }
 
-/// A trait representing a creator of `Handler`.
-pub trait MakeHandler<T> {
-    type Output;
-    type Handler: Handler<Output = Self::Output>;
-
-    fn make_handler(self, input: T) -> Self::Handler;
-}
-
-impl<F, T, H> MakeHandler<T> for F
-where
-    F: FnOnce(T) -> H,
-    H: Handler,
-{
-    type Output = H::Output;
-    type Handler = H;
-
-    #[inline]
-    fn make_handler(self, input: T) -> Self::Handler {
-        self(input)
-    }
-}
-
 /// A trait representing a type for modifying the instance of `Handler`.
 pub trait ModifyHandler<H: Handler> {
     type Output;

@@ -5,12 +5,13 @@ use {
         AllowedMethods,
     },
     crate::{
-        core::{Chain, TryInto},
+        core::{Chain, Never, TryInto},
+        endpoint::Endpoint,
         extractor::Extractor,
         fs::NamedFile,
-        future::{Future, MaybeFuture},
+        future::{Future, MaybeFuture, NeverFuture},
         generic::{Combine, Func},
-        handler::{Handler, MakeHandler, ModifyHandler},
+        handler::{Handler, ModifyHandler},
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
@@ -186,14 +187,18 @@ where
     }
 
     /// Finalize the configuration in this route and creates the instance of `Route`.
-    pub fn finish<F>(self, make_handler: F) -> Route<impl Handler<Output = F::Output>>
+    pub fn to<U>(self, endpoint: U) -> Route<impl Handler<Output = U::Output>>
     where
-        F: MakeHandler<E>,
+        U: Endpoint<E::Output> + Clone + Send + 'static,
     {
-        let allowed_methods = self.allowed_methods;
+        let Self {
+            uri,
+            allowed_methods,
+            extractor,
+            ..
+        } = self;
 
         let handler = {
-            let inner = make_handler.make_handler(self.extractor);
             let allowed_methods = allowed_methods.clone();
             crate::handler::raw(move |input| {
                 if allowed_methods
@@ -202,12 +207,46 @@ where
                 {
                     return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into());
                 }
-                inner.call(input).map_err(Into::into)
+
+                #[allow(missing_debug_implementations)]
+                enum State<F1, F2, E> {
+                    First(F1, E),
+                    Second(F2),
+                }
+
+                let mut state = match extractor.extract(input) {
+                    MaybeFuture::Ready(Ok(args)) => match endpoint.call(input, args) {
+                        MaybeFuture::Ready(result) => {
+                            return MaybeFuture::Ready(result.map_err(Into::into))
+                        }
+                        MaybeFuture::Future(future) => State::Second(future),
+                    },
+                    MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
+                    MaybeFuture::Future(future) => State::First(future, endpoint.clone()),
+                };
+
+                MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
+                    state = match state {
+                        State::First(ref mut future, ref endpoint) => {
+                            let args =
+                                futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
+                            match endpoint.call(&mut *cx.input, args) {
+                                MaybeFuture::Ready(result) => {
+                                    return result.map(Into::into).map_err(Into::into)
+                                }
+                                MaybeFuture::Future(future) => State::Second(future),
+                            }
+                        }
+                        State::Second(ref mut future) => {
+                            return future.poll_ready(cx).map_err(Into::into)
+                        }
+                    }
+                }))
             })
         };
 
         Route {
-            uri: self.uri,
+            uri,
             allowed_methods,
             handler,
         }
@@ -219,21 +258,12 @@ where
     pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>>
     where
         F: Func<E::Output> + Clone + Send + 'static,
+        E::Output: 'static,
+        F::Out: 'static,
     {
-        self.finish(|extractor: E| {
-            crate::handler::raw(move |input| match extractor.extract(input) {
-                MaybeFuture::Ready(result) => {
-                    MaybeFuture::Ready(result.map(|args| f.call(args)).map_err(Into::into))
-                }
-                MaybeFuture::Future(mut future) => MaybeFuture::Future({
-                    let f = f.clone();
-                    crate::future::poll_fn(move |cx| {
-                        let args = futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
-                        Ok(f.call(args).into())
-                    })
-                }),
-            })
-        })
+        self.to(crate::endpoint::raw(move |_, args| {
+            MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
+        }))
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
@@ -243,41 +273,12 @@ where
     where
         F: Func<E::Output, Out = R> + Clone + Send + 'static,
         R: Future + Send + 'static,
+        E::Output: 'static,
+        F::Out: 'static,
     {
-        #[allow(missing_debug_implementations)]
-        enum State<F1, F2, F> {
-            First(F1, F),
-            Second(F2),
-        }
-
-        self.finish(|extractor: E| {
-            crate::handler::raw(move |input| {
-                let mut state = match extractor.extract(input) {
-                    MaybeFuture::Ready(Ok(args)) => State::Second(f.call(args)),
-                    MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
-                    MaybeFuture::Future(future) => State::First(future, f.clone()),
-                };
-                MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
-                    state = match state {
-                        State::First(ref mut f1, ref f) => {
-                            let args = futures01::try_ready!(f1.poll_ready(cx).map_err(Into::into));
-                            State::Second(f.call(args))
-                        }
-                        State::Second(ref mut f2) => return f2.poll_ready(cx).map_err(Into::into),
-                    }
-                }))
-            })
-        })
-    }
-}
-
-impl<T> Builder<(), T> {
-    /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(self, handler: H) -> Route<impl Handler<Output = H::Output>>
-    where
-        H: Handler,
-    {
-        self.finish(|_: ()| handler)
+        self.to(crate::endpoint::raw(move |_, args| {
+            MaybeFuture::Future(f.call(args))
+        }))
     }
 }
 
@@ -315,6 +316,19 @@ pub struct Route<H> {
     uri: Uri,
     allowed_methods: Option<AllowedMethods>,
     handler: H,
+}
+
+impl<H> Route<H>
+where
+    H: Handler,
+{
+    pub fn new(uri: impl TryInto<Uri>, handler: H) -> super::Result<Self> {
+        Ok(Self {
+            uri: uri.try_into()?,
+            allowed_methods: None,
+            handler,
+        })
+    }
 }
 
 impl<H, M> AppConfig<M> for Route<H>

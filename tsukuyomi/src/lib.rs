@@ -19,6 +19,7 @@ pub mod core;
 mod generic;
 
 pub mod app;
+pub mod endpoint;
 pub mod error;
 pub mod extractor;
 pub mod fs;
