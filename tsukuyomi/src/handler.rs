@@ -63,53 +63,21 @@ pub fn ready<T: 'static>(f: impl Fn(&mut Input<'_>) -> T) -> impl Handler<Output
 
 // ==== boxed ====
 
-pub(crate) type HandleFn =
+pub(crate) type HandleTask =
     dyn FnMut(&mut crate::future::Context<'_>) -> Poll<Output, Error> + Send + 'static;
 
-pub(crate) enum HandleInner {
+pub(crate) enum Handle {
     Ready(Result<Output, Error>),
-    PollFn(Box<HandleFn>),
+    InFlight(Box<HandleTask>),
 }
 
-impl fmt::Debug for HandleInner {
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for Handle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HandleInner::Ready(result) => f.debug_tuple("Ready").field(result).finish(),
-            HandleInner::PollFn(..) => f.debug_tuple("PollFn").finish(),
+            Handle::Ready(result) => f.debug_tuple("Ready").field(result).finish(),
+            Handle::InFlight(..) => f.debug_tuple("InFlight").finish(),
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct Handle {
-    inner: HandleInner,
-}
-
-impl Handle {
-    pub fn ready(result: Result<Output, Error>) -> Self {
-        Self {
-            inner: HandleInner::Ready(result),
-        }
-    }
-
-    pub fn ok(ok: Output) -> Self {
-        Self::ready(Ok(ok))
-    }
-
-    pub fn err(err: Error) -> Self {
-        Self::ready(Err(err))
-    }
-
-    pub fn poll_fn(
-        f: impl FnMut(&mut crate::future::Context<'_>) -> Poll<Output, Error> + Send + 'static,
-    ) -> Self {
-        Self {
-            inner: HandleInner::PollFn(Box::new(f)),
-        }
-    }
-
-    pub(crate) fn into_inner(self) -> HandleInner {
-        self.inner
     }
 }
 
@@ -132,13 +100,13 @@ where
         Self {
             inner: Box::new(move |input| match handler.call(input) {
                 MaybeFuture::Ready(Ok(x)) => {
-                    Handle::ready(crate::output::internal::respond_to(x, input))
+                    Handle::Ready(crate::output::internal::respond_to(x, input))
                 }
-                MaybeFuture::Ready(Err(err)) => Handle::err(err.into()),
-                MaybeFuture::Future(mut future) => Handle::poll_fn(move |cx| {
+                MaybeFuture::Ready(Err(err)) => Handle::Ready(Err(err.into())),
+                MaybeFuture::Future(mut future) => Handle::InFlight(Box::new(move |cx| {
                     let x = futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
                     crate::output::internal::respond_to(x, &mut *cx.input).map(Async::Ready)
-                }),
+                })),
             }),
         }
     }

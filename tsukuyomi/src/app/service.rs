@@ -2,7 +2,7 @@ use {
     super::{recognizer::Captures, AppInner, ResourceId},
     crate::{
         core::Never,
-        handler::{Handle, HandleFn, HandleInner},
+        handler::{Handle, HandleTask},
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::{Output, ResponseBody},
     },
@@ -66,7 +66,7 @@ pub struct AppFuture {
 
 enum AppFutureState {
     Init,
-    InFlight(Box<HandleFn>),
+    InFlight(Box<HandleTask>),
     Done,
 }
 
@@ -139,7 +139,7 @@ impl AppFuture {
             }
             Err(scope) => match self.inner.find_fallback(scope.id()) {
                 Some(fallback) => fallback.call(input!(self)),
-                None => Handle::err(http::StatusCode::NOT_FOUND.into()),
+                None => Handle::Ready(Err(http::StatusCode::NOT_FOUND.into())),
             },
         }
     }
@@ -184,9 +184,9 @@ impl Future for AppFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let polled = loop {
             self.state = match self.state {
-                AppFutureState::Init => match self.process_recognize().into_inner() {
-                    HandleInner::Ready(result) => break result,
-                    HandleInner::PollFn(in_flight) => AppFutureState::InFlight(in_flight),
+                AppFutureState::Init => match self.process_recognize() {
+                    Handle::Ready(result) => break result,
+                    Handle::InFlight(in_flight) => AppFutureState::InFlight(in_flight),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
                     break ready!((*in_flight)(&mut crate::future::Context::new(input!(self))));
