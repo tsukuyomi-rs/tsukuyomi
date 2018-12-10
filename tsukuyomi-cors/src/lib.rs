@@ -32,14 +32,11 @@ use {
     },
     std::{collections::HashSet, sync::Arc, time::Duration},
     tsukuyomi::{
-        app::{
-            config::{AppConfig, AppConfigContext},
-            fallback::{self, Fallback},
-        },
+        app::config::{AppConfig, AppConfigContext},
         core::Chain,
         future::MaybeFuture,
         handler::{Handler, ModifyHandler},
-        HttpError, Input, Output,
+        HttpError, Input, Output, Responder,
     },
 };
 
@@ -218,6 +215,12 @@ pub struct CORS {
     inner: Arc<Inner>,
 }
 
+impl Default for CORS {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CORS {
     /// Create a new `CORS` with the default configuration.
     pub fn new() -> Self {
@@ -248,13 +251,15 @@ pub struct CORSScope<S> {
 
 impl<M, S> AppConfig<M> for CORSScope<S>
 where
-    M: Clone,
+    M: ModifyHandler<CORS> + Clone,
+    M::Handler: Send + Sync + 'static,
+    M::Output: Responder,
     S: AppConfig<Chain<M, CORS>>,
 {
     type Error = tsukuyomi::app::Error;
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.set_fallback(self.cors.clone())?;
+        cx.set_default_handler(self.cors.clone())?;
         self.scope
             .configure(&mut cx.with_modifier(self.cors))
             .map_err(Into::into)?;
@@ -262,30 +267,29 @@ where
     }
 }
 
-/// The implementation of `Fallback` for processing the CORS request.
+/// The implementation of `Handler` for processing the CORS request.
 ///
 /// This fallback adds the processing for CORS preflight request for all URLs
 /// registered in the scope. If the route explicitly handles `OPTIONS`, it will be
 /// ignored.
-impl Fallback for CORS {
-    fn call(&self, cx: &mut fallback::Context<'_>) -> tsukuyomi::handler::Handle {
-        if cx.input.request.method() == Method::OPTIONS {
-            let origin = match self.inner.validate_origin(cx.input.request) {
-                Ok(origin) => origin,
-                Err(err) => return tsukuyomi::handler::Handle::err(err.into()),
-            };
+impl Handler for CORS {
+    type Output = Response<()>;
+    type Future = tsukuyomi::future::NeverFuture<Self::Output, tsukuyomi::Error>;
 
-            if let Some(origin) = origin {
-                return tsukuyomi::handler::Handle::ready(
-                    self.inner
-                        .process_preflight_request(cx.input.request, origin)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into),
-                );
-            }
+    fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+        if input.request.uri().path() != "*" || input.request.method() != Method::OPTIONS {
+            return MaybeFuture::err(StatusCode::NOT_FOUND.into());
         }
 
-        tsukuyomi::app::fallback::default(cx)
+        match self.inner.validate_origin(input.request) {
+            Ok(Some(origin)) => MaybeFuture::Ready(
+                self.inner
+                    .process_preflight_request(input.request, origin)
+                    .map_err(Into::into),
+            ),
+            Ok(None) => MaybeFuture::err(StatusCode::NOT_FOUND.into()),
+            Err(err) => MaybeFuture::err(err.into()),
+        }
     }
 }
 
@@ -316,6 +320,7 @@ pub struct CORSHandler<H> {
     inner: Arc<Inner>,
 }
 
+#[allow(clippy::type_complexity)]
 impl<H> Handler for CORSHandler<H>
 where
     H: Handler,

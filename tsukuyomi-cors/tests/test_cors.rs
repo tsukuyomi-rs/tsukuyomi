@@ -94,10 +94,15 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
         .allow_method(Method::GET)?
         .build();
 
-    let mut server =
-        App::configure(cors.wrap_scope(route::root().methods("GET, DELETE")?.reply(|| "hello")))
-            .map(Server::new)?
-            .into_test_server()?;
+    let mut server = App::configure(
+        cors.wrap_scope(
+            route::root() //
+                .allowed_methods("GET, DELETE")?
+                .reply(|| "hello"),
+        ),
+    )
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::get("/")
@@ -321,10 +326,7 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(chain![
         with_modifier(
             cors.clone(),
-            route::root()
-                .segment("cors")?
-                .methods("GET, OPTIONS")?
-                .reply(|| "cors")
+            route::root().segment("cors")?.reply(|| "cors")
         ),
         route::root().segment("nocors")?.reply(|| "nocors"),
         with_modifier(cors, route::asterisk().reply(|| ())),
