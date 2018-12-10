@@ -1,64 +1,95 @@
 use crate::{
     future::{Future, MaybeFuture},
-    generic::Tuple,
     input::Input,
 };
 
-pub trait Endpoint<T: Tuple> {
+pub trait Endpoint<T> {
     type Output;
     type Future: Future<Output = Self::Output> + Send + 'static;
 
-    fn call(&self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future>;
+    fn call(self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future>;
 }
 
-pub fn raw<T, R>(
-    f: impl Fn(&mut Input<'_>, T) -> MaybeFuture<R> + Clone,
-) -> impl Endpoint<T, Output = R::Output, Future = R> + Clone
+pub fn endpoint<T, R>(
+    f: impl FnOnce(&mut Input<'_>, T) -> MaybeFuture<R>,
+) -> impl Endpoint<T, Output = R::Output, Future = R>
 where
-    T: Tuple,
     R: Future + Send + 'static,
 {
     #[allow(missing_debug_implementations)]
-    #[derive(Clone)]
-    struct Raw<F>(F);
+    struct EndpointFn<F>(F);
 
-    impl<F, T, R> Endpoint<T> for Raw<F>
+    impl<F, T, R> Endpoint<T> for EndpointFn<F>
     where
-        F: Fn(&mut Input<'_>, T) -> MaybeFuture<R>,
-        T: Tuple,
+        F: FnOnce(&mut Input<'_>, T) -> MaybeFuture<R>,
         R: Future + Send + 'static,
     {
         type Output = R::Output;
         type Future = R;
 
-        fn call(&self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future> {
+        fn call(self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future> {
             (self.0)(input, args)
+        }
+    }
+
+    EndpointFn(f)
+}
+
+pub trait Dispatcher<T> {
+    type Output;
+    type Endpoint: Endpoint<T, Output = Self::Output>;
+
+    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint>;
+}
+
+pub fn dispatcher<T, A>(
+    f: impl Fn(&mut Input<'_>) -> Option<A>,
+) -> impl Dispatcher<T, Output = A::Output, Endpoint = A>
+where
+    A: Endpoint<T>,
+{
+    #[allow(missing_debug_implementations)]
+    struct Raw<F>(F);
+
+    impl<F, T, A> Dispatcher<T> for Raw<F>
+    where
+        F: Fn(&mut Input<'_>) -> Option<A>,
+        A: Endpoint<T>,
+    {
+        type Output = A::Output;
+        type Endpoint = A;
+
+        #[inline]
+        fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
+            (self.0)(input)
         }
     }
 
     Raw(f)
 }
 
-impl<E, T: Tuple> Endpoint<T> for std::rc::Rc<E>
+impl<E, T> Dispatcher<T> for std::rc::Rc<E>
 where
-    E: Endpoint<T>,
+    E: Dispatcher<T>,
 {
     type Output = E::Output;
-    type Future = E::Future;
+    type Endpoint = E::Endpoint;
 
-    fn call(&self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future> {
-        (**self).call(input, args)
+    #[inline]
+    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
+        (**self).dispatch(input)
     }
 }
 
-impl<E, T: Tuple> Endpoint<T> for std::sync::Arc<E>
+impl<E, T> Dispatcher<T> for std::sync::Arc<E>
 where
-    E: Endpoint<T>,
+    E: Dispatcher<T>,
 {
     type Output = E::Output;
-    type Future = E::Future;
+    type Endpoint = E::Endpoint;
 
-    fn call(&self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future> {
-        (**self).call(input, args)
+    #[inline]
+    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
+        (**self).dispatch(input)
     }
 }

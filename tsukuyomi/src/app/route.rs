@@ -6,7 +6,7 @@ use {
     },
     crate::{
         core::{Chain, Never, TryInto},
-        endpoint::Endpoint,
+        endpoint::{Dispatcher, Endpoint},
         extractor::Extractor,
         fs::NamedFile,
         future::{Future, MaybeFuture, NeverFuture},
@@ -187,9 +187,10 @@ where
     }
 
     /// Finalize the configuration in this route and creates the instance of `Route`.
-    pub fn to<U>(self, endpoint: U) -> Route<impl Handler<Output = U::Output>>
+    pub fn to<D>(self, dispatcher: D) -> Route<impl Handler<Output = D::Output>>
     where
-        U: Endpoint<E::Output> + Clone + Send + 'static,
+        D: Dispatcher<E::Output>,
+        D::Endpoint: Send + 'static,
     {
         let Self {
             uri,
@@ -209,10 +210,15 @@ where
                 }
 
                 #[allow(missing_debug_implementations)]
-                enum State<F1, F2, E> {
-                    First(F1, E),
+                enum State<F1, F2, T> {
+                    First(F1, T),
                     Second(F2),
                 }
+
+                let endpoint = match dispatcher.dispatch(input) {
+                    Some(endpoint) => endpoint,
+                    None => return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into()),
+                };
 
                 let mut state = match extractor.extract(input) {
                     MaybeFuture::Ready(Ok(args)) => match endpoint.call(input, args) {
@@ -222,15 +228,15 @@ where
                         MaybeFuture::Future(future) => State::Second(future),
                     },
                     MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
-                    MaybeFuture::Future(future) => State::First(future, endpoint.clone()),
+                    MaybeFuture::Future(future) => State::First(future, Some(endpoint)),
                 };
 
                 MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
                     state = match state {
-                        State::First(ref mut future, ref endpoint) => {
+                        State::First(ref mut future, ref mut action) => {
                             let args =
                                 futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
-                            match endpoint.call(&mut *cx.input, args) {
+                            match action.take().unwrap().call(&mut *cx.input, args) {
                                 MaybeFuture::Ready(result) => {
                                     return result.map(Into::into).map_err(Into::into)
                                 }
@@ -261,8 +267,11 @@ where
         E::Output: 'static,
         F::Out: 'static,
     {
-        self.to(crate::endpoint::raw(move |_, args| {
-            MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
+        self.to(crate::endpoint::dispatcher(move |_| {
+            let f = f.clone();
+            Some(crate::endpoint::endpoint(move |_, args| {
+                MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
+            }))
         }))
     }
 
@@ -276,8 +285,11 @@ where
         E::Output: 'static,
         F::Out: 'static,
     {
-        self.to(crate::endpoint::raw(move |_, args| {
-            MaybeFuture::Future(f.call(args))
+        self.to(crate::endpoint::dispatcher(move |_| {
+            let f = f.clone();
+            Some(crate::endpoint::endpoint(move |_, args| {
+                MaybeFuture::Future(f.call(args))
+            }))
         }))
     }
 }
