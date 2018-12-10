@@ -247,6 +247,7 @@ pub mod modifiers {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     impl<H> Handler for DefaultOptionsHandler<H>
     where
         H: Handler,

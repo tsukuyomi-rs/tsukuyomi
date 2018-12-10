@@ -322,7 +322,7 @@ impl<H> Route<H>
 where
     H: Handler,
 {
-    pub fn new(uri: impl TryInto<Uri>, handler: H) -> super::Result<Self> {
+    pub fn from_parts(uri: impl TryInto<Uri>, handler: H) -> super::Result<Self> {
         Ok(Self {
             uri: uri.try_into()?,
             allowed_methods: None,
