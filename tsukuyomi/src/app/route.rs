@@ -2,73 +2,22 @@ use {
     super::{
         config::{AppConfig, AppConfigContext},
         uri::{Uri, UriComponent},
+        AllowedMethods,
     },
     crate::{
-        core::{Chain, Never, TryFrom, TryInto},
+        core::{Chain, Never, TryInto},
+        endpoint::Endpoint,
         extractor::Extractor,
         fs::NamedFile,
-        future::{Future, MaybeFuture},
+        future::{Future, MaybeFuture, NeverFuture},
         generic::{Combine, Func},
-        handler::{Handler, MakeHandler, ModifyHandler},
+        handler::{Handler, ModifyHandler},
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
-    http::{HttpTryFrom, Method},
-    indexmap::{indexset, IndexSet},
+    http::{Method, StatusCode},
     std::{marker::PhantomData, path::Path},
 };
-
-/// A set of request methods that a route accepts.
-#[derive(Debug, Default)]
-pub struct Methods(pub(super) IndexSet<Method>);
-
-impl TryFrom<Self> for Methods {
-    type Error = Never;
-
-    #[inline]
-    fn try_from(methods: Self) -> Result<Self, Self::Error> {
-        Ok(methods)
-    }
-}
-
-impl TryFrom<Method> for Methods {
-    type Error = Never;
-
-    #[inline]
-    fn try_from(method: Method) -> Result<Self, Self::Error> {
-        Ok(Methods(indexset! { method }))
-    }
-}
-
-impl<M> TryFrom<Vec<M>> for Methods
-where
-    Method: HttpTryFrom<M>,
-{
-    type Error = http::Error;
-
-    #[inline]
-    fn try_from(methods: Vec<M>) -> Result<Self, Self::Error> {
-        let methods = methods
-            .into_iter()
-            .map(Method::try_from)
-            .collect::<Result<_, _>>()
-            .map_err(Into::into)?;
-        Ok(Methods(methods))
-    }
-}
-
-impl<'a> TryFrom<&'a str> for Methods {
-    type Error = failure::Error;
-
-    #[inline]
-    fn try_from(methods: &'a str) -> Result<Self, Self::Error> {
-        let methods = methods
-            .split(',')
-            .map(|s| Method::try_from(s.trim()).map_err(Into::into))
-            .collect::<http::Result<_>>()?;
-        Ok(Methods(methods))
-    }
-}
 
 mod tags {
     #[derive(Debug)]
@@ -81,7 +30,7 @@ mod tags {
 pub fn root() -> Builder<(), self::tags::Incomplete> {
     Builder {
         uri: Uri::root(),
-        methods: Methods::default(),
+        allowed_methods: None,
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -90,7 +39,7 @@ pub fn root() -> Builder<(), self::tags::Incomplete> {
 pub fn asterisk() -> Builder<(), self::tags::Completed> {
     Builder {
         uri: Uri::asterisk(),
-        methods: Methods(indexset! { Method::OPTIONS }),
+        allowed_methods: Some(AllowedMethods::from(Method::OPTIONS)),
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -101,7 +50,7 @@ pub fn asterisk() -> Builder<(), self::tags::Completed> {
 #[derive(Debug)]
 pub struct Builder<E: Extractor = (), T = self::tags::Incomplete> {
     uri: Uri,
-    methods: Methods,
+    allowed_methods: Option<AllowedMethods>,
     extractor: E,
     _marker: PhantomData<T>,
 }
@@ -111,9 +60,14 @@ where
     E: Extractor,
 {
     /// Sets the HTTP methods that this route accepts.
-    pub fn methods(self, methods: impl TryInto<Methods>) -> super::Result<Self> {
+    ///
+    /// By default, the route accepts *all* HTTP methods.
+    pub fn allowed_methods(
+        self,
+        allowed_methods: impl TryInto<AllowedMethods>,
+    ) -> super::Result<Self> {
         Ok(Builder {
-            methods: methods.try_into()?,
+            allowed_methods: Some(allowed_methods.try_into()?),
             ..self
         })
     }
@@ -132,7 +86,7 @@ where
                 uri.push(UriComponent::Slash).expect("this is a bug.");
                 uri
             },
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             extractor: self.extractor,
             _marker: PhantomData,
         }
@@ -156,7 +110,7 @@ where
                 uri.push(UriComponent::Param(name.clone(), ':'))?;
                 uri
             },
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             extractor: Chain::new(
                 self.extractor,
                 crate::extractor::ready(move |input| match input.params {
@@ -192,7 +146,7 @@ where
                 uri.push(UriComponent::Param(name.clone(), '*'))?;
                 uri
             },
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             extractor: Chain::new(
                 self.extractor,
                 crate::extractor::ready(|input| match input.params {
@@ -227,20 +181,74 @@ where
         Builder {
             extractor: Chain::new(self.extractor, other),
             uri: self.uri,
-            methods: self.methods,
+            allowed_methods: self.allowed_methods,
             _marker: PhantomData,
         }
     }
 
     /// Finalize the configuration in this route and creates the instance of `Route`.
-    pub fn finish<F>(self, make_handler: F) -> Route<F::Handler>
+    pub fn to<U>(self, endpoint: U) -> Route<impl Handler<Output = U::Output>>
     where
-        F: MakeHandler<E>,
+        U: Endpoint<E::Output> + Clone + Send + 'static,
     {
+        let Self {
+            uri,
+            allowed_methods,
+            extractor,
+            ..
+        } = self;
+
+        let handler = {
+            let allowed_methods = allowed_methods.clone();
+            crate::handler::raw(move |input| {
+                if allowed_methods
+                    .as_ref()
+                    .map_or(false, |m| !m.contains(input.request.method()))
+                {
+                    return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into());
+                }
+
+                #[allow(missing_debug_implementations)]
+                enum State<F1, F2, E> {
+                    First(F1, E),
+                    Second(F2),
+                }
+
+                let mut state = match extractor.extract(input) {
+                    MaybeFuture::Ready(Ok(args)) => match endpoint.call(input, args) {
+                        MaybeFuture::Ready(result) => {
+                            return MaybeFuture::Ready(result.map_err(Into::into))
+                        }
+                        MaybeFuture::Future(future) => State::Second(future),
+                    },
+                    MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
+                    MaybeFuture::Future(future) => State::First(future, endpoint.clone()),
+                };
+
+                MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
+                    state = match state {
+                        State::First(ref mut future, ref endpoint) => {
+                            let args =
+                                futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
+                            match endpoint.call(&mut *cx.input, args) {
+                                MaybeFuture::Ready(result) => {
+                                    return result.map(Into::into).map_err(Into::into)
+                                }
+                                MaybeFuture::Future(future) => State::Second(future),
+                            }
+                        }
+                        State::Second(ref mut future) => {
+                            return future.poll_ready(cx).map_err(Into::into)
+                        }
+                    }
+                }))
+            })
+        };
+
         Route {
-            uri: self.uri,
-            methods: self.methods,
-            handler: make_handler.make_handler(self.extractor),
+            uri,
+            allowed_methods,
+            handler,
         }
     }
 
@@ -250,21 +258,12 @@ where
     pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>>
     where
         F: Func<E::Output> + Clone + Send + 'static,
+        E::Output: 'static,
+        F::Out: 'static,
     {
-        self.finish(|extractor: E| {
-            crate::handler::raw(move |input| match extractor.extract(input) {
-                MaybeFuture::Ready(result) => {
-                    MaybeFuture::Ready(result.map(|args| f.call(args)).map_err(Into::into))
-                }
-                MaybeFuture::Future(mut future) => MaybeFuture::Future({
-                    let f = f.clone();
-                    crate::future::poll_fn(move |cx| {
-                        let args = futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
-                        Ok(f.call(args).into())
-                    })
-                }),
-            })
-        })
+        self.to(crate::endpoint::raw(move |_, args| {
+            MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
+        }))
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
@@ -274,41 +273,12 @@ where
     where
         F: Func<E::Output, Out = R> + Clone + Send + 'static,
         R: Future + Send + 'static,
+        E::Output: 'static,
+        F::Out: 'static,
     {
-        #[allow(missing_debug_implementations)]
-        enum State<F1, F2, F> {
-            First(F1, F),
-            Second(F2),
-        }
-
-        self.finish(|extractor: E| {
-            crate::handler::raw(move |input| {
-                let mut state = match extractor.extract(input) {
-                    MaybeFuture::Ready(Ok(args)) => State::Second(f.call(args)),
-                    MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
-                    MaybeFuture::Future(future) => State::First(future, f.clone()),
-                };
-                MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
-                    state = match state {
-                        State::First(ref mut f1, ref f) => {
-                            let args = futures01::try_ready!(f1.poll_ready(cx).map_err(Into::into));
-                            State::Second(f.call(args))
-                        }
-                        State::Second(ref mut f2) => return f2.poll_ready(cx).map_err(Into::into),
-                    }
-                }))
-            })
-        })
-    }
-}
-
-impl<T> Builder<(), T> {
-    /// Builds a `Route` that uses the specified `Handler` directly.
-    pub fn raw<H>(self, handler: H) -> Route<H>
-    where
-        H: Handler,
-    {
-        self.finish(|_: ()| handler)
+        self.to(crate::endpoint::raw(move |_, args| {
+            MaybeFuture::Future(f.call(args))
+        }))
     }
 }
 
@@ -343,9 +313,22 @@ where
 
 #[derive(Debug)]
 pub struct Route<H> {
-    methods: Methods,
     uri: Uri,
+    allowed_methods: Option<AllowedMethods>,
     handler: H,
+}
+
+impl<H> Route<H>
+where
+    H: Handler,
+{
+    pub fn from_parts(uri: impl TryInto<Uri>, handler: H) -> super::Result<Self> {
+        Ok(Self {
+            uri: uri.try_into()?,
+            allowed_methods: None,
+            handler,
+        })
+    }
 }
 
 impl<H, M> AppConfig<M> for Route<H>
@@ -358,40 +341,6 @@ where
     type Error = super::Error;
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri, self.methods, self.handler)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_methods_try_from() {
-        assert_eq!(
-            Methods::try_from(Methods(indexset! { Method::GET }))
-                .unwrap()
-                .0,
-            indexset! { Method::GET }
-        );
-        assert_eq!(
-            Methods::try_from(Method::GET).unwrap().0,
-            indexset! { Method::GET }
-        );
-        assert_eq!(
-            Methods::try_from(vec![Method::GET, Method::POST])
-                .unwrap()
-                .0,
-            indexset! { Method::GET, Method::POST }
-        );
-        assert_eq!(
-            Methods::try_from("GET").unwrap().0,
-            indexset! { Method::GET }
-        );
-        assert_eq!(
-            Methods::try_from("GET, POST").unwrap().0,
-            indexset! { Method::GET , Method::POST }
-        );
-        assert!(Methods::try_from("").is_err());
+        cx.add_route(self.uri, self.allowed_methods, self.handler)
     }
 }

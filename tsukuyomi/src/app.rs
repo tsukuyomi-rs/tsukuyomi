@@ -1,7 +1,6 @@
 //! Components for constructing HTTP applications.
 
 pub mod config;
-pub mod fallback;
 pub mod route;
 
 mod error;
@@ -16,7 +15,6 @@ mod tests;
 pub use self::{
     config::AppConfig,
     error::{Error, Result},
-    fallback::Fallback,
     service::AppService,
 };
 
@@ -28,11 +26,15 @@ use {
         tree::{Arena, Node, NodeId},
         uri::Uri,
     },
-    crate::{core::Never, handler::BoxedHandler, input::body::RequestBody, output::ResponseBody},
-    bytes::BytesMut,
-    http::{header::HeaderValue, Method, Request, Response},
-    indexmap::{IndexMap, IndexSet},
-    std::{fmt, sync::Arc},
+    crate::{
+        core::{Never, TryFrom}, //
+        handler::BoxedHandler,
+        input::body::RequestBody,
+        output::ResponseBody,
+    },
+    http::{header::HeaderValue, HttpTryFrom, Method, Request, Response},
+    indexmap::{indexset, IndexSet},
+    std::{iter::FromIterator, sync::Arc},
     tower_service::NewService,
 };
 
@@ -83,7 +85,11 @@ impl AppInner {
     }
 
     /// Infers the scope where the input path belongs from the extracted candidates.
-    fn infer_scope(&self, path: &str, resources: &[&Resource]) -> &Node<ScopeData> {
+    fn infer_scope<'a>(
+        &self,
+        path: &str,
+        resources: impl IntoIterator<Item = &'a Resource>,
+    ) -> &Node<ScopeData> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[NodeId]> = None;
@@ -113,76 +119,39 @@ impl AppInner {
         self.scope(node_id)
     }
 
-    fn find_fallback(&self, start: NodeId) -> Option<&(dyn Fallback + Send + Sync + 'static)> {
+    fn find_fallback(&self, start: NodeId) -> Option<&BoxedHandler> {
         let scope = self.scope(start);
         if let Some(ref f) = scope.data.fallback {
-            return Some(&**f);
+            return Some(f);
         }
         scope
             .ancestors()
             .into_iter()
             .rev()
-            .filter_map(|&id| self.scope(id).data.fallback.as_ref().map(|f| &**f))
+            .filter_map(|&id| self.scope(id).data.fallback.as_ref())
             .next()
     }
 
-    fn route(&self, path: &str, method: &Method) -> RouterResult<'_> {
-        let mut captures = None;
-        let resource = match self.recognizer.recognize(path, &mut captures) {
-            Ok(resource) => resource,
-            Err(RecognizeError::NotMatched) => {
-                return RouterResult::NotFound {
-                    resources: vec![],
-                    captures,
-                    scope: self.scope(NodeId::root()),
-                };
-            }
-            Err(RecognizeError::PartiallyMatched(candidates)) => {
-                let resources: Vec<_> = candidates
-                    .iter()
-                    .filter_map(|i| self.recognizer.get(i))
-                    .collect();
-
-                let scope = self.infer_scope(path, &resources);
-
-                return RouterResult::NotFound {
-                    resources,
-                    captures,
-                    scope,
-                };
-            }
-        };
-
-        if let Some(endpoint) = resource.recognize(method) {
-            return RouterResult::FoundEndpoint {
-                endpoint,
-                resource,
-                captures,
-            };
-        }
-
-        let scope = self.scope(resource.scope);
-
-        RouterResult::FoundResource {
-            resource,
-            captures,
-            scope,
+    fn route(
+        &self,
+        path: &str,
+        captures: &mut Option<Captures>,
+    ) -> std::result::Result<&Resource, &Node<ScopeData>> {
+        match self.recognizer.recognize(path, captures) {
+            Ok(resource) => Ok(resource),
+            Err(RecognizeError::NotMatched) => Err(self.scope(NodeId::root())),
+            Err(RecognizeError::PartiallyMatched(candidates)) => Err(self.infer_scope(
+                path,
+                candidates.iter().filter_map(|i| self.recognizer.get(i)),
+            )),
         }
     }
 }
 
+#[derive(Debug)]
 struct ScopeData {
     prefix: Uri,
-    fallback: Option<Box<dyn Fallback + Send + Sync + 'static>>,
-}
-
-impl fmt::Debug for ScopeData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ScopeData")
-            .field("prefix", &self.prefix)
-            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
-            .finish()
-    }
+    fallback: Option<BoxedHandler>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -195,85 +164,111 @@ pub struct Resource {
     scope: NodeId,
     ancestors: Vec<NodeId>,
     uri: Uri,
-    endpoints: Vec<Endpoint>,
-    allowed_methods: IndexMap<Method, usize>,
-    allowed_methods_value: HeaderValue,
-}
-
-impl Resource {
-    pub fn allowed_methods<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
-        self.allowed_methods.keys()
-    }
-
-    fn recognize(&self, method: &Method) -> Option<&Endpoint> {
-        self.allowed_methods
-            .get(method)
-            .map(|&pos| &self.endpoints[pos])
-    }
-
-    fn update(&mut self) {
-        self.allowed_methods_value = {
-            let allowed_methods: IndexSet<_> = self
-                .allowed_methods
-                .keys()
-                .chain(Some(&Method::OPTIONS))
-                .collect();
-            let bytes =
-                allowed_methods
-                    .iter()
-                    .enumerate()
-                    .fold(BytesMut::new(), |mut acc, (i, m)| {
-                        if i > 0 {
-                            acc.extend_from_slice(b", ");
-                        }
-                        acc.extend_from_slice(m.as_str().as_bytes());
-                        acc
-                    });
-            unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-        };
-    }
-}
-
-/// A struct representing a set of data associated with an endpoint.
-#[doc(hidden)]
-pub struct Endpoint {
-    id: usize,
-    uri: Uri,
-    methods: IndexSet<Method>,
+    allowed_methods: Option<AllowedMethods>,
     handler: BoxedHandler,
 }
 
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Endpoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Endpoint")
-            .field("id", &self.id)
-            .field("uri", &self.uri)
-            .field("methods", &self.methods)
-            .finish()
+impl Resource {
+    #[doc(hidden)]
+    pub fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        self.allowed_methods.as_ref()
     }
 }
 
-#[derive(Debug)]
-enum RouterResult<'a> {
-    /// The URI is matched and a route associated with the specified method is found.
-    FoundEndpoint {
-        endpoint: &'a Endpoint,
-        resource: &'a Resource,
-        captures: Option<Captures>,
-    },
+/// A set of request methods that a route accepts.
+#[derive(Debug, Clone)]
+pub struct AllowedMethods(Arc<IndexSet<Method>>);
 
-    /// the URI is matched, but the method is disallowed.
-    FoundResource {
-        resource: &'a Resource,
-        captures: Option<Captures>,
-        scope: &'a Node<ScopeData>,
-    },
+impl From<Method> for AllowedMethods {
+    fn from(method: Method) -> Self {
+        AllowedMethods(Arc::new(indexset! { method }))
+    }
+}
 
-    /// The URI is not matched to any endpoints.
-    NotFound {
-        resources: Vec<&'a Resource>,
-        captures: Option<Captures>,
-        scope: &'a Node<ScopeData>,
-    },
+impl<M> FromIterator<M> for AllowedMethods
+where
+    M: Into<Method>,
+{
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = M>,
+    {
+        AllowedMethods(Arc::new(iter.into_iter().map(Into::into).collect()))
+    }
+}
+
+impl AllowedMethods {
+    pub fn contains(&self, method: &Method) -> bool {
+        self.0.contains(method)
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
+        self.0.iter()
+    }
+
+    pub fn render_with_options(&self) -> HeaderValue {
+        let mut bytes = bytes::BytesMut::new();
+        for (i, method) in self.iter().enumerate() {
+            if i > 0 {
+                bytes.extend_from_slice(b", ");
+            }
+            bytes.extend_from_slice(method.as_str().as_bytes());
+        }
+        if !self.0.contains(&Method::OPTIONS) {
+            if !self.0.is_empty() {
+                bytes.extend_from_slice(b", ");
+            }
+            bytes.extend_from_slice(b"OPTIONS");
+        }
+
+        unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+    }
+}
+
+impl TryFrom<Self> for AllowedMethods {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(methods: Self) -> std::result::Result<Self, Self::Error> {
+        Ok(methods)
+    }
+}
+
+impl TryFrom<Method> for AllowedMethods {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(method: Method) -> std::result::Result<Self, Self::Error> {
+        Ok(AllowedMethods::from(method))
+    }
+}
+
+impl<M> TryFrom<Vec<M>> for AllowedMethods
+where
+    Method: HttpTryFrom<M>,
+{
+    type Error = http::Error;
+
+    #[inline]
+    fn try_from(methods: Vec<M>) -> std::result::Result<Self, Self::Error> {
+        let methods: Vec<_> = methods
+            .into_iter()
+            .map(Method::try_from)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(Into::into)?;
+        Ok(AllowedMethods::from_iter(methods))
+    }
+}
+
+impl<'a> TryFrom<&'a str> for AllowedMethods {
+    type Error = failure::Error;
+
+    #[inline]
+    fn try_from(methods: &'a str) -> std::result::Result<Self, Self::Error> {
+        let methods: Vec<_> = methods
+            .split(',')
+            .map(|s| Method::try_from(s.trim()).map_err(Into::into))
+            .collect::<http::Result<_>>()?;
+        Ok(AllowedMethods::from_iter(methods))
+    }
 }

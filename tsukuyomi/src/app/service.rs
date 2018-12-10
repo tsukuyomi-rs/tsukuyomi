@@ -1,12 +1,8 @@
 use {
-    super::{
-        fallback::{Context as FallbackContext, FallbackKind},
-        recognizer::Captures,
-        AppInner, ResourceId, RouterResult,
-    },
+    super::{recognizer::Captures, AppInner, ResourceId},
     crate::{
         core::Never,
-        handler::{Handle, HandleFn, HandleInner},
+        handler::{Handle, HandleTask},
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::{Output, ResponseBody},
     },
@@ -70,7 +66,7 @@ pub struct AppFuture {
 
 enum AppFutureState {
     Init,
-    InFlight(Box<HandleFn>),
+    InFlight(Box<HandleTask>),
     Done,
 }
 
@@ -102,6 +98,11 @@ macro_rules! input {
             cookies: &mut Cookies::new(&mut $self.cookie_jar, &$self.request),
             locals: &mut $self.locals,
             response_headers: &mut $self.response_headers,
+            resource: &if let Some(resource_id) = $self.resource_id {
+                Some($self.inner.resource(resource_id))
+            } else {
+                None
+            },
             _marker: PhantomData,
         }
     };
@@ -125,49 +126,21 @@ impl AppFuture {
     }
 
     fn process_recognize(&mut self) -> Handle {
-        let (kind, scope) = match {
+        self.resource_id = None;
+        self.captures = None;
+
+        match {
             self.inner
-                .route(self.request.uri().path(), self.request.method())
+                .route(self.request.uri().path(), &mut self.captures)
         } {
-            RouterResult::FoundEndpoint {
-                endpoint,
-                resource,
-                captures,
-                ..
-            } => {
+            Ok(resource) => {
                 self.resource_id = Some(resource.id);
-                self.captures = captures;
-                return endpoint.handler.call(input!(self));
+                resource.handler.call(input!(self))
             }
-            RouterResult::FoundResource {
-                resource,
-                captures,
-                scope,
-            } => {
-                self.resource_id = Some(resource.id);
-                self.captures = captures;
-                (FallbackKind::FoundResource(resource), scope)
-            }
-            RouterResult::NotFound {
-                resources,
-                captures,
-                scope,
-            } => {
-                self.resource_id = None;
-                self.captures = captures;
-                (FallbackKind::NotFound(resources), scope)
-            }
-        };
-
-        let mut cx = FallbackContext {
-            input: input!(self),
-            kind: &kind,
-            _priv: (),
-        };
-
-        match self.inner.find_fallback(scope.id()) {
-            Some(fallback) => fallback.call(&mut cx),
-            None => super::fallback::default(&mut cx),
+            Err(scope) => match self.inner.find_fallback(scope.id()) {
+                Some(fallback) => fallback.call(input!(self)),
+                None => Handle::Ready(Err(http::StatusCode::NOT_FOUND.into())),
+            },
         }
     }
 
@@ -211,9 +184,9 @@ impl Future for AppFuture {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let polled = loop {
             self.state = match self.state {
-                AppFutureState::Init => match self.process_recognize().into_inner() {
-                    HandleInner::Ready(result) => break result,
-                    HandleInner::PollFn(in_flight) => AppFutureState::InFlight(in_flight),
+                AppFutureState::Init => match self.process_recognize() {
+                    Handle::Ready(result) => break result,
+                    Handle::InFlight(in_flight) => AppFutureState::InFlight(in_flight),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
                     break ready!((*in_flight)(&mut crate::future::Context::new(input!(self))));

@@ -27,7 +27,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     App::configure(cors.wrap_scope({
         route::root()
-            .methods("POST")?
+            .allowed_methods("POST")?
             .segment("user")?
             .segment("info")?
             .extract(extractor::body::json())

@@ -1,7 +1,11 @@
 use {
     http::Request,
     tsukuyomi::{
-        app::config::prelude::*, chain, extractor, extractor::ExtractorExt, server::Server, App,
+        app::config::prelude::*,
+        chain, extractor,
+        extractor::{Extractor, ExtractorExt},
+        server::Server,
+        App,
     },
 };
 
@@ -55,7 +59,7 @@ fn route_macros() -> tsukuyomi::app::Result<()> {
             .segment("posts")?
             .param("id")?
             .segment("edit")?
-            .methods("PUT")?
+            .allowed_methods("PUT")?
             .extract(extractor::body::plain::<String>())
             .reply(|id: u32, body: String| {
                 drop((id, body));
@@ -76,7 +80,7 @@ fn route_macros() -> tsukuyomi::app::Result<()> {
 fn plain_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(
         route::root()
-            .methods("POST")?
+            .allowed_methods("POST")?
             .extract(extractor::body::plain())
             .reply(|body: String| body),
     )
@@ -125,7 +129,7 @@ fn json_body() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::configure(
         route::root()
-            .methods("POST")?
+            .allowed_methods("POST")?
             .extract(extractor::body::json())
             .reply(|params: Params| format!("{},{}", params.id, params.name)),
     )
@@ -172,7 +176,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::configure(
         route::root()
-            .methods("POST")?
+            .allowed_methods("POST")?
             .extract(extractor::body::urlencoded())
             .reply(|params: Params| format!("{},{}", params.id, params.name)),
     )
@@ -307,7 +311,7 @@ fn optional() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::configure({
         route::root()
-            .methods("POST")?
+            .allowed_methods("POST")?
             .extract(extractor) //
             .reply(|params: Option<Params>| {
                 if let Some(params) = params {
@@ -347,13 +351,14 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let params_extractor = ExtractorExt::new(extractor::verb::get(extractor::query::query()))
-        .either_or(extractor::verb::post(extractor::body::json()))
-        .either_or(extractor::verb::post(extractor::body::urlencoded()));
+    let params_extractor =
+        ExtractorExt::new(extractor::method::get().chain(extractor::query::query()))
+            .either_or(extractor::method::post().chain(extractor::body::json()))
+            .either_or(extractor::method::post().chain(extractor::body::urlencoded()));
 
     let mut server = App::configure({
         route::root()
-            .methods("POST")?
+            .allowed_methods("POST")?
             .extract(params_extractor)
             .reply(|params: Params| format!("{},{}", params.id, params.name))
     })

@@ -1,23 +1,21 @@
 pub mod prelude {
     pub use super::super::route;
-    pub use super::{mount, with_fallback, with_modifier, AppConfig};
+    pub use super::{default_handler, mount, with_modifier, AppConfig};
 }
 
 use {
     super::{
-        fallback::Fallback,
         recognizer::Recognizer,
-        route::Methods,
         tree::{Arena, NodeId},
-        App, AppInner, Endpoint, Resource, ResourceId, ScopeData, Uri,
+        AllowedMethods, App, AppInner, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never, TryInto},
         handler::{Handler, ModifyHandler},
         output::Responder,
     },
-    http::{header::HeaderValue, Method},
-    indexmap::IndexMap,
+    http::Method,
+    indexmap::{indexset, IndexMap},
     std::sync::Arc,
 };
 
@@ -40,8 +38,7 @@ pub fn configure(prefix: impl AsRef<str>, config: impl AppConfig<()>) -> super::
 
     // create a route recognizer.
     let mut recognizer = Recognizer::default();
-    for (uri, mut resource) in inner.resources {
-        resource.update();
+    for (uri, resource) in inner.resources {
         recognizer.insert(uri.as_str(), resource)?;
     }
 
@@ -128,7 +125,7 @@ impl<'a, M> AppConfigContext<'a, M> {
     pub fn add_route<H>(
         &mut self,
         uri: impl TryInto<Uri>,
-        methods: impl TryInto<Methods>,
+        allowed_methods: Option<impl TryInto<AllowedMethods>>,
         handler: H,
     ) -> super::Result<()>
     where
@@ -138,81 +135,69 @@ impl<'a, M> AppConfigContext<'a, M> {
         M::Output: Responder,
     {
         let uri = uri.try_into()?;
-        let mut methods = methods.try_into()?.0;
-
         let uri = self.inner.scopes[self.scope_id].data.prefix.join(&uri)?;
+        if self.inner.resources.contains_key(&uri) {
+            return Err(super::Error::from(failure::format_err!(
+                "detect the duplicated URI: {}",
+                uri
+            )));
+        }
 
-        let resource = {
-            let id = ResourceId(self.inner.resources.len());
-            let scope = &self.inner.scopes[self.scope_id];
-            self.inner
-                .resources
-                .entry(uri.clone())
-                .or_insert_with(|| Resource {
-                    id,
-                    scope: scope.id(),
-                    ancestors: scope
-                        .ancestors()
-                        .into_iter()
-                        .cloned()
-                        .chain(Some(scope.id()))
-                        .collect(),
-                    uri: uri.clone(),
-                    endpoints: vec![],
-                    allowed_methods: IndexMap::new(),
-                    allowed_methods_value: HeaderValue::from_static(""),
-                })
+        let allowed_methods = match allowed_methods {
+            Some(methods) => {
+                let methods = methods.try_into()?;
+
+                if methods.0.is_empty() {
+                    return Err(failure::format_err!(
+                        "the route must accept at least one HTTP method(s)"
+                    )
+                    .into());
+                }
+
+                if uri.is_asterisk() && *methods.0 != indexset! { Method::OPTIONS } {
+                    return Err(failure::format_err!(
+                        "the route with asterisk URI accepts only OPTIONS"
+                    )
+                    .into());
+                }
+
+                Some(methods)
+            }
+            None => None,
         };
 
-        if self.scope_id != resource.scope {
-            return Err(failure::format_err!("different scope id").into());
-        }
-
-        if methods.is_empty() {
-            methods.insert(Method::GET);
-        }
-
-        if uri.is_asterisk() {
-            if !methods.contains(&Method::OPTIONS) {
-                return Err(failure::format_err!(
-                    "the route with asterisk URI must explicitly handles OPTIONS"
-                )
-                .into());
-            }
-            if methods.iter().any(|method| method != Method::OPTIONS) {
-                return Err(failure::format_err!(
-                    "the route with asterisk URI must not accept any methods other than OPTIONS"
-                )
-                .into());
-            }
-        }
-
-        let endpoint_id = resource.allowed_methods.len();
-        for method in &methods {
-            if resource.allowed_methods.contains_key(method) {
-                return Err(super::Error::from(failure::format_err!(
-                    "the route with the same URI and method is not supported."
-                )));
-            }
-            resource.allowed_methods.insert(method.clone(), endpoint_id);
-        }
-
-        resource.endpoints.push(Endpoint {
-            id: endpoint_id,
-            uri,
-            methods,
-            handler: self.modifier.modify(handler).into(),
-        });
+        let id = ResourceId(self.inner.resources.len());
+        let scope = &self.inner.scopes[self.scope_id];
+        self.inner.resources.insert(
+            uri.clone(),
+            Resource {
+                id,
+                scope: scope.id(),
+                ancestors: scope
+                    .ancestors()
+                    .into_iter()
+                    .cloned()
+                    .chain(Some(scope.id()))
+                    .collect(),
+                uri: uri.clone(),
+                allowed_methods,
+                handler: self.modifier.modify(handler).into(),
+            },
+        );
 
         Ok(())
     }
 
     #[doc(hidden)]
-    pub fn set_fallback<F>(&mut self, fallback: F) -> super::Result<()>
+    pub fn set_default_handler<H>(&mut self, default_handler: H) -> super::Result<()>
     where
-        F: Fallback + Send + Sync + 'static,
+        H: Handler,
+        M: ModifyHandler<H>,
+        M::Handler: Send + Sync + 'static,
+        M::Output: Responder,
     {
-        self.inner.scopes[self.scope_id].data.fallback = Some(Box::new(fallback));
+        let handler = self.modifier.modify(default_handler);
+        self.inner.scopes[self.scope_id].data.fallback = Some(handler.into());
         Ok(())
     }
 
@@ -256,25 +241,25 @@ impl<'a, M> AppConfigContext<'a, M> {
     }
 }
 
-/// Creates a `Scope` that registers the specified `Fallback` onto the scope.
-pub fn with_fallback<F>(fallback: F) -> WithFallback<F>
-where
-    F: Fallback + Send + Sync + 'static,
-{
-    WithFallback(fallback)
+/// Creates a `Scope` that registers the default handler onto the scope.
+pub fn default_handler<H>(default_handler: H) -> DefaultHandler<H> {
+    DefaultHandler(default_handler)
 }
 
 #[derive(Debug)]
-pub struct WithFallback<F>(F);
+pub struct DefaultHandler<H>(H);
 
-impl<F, M> AppConfig<M> for WithFallback<F>
+impl<H, M> AppConfig<M> for DefaultHandler<H>
 where
-    F: Fallback + Send + Sync + 'static,
+    H: Handler,
+    M: ModifyHandler<H>,
+    M::Handler: Send + Sync + 'static,
+    M::Output: Responder,
 {
     type Error = super::Error;
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.set_fallback(self.0)
+        cx.set_default_handler(self.0)
     }
 }
 

@@ -9,16 +9,16 @@ pub mod body;
 pub mod extension;
 pub mod header;
 pub mod local;
+pub mod method;
 pub mod query;
-pub mod verb;
 
 pub use self::ext::ExtractorExt;
 
 use crate::{
-    core::Never,
+    core::{Chain, Never},
     error::Error,
     future::{Future, MaybeFuture, NeverFuture},
-    generic::Tuple,
+    generic::{Combine, Tuple},
     input::Input,
 };
 
@@ -32,6 +32,16 @@ pub trait Extractor {
 
     /// Performs extraction from the specified `Input`.
     fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future>;
+
+    fn chain<E>(self, other: E) -> Chain<Self, E>
+    where
+        Self: Sized,
+        E: Extractor,
+        Self::Output: Combine<E::Output> + Send + 'static,
+        E::Output: Send + 'static,
+    {
+        Chain::new(self, other)
+    }
 }
 
 impl<E> Extractor for Box<E>
