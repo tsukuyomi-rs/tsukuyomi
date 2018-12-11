@@ -15,7 +15,7 @@ use {
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
-    http::{Method, StatusCode},
+    http::StatusCode,
     std::{marker::PhantomData, path::Path},
 };
 
@@ -31,15 +31,6 @@ pub fn root() -> Builder<(), self::tags::Incomplete> {
     Builder {
         uri: Uri::root(),
         allowed_methods: None,
-        extractor: (),
-        _marker: std::marker::PhantomData,
-    }
-}
-
-pub fn asterisk() -> Builder<(), self::tags::Completed> {
-    Builder {
-        uri: Uri::asterisk(),
-        allowed_methods: Some(AllowedMethods::from(Method::OPTIONS)),
         extractor: (),
         _marker: std::marker::PhantomData,
     }

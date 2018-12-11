@@ -14,8 +14,7 @@ use {
         handler::{Handler, ModifyHandler},
         output::Responder,
     },
-    http::Method,
-    indexmap::{indexset, IndexMap},
+    indexmap::IndexMap,
     std::sync::Arc,
 };
 
@@ -150,13 +149,6 @@ impl<'a, M> AppConfigContext<'a, M> {
                 if methods.0.is_empty() {
                     return Err(failure::format_err!(
                         "the route must accept at least one HTTP method(s)"
-                    )
-                    .into());
-                }
-
-                if uri.is_asterisk() && *methods.0 != indexset! { Method::OPTIONS } {
-                    return Err(failure::format_err!(
-                        "the route with asterisk URI accepts only OPTIONS"
                     )
                     .into());
                 }

@@ -56,43 +56,6 @@ fn route_multiple_method() -> Result<()> {
 }
 
 #[test]
-fn asterisk_route() -> Result<()> {
-    let app = App::configure(
-        route::asterisk() //
-            .say("explicit OPTIONS handler"),
-    )?;
-
-    assert_matches!(
-        app.inner.route("*", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
-    );
-
-    Ok(())
-}
-
-#[test]
-fn asterisk_route_with_normal_routes() -> Result<()> {
-    let app = App::configure(chain![
-        route::root().say(""),
-        mount(
-            "/api",
-            chain![
-                route::root().segment("posts")?.say(""),
-                route::root().segment("events")?.say(""),
-            ]
-        ),
-        route::asterisk().say("explicit OPTIONS handler"),
-    ])?;
-
-    assert_matches!(
-        app.inner.route("*", &mut None),
-        Ok(resource) if resource.id == ResourceId(3)
-    );
-
-    Ok(())
-}
-
-#[test]
 fn scope_simple() -> Result<()> {
     let app = App::configure(chain![
         mount(
@@ -218,15 +181,6 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
                 .reply(|| "")
         )
     ]);
-    assert!(app.is_err());
-    Ok(())
-}
-
-#[test]
-fn failcase_asterisk_with_prefix() -> Result<()> {
-    let app = App::with_prefix("/api/v1", {
-        route::asterisk().reply(|| "") //
-    });
     assert!(app.is_err());
     Ok(())
 }

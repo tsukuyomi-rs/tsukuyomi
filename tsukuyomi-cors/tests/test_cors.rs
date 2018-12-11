@@ -329,7 +329,7 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
             route::root().segment("cors")?.reply(|| "cors")
         ),
         route::root().segment("nocors")?.reply(|| "nocors"),
-        with_modifier(cors, route::asterisk().reply(|| ())),
+        default_handler(cors),
     ])
     .map(Server::new)?
     .into_test_server()?;
@@ -373,7 +373,6 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(chain![
         cors.wrap_scope(route::root().segment("cors")?.reply(|| "cors")),
         route::root().segment("nocors")?.reply(|| "nocors"),
-        route::asterisk().reply(|| ()),
     ])
     .map(Server::new)?
     .into_test_server()?;
@@ -397,14 +396,6 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
         Request::get("/nocors") //
             .header(ORIGIN, "http://example.com"),
     )?;
-    assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
-
-    let response = server.perform(
-        Request::options("*")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
     assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
 
     Ok(())
