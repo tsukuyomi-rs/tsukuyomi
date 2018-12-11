@@ -17,25 +17,7 @@ use {
 
 /// A set of request methods that a route accepts.
 #[derive(Debug, Clone)]
-pub struct AllowedMethods(Arc<IndexSet<Method>>);
-
-impl From<Method> for AllowedMethods {
-    fn from(method: Method) -> Self {
-        AllowedMethods(Arc::new(indexset! { method }))
-    }
-}
-
-impl<M> FromIterator<M> for AllowedMethods
-where
-    M: Into<Method>,
-{
-    fn from_iter<T>(iter: T) -> Self
-    where
-        T: IntoIterator<Item = M>,
-    {
-        AllowedMethods(Arc::new(iter.into_iter().map(Into::into).collect()))
-    }
-}
+pub struct AllowedMethods(IndexSet<Method>);
 
 impl AllowedMethods {
     pub fn get() -> &'static AllowedMethods {
@@ -69,6 +51,27 @@ impl AllowedMethods {
         }
 
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+    }
+}
+
+impl From<Method> for AllowedMethods {
+    fn from(method: Method) -> Self {
+        AllowedMethods(indexset! { method })
+    }
+}
+
+impl FromIterator<Method> for AllowedMethods {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = Method>,
+    {
+        AllowedMethods(FromIterator::from_iter(iter))
+    }
+}
+
+impl Extend<Method> for AllowedMethods {
+    fn extend<I: IntoIterator<Item = Method>>(&mut self, iterable: I) {
+        self.0.extend(iterable)
     }
 }
 
@@ -117,6 +120,24 @@ impl<'a> TryFrom<&'a str> for AllowedMethods {
             .map(|s| Method::try_from(s.trim()).map_err(Into::into))
             .collect::<http::Result<_>>()?;
         Ok(AllowedMethods::from_iter(methods))
+    }
+}
+
+impl IntoIterator for AllowedMethods {
+    type Item = Method;
+    type IntoIter = indexmap::set::IntoIter<Method>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a AllowedMethods {
+    type Item = &'a Method;
+    type IntoIter = indexmap::set::Iter<'a, Method>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }
 

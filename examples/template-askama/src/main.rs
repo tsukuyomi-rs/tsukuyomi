@@ -1,8 +1,9 @@
 use {
     askama::Template,
     tsukuyomi::{
-        app::{route, App},
+        app::config::prelude::*, //
         output::Responder,
+        App,
     },
 };
 
@@ -14,11 +15,13 @@ struct Index {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::configure(
-        route::root() //
-            .param("name")?
-            .reply(|name| Index { name }),
-    )
+    App::configure({
+        (route().param("name")?) //
+            .to({
+                endpoint::get() //
+                    .reply(|name| Index { name })
+            })
+    })
     .map(tsukuyomi::server::Server::new)?
     .run()
 }
