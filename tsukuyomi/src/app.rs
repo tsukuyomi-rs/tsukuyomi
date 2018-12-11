@@ -28,7 +28,7 @@ use {
     },
     crate::{
         core::Never, //
-        handler::{AllowedMethods, BoxedHandler},
+        handler::BoxedHandler,
         input::body::RequestBody,
         output::ResponseBody,
     },
@@ -158,17 +158,10 @@ struct ResourceId(usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
 #[derive(Debug)]
-pub struct Resource {
+struct Resource {
     id: ResourceId,
     scope: NodeId,
     ancestors: Vec<NodeId>,
     uri: Uri,
     handler: Box<dyn BoxedHandler + Send + Sync + 'static>,
-}
-
-impl Resource {
-    #[doc(hidden)]
-    pub fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        self.handler.allowed_methods()
-    }
 }

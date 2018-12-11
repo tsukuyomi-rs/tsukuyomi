@@ -98,11 +98,6 @@ macro_rules! input {
             cookies: &mut Cookies::new(&mut $self.cookie_jar, &$self.request),
             locals: &mut $self.locals,
             response_headers: &mut $self.response_headers,
-            resource: &if let Some(resource_id) = $self.resource_id {
-                Some($self.inner.resource(resource_id))
-            } else {
-                None
-            },
             _marker: PhantomData,
         }
     };
