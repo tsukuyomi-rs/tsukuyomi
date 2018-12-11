@@ -2,22 +2,213 @@
 
 use {
     crate::{
-        core::{Chain, Never}, //
+        core::{Chain, Never, TryFrom}, //
         error::Error,
-        future::{Async, Future, MaybeFuture, NeverFuture, Poll},
         input::Input,
         output::{Output, Responder},
     },
-    std::{fmt, sync::Arc},
+    either::Either,
+    futures01::{Async, Poll},
+    http::{header::HeaderValue, HttpTryFrom, Method},
+    indexmap::{indexset, IndexSet},
+    lazy_static::lazy_static,
+    std::{fmt, iter::FromIterator, sync::Arc},
 };
+
+/// A set of request methods that a route accepts.
+#[derive(Debug, Clone)]
+pub struct AllowedMethods(IndexSet<Method>);
+
+impl AllowedMethods {
+    pub fn get() -> &'static AllowedMethods {
+        lazy_static! {
+            static ref VALUE: AllowedMethods = AllowedMethods::from(Method::GET);
+        }
+        &*VALUE
+    }
+
+    pub fn contains(&self, method: &Method) -> bool {
+        self.0.contains(method)
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
+        self.0.iter()
+    }
+
+    pub fn render_with_options(&self) -> HeaderValue {
+        let mut bytes = bytes::BytesMut::new();
+        for (i, method) in self.iter().enumerate() {
+            if i > 0 {
+                bytes.extend_from_slice(b", ");
+            }
+            bytes.extend_from_slice(method.as_str().as_bytes());
+        }
+        if !self.0.contains(&Method::OPTIONS) {
+            if !self.0.is_empty() {
+                bytes.extend_from_slice(b", ");
+            }
+            bytes.extend_from_slice(b"OPTIONS");
+        }
+
+        unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+    }
+}
+
+impl From<Method> for AllowedMethods {
+    fn from(method: Method) -> Self {
+        AllowedMethods(indexset! { method })
+    }
+}
+
+impl FromIterator<Method> for AllowedMethods {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = Method>,
+    {
+        AllowedMethods(FromIterator::from_iter(iter))
+    }
+}
+
+impl Extend<Method> for AllowedMethods {
+    fn extend<I: IntoIterator<Item = Method>>(&mut self, iterable: I) {
+        self.0.extend(iterable)
+    }
+}
+
+impl TryFrom<Self> for AllowedMethods {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(methods: Self) -> std::result::Result<Self, Self::Error> {
+        Ok(methods)
+    }
+}
+
+impl TryFrom<Method> for AllowedMethods {
+    type Error = Never;
+
+    #[inline]
+    fn try_from(method: Method) -> std::result::Result<Self, Self::Error> {
+        Ok(AllowedMethods::from(method))
+    }
+}
+
+impl<M> TryFrom<Vec<M>> for AllowedMethods
+where
+    Method: HttpTryFrom<M>,
+{
+    type Error = http::Error;
+
+    #[inline]
+    fn try_from(methods: Vec<M>) -> std::result::Result<Self, Self::Error> {
+        let methods: Vec<_> = methods
+            .into_iter()
+            .map(Method::try_from)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(Into::into)?;
+        Ok(AllowedMethods::from_iter(methods))
+    }
+}
+
+impl<'a> TryFrom<&'a str> for AllowedMethods {
+    type Error = failure::Error;
+
+    #[inline]
+    fn try_from(methods: &'a str) -> std::result::Result<Self, Self::Error> {
+        let methods: Vec<_> = methods
+            .split(',')
+            .map(|s| Method::try_from(s.trim()).map_err(Into::into))
+            .collect::<http::Result<_>>()?;
+        Ok(AllowedMethods::from_iter(methods))
+    }
+}
+
+impl IntoIterator for AllowedMethods {
+    type Item = Method;
+    type IntoIter = indexmap::set::IntoIter<Method>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a AllowedMethods {
+    type Item = &'a Method;
+    type IntoIter = indexmap::set::Iter<'a, Method>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+pub trait Handle {
+    type Output;
+    type Error: Into<Error>;
+
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error>;
+}
+
+impl<L, R> Handle for Either<L, R>
+where
+    L: Handle,
+    R: Handle,
+{
+    type Output = Either<L::Output, R::Output>;
+    type Error = Error;
+
+    #[inline]
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        match self {
+            Either::Left(l) => l
+                .poll_ready(input)
+                .map(|x| x.map(Either::Left))
+                .map_err(Into::into),
+            Either::Right(r) => r
+                .poll_ready(input)
+                .map(|x| x.map(Either::Right))
+                .map_err(Into::into),
+        }
+    }
+}
+
+pub fn handle<T, E>(
+    op: impl FnMut(&mut Input<'_>) -> Poll<T, E>,
+) -> impl Handle<Output = T, Error = E>
+where
+    E: Into<Error>,
+{
+    #[allow(missing_debug_implementations)]
+    struct HandleFn<F>(F);
+
+    impl<F, T, E> Handle for HandleFn<F>
+    where
+        F: FnMut(&mut Input<'_>) -> Poll<T, E>,
+        E: Into<Error>,
+    {
+        type Output = T;
+        type Error = E;
+
+        #[inline]
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            (self.0)(input)
+        }
+    }
+
+    HandleFn(op)
+}
 
 /// A trait representing the handler associated with the specified endpoint.
 pub trait Handler {
     type Output;
-    type Future: Future<Output = Self::Output> + Send + 'static;
+    type Handle: Handle<Output = Self::Output> + Send + 'static;
+
+    /// Returns a list of HTTP methods that this handler accepts.
+    ///
+    /// If it returns a `None`, it means that the handler accepts *all* methods.
+    fn allowed_methods(&self) -> Option<&AllowedMethods>;
 
     /// Creates an `AsyncResult` which handles the incoming request.
-    fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future>;
+    fn call(&self, input: &mut Input<'_>) -> Self::Handle;
 }
 
 impl<H> Handler for Arc<H>
@@ -25,96 +216,104 @@ where
     H: Handler,
 {
     type Output = H::Output;
-    type Future = H::Future;
+    type Handle = H::Handle;
 
     #[inline]
-    fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        (**self).allowed_methods()
+    }
+
+    #[inline]
+    fn call(&self, input: &mut Input<'_>) -> Self::Handle {
         (**self).call(input)
     }
 }
 
-pub fn raw<R>(f: impl Fn(&mut Input<'_>) -> MaybeFuture<R>) -> impl Handler<Output = R::Output>
+pub fn handler<H>(
+    call: impl Fn(&mut Input<'_>) -> H,
+    allowed_methods: Option<AllowedMethods>,
+) -> impl Handler<Output = H::Output>
 where
-    R: Future + Send + 'static,
+    H: Handle + Send + 'static,
 {
     #[allow(missing_debug_implementations)]
-    struct Raw<F>(F);
+    struct HandlerFn<F> {
+        call: F,
+        allowed_methods: Option<AllowedMethods>,
+    }
 
-    impl<F, R> Handler for Raw<F>
+    impl<F, H> Handler for HandlerFn<F>
     where
-        F: Fn(&mut Input<'_>) -> MaybeFuture<R>,
-        R: Future + Send + 'static,
+        F: Fn(&mut Input<'_>) -> H,
+        H: Handle + Send + 'static,
     {
-        type Output = R::Output;
-        type Future = R;
+        type Output = H::Output;
+        type Handle = H;
 
         #[inline]
-        fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-            (self.0)(input)
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.allowed_methods.as_ref()
+        }
+
+        #[inline]
+        fn call(&self, input: &mut Input<'_>) -> Self::Handle {
+            (self.call)(input)
         }
     }
 
-    Raw(f)
+    HandlerFn {
+        call,
+        allowed_methods,
+    }
 }
 
-pub fn ready<T: 'static>(f: impl Fn(&mut Input<'_>) -> T) -> impl Handler<Output = T> {
-    self::raw(move |input| MaybeFuture::<NeverFuture<_, Never>>::ok(f(input)))
+pub fn ready<T>(f: impl Fn(&mut Input<'_>) -> T) -> impl Handler<Output = T>
+where
+    T: Send + 'static,
+{
+    handler(
+        move |input| {
+            let mut x = Some(f(input));
+            self::handle(move |_| {
+                Ok::<_, Never>(Async::Ready(
+                    x.take().expect("the future has already polled"),
+                ))
+            })
+        },
+        None,
+    )
 }
 
 // ==== boxed ====
 
-pub(crate) type HandleTask =
-    dyn FnMut(&mut crate::future::Context<'_>) -> Poll<Output, Error> + Send + 'static;
+pub(crate) type HandleTask = dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static;
 
-pub(crate) enum Handle {
-    Ready(Result<Output, Error>),
-    InFlight(Box<HandleTask>),
+pub(crate) trait BoxedHandler {
+    fn allowed_methods(&self) -> Option<&AllowedMethods>;
+    fn call(&self, input: &mut Input<'_>) -> Box<HandleTask>;
 }
 
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for Handle {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Handle::Ready(result) => f.debug_tuple("Ready").field(result).finish(),
-            Handle::InFlight(..) => f.debug_tuple("InFlight").finish(),
-        }
-    }
-}
-
-pub(crate) struct BoxedHandler {
-    inner: Box<dyn Fn(&mut Input<'_>) -> Handle + Send + Sync + 'static>,
-}
-
-impl fmt::Debug for BoxedHandler {
+impl fmt::Debug for dyn BoxedHandler + Send + Sync + 'static {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BoxedHandler").finish()
     }
 }
 
-impl<H> From<H> for BoxedHandler
+impl<H> BoxedHandler for H
 where
     H: Handler + Send + Sync + 'static,
     H::Output: Responder,
 {
-    fn from(handler: H) -> Self {
-        Self {
-            inner: Box::new(move |input| match handler.call(input) {
-                MaybeFuture::Ready(Ok(x)) => {
-                    Handle::Ready(crate::output::internal::respond_to(x, input))
-                }
-                MaybeFuture::Ready(Err(err)) => Handle::Ready(Err(err.into())),
-                MaybeFuture::Future(mut future) => Handle::InFlight(Box::new(move |cx| {
-                    let x = futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
-                    crate::output::internal::respond_to(x, &mut *cx.input).map(Async::Ready)
-                })),
-            }),
-        }
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        Handler::allowed_methods(self)
     }
-}
 
-impl BoxedHandler {
-    pub(crate) fn call(&self, input: &mut Input<'_>) -> Handle {
-        (self.inner)(input)
+    fn call(&self, input: &mut Input<'_>) -> Box<HandleTask> {
+        let mut handle = Handler::call(self, input);
+        Box::new(move |input| {
+            let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
+            crate::output::internal::respond_to(x, input).map(Async::Ready)
+        })
     }
 }
 
@@ -194,73 +393,5 @@ where
     #[inline]
     fn modify(&self, input: H) -> Self::Handler {
         self.right.modify(self.left.modify(input))
-    }
-}
-
-pub mod modifiers {
-    use {
-        super::*,
-        either::Either,
-        http::{Method, StatusCode},
-    };
-
-    #[derive(Debug, Default)]
-    pub struct DefaultOptions(());
-
-    impl<H> ModifyHandler<H> for DefaultOptions
-    where
-        H: Handler,
-        H::Output: 'static,
-    {
-        type Output = Either<Output, H::Output>;
-        type Handler = DefaultOptionsHandler<H>;
-
-        fn modify(&self, inner: H) -> Self::Handler {
-            DefaultOptionsHandler { inner }
-        }
-    }
-
-    #[doc(hidden)]
-    #[derive(Debug)]
-    pub struct DefaultOptionsHandler<H> {
-        inner: H,
-    }
-
-    impl<H> DefaultOptionsHandler<H> {
-        fn handle_default_options(&self, input: &mut Input<'_>) -> Option<Output> {
-            let resource = (*input.resource)?;
-            let allowed_methods = resource.allowed_methods()?;
-
-            if input.request.method() != Method::OPTIONS
-                || allowed_methods.contains(&Method::OPTIONS)
-            {
-                return None;
-            }
-
-            let mut output = Output::default();
-            *output.status_mut() = StatusCode::NO_CONTENT;
-            output
-                .headers_mut()
-                .insert(http::header::ALLOW, allowed_methods.render_with_options());
-
-            Some(output)
-        }
-    }
-
-    #[allow(clippy::type_complexity)]
-    impl<H> Handler for DefaultOptionsHandler<H>
-    where
-        H: Handler,
-        H::Output: 'static,
-    {
-        type Output = Either<Output, H::Output>;
-        type Future = crate::future::MapOk<H::Future, fn(H::Output) -> Self::Output>;
-
-        fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-            match self.handle_default_options(input) {
-                Some(output) => MaybeFuture::ok(Either::Left(output)),
-                None => self.inner.call(input).map_ok(Either::Right),
-            }
-        }
     }
 }

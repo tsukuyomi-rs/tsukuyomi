@@ -12,7 +12,6 @@ use {
 #[derive(Debug, Clone, PartialEq)]
 enum UriKind {
     Root,
-    Asterisk,
     Segments(String, Option<CaptureNames>),
 }
 
@@ -41,7 +40,7 @@ impl fmt::Display for Uri {
 impl PartialEq for Uri {
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
-            (&UriKind::Root, &UriKind::Root) | (&UriKind::Asterisk, &UriKind::Asterisk) => true,
+            (&UriKind::Root, &UriKind::Root) => true,
             (&UriKind::Segments(ref s, ..), &UriKind::Segments(ref o, ..)) if s == o => true,
             _ => false,
         }
@@ -96,10 +95,6 @@ impl Uri {
         Uri(UriKind::Root)
     }
 
-    pub fn asterisk() -> Self {
-        Uri(UriKind::Asterisk)
-    }
-
     pub fn from_static(s: &'static str) -> Self {
         s.parse().expect("invalid URI")
     }
@@ -107,13 +102,6 @@ impl Uri {
     pub fn parse(mut s: &str) -> Result<Self, Error> {
         if !s.is_ascii() {
             failure::bail!("The URI is not ASCII");
-        }
-
-        if s.starts_with('*') {
-            if s.len() > 1 {
-                failure::bail!("the URI with wildcard parameter must start with '/'");
-            }
-            return Ok(Uri(UriKind::Asterisk));
         }
 
         if !s.starts_with('/') {
@@ -176,15 +164,7 @@ impl Uri {
     pub fn as_str(&self) -> &str {
         match self.0 {
             UriKind::Root => "/",
-            UriKind::Asterisk => "*",
             UriKind::Segments(ref s, ..) => s.as_str(),
-        }
-    }
-
-    pub fn is_asterisk(&self) -> bool {
-        match self.0 {
-            UriKind::Asterisk => true,
-            _ => false,
         }
     }
 
@@ -208,7 +188,6 @@ impl Uri {
                 ),
                 UriComponent::Slash => UriKind::Root,
             },
-            UriKind::Asterisk => failure::bail!("the asterisk URI cannot be extended"),
             UriKind::Segments(ref mut segments, ref mut names) => match component {
                 UriComponent::Static(s) => {
                     if names.as_ref().map_or(false, |names| names.has_wildcard) {
@@ -262,14 +241,8 @@ impl Uri {
     pub fn join(&self, other: impl AsRef<Self>) -> Result<Self, Error> {
         match self.0.clone() {
             UriKind::Root => Ok(other.as_ref().clone()),
-            UriKind::Asterisk => {
-                failure::bail!("the asterisk URI cannot be joined with other URI(s)")
-            }
             UriKind::Segments(mut segment, mut names) => match other.as_ref().0 {
                 UriKind::Root => Ok(Self::segments(segment, names)),
-                UriKind::Asterisk => {
-                    failure::bail!("the asterisk URI cannot be joined with other URI(s)")
-                }
                 UriKind::Segments(ref other_segment, ref other_names) => {
                     segment += if segment.ends_with('/') {
                         other_segment.trim_left_matches('/')
@@ -516,12 +489,6 @@ mod tests {
         assert!(uri.capture_names().is_none());
 
         Ok(())
-    }
-
-    #[test]
-    fn push_uri_asterisk() {
-        let mut uri = Uri::asterisk();
-        assert!(uri.push(UriComponent::Static("path".into())).is_err());
     }
 
     #[test]

@@ -14,12 +14,14 @@ pub mod query;
 
 pub use self::ext::ExtractorExt;
 
-use crate::{
-    core::{Chain, Never},
-    error::Error,
-    future::{Future, MaybeFuture, NeverFuture},
-    generic::{Combine, Tuple},
-    input::Input,
+use {
+    crate::{
+        core::{Chain, Never},
+        error::Error,
+        generic::{Combine, Tuple},
+        input::Input,
+    },
+    futures01::{Future, IntoFuture},
 };
 
 /// A trait abstracting the extraction of values from `Input`.
@@ -27,11 +29,13 @@ pub trait Extractor {
     /// The type of output value from this extractor.
     type Output: Tuple;
 
+    type Error: Into<Error>;
+
     /// The type representing asyncrhonous computations performed during extraction.
-    type Future: Future<Output = Self::Output> + Send + 'static;
+    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
     /// Performs extraction from the specified `Input`.
-    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future>;
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future;
 
     fn chain<E>(self, other: E) -> Chain<Self, E>
     where
@@ -49,10 +53,11 @@ where
     E: Extractor,
 {
     type Output = E::Output;
+    type Error = E::Error;
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
         (**self).extract(input)
     }
 }
@@ -62,10 +67,11 @@ where
     E: Extractor,
 {
     type Output = E::Output;
+    type Error = E::Error;
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
         (**self).extract(input)
     }
 }
@@ -75,31 +81,35 @@ where
     E: Extractor,
 {
     type Output = E::Output;
+    type Error = E::Error;
     type Future = E::Future;
 
     #[inline]
-    fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
         (**self).extract(input)
     }
 }
 
 impl Extractor for () {
     type Output = ();
-    type Future = NeverFuture<Self::Output, Never>;
+    type Error = Never;
+    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
 
     #[inline]
-    fn extract(&self, _: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-        MaybeFuture::ok(())
+    fn extract(&self, _: &mut Input<'_>) -> Self::Future {
+        futures01::future::ok(())
     }
 }
 
 // ==== primitives ====
 
-pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Output>
+pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Item, Error = R::Error, Future = R::Future>
 where
-    F: Fn(&mut Input<'_>) -> MaybeFuture<R>,
-    R: Future + Send + 'static,
-    R::Output: Tuple,
+    F: Fn(&mut Input<'_>) -> R,
+    R: IntoFuture,
+    R::Future: Send + 'static,
+    R::Item: Tuple,
+    R::Error: Into<Error>,
 {
     #[derive(Debug, Copy, Clone)]
     struct Raw<F>(F);
@@ -107,62 +117,57 @@ where
     #[allow(clippy::type_complexity)]
     impl<F, R> Extractor for Raw<F>
     where
-        F: Fn(&mut Input<'_>) -> MaybeFuture<R>,
-        R: Future + Send + 'static,
-        R::Output: Tuple,
+        F: Fn(&mut Input<'_>) -> R,
+        R: IntoFuture,
+        R::Future: Send + 'static,
+        R::Item: Tuple,
+        R::Error: Into<Error>,
     {
-        type Output = R::Output;
-        type Future = R;
+        type Output = R::Item;
+        type Error = R::Error;
+        type Future = R::Future;
 
         #[inline]
-        fn extract(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-            (self.0)(input)
+        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+            (self.0)(input).into_future()
         }
     }
 
     Raw(f)
 }
 
-pub fn guard<F, E>(f: F) -> impl Extractor<Output = ()>
+pub fn guard<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
 where
     F: Fn(&mut Input<'_>) -> Result<(), E>,
-    E: Into<Error> + 'static,
+    E: Into<Error> + Send + 'static,
 {
-    self::raw(move |input| MaybeFuture::Ready::<NeverFuture<_, _>>(f(input)))
+    self::raw(move |input| futures01::future::result(f(input)))
 }
 
-pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,)>
+pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,), Error = E>
 where
     F: Fn(&mut Input<'_>) -> Result<T, E>,
-    T: 'static,
-    E: Into<Error> + 'static,
+    T: Send + 'static,
+    E: Into<Error> + Send + 'static,
 {
-    self::raw(move |input| MaybeFuture::Ready::<NeverFuture<_, _>>(f(input).map(|x| (x,))))
+    self::raw(move |input| futures01::future::result(f(input).map(|x| (x,))))
 }
 
-pub fn lazy<Op, R>(op: Op) -> impl Extractor<Output = (R::Output,)>
+pub fn value<T>(value: T) -> impl Extractor<Output = (T,), Error = Never>
 where
-    Op: Fn(&mut Input<'_>) -> R,
-    R: Future + Send + 'static,
+    T: Clone + Send + 'static,
 {
-    self::raw(move |input| MaybeFuture::Future(op(input)).map_ok(|x| (x,)))
+    self::ready(move |_| Ok(value.clone()))
 }
 
-pub fn value<T>(value: T) -> impl Extractor<Output = (T,)>
-where
-    T: Clone + 'static,
-{
-    self::raw(move |_| MaybeFuture::<NeverFuture<_, Never>>::ok((value.clone(),)))
+pub fn method() -> impl Extractor<Output = (http::Method,), Error = Never> {
+    self::ready(|input| Ok(input.request.method().clone()))
 }
 
-pub fn method() -> impl Extractor<Output = (http::Method,)> {
-    self::ready(|input| Ok::<_, Never>(input.request.method().clone()))
+pub fn uri() -> impl Extractor<Output = (http::Uri,), Error = Never> {
+    self::ready(|input| Ok(input.request.uri().clone()))
 }
 
-pub fn uri() -> impl Extractor<Output = (http::Uri,)> {
-    self::ready(|input| Ok::<_, Never>(input.request.uri().clone()))
-}
-
-pub fn version() -> impl Extractor<Output = (http::Version,)> {
-    self::ready(|input| Ok::<_, Never>(input.request.version()))
+pub fn version() -> impl Extractor<Output = (http::Version,), Error = Never> {
+    self::ready(|input| Ok(input.request.version()))
 }

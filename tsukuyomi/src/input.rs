@@ -7,7 +7,6 @@ pub mod param;
 
 use {
     self::{localmap::LocalMap, param::Params},
-    crate::app::Resource,
     cookie::{Cookie, CookieJar},
     http::{header::HeaderMap, Request},
     std::{marker::PhantomData, rc::Rc},
@@ -29,9 +28,6 @@ pub struct Input<'task> {
     pub locals: &'task mut LocalMap,
 
     pub response_headers: &'task mut Option<HeaderMap>,
-
-    #[doc(hidden)]
-    pub resource: &'task Option<&'task Resource>,
 
     pub(crate) _marker: PhantomData<Rc<()>>,
 }

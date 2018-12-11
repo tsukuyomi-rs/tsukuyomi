@@ -1,7 +1,11 @@
 use {
     askama::Template,
     tsukuyomi::{
-        app::config::prelude::*, output::Responder, server::Server, test::ResponseExt, App,
+        app::config::prelude::*, //
+        output::Responder,
+        server::Server,
+        test::ResponseExt,
+        App,
     },
 };
 
@@ -20,7 +24,9 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
     }
 
     let mut server = App::configure(
-        route::root().reply(|| Index { name: "Alice" }), //
+        route() //
+            .to(endpoint::get() //
+                .reply(|| Index { name: "Alice" })),
     )
     .map(Server::new)?
     .into_test_server()?;
@@ -43,7 +49,9 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
 
     let mut server = App::configure(with_modifier(
         tsukuyomi_askama::Renderer::default(),
-        route::root().reply(|| Index { name: "Alice" }),
+        route() //
+            .to(endpoint::get() //
+                .reply(|| Index { name: "Alice" })),
     ))
     .map(Server::new)?
     .into_test_server()?;

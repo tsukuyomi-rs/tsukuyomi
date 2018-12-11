@@ -3,8 +3,7 @@
 use {
     crate::{
         error::Error,
-        future::{Compat01, MaybeFuture},
-        handler::{Handler, ModifyHandler},
+        handler::{AllowedMethods, Handle, Handler, ModifyHandler},
         input::Input,
         output::{Responder, ResponseBody},
         rt::poll_blocking,
@@ -142,7 +141,9 @@ impl NamedFile {
     where
         P: AsRef<Path>,
     {
-        OpenFuture { path, config: None }
+        OpenFuture {
+            inner: OpenFutureInner::Opening(path, None),
+        }
     }
 
     /// Open a specified file with the provided configuration.
@@ -151,8 +152,7 @@ impl NamedFile {
         P: AsRef<Path>,
     {
         OpenFuture {
-            path,
-            config: Some(config),
+            inner: OpenFutureInner::Opening(path, Some(config)),
         }
     }
 
@@ -251,8 +251,13 @@ impl Responder for NamedFile {
 /// A future waiting for opening the file.
 #[derive(Debug)]
 pub struct OpenFuture<P> {
-    path: P,
-    config: Option<OpenConfig>,
+    inner: OpenFutureInner<P>,
+}
+
+#[derive(Debug)]
+enum OpenFutureInner<P> {
+    Opening(P, Option<OpenConfig>),
+    Err(Option<crate::Error>),
 }
 
 impl<P> Future for OpenFuture<P>
@@ -263,24 +268,44 @@ where
     type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (file, meta) = futures01::try_ready!(blocking_io(|| {
-            let file = File::open(&self.path)?;
-            let meta = file.metadata()?;
-            Ok((file, meta))
-        }));
+        match self.inner {
+            OpenFutureInner::Opening(ref path, ref mut config) => {
+                let (file, meta) = futures01::try_ready!(blocking_io(|| {
+                    let file = File::open(path)?;
+                    let meta = file.metadata()?;
+                    Ok((file, meta))
+                }));
 
-        let config = self.config.take().unwrap_or_default();
+                let config = config.take().unwrap_or_default();
 
-        let last_modified = FileTime::from_last_modification_time(&meta);
-        let etag = ETag::from_metadata(&meta);
+                let last_modified = FileTime::from_last_modification_time(&meta);
+                let etag = ETag::from_metadata(&meta);
 
-        Ok(Async::Ready(NamedFile {
-            file,
-            meta,
-            last_modified,
-            etag,
-            config,
-        }))
+                Ok(Async::Ready(NamedFile {
+                    file,
+                    meta,
+                    last_modified,
+                    etag,
+                    config,
+                }))
+            }
+            OpenFutureInner::Err(ref mut err) => {
+                Err(err.take().expect("the future has already polled"))
+            }
+        }
+    }
+}
+
+impl<P> Handle for OpenFuture<P>
+where
+    P: AsRef<Path>,
+{
+    type Output = NamedFile;
+    type Error = crate::Error;
+
+    #[inline]
+    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        self.poll()
     }
 }
 
@@ -413,26 +438,32 @@ pub struct ServeFile {
 
 impl Handler for ServeFile {
     type Output = NamedFile;
-    type Future = Compat01<OpenFuture<ArcPath>>;
+    type Handle = OpenFuture<ArcPath>;
 
-    fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        Some(&AllowedMethods::get())
+    }
+
+    fn call(&self, input: &mut Input<'_>) -> Self::Handle {
         let path = if self.extract_path {
             match input.params.as_ref().and_then(|params| params.catch_all()) {
                 Some(ref path) => self.path.join(path).into(),
                 None => {
-                    return MaybeFuture::err(crate::error::internal_server_error("missing params"))
+                    return OpenFuture {
+                        inner: OpenFutureInner::Err(Some(crate::error::internal_server_error(
+                            "missing params",
+                        ))),
+                    }
                 }
             }
         } else {
             self.path.clone()
         };
 
-        let open_future = match self.config {
+        match self.config {
             Some(ref config) => NamedFile::open_with_config(path, config.clone()),
             None => NamedFile::open(path),
-        };
-
-        MaybeFuture::Future(Compat01::from(open_future))
+        }
     }
 }
 
@@ -496,7 +527,6 @@ where
             if file_type.is_file() {
                 cx.add_route(
                     format!("/{}", name),
-                    Some("GET"),
                     ServeFile {
                         path,
                         config: config.clone(),
@@ -506,7 +536,6 @@ where
             } else if file_type.is_dir() {
                 cx.add_route(
                     format!("/{}/*path", name),
-                    Some("GET"),
                     ServeFile {
                         path,
                         config: config.clone(),

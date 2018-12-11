@@ -1,6 +1,5 @@
 use {
     super::{config::prelude::*, App, ResourceId, Result},
-    http::Method,
     matches::assert_matches,
 };
 
@@ -14,7 +13,7 @@ fn empty() -> Result<()> {
 #[test]
 fn route_single_method() -> Result<()> {
     let app = App::configure(
-        route::root().say(""), //
+        route().to(endpoint::any().say("")), //
     )?;
 
     assert_matches!(
@@ -34,59 +33,23 @@ fn route_single_method() -> Result<()> {
 
 #[test]
 fn route_multiple_method() -> Result<()> {
-    let app = App::configure(chain![route::root()
-        .allowed_methods(vec![Method::GET, Method::POST])?
-        .say(""),])?;
-
-    assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
-    );
-    assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
-    );
-
-    assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
-    );
-
-    Ok(())
-}
-
-#[test]
-fn asterisk_route() -> Result<()> {
     let app = App::configure(
-        route::asterisk() //
-            .say("explicit OPTIONS handler"),
+        route() //
+            .to(endpoint::allow_only("GET, POST")?.say("")),
     )?;
 
     assert_matches!(
-        app.inner.route("*", &mut None),
+        app.inner.route("/", &mut None),
+        Ok(resource) if resource.id == ResourceId(0)
+    );
+    assert_matches!(
+        app.inner.route("/", &mut None),
         Ok(resource) if resource.id == ResourceId(0)
     );
 
-    Ok(())
-}
-
-#[test]
-fn asterisk_route_with_normal_routes() -> Result<()> {
-    let app = App::configure(chain![
-        route::root().say(""),
-        mount(
-            "/api",
-            chain![
-                route::root().segment("posts")?.say(""),
-                route::root().segment("events")?.say(""),
-            ]
-        ),
-        route::asterisk().say("explicit OPTIONS handler"),
-    ])?;
-
     assert_matches!(
-        app.inner.route("*", &mut None),
-        Ok(resource) if resource.id == ResourceId(3)
+        app.inner.route("/", &mut None),
+        Ok(resource) if resource.id == ResourceId(0)
     );
 
     Ok(())
@@ -98,12 +61,12 @@ fn scope_simple() -> Result<()> {
         mount(
             "/",
             chain![
-                route::root().segment("a")?.say(""),
-                route::root().segment("b")?.say(""),
+                route().segment("a")?.to(endpoint::any().say("")),
+                route().segment("b")?.to(endpoint::any().say("")),
             ]
         ),
-        route::root().segment("foo")?.say(""),
-        mount("/c", chain![route::root().segment("d")?.say(""),]),
+        route().segment("foo")?.to(endpoint::any().say("")),
+        mount("/c", route().segment("d")?.to(endpoint::any().say("")),),
     ])?;
 
     assert_matches!(
@@ -137,25 +100,25 @@ fn scope_nested() -> Result<()> {
             "/",
             chain![
                 // 0
-                route::root().segment("foo")?.reply(|| ""), // /foo
-                route::root().segment("bar")?.reply(|| ""), // /bar
+                route().segment("foo")?.to(endpoint::any().say("")), // /foo
+                route().segment("bar")?.to(endpoint::any().say("")), // /bar
             ]
         ),
         mount(
             "/baz",
             chain![
                 // 1
-                route::root().reply(|| ""), // /baz
+                route().to(endpoint::any().say("")), // /baz
                 mount(
                     "/",
                     chain![
                         // 2
-                        route::root().segment("foobar")?.reply(|| ""), // /baz/foobar
+                        route().segment("foobar")?.to(endpoint::any().say("")), // /baz/foobar
                     ]
                 )
             ]
         ), //
-        route::root().segment("hoge")?.reply(|| "") // /hoge
+        route().segment("hoge")?.to(endpoint::any().say("")) // /hoge
     ])?;
 
     assert_matches!(
@@ -191,14 +154,10 @@ fn scope_nested() -> Result<()> {
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
     let app = App::configure(chain![
-        route::root()
+        route().segment("path")?.to(endpoint::get().reply(|| "")),
+        route()
             .segment("path")?
-            .allowed_methods("GET")?
-            .reply(|| ""),
-        route::root()
-            .segment("path")?
-            .allowed_methods("POST, PUT")?
-            .reply(|| ""),
+            .to(endpoint::allow_only("POST, PUT")?.reply(|| "")),
     ]);
     assert!(app.is_err());
     Ok(())
@@ -207,26 +166,16 @@ fn failcase_duplicate_uri() -> Result<()> {
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::configure(chain![
-        route::root() //
+        route() //
             .segment("path")?
-            .reply(|| ""),
+            .to(endpoint::any().reply(|| ""),),
         mount(
             "/",
-            route::root() //
+            route() //
                 .segment("path")?
-                .allowed_methods("POST")?
-                .reply(|| "")
+                .to(endpoint::post().reply(|| ""))
         )
     ]);
-    assert!(app.is_err());
-    Ok(())
-}
-
-#[test]
-fn failcase_asterisk_with_prefix() -> Result<()> {
-    let app = App::with_prefix("/api/v1", {
-        route::asterisk().reply(|| "") //
-    });
     assert!(app.is_err());
     Ok(())
 }

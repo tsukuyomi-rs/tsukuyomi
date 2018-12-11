@@ -1,21 +1,32 @@
+pub mod endpoint;
+pub mod route;
+
 pub mod prelude {
-    pub use super::super::route;
+    #[doc(no_inline)]
+    pub use super::route::route;
+    #[doc(no_inline)]
     pub use super::{default_handler, mount, with_modifier, AppConfig};
+
+    pub mod endpoint {
+        #[doc(no_inline)]
+        pub use super::super::endpoint::{
+            allow_only, any, connect, delete, get, head, options, patch, post, put, trace,
+        };
+    }
 }
 
 use {
     super::{
         recognizer::Recognizer,
         tree::{Arena, NodeId},
-        AllowedMethods, App, AppInner, Resource, ResourceId, ScopeData, Uri,
+        App, AppInner, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never, TryInto},
         handler::{Handler, ModifyHandler},
         output::Responder,
     },
-    http::Method,
-    indexmap::{indexset, IndexMap},
+    indexmap::IndexMap,
     std::sync::Arc,
 };
 
@@ -122,12 +133,7 @@ pub struct AppConfigContext<'a, M> {
 
 impl<'a, M> AppConfigContext<'a, M> {
     #[doc(hidden)]
-    pub fn add_route<H>(
-        &mut self,
-        uri: impl TryInto<Uri>,
-        allowed_methods: Option<impl TryInto<AllowedMethods>>,
-        handler: H,
-    ) -> super::Result<()>
+    pub fn add_route<H>(&mut self, uri: impl TryInto<Uri>, handler: H) -> super::Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
@@ -143,29 +149,6 @@ impl<'a, M> AppConfigContext<'a, M> {
             )));
         }
 
-        let allowed_methods = match allowed_methods {
-            Some(methods) => {
-                let methods = methods.try_into()?;
-
-                if methods.0.is_empty() {
-                    return Err(failure::format_err!(
-                        "the route must accept at least one HTTP method(s)"
-                    )
-                    .into());
-                }
-
-                if uri.is_asterisk() && *methods.0 != indexset! { Method::OPTIONS } {
-                    return Err(failure::format_err!(
-                        "the route with asterisk URI accepts only OPTIONS"
-                    )
-                    .into());
-                }
-
-                Some(methods)
-            }
-            None => None,
-        };
-
         let id = ResourceId(self.inner.resources.len());
         let scope = &self.inner.scopes[self.scope_id];
         self.inner.resources.insert(
@@ -180,8 +163,7 @@ impl<'a, M> AppConfigContext<'a, M> {
                     .chain(Some(scope.id()))
                     .collect(),
                 uri: uri.clone(),
-                allowed_methods,
-                handler: self.modifier.modify(handler).into(),
+                handler: Box::new(self.modifier.modify(handler)),
             },
         );
 
@@ -197,7 +179,7 @@ impl<'a, M> AppConfigContext<'a, M> {
         M::Output: Responder,
     {
         let handler = self.modifier.modify(default_handler);
-        self.inner.scopes[self.scope_id].data.fallback = Some(handler.into());
+        self.inner.scopes[self.scope_id].data.fallback = Some(Box::new(handler));
         Ok(())
     }
 

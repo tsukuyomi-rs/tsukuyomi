@@ -19,7 +19,13 @@ use {
         },
         Method, Request,
     },
-    tsukuyomi::{app::config::prelude::*, chain, server::Server, test::ResponseExt, App},
+    tsukuyomi::{
+        app::config::prelude::*, //
+        chain,
+        server::Server,
+        test::ResponseExt,
+        App,
+    },
     tsukuyomi_cors::CORS,
 };
 
@@ -32,9 +38,14 @@ fn test_version_sync() {
 fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(with_modifier(
+        cors,
+        route() //
+            .to(endpoint::get() //
+                .reply(|| "hello")),
+    ))
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::get("/")
@@ -61,9 +72,14 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
 fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(with_modifier(
+        cors,
+        route() //
+            .to(endpoint::get() //
+                .reply(|| "hello")),
+    ))
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::get("/")
@@ -94,13 +110,12 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
         .allow_method(Method::GET)?
         .build();
 
-    let mut server = App::configure(
-        cors.wrap_scope(
-            route::root() //
-                .allowed_methods("GET, DELETE")?
-                .reply(|| "hello"),
-        ),
-    )
+    let mut server = App::configure(with_modifier(
+        cors,
+        route() //
+            .to(endpoint::allow_only("GET, DELETE")? //
+                .reply(|| "hello")),
+    ))
     .map(Server::new)?
     .into_test_server()?;
 
@@ -130,9 +145,14 @@ fn simple_request_with_allow_credentials() -> tsukuyomi::test::Result<()> {
         .allow_credentials(true)
         .build();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(with_modifier(
+        cors,
+        route() //
+            .to(endpoint::get() //
+                .reply(|| "hello")),
+    ))
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::get("/")
@@ -179,9 +199,17 @@ macro_rules! assert_headers {
 fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        default_handler(cors.clone()),
+        with_modifier(
+            cors,
+            route() //
+                .to(endpoint::get() //
+                    .reply(|| "hello")),
+        )
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::options("*")
@@ -203,9 +231,17 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
 fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        default_handler(cors.clone()),
+        with_modifier(
+            cors,
+            route() //
+                .to(endpoint::get() //
+                    .reply(|| "hello")),
+        )
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::options("*")
@@ -232,9 +268,16 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
         .allow_method(Method::GET)?
         .build();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        default_handler(cors.clone()),
+        with_modifier(
+            cors,
+            route().to(endpoint::get() //
+                .reply(|| "hello")),
+        )
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::options("*")
@@ -263,9 +306,17 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
         .allow_header(X_API_KEY)?
         .build();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        default_handler(cors.clone()),
+        with_modifier(
+            cors,
+            route() //
+                .to(endpoint::get() //
+                    .reply(|| "hello")),
+        )
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::options("*")
@@ -300,9 +351,17 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
         .max_age(std::time::Duration::from_secs(SECS_PER_DAY as u64))
         .build();
 
-    let mut server = App::configure(cors.wrap_scope(route::root().reply(|| "hello")))
-        .map(Server::new)?
-        .into_test_server()?;
+    let mut server = App::configure(chain![
+        default_handler(cors.clone()),
+        with_modifier(
+            cors,
+            route() //
+                .to(endpoint::get() //
+                    .reply(|| "hello")),
+        )
+    ])
+    .map(Server::new)?
+    .into_test_server()?;
 
     let response = server.perform(
         Request::options("*")
@@ -326,10 +385,13 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(chain![
         with_modifier(
             cors.clone(),
-            route::root().segment("cors")?.reply(|| "cors")
+            route().segment("cors")?.to(endpoint::get() //
+                .reply(|| "cors"))
         ),
-        route::root().segment("nocors")?.reply(|| "nocors"),
-        with_modifier(cors, route::asterisk().reply(|| ())),
+        route()
+            .segment("nocors")?
+            .to(endpoint::get().reply(|| "nocors")),
+        default_handler(cors),
     ])
     .map(Server::new)?
     .into_test_server()?;
@@ -371,9 +433,16 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let mut server = App::configure(chain![
-        cors.wrap_scope(route::root().segment("cors")?.reply(|| "cors")),
-        route::root().segment("nocors")?.reply(|| "nocors"),
-        route::asterisk().reply(|| ()),
+        with_modifier(
+            cors,
+            route()
+                .segment("cors")?
+                .to(endpoint::get().reply(|| "cors"))
+        ),
+        route()
+            .segment("nocors")? //
+            .to(endpoint::get() //
+                .reply(|| "nocors")),
     ])
     .map(Server::new)?
     .into_test_server()?;
@@ -397,14 +466,6 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
         Request::get("/nocors") //
             .header(ORIGIN, "http://example.com"),
     )?;
-    assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
-
-    let response = server.perform(
-        Request::options("*")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
     assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
 
     Ok(())

@@ -21,9 +21,9 @@
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
 //! App::configure(
-//!     route::root()
+//!     route()
 //!         .param("name")?
-//!         .reply(|name| Index { name })
+//!         .to(endpoint::get().reply(|name| Index { name }))
 //! )
 //! #   .map(drop)
 //! # }
@@ -41,7 +41,7 @@
 
 use {
     askama::Template,
-    derive_more::From,
+    futures::Poll,
     http::{
         header::{HeaderValue, CONTENT_TYPE},
         Response,
@@ -49,8 +49,7 @@ use {
     mime_guess::get_mime_type_str,
     tsukuyomi::{
         error::{internal_server_error, Error},
-        future::MaybeFuture,
-        handler::{Handler, ModifyHandler},
+        handler::{AllowedMethods, Handle, Handler, ModifyHandler},
         input::Input,
         output::Responder,
     },
@@ -76,7 +75,7 @@ where
     Ok(response)
 }
 
-#[derive(Debug, From)]
+#[derive(Debug)]
 pub struct Rendered<T: Template>(T);
 
 impl<T: Template> Responder for Rendered<T> {
@@ -95,7 +94,7 @@ pub struct Renderer(());
 impl<H> ModifyHandler<H> for Renderer
 where
     H: Handler,
-    H::Output: Template + 'static,
+    H::Output: Template,
 {
     type Output = Rendered<H::Output>;
     type Handler = RenderedHandler<H>;
@@ -114,12 +113,34 @@ pub struct RenderedHandler<H> {
 impl<H> Handler for RenderedHandler<H>
 where
     H: Handler,
-    H::Output: Template + 'static,
+    H::Output: Template,
 {
     type Output = Rendered<H::Output>;
-    type Future = tsukuyomi::future::MapOk<H::Future, fn(H::Output) -> Rendered<H::Output>>;
+    type Handle = RenderedHandle<H::Handle>;
 
-    fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
-        self.inner.call(input).map_ok(Rendered::from)
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        self.inner.allowed_methods()
+    }
+
+    fn call(&self, input: &mut Input<'_>) -> Self::Handle {
+        RenderedHandle(self.inner.call(input))
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct RenderedHandle<H>(H);
+
+impl<H> Handle for RenderedHandle<H>
+where
+    H: Handle,
+    H::Output: Template,
+{
+    type Output = Rendered<H::Output>;
+    type Error = H::Error;
+
+    #[inline]
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        self.0.poll_ready(input).map(|x| x.map(Rendered))
     }
 }

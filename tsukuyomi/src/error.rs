@@ -13,7 +13,7 @@ use {
         output::{Output, ResponseBody},
     },
     http::{Request, Response, StatusCode},
-    std::{any::TypeId, fmt, io},
+    std::{any::Any, fmt, io},
 };
 
 /// A type alias of `Result<T, E>` with `error::Error` as error type.
@@ -199,23 +199,25 @@ define_errors! {
 
 // ==== Error ====
 
+type AnyObj = dyn Any + Send + 'static;
+
 /// A custom trait object which holds all kinds of errors occurring in handlers.
 pub struct Error {
-    obj: AnyObj,
-    fmt_debug_fn: unsafe fn(&AnyObj, &mut fmt::Formatter<'_>) -> fmt::Result,
-    fmt_display_fn: unsafe fn(&AnyObj, &mut fmt::Formatter<'_>) -> fmt::Result,
-    into_response_fn: unsafe fn(AnyObj, &Request<()>) -> Output,
+    obj: Box<AnyObj>,
+    fmt_debug_fn: fn(&AnyObj, &mut fmt::Formatter<'_>) -> fmt::Result,
+    fmt_display_fn: fn(&AnyObj, &mut fmt::Formatter<'_>) -> fmt::Result,
+    into_response_fn: fn(Box<AnyObj>, &Request<()>) -> Output,
 }
 
 impl fmt::Debug for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe { (self.fmt_debug_fn)(&self.obj, formatter) }
+        (self.fmt_debug_fn)(&self.obj, formatter)
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe { (self.fmt_display_fn)(&self.obj, formatter) }
+        (self.fmt_display_fn)(&self.obj, formatter)
     }
 }
 
@@ -230,29 +232,23 @@ where
 
 impl Error {
     pub fn new<E: HttpError>(err: E) -> Self {
-        unsafe fn fmt_debug<E: HttpError>(
-            this: &AnyObj,
-            f: &mut fmt::Formatter<'_>,
-        ) -> fmt::Result {
-            debug_assert!(this.is::<E>());
-            fmt::Debug::fmt(this.downcast_ref_unchecked::<E>(), f)
+        fn fmt_debug<E: HttpError>(this: &AnyObj, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let this = this.downcast_ref::<E>().expect("the wrong type id");
+            fmt::Debug::fmt(this, f)
         }
 
-        unsafe fn fmt_display<E: HttpError>(
-            this: &AnyObj,
-            f: &mut fmt::Formatter<'_>,
-        ) -> fmt::Result {
-            debug_assert!(this.is::<E>());
-            fmt::Display::fmt(this.downcast_ref_unchecked::<E>(), f)
+        fn fmt_display<E: HttpError>(this: &AnyObj, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let this = this.downcast_ref::<E>().expect("the wrong type id");
+            fmt::Display::fmt(this, f)
         }
 
-        unsafe fn into_response<E: HttpError>(this: AnyObj, request: &Request<()>) -> Output {
-            debug_assert!(this.is::<E>());
-            HttpError::into_response(this.downcast_unchecked::<E>(), request).map(Into::into)
+        fn into_response<E: HttpError>(this: Box<AnyObj>, request: &Request<()>) -> Output {
+            let this = *this.downcast::<E>().expect("the wrong type id");
+            HttpError::into_response(this, request).map(Into::into)
         }
 
         Error {
-            obj: AnyObj::new(err),
+            obj: Box::new(err),
             fmt_debug_fn: fmt_debug::<E>,
             fmt_display_fn: fmt_display::<E>,
             into_response_fn: into_response::<E>,
@@ -268,28 +264,20 @@ impl Error {
     /// Attempts to downcast this error value to the specified concrete type by reference.
     #[inline]
     pub fn downcast_ref<T: HttpError>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            unsafe { Some(self.obj.downcast_ref_unchecked()) }
-        } else {
-            None
-        }
+        self.obj.downcast_ref()
     }
 
     /// Attempts to downcast this error value to the specified concrete type by reference.
     #[inline]
     pub fn downcast_mut<T: HttpError>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            unsafe { Some(self.obj.downcast_mut_unchecked()) }
-        } else {
-            None
-        }
+        self.obj.downcast_mut()
     }
 
     /// Attempts to downcast this error value into the specified concrete type.
     #[inline]
     pub fn downcast<T: HttpError>(self) -> std::result::Result<T, Self> {
-        if self.is::<T>() {
-            unsafe { Ok(self.obj.downcast_unchecked()) }
+        if self.obj.is::<T>() {
+            Ok(*self.obj.downcast().expect("never fails"))
         } else {
             Err(self)
         }
@@ -297,55 +285,6 @@ impl Error {
 
     /// Consumes itself and creates an HTTP response from its value.
     pub fn into_response(self, request: &Request<()>) -> Output {
-        unsafe { (self.into_response_fn)(self.obj, request) }
-    }
-}
-
-#[allow(missing_debug_implementations)]
-struct AnyObj {
-    ptr: *mut (),
-    type_id: TypeId,
-    drop_fn: unsafe fn(*mut ()),
-}
-
-impl Drop for AnyObj {
-    fn drop(&mut self) {
-        unsafe { (self.drop_fn)(self.ptr) }
-    }
-}
-
-impl AnyObj {
-    fn new<T: 'static>(value: T) -> Self {
-        unsafe fn unsafe_drop<T>(ptr: *mut ()) {
-            std::mem::drop(Box::from_raw(ptr as *mut T))
-        }
-
-        AnyObj {
-            ptr: Box::into_raw(Box::new(value)) as *mut (),
-            type_id: TypeId::of::<T>(),
-            drop_fn: unsafe_drop::<T>,
-        }
-    }
-
-    #[inline]
-    fn is<T: 'static>(&self) -> bool {
-        self.type_id == TypeId::of::<T>()
-    }
-
-    #[inline]
-    unsafe fn downcast_ref_unchecked<T: 'static>(&self) -> &T {
-        &*(self.ptr as *const T)
-    }
-
-    #[inline]
-    unsafe fn downcast_mut_unchecked<T: 'static>(&mut self) -> &mut T {
-        &mut *(self.ptr as *mut T)
-    }
-
-    #[inline]
-    unsafe fn downcast_unchecked<T: 'static>(self) -> T {
-        let value = *Box::from_raw(self.ptr as *mut T);
-        std::mem::forget(self); // cancel AnyObj::drop
-        value
+        (self.into_response_fn)(self.obj, request)
     }
 }

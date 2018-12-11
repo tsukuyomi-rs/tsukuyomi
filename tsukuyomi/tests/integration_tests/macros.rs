@@ -1,7 +1,12 @@
 mod responder {
     use {
         std::fmt,
-        tsukuyomi::{app::config::prelude::*, server::Server, test::ResponseExt, App},
+        tsukuyomi::{
+            app::config::prelude::*, //
+            server::Server,
+            test::ResponseExt,
+            App,
+        },
     };
 
     fn assert_impl_responder<T: tsukuyomi::output::Responder>() {}
@@ -96,8 +101,8 @@ mod responder {
         }
 
         let mut server = App::configure({
-            route::root() //
-                .reply(|| Foo("Foo".into()))
+            route() //
+                .to(endpoint::any().reply(|| Foo("Foo".into())))
         })
         .map(Server::new)?
         .into_test_server()?;

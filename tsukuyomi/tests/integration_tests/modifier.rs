@@ -1,10 +1,9 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        app::config::prelude::*,
+        app::config::prelude::*, //
         chain,
-        future::MaybeFuture,
-        handler::{Handler, ModifyHandler},
+        handler::{AllowedMethods, Handler, ModifyHandler},
         server::Server,
         App,
     },
@@ -40,9 +39,13 @@ where
     H: Handler,
 {
     type Output = H::Output;
-    type Future = H::Future;
+    type Handle = H::Handle;
 
-    fn call(&self, input: &mut tsukuyomi::Input<'_>) -> MaybeFuture<Self::Future> {
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        self.inner.allowed_methods()
+    }
+
+    fn call(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
         self.inner.call(input)
     }
@@ -57,7 +60,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
             marker: marker.clone(),
             name: "M",
         },
-        route::root().say(""), //
+        route().to(endpoint::any().say("")), //
     ))
     .map(Server::new)?
     .into_test_server()?;
@@ -87,7 +90,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
                 name: "M2",
             }
         ],
-        route::root().say(""),
+        route().to(endpoint::any().say("")),
     ))
     .map(Server::new)?
     .into_test_server()?;
@@ -115,10 +118,10 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
                         marker: marker.clone(),
                         name: "M2",
                     },
-                    route::root().say("hi")
+                    route().to(endpoint::any().say(""))
                 )
             ), //
-            route::root().segment("path2")?.say(""),
+            route().segment("path2")?.to(endpoint::any().say("")),
         ],
     ))
     .map(Server::new)?
@@ -154,7 +157,7 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                             name: "M2",
                         },
                         chain![
-                            route::root().say(""),
+                            route().to(endpoint::any().say("")),
                             mount(
                                 "/a",
                                 with_modifier(
@@ -162,7 +165,7 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                                         marker: marker.clone(),
                                         name: "M3",
                                     },
-                                    route::root().say("")
+                                    route().to(endpoint::any().say(""))
                                 )
                             ) //
                         ],

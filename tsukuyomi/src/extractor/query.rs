@@ -1,6 +1,10 @@
 //! Extractors for parsing query string.
 
-use {super::Extractor, crate::core::Never, serde::de::DeserializeOwned};
+use {
+    super::Extractor, //
+    crate::{core::Never, error::Error},
+    serde::de::DeserializeOwned,
+};
 
 #[doc(hidden)]
 #[derive(Debug, failure::Fail)]
@@ -12,9 +16,9 @@ pub enum ExtractQueryError {
     InvalidQuery { cause: failure::Error },
 }
 
-pub fn query<T>() -> impl Extractor<Output = (T,)>
+pub fn query<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     super::ready(|input| {
         if let Some(query_str) = input.request.uri().query() {
@@ -29,9 +33,9 @@ where
     })
 }
 
-pub fn optional<T>() -> impl Extractor<Output = (Option<T>,)>
+pub fn optional<T>() -> impl Extractor<Output = (Option<T>,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     super::ready(|input| {
         if let Some(query_str) = input.request.uri().query() {
@@ -48,6 +52,6 @@ where
     })
 }
 
-pub fn raw() -> impl Extractor<Output = (Option<String>,)> {
+pub fn raw() -> impl Extractor<Output = (Option<String>,), Error = Never> {
     super::ready(|input| Ok::<_, Never>(input.request.uri().query().map(ToOwned::to_owned)))
 }

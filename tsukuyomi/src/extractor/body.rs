@@ -4,14 +4,10 @@ use {
     crate::{
         error::Error,
         extractor::Extractor,
-        future::{Async, MaybeFuture},
-        input::{
-            body::{ReadAll, RequestBody},
-            header::ContentType,
-        },
+        input::{body::RequestBody, header::ContentType},
     },
     bytes::Bytes,
-    futures01::Future as _Future01,
+    futures01::Future,
     mime::Mime,
     serde::de::DeserializeOwned,
     std::str,
@@ -129,9 +125,9 @@ mod decode {
     }
 }
 
-fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,)>
+fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: 'static,
+    T: Send + 'static,
     D: self::decode::Decoder<T>,
 {
     super::raw(move |input| {
@@ -143,79 +139,59 @@ where
                         .map_err(crate::error::bad_request)
                 })
         } {
-            return MaybeFuture::err(err);
+            return futures01::future::Either::A(futures01::future::err(err));
         }
 
-        let mut read_all: Option<ReadAll> = None;
-        MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
-            if let Some(ref mut read_all) = read_all {
-                let data = futures01::try_ready!(read_all.poll());
-                return D::decode(&data)
-                    .map(|out| Async::Ready((out,)))
-                    .map_err(crate::error::bad_request);
-            }
-            read_all = Some(
-                cx.input
-                    .locals
-                    .remove(&RequestBody::KEY)
-                    .ok_or_else(stolen_payload)?
-                    .read_all(),
-            );
+        let read_all = match input.locals.remove(&RequestBody::KEY) {
+            Some(body) => body.read_all(),
+            None => return futures01::future::Either::A(futures01::future::err(stolen_payload())),
+        };
+
+        futures01::future::Either::B(read_all.from_err().and_then(|data| {
+            D::decode(&data)
+                .map(|out| (out,))
+                .map_err(crate::error::bad_request)
         }))
     })
 }
 
 #[inline]
-pub fn plain<T>() -> impl Extractor<Output = (T,)>
+pub fn plain<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::PlainTextDecoder::default())
 }
 
 #[inline]
-pub fn json<T>() -> impl Extractor<Output = (T,)>
+pub fn json<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::JsonDecoder::default())
 }
 
 #[inline]
-pub fn urlencoded<T>() -> impl Extractor<Output = (T,)>
+pub fn urlencoded<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::UrlencodedDecoder::default())
 }
 
-pub fn raw() -> impl Extractor<Output = (Bytes,)> {
-    super::lazy(|_| {
-        let mut read_all: Option<ReadAll> = None;
-        crate::future::poll_fn(move |cx| loop {
-            if let Some(ref mut read_all) = read_all {
-                return read_all.poll().map_err(Error::from);
-            }
-            read_all = Some(
-                cx.input
-                    .locals
-                    .remove(&RequestBody::KEY)
-                    .ok_or_else(stolen_payload)?
-                    .read_all(),
-            );
-        })
+pub fn read_all() -> impl Extractor<Output = (Bytes,), Error = Error> {
+    super::raw(|input| match input.locals.remove(&RequestBody::KEY) {
+        Some(body) => {
+            futures01::future::Either::A(body.read_all().map(|x| (x,)).map_err(Into::into))
+        }
+        None => futures01::future::Either::B(futures01::future::err(stolen_payload())),
     })
 }
 
-pub fn stream() -> impl Extractor<Output = (RequestBody,)> {
-    super::lazy(|_| {
-        crate::future::poll_fn(|cx| {
-            cx.input
-                .locals
-                .remove(&RequestBody::KEY)
-                .map(Async::Ready)
-                .ok_or_else(stolen_payload)
-        })
+pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
+    super::ready(|input| match input.locals.remove(&RequestBody::KEY) {
+        Some(body) => Ok(body),
+        None => Err(stolen_payload()),
     })
 }
 
