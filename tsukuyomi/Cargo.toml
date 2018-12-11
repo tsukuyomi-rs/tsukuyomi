@@ -42,6 +42,7 @@ futures01 = { package = "futures", version = "0.1" }
 http = "0.1"
 hyper = "0.12"
 indexmap = "1"
+lazy_static = "1"
 log = "0.4"
 mime = "0.3"
 serde = { version = "1", features = ["derive"] }

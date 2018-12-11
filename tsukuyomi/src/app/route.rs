@@ -2,7 +2,6 @@ use {
     super::{
         config::{AppConfig, AppConfigContext},
         uri::{Uri, UriComponent},
-        AllowedMethods,
     },
     crate::{
         core::{Chain, Never, TryInto},
@@ -11,7 +10,7 @@ use {
         fs::NamedFile,
         future::{Future, MaybeFuture, NeverFuture},
         generic::{Combine, Func},
-        handler::{Handler, ModifyHandler},
+        handler::{AllowedMethods, Handler, ModifyHandler},
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
@@ -183,23 +182,11 @@ where
         D: Dispatcher<E::Output>,
         D::Endpoint: Send + 'static,
     {
-        let Self {
-            uri,
-            allowed_methods,
-            extractor,
-            ..
-        } = self;
+        let Self { uri, extractor, .. } = self;
+        let allowed_methods = dispatcher.allowed_methods().cloned();
 
-        let handler = {
-            let allowed_methods = allowed_methods.clone();
-            crate::handler::raw(move |input| {
-                if allowed_methods
-                    .as_ref()
-                    .map_or(false, |m| !m.contains(input.request.method()))
-                {
-                    return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into());
-                }
-
+        let handler = crate::handler::handler(
+            move |input| {
                 #[allow(missing_debug_implementations)]
                 enum State<F1, F2, T> {
                     First(F1, T),
@@ -239,14 +226,11 @@ where
                         }
                     }
                 }))
-            })
-        };
-
-        Route {
-            uri,
+            },
             allowed_methods,
-            handler,
-        }
+        );
+
+        Route { uri, handler }
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
@@ -258,12 +242,25 @@ where
         E::Output: 'static,
         F::Out: 'static,
     {
-        self.to(crate::endpoint::dispatcher(move |_| {
-            let f = f.clone();
-            Some(crate::endpoint::endpoint(move |_, args| {
-                MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
-            }))
-        }))
+        let allowed_methods = self.allowed_methods.clone();
+        self.to(crate::endpoint::dispatcher(
+            {
+                let allowed_methods = allowed_methods.clone();
+                move |input: &mut crate::input::Input<'_>| {
+                    if allowed_methods
+                        .as_ref()
+                        .map_or(false, |methods| !methods.contains(input.request.method()))
+                    {
+                        return None;
+                    }
+                    let f = f.clone();
+                    Some(crate::endpoint::endpoint(move |_, args| {
+                        MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
+                    }))
+                }
+            },
+            allowed_methods,
+        ))
     }
 
     /// Creates an instance of `Route` with the current configuration and the specified function.
@@ -276,12 +273,25 @@ where
         E::Output: 'static,
         F::Out: 'static,
     {
-        self.to(crate::endpoint::dispatcher(move |_| {
-            let f = f.clone();
-            Some(crate::endpoint::endpoint(move |_, args| {
-                MaybeFuture::Future(f.call(args))
-            }))
-        }))
+        let allowed_methods = self.allowed_methods.clone();
+        self.to(crate::endpoint::dispatcher(
+            {
+                let allowed_methods = allowed_methods.clone();
+                move |input: &mut crate::input::Input<'_>| {
+                    if allowed_methods
+                        .as_ref()
+                        .map_or(false, |methods| !methods.contains(input.request.method()))
+                    {
+                        return None;
+                    }
+                    let f = f.clone();
+                    Some(crate::endpoint::endpoint(move |_, args| {
+                        MaybeFuture::Future(f.call(args))
+                    }))
+                }
+            },
+            allowed_methods,
+        ))
     }
 }
 
@@ -317,7 +327,6 @@ where
 #[derive(Debug)]
 pub struct Route<H> {
     uri: Uri,
-    allowed_methods: Option<AllowedMethods>,
     handler: H,
 }
 
@@ -328,7 +337,6 @@ where
     pub fn from_parts(uri: impl TryInto<Uri>, handler: H) -> super::Result<Self> {
         Ok(Self {
             uri: uri.try_into()?,
-            allowed_methods: None,
             handler,
         })
     }
@@ -344,6 +352,6 @@ where
     type Error = super::Error;
 
     fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri, self.allowed_methods, self.handler)
+        cx.add_route(self.uri, self.handler)
     }
 }

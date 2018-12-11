@@ -1,5 +1,6 @@
 use crate::{
     future::{Future, MaybeFuture},
+    handler::AllowedMethods,
     input::Input,
 };
 
@@ -39,19 +40,28 @@ pub trait Dispatcher<T> {
     type Output;
     type Endpoint: Endpoint<T, Output = Self::Output>;
 
+    /// Returns a list of HTTP methods that the returned endpoint accepts.
+    ///
+    /// If it returns a `None`, it means that the endpoint accepts *all* methods.
+    fn allowed_methods(&self) -> Option<&AllowedMethods>;
+
     fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint>;
 }
 
 pub fn dispatcher<T, A>(
-    f: impl Fn(&mut Input<'_>) -> Option<A>,
+    dispatch: impl Fn(&mut Input<'_>) -> Option<A>,
+    allowed_methods: Option<AllowedMethods>,
 ) -> impl Dispatcher<T, Output = A::Output, Endpoint = A>
 where
     A: Endpoint<T>,
 {
     #[allow(missing_debug_implementations)]
-    struct Raw<F>(F);
+    struct DispatcherFn<F> {
+        dispatch: F,
+        allowed_methods: Option<AllowedMethods>,
+    }
 
-    impl<F, T, A> Dispatcher<T> for Raw<F>
+    impl<F, T, A> Dispatcher<T> for DispatcherFn<F>
     where
         F: Fn(&mut Input<'_>) -> Option<A>,
         A: Endpoint<T>,
@@ -60,12 +70,20 @@ where
         type Endpoint = A;
 
         #[inline]
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.allowed_methods.as_ref()
+        }
+
+        #[inline]
         fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
-            (self.0)(input)
+            (self.dispatch)(input)
         }
     }
 
-    Raw(f)
+    DispatcherFn {
+        dispatch,
+        allowed_methods,
+    }
 }
 
 impl<E, T> Dispatcher<T> for std::rc::Rc<E>
@@ -74,6 +92,11 @@ where
 {
     type Output = E::Output;
     type Endpoint = E::Endpoint;
+
+    #[inline]
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        (**self).allowed_methods()
+    }
 
     #[inline]
     fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
@@ -87,6 +110,11 @@ where
 {
     type Output = E::Output;
     type Endpoint = E::Endpoint;
+
+    #[inline]
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        (**self).allowed_methods()
+    }
 
     #[inline]
     fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {

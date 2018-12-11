@@ -7,7 +7,7 @@ use {
     super::{
         recognizer::Recognizer,
         tree::{Arena, NodeId},
-        AllowedMethods, App, AppInner, Resource, ResourceId, ScopeData, Uri,
+        App, AppInner, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never, TryInto},
@@ -121,12 +121,7 @@ pub struct AppConfigContext<'a, M> {
 
 impl<'a, M> AppConfigContext<'a, M> {
     #[doc(hidden)]
-    pub fn add_route<H>(
-        &mut self,
-        uri: impl TryInto<Uri>,
-        allowed_methods: Option<impl TryInto<AllowedMethods>>,
-        handler: H,
-    ) -> super::Result<()>
+    pub fn add_route<H>(&mut self, uri: impl TryInto<Uri>, handler: H) -> super::Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
@@ -142,22 +137,6 @@ impl<'a, M> AppConfigContext<'a, M> {
             )));
         }
 
-        let allowed_methods = match allowed_methods {
-            Some(methods) => {
-                let methods = methods.try_into()?;
-
-                if methods.0.is_empty() {
-                    return Err(failure::format_err!(
-                        "the route must accept at least one HTTP method(s)"
-                    )
-                    .into());
-                }
-
-                Some(methods)
-            }
-            None => None,
-        };
-
         let id = ResourceId(self.inner.resources.len());
         let scope = &self.inner.scopes[self.scope_id];
         self.inner.resources.insert(
@@ -172,8 +151,7 @@ impl<'a, M> AppConfigContext<'a, M> {
                     .chain(Some(scope.id()))
                     .collect(),
                 uri: uri.clone(),
-                allowed_methods,
-                handler: self.modifier.modify(handler).into(),
+                handler: Box::new(self.modifier.modify(handler)),
             },
         );
 
@@ -189,7 +167,7 @@ impl<'a, M> AppConfigContext<'a, M> {
         M::Output: Responder,
     {
         let handler = self.modifier.modify(default_handler);
-        self.inner.scopes[self.scope_id].data.fallback = Some(handler.into());
+        self.inner.scopes[self.scope_id].data.fallback = Some(Box::new(handler));
         Ok(())
     }
 

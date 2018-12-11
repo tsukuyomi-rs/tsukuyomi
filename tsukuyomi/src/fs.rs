@@ -4,7 +4,7 @@ use {
     crate::{
         error::Error,
         future::{Compat01, MaybeFuture},
-        handler::{Handler, ModifyHandler},
+        handler::{AllowedMethods, Handler, ModifyHandler},
         input::Input,
         output::{Responder, ResponseBody},
         rt::poll_blocking,
@@ -415,6 +415,10 @@ impl Handler for ServeFile {
     type Output = NamedFile;
     type Future = Compat01<OpenFuture<ArcPath>>;
 
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        Some(&AllowedMethods::get())
+    }
+
     fn call(&self, input: &mut Input<'_>) -> MaybeFuture<Self::Future> {
         let path = if self.extract_path {
             match input.params.as_ref().and_then(|params| params.catch_all()) {
@@ -496,7 +500,6 @@ where
             if file_type.is_file() {
                 cx.add_route(
                     format!("/{}", name),
-                    Some("GET"),
                     ServeFile {
                         path,
                         config: config.clone(),
@@ -506,7 +509,6 @@ where
             } else if file_type.is_dir() {
                 cx.add_route(
                     format!("/{}/*path", name),
-                    Some("GET"),
                     ServeFile {
                         path,
                         config: config.clone(),

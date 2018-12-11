@@ -218,7 +218,7 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
     use tsukuyomi::{
-        handler::{Handler, ModifyHandler},
+        handler::{AllowedMethods, Handler, ModifyHandler},
         input::localmap::local_key,
     };
 
@@ -248,6 +248,10 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     impl<H: Handler> Handler for InsertMyDataHandler<H> {
         type Output = H::Output;
         type Future = H::Future;
+
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.0.allowed_methods()
+        }
 
         fn call(
             &self,
