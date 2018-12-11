@@ -1,4 +1,9 @@
-use tsukuyomi::{app::config::prelude::*, fs::Staticfiles, App};
+use tsukuyomi::{
+    app::config::prelude::*, //
+    endpoint,
+    fs::Staticfiles,
+    App,
+};
 
 #[test]
 #[ignore]
@@ -6,7 +11,7 @@ fn compiletest() -> tsukuyomi::app::Result<()> {
     App::configure({
         route::root()
             .segment("index.html")?
-            .send_file("/path/to/index.html", None)
+            .to(endpoint::get().send_file("/path/to/index.html", None))
     })
     .map(drop)
 }

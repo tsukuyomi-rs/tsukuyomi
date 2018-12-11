@@ -1,8 +1,9 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        app::config::prelude::*,
+        app::config::prelude::*, //
         chain,
+        endpoint,
         future::MaybeFuture,
         handler::{AllowedMethods, Handler, ModifyHandler},
         server::Server,
@@ -61,7 +62,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
             marker: marker.clone(),
             name: "M",
         },
-        route::root().say(""), //
+        route::root().to(endpoint::any().say("")), //
     ))
     .map(Server::new)?
     .into_test_server()?;
@@ -91,7 +92,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
                 name: "M2",
             }
         ],
-        route::root().say(""),
+        route::root().to(endpoint::any().say("")),
     ))
     .map(Server::new)?
     .into_test_server()?;
@@ -119,10 +120,10 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
                         marker: marker.clone(),
                         name: "M2",
                     },
-                    route::root().say("hi")
+                    route::root().to(endpoint::any().say(""))
                 )
             ), //
-            route::root().segment("path2")?.say(""),
+            route::root().segment("path2")?.to(endpoint::any().say("")),
         ],
     ))
     .map(Server::new)?
@@ -158,7 +159,7 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                             name: "M2",
                         },
                         chain![
-                            route::root().say(""),
+                            route::root().to(endpoint::any().say("")),
                             mount(
                                 "/a",
                                 with_modifier(
@@ -166,7 +167,7 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                                         marker: marker.clone(),
                                         name: "M3",
                                     },
-                                    route::root().say("")
+                                    route::root().to(endpoint::any().say(""))
                                 )
                             ) //
                         ],

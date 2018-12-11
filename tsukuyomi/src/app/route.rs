@@ -4,18 +4,17 @@ use {
         uri::{Uri, UriComponent},
     },
     crate::{
-        core::{Chain, Never, TryInto},
+        core::{Chain, TryInto},
         endpoint::{Dispatcher, Endpoint},
         extractor::Extractor,
-        fs::NamedFile,
-        future::{Future, MaybeFuture, NeverFuture},
-        generic::{Combine, Func},
-        handler::{AllowedMethods, Handler, ModifyHandler},
+        future::{Future, MaybeFuture},
+        generic::Combine,
+        handler::{Handler, ModifyHandler},
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
     http::StatusCode,
-    std::{marker::PhantomData, path::Path},
+    std::marker::PhantomData,
 };
 
 mod tags {
@@ -29,7 +28,6 @@ mod tags {
 pub fn root() -> Builder<(), self::tags::Incomplete> {
     Builder {
         uri: Uri::root(),
-        allowed_methods: None,
         extractor: (),
         _marker: std::marker::PhantomData,
     }
@@ -40,7 +38,6 @@ pub fn root() -> Builder<(), self::tags::Incomplete> {
 #[derive(Debug)]
 pub struct Builder<E: Extractor = (), T = self::tags::Incomplete> {
     uri: Uri,
-    allowed_methods: Option<AllowedMethods>,
     extractor: E,
     _marker: PhantomData<T>,
 }
@@ -49,19 +46,6 @@ impl<E> Builder<E, self::tags::Incomplete>
 where
     E: Extractor,
 {
-    /// Sets the HTTP methods that this route accepts.
-    ///
-    /// By default, the route accepts *all* HTTP methods.
-    pub fn allowed_methods(
-        self,
-        allowed_methods: impl TryInto<AllowedMethods>,
-    ) -> super::Result<Self> {
-        Ok(Builder {
-            allowed_methods: Some(allowed_methods.try_into()?),
-            ..self
-        })
-    }
-
     /// Appends a *static* segment into this route.
     pub fn segment(mut self, s: impl Into<String>) -> super::Result<Self> {
         self.uri.push(UriComponent::Static(s.into()))?;
@@ -76,7 +60,6 @@ where
                 uri.push(UriComponent::Slash).expect("this is a bug.");
                 uri
             },
-            allowed_methods: self.allowed_methods,
             extractor: self.extractor,
             _marker: PhantomData,
         }
@@ -100,7 +83,6 @@ where
                 uri.push(UriComponent::Param(name.clone(), ':'))?;
                 uri
             },
-            allowed_methods: self.allowed_methods,
             extractor: Chain::new(
                 self.extractor,
                 crate::extractor::ready(move |input| match input.params {
@@ -136,7 +118,6 @@ where
                 uri.push(UriComponent::Param(name.clone(), '*'))?;
                 uri
             },
-            allowed_methods: self.allowed_methods,
             extractor: Chain::new(
                 self.extractor,
                 crate::extractor::ready(|input| match input.params {
@@ -171,7 +152,6 @@ where
         Builder {
             extractor: Chain::new(self.extractor, other),
             uri: self.uri,
-            allowed_methods: self.allowed_methods,
             _marker: PhantomData,
         }
     }
@@ -231,96 +211,6 @@ where
         );
 
         Route { uri, handler }
-    }
-
-    /// Creates an instance of `Route` with the current configuration and the specified function.
-    ///
-    /// The provided function always succeeds and immediately returns a value.
-    pub fn reply<F>(self, f: F) -> Route<impl Handler<Output = F::Out>>
-    where
-        F: Func<E::Output> + Clone + Send + 'static,
-        E::Output: 'static,
-        F::Out: 'static,
-    {
-        let allowed_methods = self.allowed_methods.clone();
-        self.to(crate::endpoint::dispatcher(
-            {
-                let allowed_methods = allowed_methods.clone();
-                move |input: &mut crate::input::Input<'_>| {
-                    if allowed_methods
-                        .as_ref()
-                        .map_or(false, |methods| !methods.contains(input.request.method()))
-                    {
-                        return None;
-                    }
-                    let f = f.clone();
-                    Some(crate::endpoint::endpoint(move |_, args| {
-                        MaybeFuture::<NeverFuture<_, Never>>::ok(f.call(args))
-                    }))
-                }
-            },
-            allowed_methods,
-        ))
-    }
-
-    /// Creates an instance of `Route` with the current configuration and the specified function.
-    ///
-    /// The result of provided function is returned by `Future`.
-    pub fn call<F, R>(self, f: F) -> Route<impl Handler<Output = R::Output>>
-    where
-        F: Func<E::Output, Out = R> + Clone + Send + 'static,
-        R: Future + Send + 'static,
-        E::Output: 'static,
-        F::Out: 'static,
-    {
-        let allowed_methods = self.allowed_methods.clone();
-        self.to(crate::endpoint::dispatcher(
-            {
-                let allowed_methods = allowed_methods.clone();
-                move |input: &mut crate::input::Input<'_>| {
-                    if allowed_methods
-                        .as_ref()
-                        .map_or(false, |methods| !methods.contains(input.request.method()))
-                    {
-                        return None;
-                    }
-                    let f = f.clone();
-                    Some(crate::endpoint::endpoint(move |_, args| {
-                        MaybeFuture::Future(f.call(args))
-                    }))
-                }
-            },
-            allowed_methods,
-        ))
-    }
-}
-
-impl<E, T> Builder<E, T>
-where
-    E: Extractor<Output = ()>,
-{
-    /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<R>(self, output: R) -> Route<impl Handler<Output = R>>
-    where
-        R: Clone + Send + 'static,
-    {
-        self.reply(move || output.clone())
-    }
-
-    /// Creates a `Route` that sends the contents of file located at the specified path.
-    pub fn send_file(
-        self,
-        path: impl AsRef<Path>,
-        config: Option<crate::fs::OpenConfig>,
-    ) -> Route<impl Handler<Output = NamedFile>> {
-        let path = crate::fs::ArcPath::from(path.as_ref().to_path_buf());
-
-        self.call(move || {
-            crate::future::Compat01::from(match config {
-                Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
-                None => NamedFile::open(path.clone()),
-            })
-        })
     }
 }
 
