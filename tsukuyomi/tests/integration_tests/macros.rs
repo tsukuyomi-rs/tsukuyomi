@@ -3,7 +3,6 @@ mod responder {
         std::fmt,
         tsukuyomi::{
             app::config::prelude::*, //
-            endpoint,
             server::Server,
             test::ResponseExt,
             App,

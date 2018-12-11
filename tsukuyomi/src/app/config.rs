@@ -1,9 +1,19 @@
-pub mod prelude {
-    pub use super::route::route;
-    pub use super::{default_handler, mount, with_modifier, AppConfig};
-}
-
+pub mod endpoint;
 pub mod route;
+
+pub mod prelude {
+    #[doc(no_inline)]
+    pub use super::route::route;
+    #[doc(no_inline)]
+    pub use super::{default_handler, mount, with_modifier, AppConfig};
+
+    pub mod endpoint {
+        #[doc(no_inline)]
+        pub use super::super::endpoint::{
+            allow_only, any, connect, delete, get, head, options, patch, post, put, trace,
+        };
+    }
+}
 
 use {
     super::{

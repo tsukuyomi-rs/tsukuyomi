@@ -3,7 +3,6 @@ use {
     tsukuyomi::{
         app::config::prelude::*, //
         chain,
-        endpoint,
         handler::{AllowedMethods, Handler, ModifyHandler},
         server::Server,
         App,

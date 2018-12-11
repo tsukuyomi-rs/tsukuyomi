@@ -3,7 +3,6 @@ use {
     tsukuyomi::{
         app::config::prelude::*, //
         chain,
-        endpoint,
         extractor,
         extractor::{Extractor, ExtractorExt},
         server::Server,

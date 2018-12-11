@@ -1,6 +1,5 @@
 use tsukuyomi::{
     app::config::prelude::*, //
-    endpoint,
     fs::Staticfiles,
     App,
 };

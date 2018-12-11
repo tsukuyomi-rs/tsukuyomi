@@ -13,7 +13,7 @@ fn empty() -> Result<()> {
 #[test]
 fn route_single_method() -> Result<()> {
     let app = App::configure(
-        route().to(crate::endpoint::any().say("")), //
+        route().to(endpoint::any().say("")), //
     )?;
 
     assert_matches!(
@@ -35,7 +35,7 @@ fn route_single_method() -> Result<()> {
 fn route_multiple_method() -> Result<()> {
     let app = App::configure(
         route() //
-            .to(crate::endpoint::allow_only("GET, POST")?.say("")),
+            .to(endpoint::allow_only("GET, POST")?.say("")),
     )?;
 
     assert_matches!(
@@ -61,15 +61,12 @@ fn scope_simple() -> Result<()> {
         mount(
             "/",
             chain![
-                route().segment("a")?.to(crate::endpoint::any().say("")),
-                route().segment("b")?.to(crate::endpoint::any().say("")),
+                route().segment("a")?.to(endpoint::any().say("")),
+                route().segment("b")?.to(endpoint::any().say("")),
             ]
         ),
-        route().segment("foo")?.to(crate::endpoint::any().say("")),
-        mount(
-            "/c",
-            route().segment("d")?.to(crate::endpoint::any().say("")),
-        ),
+        route().segment("foo")?.to(endpoint::any().say("")),
+        mount("/c", route().segment("d")?.to(endpoint::any().say("")),),
     ])?;
 
     assert_matches!(
@@ -103,27 +100,25 @@ fn scope_nested() -> Result<()> {
             "/",
             chain![
                 // 0
-                route().segment("foo")?.to(crate::endpoint::any().say("")), // /foo
-                route().segment("bar")?.to(crate::endpoint::any().say("")), // /bar
+                route().segment("foo")?.to(endpoint::any().say("")), // /foo
+                route().segment("bar")?.to(endpoint::any().say("")), // /bar
             ]
         ),
         mount(
             "/baz",
             chain![
                 // 1
-                route().to(crate::endpoint::any().say("")), // /baz
+                route().to(endpoint::any().say("")), // /baz
                 mount(
                     "/",
                     chain![
                         // 2
-                        route()
-                            .segment("foobar")?
-                            .to(crate::endpoint::any().say("")), // /baz/foobar
+                        route().segment("foobar")?.to(endpoint::any().say("")), // /baz/foobar
                     ]
                 )
             ]
         ), //
-        route().segment("hoge")?.to(crate::endpoint::any().say("")) // /hoge
+        route().segment("hoge")?.to(endpoint::any().say("")) // /hoge
     ])?;
 
     assert_matches!(
@@ -159,12 +154,10 @@ fn scope_nested() -> Result<()> {
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
     let app = App::configure(chain![
+        route().segment("path")?.to(endpoint::get().reply(|| "")),
         route()
             .segment("path")?
-            .to(crate::endpoint::get().reply(|| "")),
-        route()
-            .segment("path")?
-            .to(crate::endpoint::allow_only("POST, PUT")?.reply(|| "")),
+            .to(endpoint::allow_only("POST, PUT")?.reply(|| "")),
     ]);
     assert!(app.is_err());
     Ok(())
@@ -175,12 +168,12 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::configure(chain![
         route() //
             .segment("path")?
-            .to(crate::endpoint::any().reply(|| ""),),
+            .to(endpoint::any().reply(|| ""),),
         mount(
             "/",
             route() //
                 .segment("path")?
-                .to(crate::endpoint::post().reply(|| ""))
+                .to(endpoint::post().reply(|| ""))
         )
     ]);
     assert!(app.is_err());
