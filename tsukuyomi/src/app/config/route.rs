@@ -1,7 +1,7 @@
 use {
     super::{
-        config::{AppConfig, AppConfigContext},
-        uri::{Uri, UriComponent},
+        super::uri::{Uri, UriComponent},
+        AppConfig, AppConfigContext,
     },
     crate::{
         core::{Chain, TryInto},
@@ -17,20 +17,58 @@ use {
     std::marker::PhantomData,
 };
 
+pub fn route() -> Builder<(), self::tags::Incomplete> {
+    Route::builder()
+}
+
+#[derive(Debug)]
+pub struct Route<H> {
+    uri: Uri,
+    handler: H,
+}
+
+impl Route<()> {
+    pub fn builder() -> Builder<(), self::tags::Incomplete> {
+        Builder {
+            uri: Uri::root(),
+            extractor: (),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<H> Route<H>
+where
+    H: Handler,
+{
+    pub fn from_parts(uri: impl TryInto<Uri>, handler: H) -> crate::app::Result<Self> {
+        Ok(Self {
+            uri: uri.try_into()?,
+            handler,
+        })
+    }
+}
+
+impl<H, M> AppConfig<M> for Route<H>
+where
+    H: Handler,
+    M: ModifyHandler<H>,
+    M::Output: Responder,
+    M::Handler: Send + Sync + 'static,
+{
+    type Error = crate::app::Error;
+
+    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+        cx.add_route(self.uri, self.handler)
+    }
+}
+
 mod tags {
     #[derive(Debug)]
     pub struct Completed(());
 
     #[derive(Debug)]
     pub struct Incomplete(());
-}
-
-pub fn root() -> Builder<(), self::tags::Incomplete> {
-    Builder {
-        uri: Uri::root(),
-        extractor: (),
-        _marker: std::marker::PhantomData,
-    }
 }
 
 /// A builder of `Scope` to register a route, which is matched to the requests
@@ -47,7 +85,7 @@ where
     E: Extractor,
 {
     /// Appends a *static* segment into this route.
-    pub fn segment(mut self, s: impl Into<String>) -> super::Result<Self> {
+    pub fn segment(mut self, s: impl Into<String>) -> crate::app::Result<Self> {
         self.uri.push(UriComponent::Static(s.into()))?;
         Ok(self)
     }
@@ -69,7 +107,7 @@ where
     pub fn param<T>(
         self,
         name: impl Into<String>,
-    ) -> super::Result<
+    ) -> crate::app::Result<
         Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>, self::tags::Incomplete>,
     >
     where
@@ -104,7 +142,7 @@ where
     pub fn catch_all<T>(
         self,
         name: impl Into<String>,
-    ) -> super::Result<
+    ) -> crate::app::Result<
         Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>, self::tags::Completed>,
     >
     where
@@ -211,37 +249,5 @@ where
         );
 
         Route { uri, handler }
-    }
-}
-
-#[derive(Debug)]
-pub struct Route<H> {
-    uri: Uri,
-    handler: H,
-}
-
-impl<H> Route<H>
-where
-    H: Handler,
-{
-    pub fn from_parts(uri: impl TryInto<Uri>, handler: H) -> super::Result<Self> {
-        Ok(Self {
-            uri: uri.try_into()?,
-            handler,
-        })
-    }
-}
-
-impl<H, M> AppConfig<M> for Route<H>
-where
-    H: Handler,
-    M: ModifyHandler<H>,
-    M::Output: Responder,
-    M::Handler: Send + Sync + 'static,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri, self.handler)
     }
 }

@@ -26,7 +26,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(
-        route::root() //
+        route() //
             .segment("hello")?
             .to(endpoint::any().reply(|| "Tsukuyomi")),
     )
@@ -50,7 +50,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
     let mut server = App::with_prefix(
         "/api/v1",
-        route::root() //
+        route() //
             .segment("hello")?
             .to(endpoint::any().reply(|| "Tsukuyomi")),
     )
@@ -66,7 +66,7 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
     let mut server = App::configure(
-        route::root()
+        route()
             .segment("hello")? //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
@@ -99,7 +99,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
     let expires_in = time::now() + Duration::days(7);
 
     let mut server = App::configure(chain![
-        route::root().segment("login")?.to({
+        route().segment("login")?.to({
             endpoint::any()
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
@@ -112,7 +112,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 }))
                 .reply(|| "Logged in")
         }),
-        route::root().segment("logout")?.to({
+        route().segment("logout")?.to({
             endpoint::any()
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
@@ -154,7 +154,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 // fn default_options() -> tsukuyomi::test::Result<()> {
 //     let mut server = App::configure(with_modifier(
 //         tsukuyomi::handler::modifiers::DefaultOptions::default(),
-//         route::root()
+//         route()
 //             .segment("path")?
 //             .allowed_methods("GET, POST")?
 //             .reply(|| "post"),
@@ -195,12 +195,10 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                         "f2"
                     })
                 }),
-                route::root()
-                    .segment("posts")?
-                    .to(endpoint::post().say("posts")),
+                route().segment("posts")?.to(endpoint::post().say("posts")),
                 mount(
                     "/events",
-                    route::root()
+                    route()
                         .segment("new")?
                         .to(endpoint::post().say("new_event")),
                 ),

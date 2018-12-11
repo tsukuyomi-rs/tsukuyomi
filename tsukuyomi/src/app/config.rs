@@ -1,7 +1,9 @@
 pub mod prelude {
-    pub use super::super::route;
+    pub use super::route::route;
     pub use super::{default_handler, mount, with_modifier, AppConfig};
 }
+
+pub mod route;
 
 use {
     super::{

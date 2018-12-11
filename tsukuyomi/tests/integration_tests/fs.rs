@@ -9,7 +9,7 @@ use tsukuyomi::{
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
     App::configure({
-        route::root()
+        route()
             .segment("index.html")?
             .to(endpoint::get().send_file("/path/to/index.html", None))
     })

@@ -5,7 +5,7 @@ mod integration_tests;
 fn test_catch_unwind() {
     fn inner() -> tsukuyomi::test::Result<()> {
         let mut server = tsukuyomi::App::configure(
-            tsukuyomi::app::route::root() //
+            tsukuyomi::app::config::route::route() //
                 .to(tsukuyomi::endpoint::any()
                     .reply(|| -> &'static str { panic!("explicit panic") })),
         )

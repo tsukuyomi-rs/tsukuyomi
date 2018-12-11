@@ -102,7 +102,7 @@ mod responder {
         }
 
         let mut server = App::configure({
-            route::root() //
+            route() //
                 .to(endpoint::any().reply(|| Foo("Foo".into())))
         })
         .map(Server::new)?

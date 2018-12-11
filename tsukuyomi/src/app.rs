@@ -1,7 +1,6 @@
 //! Components for constructing HTTP applications.
 
 pub mod config;
-pub mod route;
 
 mod error;
 mod recognizer;
