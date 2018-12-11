@@ -8,13 +8,12 @@ use {
         handler::AllowedMethods,
         input::Input,
     },
-    either::Either,
     futures01::{Future, IntoFuture},
     http::Method,
     std::path::Path,
 };
 
-pub trait Endpoint<T> {
+pub trait EndpointAction<T> {
     type Output;
     type Error: Into<Error>;
     type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
@@ -22,67 +21,18 @@ pub trait Endpoint<T> {
     fn call(self, input: &mut Input<'_>, args: T) -> Self::Future;
 }
 
-mod impl_either {
-    use super::*;
-    use futures01::Poll;
-
-    impl<L, R, T> Endpoint<T> for Either<L, R>
-    where
-        L: Endpoint<T>,
-        R: Endpoint<T>,
-    {
-        type Output = Either<L::Output, R::Output>;
-        type Error = Error;
-        type Future = EitherFuture<L::Future, R::Future>;
-
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            match self {
-                Either::Left(l) => EitherFuture::Left(l.call(input, args)),
-                Either::Right(r) => EitherFuture::Right(r.call(input, args)),
-            }
-        }
-    }
-
-    #[derive(Debug)]
-    pub enum EitherFuture<L, R> {
-        Left(L),
-        Right(R),
-    }
-
-    impl<L, R> Future for EitherFuture<L, R>
-    where
-        L: Future,
-        R: Future,
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
-    {
-        type Item = Either<L::Item, R::Item>;
-        type Error = Error;
-
-        #[inline]
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            match self {
-                EitherFuture::Left(l) => l.poll().map(|x| x.map(Either::Left)).map_err(Into::into),
-                EitherFuture::Right(r) => {
-                    r.poll().map(|x| x.map(Either::Right)).map_err(Into::into)
-                }
-            }
-        }
-    }
-}
-
-pub fn endpoint<T, R>(
+pub fn action<T, R>(
     f: impl FnOnce(&mut Input<'_>, T) -> R,
-) -> impl Endpoint<T, Output = R::Item, Future = R::Future>
+) -> impl EndpointAction<T, Output = R::Item, Future = R::Future>
 where
     R: IntoFuture,
     R::Future: Send + 'static,
     R::Error: Into<Error>,
 {
     #[allow(missing_debug_implementations)]
-    struct EndpointFn<F>(F);
+    struct EndpointActionFn<F>(F);
 
-    impl<F, T, R> Endpoint<T> for EndpointFn<F>
+    impl<F, T, R> EndpointAction<T> for EndpointActionFn<F>
     where
         F: FnOnce(&mut Input<'_>, T) -> R,
         R: IntoFuture,
@@ -98,41 +48,41 @@ where
         }
     }
 
-    EndpointFn(f)
+    EndpointActionFn(f)
 }
 
-pub trait Dispatcher<T> {
+pub trait Endpoint<T> {
     type Output;
-    type Endpoint: Endpoint<T, Output = Self::Output> + Send + 'static;
+    type Action: EndpointAction<T, Output = Self::Output> + Send + 'static;
 
     /// Returns a list of HTTP methods that the returned endpoint accepts.
     ///
     /// If it returns a `None`, it means that the endpoint accepts *all* methods.
     fn allowed_methods(&self) -> Option<AllowedMethods>;
 
-    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint>;
+    fn apply(&self, method: &Method) -> Option<Self::Action>;
 }
 
-pub fn dispatcher<T, A>(
-    dispatch: impl Fn(&mut Input<'_>) -> Option<A>,
+pub fn endpoint<T, A>(
+    apply: impl Fn(&Method) -> Option<A>,
     allowed_methods: Option<AllowedMethods>,
-) -> impl Dispatcher<T, Output = A::Output, Endpoint = A>
+) -> impl Endpoint<T, Output = A::Output, Action = A>
 where
-    A: Endpoint<T> + Send + 'static,
+    A: EndpointAction<T> + Send + 'static,
 {
     #[allow(missing_debug_implementations)]
-    struct DispatcherFn<F> {
-        dispatch: F,
+    struct ApplyFn<F> {
+        apply: F,
         allowed_methods: Option<AllowedMethods>,
     }
 
-    impl<F, T, A> Dispatcher<T> for DispatcherFn<F>
+    impl<F, T, A> Endpoint<T> for ApplyFn<F>
     where
-        F: Fn(&mut Input<'_>) -> Option<A>,
-        A: Endpoint<T> + Send + 'static,
+        F: Fn(&Method) -> Option<A>,
+        A: EndpointAction<T> + Send + 'static,
     {
         type Output = A::Output;
-        type Endpoint = A;
+        type Action = A;
 
         #[inline]
         fn allowed_methods(&self) -> Option<AllowedMethods> {
@@ -140,23 +90,23 @@ where
         }
 
         #[inline]
-        fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
-            (self.dispatch)(input)
+        fn apply(&self, method: &Method) -> Option<Self::Action> {
+            (self.apply)(method)
         }
     }
 
-    DispatcherFn {
-        dispatch,
+    ApplyFn {
+        apply,
         allowed_methods,
     }
 }
 
-impl<E, T> Dispatcher<T> for std::rc::Rc<E>
+impl<E, T> Endpoint<T> for std::rc::Rc<E>
 where
-    E: Dispatcher<T>,
+    E: Endpoint<T>,
 {
     type Output = E::Output;
-    type Endpoint = E::Endpoint;
+    type Action = E::Action;
 
     #[inline]
     fn allowed_methods(&self) -> Option<AllowedMethods> {
@@ -164,17 +114,17 @@ where
     }
 
     #[inline]
-    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
-        (**self).dispatch(input)
+    fn apply(&self, method: &Method) -> Option<Self::Action> {
+        (**self).apply(method)
     }
 }
 
-impl<E, T> Dispatcher<T> for std::sync::Arc<E>
+impl<E, T> Endpoint<T> for std::sync::Arc<E>
 where
-    E: Dispatcher<T>,
+    E: Endpoint<T>,
 {
     type Output = E::Output;
-    type Endpoint = E::Endpoint;
+    type Action = E::Action;
 
     #[inline]
     fn allowed_methods(&self) -> Option<AllowedMethods> {
@@ -182,34 +132,94 @@ where
     }
 
     #[inline]
-    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
-        (**self).dispatch(input)
+    fn apply(&self, method: &Method) -> Option<Self::Action> {
+        (**self).apply(method)
     }
 }
 
-impl<L, R, T> Dispatcher<T> for Chain<L, R>
-where
-    L: Dispatcher<T>,
-    R: Dispatcher<T>,
-{
-    type Output = Either<L::Output, R::Output>;
-    type Endpoint = Either<L::Endpoint, R::Endpoint>;
+mod impl_chain {
+    use {
+        super::{Endpoint, EndpointAction},
+        crate::{core::Chain, error::Error, handler::AllowedMethods, input::Input},
+        either::Either,
+        futures01::{Future, Poll},
+        http::Method,
+    };
 
-    #[inline]
-    fn allowed_methods(&self) -> Option<AllowedMethods> {
-        let left = self.left.allowed_methods()?;
-        let right = self.right.allowed_methods()?;
-        Some(left.iter().chain(right.iter()).cloned().collect())
+    impl<L, R, T> Endpoint<T> for Chain<L, R>
+    where
+        L: Endpoint<T>,
+        R: Endpoint<T>,
+    {
+        type Output = Either<L::Output, R::Output>;
+        type Action = ChainAction<L::Action, R::Action>;
+
+        #[inline]
+        fn allowed_methods(&self) -> Option<AllowedMethods> {
+            let left = self.left.allowed_methods()?;
+            let right = self.right.allowed_methods()?;
+            Some(left.iter().chain(right.iter()).cloned().collect())
+        }
+
+        #[inline]
+        fn apply(&self, method: &Method) -> Option<Self::Action> {
+            self.left
+                .apply(method)
+                .map(ChainAction::Left)
+                .or_else(|| self.right.apply(method).map(ChainAction::Right))
+        }
     }
 
-    #[inline]
-    fn dispatch(&self, input: &mut Input<'_>) -> Option<Self::Endpoint> {
-        self.left
-            .dispatch(input)
-            .map(Either::Left)
-            .or_else(|| self.right.dispatch(input).map(Either::Right))
+    #[derive(Debug)]
+    pub enum ChainAction<L, R> {
+        Left(L),
+        Right(R),
+    }
+
+    impl<L, R, T> EndpointAction<T> for ChainAction<L, R>
+    where
+        L: EndpointAction<T>,
+        R: EndpointAction<T>,
+    {
+        type Output = Either<L::Output, R::Output>;
+        type Error = Error;
+        type Future = ChainFuture<L::Future, R::Future>;
+
+        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+            match self {
+                ChainAction::Left(l) => ChainFuture::Left(l.call(input, args)),
+                ChainAction::Right(r) => ChainFuture::Right(r.call(input, args)),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum ChainFuture<L, R> {
+        Left(L),
+        Right(R),
+    }
+
+    impl<L, R> Future for ChainFuture<L, R>
+    where
+        L: Future,
+        R: Future,
+        L::Error: Into<Error>,
+        R::Error: Into<Error>,
+    {
+        type Item = Either<L::Item, R::Item>;
+        type Error = Error;
+
+        #[inline]
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            match self {
+                ChainFuture::Left(l) => l.poll().map(|x| x.map(Either::Left)).map_err(Into::into),
+                ChainFuture::Right(r) => r.poll().map(|x| x.map(Either::Right)).map_err(Into::into),
+            }
+        }
     }
 }
+
+// ==== builder ====
 
 pub fn any() -> Builder {
     Builder::allow_any()
@@ -290,7 +300,7 @@ where
     }
 
     /// Creates a `Dispatcher` with the specified function that returns its result immediately.
-    pub fn reply<T, F>(self, f: F) -> impl Dispatcher<T, Output = F::Out>
+    pub fn reply<T, F>(self, f: F) -> impl Endpoint<T, Output = F::Out>
     where
         E::Output: Send + 'static,
         E::Error: Send + 'static,
@@ -300,19 +310,19 @@ where
     {
         let allowed_methods = self.allowed_methods.clone();
 
-        let dispatch = {
+        let apply = {
             let extractor = std::sync::Arc::new(self.extractor);
             let allowed_methods = allowed_methods.clone();
-            move |input: &mut crate::input::Input<'_>| {
+            move |method: &Method| {
                 if allowed_methods
                     .as_ref()
-                    .map_or(false, |methods| !methods.contains(input.request.method()))
+                    .map_or(false, |methods| !methods.contains(method))
                 {
                     return None;
                 }
                 let f = f.clone();
                 let extractor = extractor.clone();
-                Some(crate::endpoint::endpoint(move |input, args: T| {
+                Some(crate::endpoint::action(move |input, args: T| {
                     extractor
                         .extract(input)
                         .then(move |result| result.map(|args2| f.call(args.combine(args2))))
@@ -320,11 +330,11 @@ where
             }
         };
 
-        self::dispatcher(dispatch, allowed_methods)
+        self::endpoint(apply, allowed_methods)
     }
 
     /// Creates a `Dispatcher` with the specified function that returns its result as a `Future`.
-    pub fn call<T, F, R>(self, f: F) -> impl Dispatcher<T, Output = R::Item>
+    pub fn call<T, F, R>(self, f: F) -> impl Endpoint<T, Output = R::Item>
     where
         E::Output: Send + 'static,
         T: Tuple + Combine<E::Output> + Send + 'static,
@@ -335,14 +345,14 @@ where
     {
         let allowed_methods = self.allowed_methods.clone();
 
-        let dispatch = {
+        let apply = {
             let allowed_methods = allowed_methods.clone();
             let extractor = std::sync::Arc::new(self.extractor);
 
-            move |input: &mut crate::input::Input<'_>| {
+            move |method: &Method| {
                 if allowed_methods
                     .as_ref()
-                    .map_or(false, |methods| !methods.contains(input.request.method()))
+                    .map_or(false, |methods| !methods.contains(method))
                 {
                     return None;
                 }
@@ -350,7 +360,7 @@ where
                 let f = f.clone();
                 let extractor = extractor.clone();
 
-                Some(crate::endpoint::endpoint(move |input, args: T| {
+                Some(crate::endpoint::action(move |input, args: T| {
                     extractor
                         .extract(input)
                         .map_err(Into::into)
@@ -363,7 +373,7 @@ where
             }
         };
 
-        self::dispatcher(dispatch, allowed_methods)
+        self::endpoint(apply, allowed_methods)
     }
 }
 
@@ -373,7 +383,7 @@ where
     E::Error: Send + 'static,
 {
     /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<R>(self, output: R) -> impl Dispatcher<(), Output = R>
+    pub fn say<R>(self, output: R) -> impl Endpoint<(), Output = R>
     where
         R: Clone + Send + 'static,
     {
@@ -385,7 +395,7 @@ where
         self,
         path: impl AsRef<Path>,
         config: Option<crate::fs::OpenConfig>,
-    ) -> impl Dispatcher<(), Output = NamedFile> {
+    ) -> impl Endpoint<(), Output = NamedFile> {
         let path = crate::fs::ArcPath::from(path.as_ref().to_path_buf());
 
         self.call(move || match config {

@@ -5,7 +5,7 @@ use {
     },
     crate::{
         core::{Chain, TryInto},
-        endpoint::{Dispatcher, Endpoint},
+        endpoint::{Endpoint, EndpointAction},
         extractor::Extractor,
         generic::Combine,
         handler::{Handler, ModifyHandler},
@@ -176,12 +176,12 @@ where
     }
 }
 
-impl<E, T> Builder<E, T>
+impl<E, Tag> Builder<E, Tag>
 where
     E: Extractor,
 {
     /// Appends a supplemental `Extractor` to this route.
-    pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>, T>
+    pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>, Tag>
     where
         E2: Extractor,
         E::Output: Combine<E2::Output> + Send + 'static,
@@ -195,14 +195,14 @@ where
     }
 
     /// Finalize the configuration in this route and creates the instance of `Route`.
-    pub fn to<D>(self, dispatcher: D) -> Route<impl Handler<Output = D::Output>>
+    pub fn to<T>(self, endpoint: T) -> Route<impl Handler<Output = T::Output>>
     where
-        D: Dispatcher<E::Output>,
-        D::Endpoint: Send + 'static,
-        D::Output: 'static,
+        T: Endpoint<E::Output>,
+        T::Action: Send + 'static,
+        T::Output: 'static,
     {
         let Self { uri, extractor, .. } = self;
-        let allowed_methods = dispatcher.allowed_methods();
+        let allowed_methods = endpoint.allowed_methods();
 
         let handler = crate::handler::handler(
             move |input| {
@@ -214,7 +214,7 @@ where
                 }
 
                 let mut state = {
-                    match dispatcher.dispatch(input) {
+                    match endpoint.apply(input.request.method()) {
                         Some(endpoint) => State::First(extractor.extract(input), Some(endpoint)),
                         None => State::Err(Some(StatusCode::METHOD_NOT_ALLOWED.into())),
                     }
