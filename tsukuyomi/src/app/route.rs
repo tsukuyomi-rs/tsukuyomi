@@ -183,7 +183,7 @@ where
         D::Endpoint: Send + 'static,
     {
         let Self { uri, extractor, .. } = self;
-        let allowed_methods = dispatcher.allowed_methods().cloned();
+        let allowed_methods = dispatcher.allowed_methods();
 
         let handler = crate::handler::handler(
             move |input| {

@@ -2,6 +2,7 @@
 
 use {
     crate::{core::Never, error::Error, input::Input},
+    either::Either,
     std::{fmt, marker::PhantomData},
 };
 
@@ -35,6 +36,29 @@ pub trait Future {
     type Error: Into<Error>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Self::Output, Self::Error>;
+}
+
+impl<L, R> Future for Either<L, R>
+where
+    L: Future,
+    R: Future,
+{
+    type Output = Either<L::Output, R::Output>;
+    type Error = Error;
+
+    #[inline]
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Self::Output, Self::Error> {
+        match self {
+            Either::Left(l) => l
+                .poll_ready(cx)
+                .map(|x| x.map(Either::Left))
+                .map_err(Into::into),
+            Either::Right(r) => r
+                .poll_ready(cx)
+                .map(|x| x.map(Either::Right))
+                .map_err(Into::into),
+        }
+    }
 }
 
 /// A wrapper struct for providing the implementation of [`Future`] to the type

@@ -18,15 +18,6 @@ use {
 #[derive(Debug, Clone)]
 pub struct AllowedMethods(Arc<IndexSet<Method>>);
 
-impl AllowedMethods {
-    pub fn get() -> &'static AllowedMethods {
-        lazy_static! {
-            static ref VALUE: AllowedMethods = AllowedMethods::from(Method::GET);
-        }
-        &*VALUE
-    }
-}
-
 impl From<Method> for AllowedMethods {
     fn from(method: Method) -> Self {
         AllowedMethods(Arc::new(indexset! { method }))
@@ -46,6 +37,13 @@ where
 }
 
 impl AllowedMethods {
+    pub fn get() -> &'static AllowedMethods {
+        lazy_static! {
+            static ref VALUE: AllowedMethods = AllowedMethods::from(Method::GET);
+        }
+        &*VALUE
+    }
+
     pub fn contains(&self, method: &Method) -> bool {
         self.0.contains(method)
     }
