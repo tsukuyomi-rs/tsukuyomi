@@ -247,16 +247,13 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
     impl<H: Handler> Handler for InsertMyDataHandler<H> {
         type Output = H::Output;
-        type Future = H::Future;
+        type Handle = H::Handle;
 
         fn allowed_methods(&self) -> Option<&AllowedMethods> {
             self.0.allowed_methods()
         }
 
-        fn call(
-            &self,
-            input: &mut tsukuyomi::Input<'_>,
-        ) -> tsukuyomi::future::MaybeFuture<Self::Future> {
+        fn call(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
             input.locals.insert(&MyData::KEY, MyData("dummy".into()));
             self.0.call(input)
         }

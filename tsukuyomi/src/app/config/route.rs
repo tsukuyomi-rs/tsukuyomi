@@ -7,12 +7,12 @@ use {
         core::{Chain, TryInto},
         endpoint::{Dispatcher, Endpoint},
         extractor::Extractor,
-        future::{Future, MaybeFuture},
         generic::Combine,
         handler::{Handler, ModifyHandler},
         input::param::{FromPercentEncoded, PercentEncoded},
         output::Responder,
     },
+    futures01::Future,
     http::StatusCode,
     std::marker::PhantomData,
 };
@@ -199,6 +199,7 @@ where
     where
         D: Dispatcher<E::Output>,
         D::Endpoint: Send + 'static,
+        D::Output: 'static,
     {
         let Self { uri, extractor, .. } = self;
         let allowed_methods = dispatcher.allowed_methods();
@@ -207,43 +208,31 @@ where
             move |input| {
                 #[allow(missing_debug_implementations)]
                 enum State<F1, F2, T> {
+                    Err(Option<crate::error::Error>),
                     First(F1, T),
                     Second(F2),
                 }
 
-                let endpoint = match dispatcher.dispatch(input) {
-                    Some(endpoint) => endpoint,
-                    None => return MaybeFuture::err(StatusCode::METHOD_NOT_ALLOWED.into()),
-                };
-
-                let mut state = match extractor.extract(input) {
-                    MaybeFuture::Ready(Ok(args)) => match endpoint.call(input, args) {
-                        MaybeFuture::Ready(result) => {
-                            return MaybeFuture::Ready(result.map_err(Into::into))
-                        }
-                        MaybeFuture::Future(future) => State::Second(future),
-                    },
-                    MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
-                    MaybeFuture::Future(future) => State::First(future, Some(endpoint)),
-                };
-
-                MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
-                    state = match state {
-                        State::First(ref mut future, ref mut action) => {
-                            let args =
-                                futures01::try_ready!(future.poll_ready(cx).map_err(Into::into));
-                            match action.take().unwrap().call(&mut *cx.input, args) {
-                                MaybeFuture::Ready(result) => {
-                                    return result.map(Into::into).map_err(Into::into)
-                                }
-                                MaybeFuture::Future(future) => State::Second(future),
-                            }
-                        }
-                        State::Second(ref mut future) => {
-                            return future.poll_ready(cx).map_err(Into::into)
-                        }
+                let mut state = {
+                    match dispatcher.dispatch(input) {
+                        Some(endpoint) => State::First(extractor.extract(input), Some(endpoint)),
+                        None => State::Err(Some(StatusCode::METHOD_NOT_ALLOWED.into())),
                     }
-                }))
+                };
+
+                crate::handler::handle(move |input| loop {
+                    state = match state {
+                        State::Err(ref mut err) => {
+                            return Err(err.take().expect("the future has already polled"))
+                        }
+                        State::First(ref mut future, ref mut action) => {
+                            let args = futures01::try_ready!(future.poll().map_err(Into::into));
+                            let future = action.take().unwrap().call(input, args);
+                            State::Second(future)
+                        }
+                        State::Second(ref mut future) => return future.poll().map_err(Into::into),
+                    }
+                })
             },
             allowed_methods,
         );

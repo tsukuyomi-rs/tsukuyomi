@@ -1,20 +1,20 @@
 //! Extractors for accessing the protocol extensions.
 
-use crate::{extractor::Extractor, future::Async};
+use crate::{
+    error::Error, //
+    extractor::Extractor,
+};
 
-pub fn clone<T>() -> impl Extractor<Output = (T,)>
+pub fn clone<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
     T: Clone + Send + Sync + 'static,
 {
-    super::lazy(|_| {
-        crate::future::poll_fn(|cx| {
-            cx.input
-                .request
-                .extensions()
-                .get()
-                .cloned()
-                .map(Async::Ready)
-                .ok_or_else(|| crate::error::internal_server_error("missing extension"))
-        })
+    super::ready(|input| {
+        input
+            .request
+            .extensions()
+            .get()
+            .cloned()
+            .ok_or_else(|| crate::error::internal_server_error("missing extension"))
     })
 }

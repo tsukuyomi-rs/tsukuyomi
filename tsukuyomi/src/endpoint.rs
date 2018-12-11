@@ -1,70 +1,100 @@
 use {
     crate::{
         core::{Chain, TryInto},
+        error::Error,
         extractor::Extractor,
         fs::NamedFile,
-        future::{Future, MaybeFuture},
         generic::{Combine, Func, Tuple},
         handler::AllowedMethods,
         input::Input,
     },
     either::Either,
+    futures01::{Future, IntoFuture},
     http::Method,
     std::path::Path,
 };
 
 pub trait Endpoint<T> {
     type Output;
-    type Future: Future<Output = Self::Output> + Send + 'static;
+    type Error: Into<Error>;
+    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
-    fn call(self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future>;
+    fn call(self, input: &mut Input<'_>, args: T) -> Self::Future;
 }
 
-impl<L, R, T> Endpoint<T> for Either<L, R>
-where
-    L: Endpoint<T>,
-    R: Endpoint<T>,
-{
-    type Output = Either<L::Output, R::Output>;
-    type Future = Either<L::Future, R::Future>;
+mod impl_either {
+    use super::*;
+    use futures01::Poll;
 
-    fn call(self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future> {
-        match self {
-            Either::Left(l) => match l.call(input, args) {
-                MaybeFuture::Ready(result) => {
-                    MaybeFuture::Ready(result.map(Either::Left).map_err(Into::into))
+    impl<L, R, T> Endpoint<T> for Either<L, R>
+    where
+        L: Endpoint<T>,
+        R: Endpoint<T>,
+    {
+        type Output = Either<L::Output, R::Output>;
+        type Error = Error;
+        type Future = EitherFuture<L::Future, R::Future>;
+
+        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+            match self {
+                Either::Left(l) => EitherFuture::Left(l.call(input, args)),
+                Either::Right(r) => EitherFuture::Right(r.call(input, args)),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum EitherFuture<L, R> {
+        Left(L),
+        Right(R),
+    }
+
+    impl<L, R> Future for EitherFuture<L, R>
+    where
+        L: Future,
+        R: Future,
+        L::Error: Into<Error>,
+        R::Error: Into<Error>,
+    {
+        type Item = Either<L::Item, R::Item>;
+        type Error = Error;
+
+        #[inline]
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            match self {
+                EitherFuture::Left(l) => l.poll().map(|x| x.map(Either::Left)).map_err(Into::into),
+                EitherFuture::Right(r) => {
+                    r.poll().map(|x| x.map(Either::Right)).map_err(Into::into)
                 }
-                MaybeFuture::Future(future) => MaybeFuture::Future(Either::Left(future)),
-            },
-            Either::Right(r) => match r.call(input, args) {
-                MaybeFuture::Ready(result) => {
-                    MaybeFuture::Ready(result.map(Either::Right).map_err(Into::into))
-                }
-                MaybeFuture::Future(future) => MaybeFuture::Future(Either::Right(future)),
-            },
+            }
         }
     }
 }
 
 pub fn endpoint<T, R>(
-    f: impl FnOnce(&mut Input<'_>, T) -> MaybeFuture<R>,
-) -> impl Endpoint<T, Output = R::Output, Future = R>
+    f: impl FnOnce(&mut Input<'_>, T) -> R,
+) -> impl Endpoint<T, Output = R::Item, Future = R::Future>
 where
-    R: Future + Send + 'static,
+    R: IntoFuture,
+    R::Future: Send + 'static,
+    R::Error: Into<Error>,
 {
     #[allow(missing_debug_implementations)]
     struct EndpointFn<F>(F);
 
     impl<F, T, R> Endpoint<T> for EndpointFn<F>
     where
-        F: FnOnce(&mut Input<'_>, T) -> MaybeFuture<R>,
-        R: Future + Send + 'static,
+        F: FnOnce(&mut Input<'_>, T) -> R,
+        R: IntoFuture,
+        R::Future: Send + 'static,
+        R::Error: Into<Error>,
     {
-        type Output = R::Output;
-        type Future = R;
+        type Output = R::Item;
+        type Error = R::Error;
+        type Future = R::Future;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> MaybeFuture<Self::Future> {
-            (self.0)(input, args)
+        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+            (self.0)(input, args).into_future()
         }
     }
 
@@ -263,9 +293,10 @@ where
     pub fn reply<T, F>(self, f: F) -> impl Dispatcher<T, Output = F::Out>
     where
         E::Output: Send + 'static,
+        E::Error: Send + 'static,
         T: Tuple + Combine<E::Output> + Send + 'static,
         F: Func<<T as Combine<E::Output>>::Out> + Clone + Send + 'static,
-        F::Out: 'static,
+        F::Out: Send + 'static,
     {
         let allowed_methods = self.allowed_methods.clone();
 
@@ -284,7 +315,7 @@ where
                 Some(crate::endpoint::endpoint(move |input, args: T| {
                     extractor
                         .extract(input)
-                        .map_result(move |result| result.map(|args2| f.call(args.combine(args2))))
+                        .then(move |result| result.map(|args2| f.call(args.combine(args2))))
                 }))
             }
         };
@@ -293,13 +324,14 @@ where
     }
 
     /// Creates a `Dispatcher` with the specified function that returns its result as a `Future`.
-    pub fn call<T, F, R>(self, f: F) -> impl Dispatcher<T, Output = R::Output>
+    pub fn call<T, F, R>(self, f: F) -> impl Dispatcher<T, Output = R::Item>
     where
         E::Output: Send + 'static,
         T: Tuple + Combine<E::Output> + Send + 'static,
         F: Func<<T as Combine<E::Output>>::Out, Out = R> + Clone + Send + 'static,
-        R: Future + Send + 'static,
-        F::Out: 'static,
+        R: IntoFuture + 'static,
+        R::Future: Send + 'static,
+        R::Error: Into<Error>,
     {
         let allowed_methods = self.allowed_methods.clone();
 
@@ -318,33 +350,15 @@ where
                 let f = f.clone();
                 let extractor = extractor.clone();
 
-                #[allow(missing_debug_implementations)]
-                enum State<F1, F2, T> {
-                    First(F1, Option<T>),
-                    Second(F2),
-                }
-
                 Some(crate::endpoint::endpoint(move |input, args: T| {
-                    let mut state = match extractor.extract(input) {
-                        MaybeFuture::Ready(Ok(args2)) => State::Second(f.call(args.combine(args2))),
-                        MaybeFuture::Ready(Err(err)) => return MaybeFuture::err(err.into()),
-                        MaybeFuture::Future(future) => State::First(future, Some((f, args))),
-                    };
-
-                    MaybeFuture::Future(crate::future::poll_fn(move |cx| loop {
-                        state = match state {
-                            State::First(ref mut future, ref mut x) => {
-                                let args2 = futures01::try_ready!(future
-                                    .poll_ready(cx)
-                                    .map_err(Into::into));
-                                let (f, args) = x.take().expect("the future has already polled.");
-                                State::Second(f.call(args.combine(args2)))
-                            }
-                            State::Second(ref mut future) => {
-                                return future.poll_ready(cx).map_err(Into::into)
-                            }
-                        };
-                    }))
+                    extractor
+                        .extract(input)
+                        .map_err(Into::into)
+                        .and_then(move |args2| {
+                            f.call(args.combine(args2))
+                                .into_future()
+                                .map_err(Into::into)
+                        })
                 }))
             }
         };
@@ -356,6 +370,7 @@ where
 impl<E> Builder<E>
 where
     E: Extractor<Output = ()> + Send + Sync + 'static,
+    E::Error: Send + 'static,
 {
     /// Creates a `Route` that just replies with the specified `Responder`.
     pub fn say<R>(self, output: R) -> impl Dispatcher<(), Output = R>
@@ -373,11 +388,9 @@ where
     ) -> impl Dispatcher<(), Output = NamedFile> {
         let path = crate::fs::ArcPath::from(path.as_ref().to_path_buf());
 
-        self.call(move || {
-            crate::future::Compat01::from(match config {
-                Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
-                None => NamedFile::open(path.clone()),
-            })
+        self.call(move || match config {
+            Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
+            None => NamedFile::open(path.clone()),
         })
     }
 }

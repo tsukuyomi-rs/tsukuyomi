@@ -4,7 +4,6 @@ use {
         app::config::prelude::*, //
         chain,
         endpoint,
-        future::MaybeFuture,
         handler::{AllowedMethods, Handler, ModifyHandler},
         server::Server,
         App,
@@ -41,13 +40,13 @@ where
     H: Handler,
 {
     type Output = H::Output;
-    type Future = H::Future;
+    type Handle = H::Handle;
 
     fn allowed_methods(&self) -> Option<&AllowedMethods> {
         self.inner.allowed_methods()
     }
 
-    fn call(&self, input: &mut tsukuyomi::Input<'_>) -> MaybeFuture<Self::Future> {
+    fn call(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
         self.inner.call(input)
     }

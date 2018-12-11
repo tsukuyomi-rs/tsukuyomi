@@ -2,7 +2,7 @@ use {
     super::{recognizer::Captures, AppInner, ResourceId},
     crate::{
         core::Never,
-        handler::{Handle, HandleTask},
+        handler::HandleTask,
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::{Output, ResponseBody},
     },
@@ -120,7 +120,7 @@ impl AppFuture {
         }
     }
 
-    fn process_recognize(&mut self) -> Handle {
+    fn process_recognize(&mut self) -> Result<Box<HandleTask>, crate::Error> {
         self.resource_id = None;
         self.captures = None;
 
@@ -130,11 +130,11 @@ impl AppFuture {
         } {
             Ok(resource) => {
                 self.resource_id = Some(resource.id);
-                resource.handler.call(input!(self))
+                Ok(resource.handler.call(input!(self)))
             }
             Err(scope) => match self.inner.find_fallback(scope.id()) {
-                Some(fallback) => fallback.call(input!(self)),
-                None => Handle::Ready(Err(http::StatusCode::NOT_FOUND.into())),
+                Some(fallback) => Ok(fallback.call(input!(self))),
+                None => Err(http::StatusCode::NOT_FOUND.into()),
             },
         }
     }
@@ -180,11 +180,11 @@ impl Future for AppFuture {
         let polled = loop {
             self.state = match self.state {
                 AppFutureState::Init => match self.process_recognize() {
-                    Handle::Ready(result) => break result,
-                    Handle::InFlight(in_flight) => AppFutureState::InFlight(in_flight),
+                    Ok(in_flight) => AppFutureState::InFlight(in_flight),
+                    Err(err) => break Err(err),
                 },
                 AppFutureState::InFlight(ref mut in_flight) => {
-                    break ready!((*in_flight)(&mut crate::future::Context::new(input!(self))));
+                    break ready!((*in_flight)(input!(self)));
                 }
                 AppFutureState::Done => panic!("the future has already polled."),
             };
