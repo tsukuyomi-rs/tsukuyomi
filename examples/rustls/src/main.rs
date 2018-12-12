@@ -1,22 +1,17 @@
-extern crate failure;
-extern crate rustls;
-extern crate tokio_rustls;
-extern crate tsukuyomi;
-
 use {
     std::{path::Path, sync::Arc},
-    tsukuyomi::app::directives::*,
+    tsukuyomi::{
+        app::config::prelude::*, //
+        server::Server,
+        App,
+    },
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
-    App::builder()
-        .with(
-            route!("/") //
-                .say("Hello, Tsukuyomi.\n"),
-        ) //
-        .build_server()?
+    App::configure(route().to(endpoint::any().say("Hello, Tsukuyomi.\n"))) //
+        .map(Server::new)?
         .acceptor(tls_acceptor)
         .run()
 }
