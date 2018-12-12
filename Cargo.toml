@@ -28,7 +28,7 @@ members = [
   "tsukuyomi-cors",
   # "tsukuyomi-juniper",
   # "tsukuyomi-session",
-  # "tsukuyomi-tungstenite",
+  "tsukuyomi-tungstenite",
 
   # "testcrates/doctest",
 
@@ -48,7 +48,7 @@ members = [
   # "examples/template-tera",
   # "examples/tower-middleware",
   # "examples/unix-socket",
-  # "examples/websocket",
+  "examples/websocket",
 ]
 
 [patch.crates-io]
@@ -57,4 +57,4 @@ tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }
 tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
 # tsukuyomi-juniper = { version = "0.2.0", path = "tsukuyomi-juniper" }
 # tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
-# tsukuyomi-tungstenite = { version = "0.1.0", path = "tsukuyomi-tungstenite" }
+tsukuyomi-tungstenite = { version = "0.2.0-dev", path = "tsukuyomi-tungstenite" }
