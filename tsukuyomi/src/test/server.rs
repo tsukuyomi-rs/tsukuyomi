@@ -6,7 +6,7 @@ use {
         output::{Output, Receive},
     },
     crate::server::{
-        service::{HttpService, Identity, MakeHttpService, ModifyHttpService},
+        service::{HttpService, MakeHttpService},
         CritError,
     },
     cookie::Cookie,
@@ -21,22 +21,19 @@ use {
 
 /// A test server which emulates an HTTP service without using the low-level I/O.
 #[derive(Debug)]
-pub struct Server<S, M = Identity, Rt = tokio::runtime::Runtime> {
+pub struct Server<S, Rt = tokio::runtime::Runtime> {
     new_service: S,
-    modify_service: M,
     runtime: Rt,
 }
 
-impl<S, M, Rt> Server<S, M, Rt>
+impl<S, Rt> Server<S, Rt>
 where
     S: MakeHttpService,
-    M: ModifyHttpService<S::Service>,
 {
     /// Creates an instance of `TestServer` from the specified components.
-    pub fn new(new_service: S, modify_service: M, runtime: Rt) -> Self {
+    pub fn new(new_service: S, runtime: Rt) -> Self {
         Self {
             new_service,
-            modify_service,
             runtime,
         }
     }
@@ -136,32 +133,28 @@ mod threadpool {
         }
     }
 
-    impl<S, M> Server<S, M, Runtime>
+    impl<S> Server<S, Runtime>
     where
         S: MakeHttpService,
         S::Future: Send + 'static,
         S::InitError: Send + 'static,
         S::Service: Send + 'static,
-        M: ModifyHttpService<S::Service>,
     {
         /// Create a `Session` associated with this server.
-        pub fn new_session(&mut self) -> super::super::Result<Session<'_, M::Service, Runtime>> {
+        pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
             let service = block_on(
                 &mut self.runtime,
                 self.new_service.make_http_service().map_err(Into::into),
             )
             .map_err(failure::Error::from_boxed_compat)?;
 
-            Ok(Session::new(
-                self.modify_service.modify_http_service(service),
-                &mut self.runtime,
-            ))
+            Ok(Session::new(service, &mut self.runtime))
         }
 
         pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
         where
             T: Input,
-            <M::Service as HttpService>::Future: Send + 'static,
+            <S::Service as HttpService>::Future: Send + 'static,
         {
             let mut session = self.new_session()?;
             session.perform(input)
@@ -193,18 +186,16 @@ mod threadpool {
 mod current_thread {
     use {super::*, tokio::runtime::current_thread::Runtime};
 
-    impl<S, M> Server<S, M, Runtime>
+    impl<S> Server<S, Runtime>
     where
         S: MakeHttpService,
-        M: ModifyHttpService<S::Service>,
     {
         /// Create a `Session` associated with this server.
-        pub fn new_session(&mut self) -> super::super::Result<Session<'_, M::Service, Runtime>> {
+        pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
             let service = self
                 .runtime
                 .block_on(self.new_service.make_http_service())
                 .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
-            let service = self.modify_service.modify_http_service(service);
             Ok(Session::new(service, &mut self.runtime))
         }
 

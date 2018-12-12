@@ -4,7 +4,6 @@ use {
         app::config::prelude::*, //
         chain,
         handler::{AllowedMethods, Handler, ModifyHandler},
-        server::Server,
         App,
     },
 };
@@ -55,15 +54,15 @@ where
 fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::configure(with_modifier(
+    let app = App::configure(with_modifier(
         MockModifier {
             marker: marker.clone(),
             name: "M",
         },
         route().to(endpoint::any().say("")), //
-    ))
-    .map(Server::new)?
-    .into_test_server()?;
+    ))?;
+
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M"]);
@@ -79,7 +78,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::configure(with_modifier(
+    let app = App::configure(with_modifier(
         chain![
             MockModifier {
                 marker: marker.clone(),
@@ -91,9 +90,8 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
             }
         ],
         route().to(endpoint::any().say("")),
-    ))
-    .map(Server::new)?
-    .into_test_server()?;
+    ))?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -105,7 +103,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::configure(with_modifier(
+    let app = App::configure(with_modifier(
         MockModifier {
             marker: marker.clone(),
             name: "M1",
@@ -123,9 +121,8 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
             ), //
             route().segment("path2")?.to(endpoint::any().say("")),
         ],
-    ))
-    .map(Server::new)?
-    .into_test_server()?;
+    ))?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/path1")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -141,7 +138,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::configure({
+    let app = App::configure({
         mount(
             "/path",
             with_modifier(
@@ -173,9 +170,8 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
                 ),
             ),
         )
-    })
-    .map(Server::new)?
-    .into_test_server()?;
+    })?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/path/to")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);

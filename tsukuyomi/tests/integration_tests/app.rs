@@ -4,7 +4,6 @@ use {
         app::config::prelude::*, //
         chain,
         extractor,
-        server::Server,
         test::ResponseExt,
         App,
     },
@@ -12,9 +11,8 @@ use {
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(()) //
-        .map(Server::new)?
-        .into_test_server()?;
+    let app = App::configure(())?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -24,13 +22,12 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(
+    let app = App::configure(
         route() //
             .segment("hello")?
             .to(endpoint::any().reply(|| "Tsukuyomi")),
-    )
-    .map(Server::new)?
-    .into_test_server()?;
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/hello")?;
 
@@ -47,14 +44,13 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
-    let mut server = App::with_prefix(
+    let app = App::with_prefix(
         "/api/v1",
         route() //
             .segment("hello")?
             .to(endpoint::any().reply(|| "Tsukuyomi")),
-    )
-    .map(Server::new)?
-    .into_test_server()?;
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     assert_eq!(server.perform("/api/v1/hello")?.status(), 200);
     assert_eq!(server.perform("/hello")?.status(), 404);
@@ -64,15 +60,14 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(
+    let app = App::configure(
         route()
             .segment("hello")? //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body)),
-    )
-    .map(Server::new)?
-    .into_test_server()?;
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform(
         Request::post("/hello") //
@@ -97,7 +92,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let mut server = App::configure(chain![
+    let app = App::configure(chain![
         route().segment("login")?.to({
             endpoint::any()
                 .extract(extractor::guard(move |input| {
@@ -119,9 +114,8 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 }))
                 .reply(|| "Logged out")
         }),
-    ])
-    .map(Server::new)?
-    .into_test_server()?;
+    ])?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/login")?;
 
@@ -176,7 +170,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
 
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::configure(chain![
+    let app = App::configure(chain![
         default_handler({
             let marker = marker.clone();
             tsukuyomi::handler::ready(move |_| {
@@ -203,9 +197,9 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                 ),
             ],
         ),
-    ])
-    .map(Server::new)?
-    .into_test_server()?;
+    ])?;
+
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);

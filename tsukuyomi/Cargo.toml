@@ -65,8 +65,6 @@ tokio-rustls = { version = "0.8", optional = true }
 openssl = { version = "0.10", optional = true }
 tokio-openssl = { version = "0.3", optional = true }
 
-tower-web = { version = "0.3", default-features = false, optional = true }
-
 [dependencies.tsukuyomi-macros]
 version = "0.5.0-dev"
 path = "./macros"
@@ -82,7 +80,6 @@ serde = { version = "1", features = ["derive"] }
 default = []
 full = [
   "secure",
-  "tower-middleware",
   "use-native-tls",
   "use-rustls",
   "use-openssl",
@@ -90,9 +87,6 @@ full = [
 
 # Enables the features around signing/encryption, depending on 'ring'.
 secure = ["cookie/secure"]
-
-# Enables the support for middlewares in tower-web.
-tower-middleware = ["tower-web"]
 
 # Enables the support for TLS acceptors.
 use-native-tls = ["native-tls", "tokio-tls"]

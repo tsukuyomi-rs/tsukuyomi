@@ -3,7 +3,6 @@ mod responder {
         std::fmt,
         tsukuyomi::{
             app::config::prelude::*, //
-            server::Server,
             test::ResponseExt,
             App,
         },
@@ -100,12 +99,12 @@ mod responder {
             }
         }
 
-        let mut server = App::configure({
+        let app = App::configure({
             route() //
                 .to(endpoint::any().reply(|| Foo("Foo".into())))
-        })
-        .map(Server::new)?
-        .into_test_server()?;
+        })?;
+
+        let mut server = tsukuyomi::test::server(app)?;
 
         let response = server.perform("/")?;
         assert_eq!(response.status(), 200);

@@ -4,14 +4,13 @@ mod integration_tests;
 #[should_panic]
 fn test_catch_unwind() {
     fn inner() -> tsukuyomi::test::Result<()> {
-        let mut server = tsukuyomi::App::configure(
+        let app = tsukuyomi::App::configure(
             tsukuyomi::app::config::route::route() //
                 .to(tsukuyomi::app::config::endpoint::any()
                     .reply(|| -> &'static str { panic!("explicit panic") })),
-        )
-        .map(tsukuyomi::server::Server::new)?
-        .into_test_server()?;
+        )?;
 
+        let mut server = tsukuyomi::test::server(app)?;
         server.perform("/")?;
 
         Ok(())

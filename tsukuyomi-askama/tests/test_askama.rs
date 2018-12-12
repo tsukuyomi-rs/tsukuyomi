@@ -3,7 +3,6 @@ use {
     tsukuyomi::{
         app::config::prelude::*, //
         output::Responder,
-        server::Server,
         test::ResponseExt,
         App,
     },
@@ -23,13 +22,12 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let mut server = App::configure(
+    let app = App::configure(
         route() //
             .to(endpoint::get() //
                 .reply(|| Index { name: "Alice" })),
-    )
-    .map(Server::new)?
-    .into_test_server()?;
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -47,14 +45,13 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let mut server = App::configure(with_modifier(
+    let app = App::configure(with_modifier(
         tsukuyomi_askama::Renderer::default(),
         route() //
             .to(endpoint::get() //
                 .reply(|| Index { name: "Alice" })),
-    ))
-    .map(Server::new)?
-    .into_test_server()?;
+    ))?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);

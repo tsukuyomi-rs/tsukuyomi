@@ -3,14 +3,13 @@ use {
     tsukuyomi::{
         app::config::route::Route, //
         chain,
-        server::Server,
         App,
     },
 };
 
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(chain![
+    let app = App::configure(chain![
         Route::from_parts(
             "/first",
             tsukuyomi::handler::ready(|input| -> tsukuyomi::Result<_> {
@@ -25,9 +24,8 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
                 Ok("")
             })
         ),
-    ])
-    .map(Server::new)?
-    .into_test_server()?;
+    ])?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let mut session = server.new_session()?.save_cookies(true);
     let _ = session.perform("/first")?;
@@ -38,7 +36,7 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(chain![
+    let app = App::configure(chain![
         Route::from_parts(
             "/first",
             tsukuyomi::handler::ready(|input| -> tsukuyomi::Result<_> {
@@ -53,9 +51,8 @@ fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
                 Ok("")
             })
         ),
-    ])
-    .map(Server::new)?
-    .into_test_server()?;
+    ])?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let mut session = server.new_session()?;
     let _ = session.perform("/first")?;

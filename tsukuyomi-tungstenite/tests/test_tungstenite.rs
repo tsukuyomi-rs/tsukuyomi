@@ -17,7 +17,6 @@ use {
     },
     tsukuyomi::{
         app::config::prelude::*, //
-        server::Server,
         test::ResponseExt,
         App,
     },
@@ -31,13 +30,12 @@ fn test_version_sync() {
 
 #[test]
 fn test_handshake() -> tsukuyomi::test::Result<()> {
-    let mut server = App::configure(
+    let app = App::configure(
         route().segment("ws")?.to(endpoint::get()
             .extract(ws())
             .reply(|ws: Ws| ws.finish(|_| Ok(())))),
-    ) //
-    .map(Server::new)?
-    .into_test_server()?;
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform(
         Request::get("/ws")
