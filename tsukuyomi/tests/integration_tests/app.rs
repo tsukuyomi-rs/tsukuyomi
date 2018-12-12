@@ -174,25 +174,21 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                 "f1"
             })
         }),
-        mount(
-            "/api/v1/",
-            chain![
-                default_handler({
-                    let marker = marker.clone();
-                    tsukuyomi::handler::ready(move |_| {
-                        marker.lock().unwrap().push("F2");
-                        "f2"
-                    })
-                }),
-                route().segment("posts")?.to(endpoint::post().say("posts")),
-                mount(
-                    "/events",
-                    route()
-                        .segment("new")?
-                        .to(endpoint::post().say("new_event")),
-                ),
-            ],
-        ),
+        mount("/api/v1/").with(chain![
+            default_handler({
+                let marker = marker.clone();
+                tsukuyomi::handler::ready(move |_| {
+                    marker.lock().unwrap().push("F2");
+                    "f2"
+                })
+            }),
+            route().segment("posts")?.to(endpoint::post().say("posts")),
+            mount("/events").with(
+                route()
+                    .segment("new")?
+                    .to(endpoint::post().say("new_event")),
+            ),
+        ]),
     ])?;
 
     let mut server = tsukuyomi::test::server(app)?;

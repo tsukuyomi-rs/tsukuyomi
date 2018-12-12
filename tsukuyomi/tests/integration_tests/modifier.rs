@@ -107,7 +107,7 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(
         chain![
-            mount("/path1", {
+            mount("/path1").with({
                 route() //
                     .to(endpoint::any().say(""))
                     .modify(MockModifier {
@@ -139,29 +139,29 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create({
-        mount("/path", {
-            mount(
-                "/to",
-                chain![
-                    route().to(endpoint::any().say("")),
-                    mount("/a", {
-                        route() //
-                            .to(endpoint::any().say(""))
-                            .modify(MockModifier {
-                                marker: marker.clone(),
-                                name: "M3",
-                            })
-                    })
-                ]
+        mount("/path").with({
+            mount("/to")
+                .with(
+                    chain![
+                        route().to(endpoint::any().say("")),
+                        mount("/a").with({
+                            route() //
+                                .to(endpoint::any().say(""))
+                                .modify(MockModifier {
+                                    marker: marker.clone(),
+                                    name: "M3",
+                                })
+                        })
+                    ]
+                    .modify(MockModifier {
+                        marker: marker.clone(),
+                        name: "M2",
+                    }),
+                )
                 .modify(MockModifier {
                     marker: marker.clone(),
-                    name: "M2",
-                }),
-            )
-            .modify(MockModifier {
-                marker: marker.clone(),
-                name: "M1",
-            })
+                    name: "M1",
+                })
         })
     })?;
     let mut server = tsukuyomi::test::server(app)?;

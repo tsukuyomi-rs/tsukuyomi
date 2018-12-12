@@ -207,7 +207,7 @@ where
     }
 }
 
-pub fn empty() -> impl Config<()> {
+pub fn empty() -> Empty {
     Empty(())
 }
 
@@ -245,30 +245,44 @@ where
 }
 
 /// Creates a `Config` that creates a sub-scope with the provided prefix.
-pub fn mount<P, T>(prefix: P, config: T) -> Mount<P, T>
+pub fn mount<P>(prefix: P) -> Mount<P, Empty>
 where
     P: AsRef<str>,
 {
-    Mount { prefix, config }
+    Mount {
+        prefix,
+        config: empty(),
+    }
 }
 
 /// A `Config` that registers a sub-scope with a specific prefix.
 #[derive(Debug)]
-pub struct Mount<P, S> {
+pub struct Mount<P, T> {
     prefix: P,
-    config: S,
+    config: T,
 }
 
-impl<P, S, M> Config<M> for Mount<P, S>
+impl<P, T> Mount<P, T>
 where
     P: AsRef<str>,
-    S: Config<M>,
-    M: Clone,
+{
+    pub fn with<T2>(self, config: T2) -> Mount<P, Chain<T, T2>> {
+        Mount {
+            prefix: self.prefix,
+            config: Chain::new(self.config, config),
+        }
+    }
+}
+
+impl<P, T, M> Config<M> for Mount<P, T>
+where
+    P: AsRef<str>,
+    T: Config<M>,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
-        cx.mount(self.prefix, self.config)
+    fn configure(self, scope: &mut Scope<'_, M>) -> Result<(), Self::Error> {
+        scope.mount(self.prefix, self.config)
     }
 }
 
@@ -305,11 +319,11 @@ pub trait ConfigExt: Sized {
         modify(modifier, self)
     }
 
-    fn mount<P, T>(self, prefix: P, config: T) -> Chain<Self, Mount<P, T>>
+    fn mount<P, T>(self, prefix: P, config: T) -> Chain<Self, Mount<P, Chain<Empty, T>>>
     where
         P: AsRef<str>,
     {
-        self.with(mount(prefix, config))
+        self.with(mount(prefix).with(config))
     }
 
     fn default_handler<H>(self, default_handler: H) -> Chain<Self, DefaultHandler<H>> {
