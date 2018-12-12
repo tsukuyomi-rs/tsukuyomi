@@ -504,7 +504,7 @@ where
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut crate::app::config::Context<'_, M>) -> crate::app::Result<()> {
+    fn configure(self, cx: &mut crate::app::config::Scope<'_, M>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir)? {
@@ -522,7 +522,7 @@ where
 
             let file_type = entry.file_type()?;
             if file_type.is_file() {
-                cx.add_route(
+                cx.route(
                     format!("/{}", name),
                     ServeFile {
                         path,
@@ -531,7 +531,7 @@ where
                     },
                 )?;
             } else if file_type.is_dir() {
-                cx.add_route(
+                cx.route(
                     format!("/{}/*path", name),
                     ServeFile {
                         path,

@@ -1,7 +1,7 @@
 use {
     super::{
         super::uri::{Uri, UriComponent},
-        Config, Context,
+        Config, Scope,
     },
     crate::{
         core::{Chain, TryInto},
@@ -58,8 +58,8 @@ where
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri.as_str(), self.handler)
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
+        cx.route(self.uri.as_str(), self.handler)
     }
 }
 

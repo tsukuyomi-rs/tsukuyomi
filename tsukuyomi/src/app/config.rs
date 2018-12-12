@@ -37,11 +37,11 @@ pub fn configure(prefix: impl AsRef<str>, config: impl Config<()>) -> super::Res
         fallback: None,
     });
     config
-        .configure(&mut Context {
+        .configure(&mut Scope {
             recognizer: &mut recognizer,
             scopes: &mut scopes,
             scope_id: NodeId::root(),
-            modifier: (),
+            modifier: &(),
         })
         .map_err(Into::into)?;
 
@@ -55,13 +55,25 @@ pub trait Config<M> {
     type Error: Into<super::Error>;
 
     /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error>;
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error>;
+}
+
+impl<F, M, E> Config<M> for F
+where
+    F: FnOnce(&mut Scope<'_, M>) -> Result<(), E>,
+    E: Into<super::Error>,
+{
+    type Error = E;
+
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
+        self(cx)
+    }
 }
 
 impl<M> Config<M> for () {
     type Error = Never;
 
-    fn configure(self, _: &mut Context<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, _: &mut Scope<'_, M>) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -73,7 +85,7 @@ where
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
         self.left.configure(cx).map_err(Into::into)?;
         self.right.configure(cx).map_err(Into::into)?;
         Ok(())
@@ -86,7 +98,7 @@ where
 {
     type Error = S::Error;
 
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
         if let Some(scope) = self {
             scope.configure(cx)?;
         }
@@ -101,23 +113,22 @@ where
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
         self.map_err(Into::into)?.configure(cx).map_err(Into::into)
     }
 }
 
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
-pub struct Context<'a, M> {
+pub struct Scope<'a, M> {
     recognizer: &'a mut Recognizer<Resource>,
     scopes: &'a mut Arena<ScopeData>,
     scope_id: NodeId,
-    modifier: M,
+    modifier: &'a M,
 }
 
-impl<'a, M> Context<'a, M> {
-    #[doc(hidden)]
-    pub fn add_route<H>(&mut self, uri: impl AsRef<str>, handler: H) -> super::Result<()>
+impl<'a, M> Scope<'a, M> {
+    pub fn route<H>(&mut self, uri: impl AsRef<str>, handler: H) -> super::Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
@@ -148,8 +159,7 @@ impl<'a, M> Context<'a, M> {
         Ok(())
     }
 
-    #[doc(hidden)]
-    pub fn set_default_handler<H>(&mut self, default_handler: H) -> super::Result<()>
+    pub fn default_handler<H>(&mut self, default_handler: H) -> super::Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
@@ -161,13 +171,8 @@ impl<'a, M> Context<'a, M> {
         Ok(())
     }
 
-    #[doc(hidden)]
-    pub fn add_scope<S>(&mut self, prefix: &str, scope: S) -> super::Result<()>
-    where
-        M: Clone,
-        S: Config<M>,
-    {
-        let prefix: Uri = prefix.parse()?;
+    pub fn mount(&mut self, prefix: impl AsRef<str>, config: impl Config<M>) -> super::Result<()> {
+        let prefix: Uri = prefix.as_ref().parse()?;
 
         let scope_id = self.scopes.add_node(self.scope_id, {
             let parent = &self.scopes[self.scope_id].data;
@@ -177,29 +182,31 @@ impl<'a, M> Context<'a, M> {
             }
         })?;
 
-        scope
-            .configure(&mut Context {
+        config
+            .configure(&mut Scope {
                 recognizer: &mut *self.recognizer,
                 scopes: &mut *self.scopes,
                 scope_id,
-                modifier: self.modifier.clone(),
+                modifier: &*self.modifier,
             })
             .map_err(Into::into)?;
 
         Ok(())
     }
 
-    #[doc(hidden)]
-    pub fn with_modifier<M2>(&mut self, outer: M2) -> Context<'_, Chain<M, M2>>
-    where
-        M: Clone,
-    {
-        Context {
-            recognizer: &mut *self.recognizer,
-            scopes: &mut *self.scopes,
-            scope_id: self.scope_id,
-            modifier: Chain::new(self.modifier.clone(), outer),
-        }
+    pub fn modify<M2>(
+        &mut self,
+        outer: M2,
+        config: impl for<'m> Config<Chain<&'m M, M2>>,
+    ) -> super::Result<()> {
+        config
+            .configure(&mut Scope {
+                recognizer: &mut *self.recognizer,
+                scopes: &mut *self.scopes,
+                scope_id: self.scope_id,
+                modifier: &Chain::new(&*self.modifier, outer),
+            })
+            .map_err(Into::into)
     }
 }
 
@@ -220,8 +227,8 @@ where
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
-        cx.set_default_handler(self.0)
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
+        cx.default_handler(self.0)
     }
 }
 
@@ -241,15 +248,12 @@ pub struct WithModifier<M, S> {
 
 impl<M, S, M2> Config<M2> for WithModifier<M, S>
 where
-    M2: Clone,
-    S: Config<Chain<M2, M>>,
+    for<'a> S: Config<Chain<&'a M2, M>>,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Context<'_, M2>) -> std::result::Result<(), Self::Error> {
-        self.scope
-            .configure(&mut cx.with_modifier(self.modifier))
-            .map_err(Into::into)
+    fn configure(self, cx: &mut Scope<'_, M2>) -> std::result::Result<(), Self::Error> {
+        cx.modify(self.modifier, self.scope)
     }
 }
 
@@ -298,7 +302,7 @@ where
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
-        cx.add_scope(self.prefix.as_ref(), self.scope)
+    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
+        cx.mount(self.prefix, self.scope)
     }
 }
