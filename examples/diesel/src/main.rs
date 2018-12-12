@@ -1,13 +1,7 @@
-#![warn(unused)]
 #![allow(proc_macro_derive_resolution_fallback)]
 
 #[macro_use]
 extern crate diesel;
-extern crate dotenv;
-extern crate failure;
-extern crate pretty_env_logger;
-extern crate serde;
-extern crate tsukuyomi;
 
 mod conn;
 mod model;
@@ -21,10 +15,13 @@ use {
     dotenv::dotenv,
     std::{env, sync::Arc},
     tsukuyomi::{
-        app::directives::*,
+        app::config::prelude::*, //
+        chain,
         error::Error,
-        extractor::{self, Extractor},
+        extractor,
         rt::Future,
+        server::Server,
+        App,
     },
 };
 
@@ -35,81 +32,73 @@ fn main() -> tsukuyomi::server::Result<()> {
     let database_url = env::var("DATABASE_URL")?;
     let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
-    let get_posts = {
-        #[derive(Debug, serde::Deserialize)]
-        struct Param {
-            #[serde(default)]
-            count: i64,
-        }
-
-        let parse_query = extractor::query::query()
-            .into_builder() // <-- start building
-            .optional()
-            .map(|param: Option<Param>| param.unwrap_or_else(|| Param { count: 20 }));
-
-        route!("/")
-            .methods("GET")?
-            .extract(parse_query)
-            .extract(db_conn.clone())
-            .call(|param: Param, conn: Conn| {
-                blocking_section(move || {
-                    use crate::schema::posts::dsl::*;
-                    use diesel::prelude::*;
-                    posts
-                        .limit(param.count)
-                        .load::<Post>(&*conn)
-                        .map_err(tsukuyomi::error::internal_server_error)
-                }).map(tsukuyomi::output::json)
-            })
-    };
-
-    let create_post = {
-        #[derive(Debug, serde::Deserialize)]
-        struct Param {
-            title: String,
-            body: String,
-        }
-
-        route!("/")
-            .methods("POST")?
-            .extract(extractor::body::json())
-            .extract(db_conn.clone())
-            .call(|param: Param, conn: Conn| {
-                use crate::schema::posts;
-                use diesel::prelude::*;
-                blocking_section(move || {
-                    let new_post = NewPost {
-                        title: &param.title,
-                        body: &param.body,
-                    };
-                    diesel::insert_into(posts::table)
-                        .values(&new_post)
-                        .execute(&*conn)
-                        .map_err(tsukuyomi::error::internal_server_error)
-                }).map(|_| ())
-            })
-    };
-
-    let get_post = route!("/:id")
-        .methods("GET")?
-        .extract(db_conn)
-        .call(|id: i32, conn: Conn| {
-            blocking_section(move || {
-                use crate::schema::posts::dsl;
-                use diesel::prelude::*;
-                dsl::posts
-                    .filter(dsl::id.eq(id))
-                    .get_result::<Post>(&*conn)
-                    .optional()
-                    .map_err(tsukuyomi::error::internal_server_error)
-            }).map(|post_opt| post_opt.map(tsukuyomi::output::json))
-        });
-
-    let server = App::with_prefix("/api/v1/posts")?
-        .with(get_posts)
-        .with(create_post)
-        .with(get_post)
-        .build_server()?;
+    let server = App::with_prefix(
+        "/api/v1/posts",
+        chain![
+            route() //
+                .extract(db_conn.clone())
+                .to(chain![
+                    endpoint::get()
+                        .extract(extractor::ExtractorExt::new(extractor::query::query()).optional())
+                        .call({
+                            #[derive(Debug, serde::Deserialize)]
+                            struct Param {
+                                #[serde(default)]
+                                count: i64,
+                            }
+                            |conn: Conn, param: Option<Param>| {
+                                let param = param.unwrap_or_else(|| Param { count: 20 });
+                                blocking_section(move || {
+                                    use crate::schema::posts::dsl::*;
+                                    use diesel::prelude::*;
+                                    posts
+                                        .limit(param.count)
+                                        .load::<Post>(&*conn)
+                                        .map_err(tsukuyomi::error::internal_server_error)
+                                })
+                                .map(tsukuyomi::output::json)
+                            }
+                        }),
+                    endpoint::post().extract(extractor::body::json()).call({
+                        #[derive(Debug, serde::Deserialize)]
+                        struct Param {
+                            title: String,
+                            body: String,
+                        }
+                        |conn: Conn, param: Param| {
+                            use crate::schema::posts;
+                            use diesel::prelude::*;
+                            blocking_section(move || {
+                                let new_post = NewPost {
+                                    title: &param.title,
+                                    body: &param.body,
+                                };
+                                diesel::insert_into(posts::table)
+                                    .values(&new_post)
+                                    .execute(&*conn)
+                                    .map_err(tsukuyomi::error::internal_server_error)
+                            })
+                            .map(|_| ())
+                        }
+                    }),
+                ]),
+            (route().param("id")?)
+                .extract(db_conn)
+                .to(
+                    endpoint::get().call(|id: i32, conn: Conn| blocking_section(move || {
+                        use crate::schema::posts::dsl;
+                        use diesel::prelude::*;
+                        dsl::posts
+                            .filter(dsl::id.eq(id))
+                            .get_result::<Post>(&*conn)
+                            .optional()
+                            .map_err(tsukuyomi::error::internal_server_error)
+                    })
+                    .map(|post_opt| post_opt.map(tsukuyomi::output::json))),
+                )
+        ],
+    )
+    .map(Server::new)?;
 
     server.run()
 }

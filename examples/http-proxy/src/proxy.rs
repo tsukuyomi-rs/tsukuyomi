@@ -3,12 +3,21 @@ use {
     http::header::{Entry, HeaderMap},
     reqwest::IntoUrl,
     std::{mem, net::SocketAddr},
-    tsukuyomi::{extractor, server::io::Peer, Error, Extractor, Input, Never, Responder},
+    tsukuyomi::{
+        chain,
+        core::Never,
+        extractor, //
+        server::io::Peer,
+        Error,
+        Extractor,
+        Input,
+        Responder,
+    },
 };
 
 #[derive(Debug)]
 pub struct Client {
-    client: reqwest::async::Client,
+    client: reqwest::r#async::Client,
     headers: HeaderMap,
     peer_addr: Peer<SocketAddr>,
 }
@@ -49,7 +58,7 @@ impl Client {
 }
 
 pub struct ProxyResponse {
-    resp: reqwest::async::Response,
+    resp: reqwest::r#async::Response,
 }
 
 impl ProxyResponse {
@@ -70,7 +79,8 @@ impl ProxyResponse {
             .fold(Vec::with_capacity(content_length), |mut acc, chunk| {
                 acc.extend_from_slice(&*chunk);
                 Ok::<_, reqwest::Error>(acc)
-            }).map(move |chunks| response.map(|_| chunks))
+            })
+            .map(move |chunks| response.map(|_| chunks))
             .map_err(tsukuyomi::error::internal_server_error)
     }
 }
@@ -90,16 +100,15 @@ impl Responder for ProxyResponse {
     }
 }
 
-pub fn proxy_client(
-    client: reqwest::async::Client,
-) -> impl Extractor<Output = (Client,), Error = Error> {
-    extractor::extension::clone()
-        .into_builder() // <-- start building
-        .and(extractor::header::clone_headers())
-        .and(extractor::value(client))
-        .map(|peer_addr, headers, client| Client {
-            client,
-            headers,
-            peer_addr,
-        })
+pub fn proxy_client(client: reqwest::r#async::Client) -> impl Extractor<Output = (Client,)> {
+    extractor::ExtractorExt::new(chain![
+        extractor::extension::clone(),
+        extractor::header::clone_headers(),
+        extractor::value(client),
+    ])
+    .map(|peer_addr, headers, client| Client {
+        client,
+        headers,
+        peer_addr,
+    })
 }

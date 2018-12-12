@@ -4,26 +4,28 @@ use {
         sqlite::SqliteConnection,
     },
     failure::Fallible,
-    tsukuyomi::{error::Error, extractor::Extractor, rt::Future},
+    tsukuyomi::{extractor::Extractor, rt::Future},
 };
 
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
 
-pub fn extractor<T>(url: T) -> Fallible<impl Extractor<Output = (Conn,), Error = Error>>
+pub fn extractor<T>(url: T) -> Fallible<impl Extractor<Output = (Conn,)>>
 where
     T: Into<String>,
 {
     let manager = ConnectionManager::<SqliteConnection>::new(url);
     let pool = Pool::builder().max_size(15).build(manager)?;
 
-    Ok(tsukuyomi::extractor::lazy(move |_| {
+    Ok(tsukuyomi::extractor::raw(move |_| {
         let pool = pool.clone();
         tsukuyomi::rt::blocking(move || pool.get()) //
             .then(|result| {
                 result
                     .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
                     .and_then(|result| {
-                        result.map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
+                        result
+                            .map(|conn| (conn,))
+                            .map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
                     })
             })
     }))

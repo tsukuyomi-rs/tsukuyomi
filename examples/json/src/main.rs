@@ -1,9 +1,13 @@
-extern crate serde;
-extern crate tsukuyomi;
-
 use {
     serde::{Deserialize, Serialize},
-    tsukuyomi::{app::directives::*, extractor, Responder},
+    tsukuyomi::{
+        app::config::prelude::*, //
+        chain,
+        extractor,
+        server::Server,
+        App,
+        Responder,
+    },
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Responder)]
@@ -14,20 +18,18 @@ struct User {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::builder()
-        .with(
-            route!("/") //
-                .say(User {
+    App::configure(
+        route() //
+            .to(chain![
+                endpoint::get().say(User {
                     name: "Sakura Kinomoto".into(),
                     age: 13,
                 }),
-        ) //
-        .with(
-            route!("/")
-                .methods("POST")?
-                .extract(extractor::body::json())
-                .reply(|user: User| user),
-        ) //
-        .build_server()?
-        .run()
+                endpoint::post()
+                    .extract(extractor::body::json())
+                    .reply(|user: User| user),
+            ]),
+    )
+    .map(Server::new)?
+    .run()
 }

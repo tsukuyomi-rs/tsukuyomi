@@ -1,9 +1,8 @@
-extern crate log;
-extern crate pretty_env_logger;
-extern crate tower_web;
-extern crate tsukuyomi;
-
-use tsukuyomi::app::directives::*;
+use tsukuyomi::{
+    app::config::prelude::*, //
+    server::Server,
+    App,
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let addr: std::net::SocketAddr = "127.0.0.1:4000".parse()?;
@@ -14,10 +13,13 @@ fn main() -> tsukuyomi::server::Result<()> {
     pretty_env_logger::init();
     log::info!("Listening on {}", addr);
 
-    App::builder()
-        .with(route!("/").say("Hello"))
-        .build_server()?
-        .bind(addr)
-        .tower_middleware(log_middleware)
-        .run()
+    App::configure(
+        route() //
+            .to(endpoint::any() //
+                .say("Hello")),
+    )
+    .map(Server::new)?
+    .bind(addr)
+    .tower_middleware(log_middleware)
+    .run()
 }

@@ -1,4 +1,4 @@
-use schema::posts;
+use crate::schema::posts;
 
 #[derive(Debug, Queryable, serde::Serialize)]
 pub struct Post {
