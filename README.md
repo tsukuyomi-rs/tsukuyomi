@@ -31,7 +31,7 @@ use tsukuyomi::{
 
 fn main() -> tsukuyomi::server::Result<()> {
     let server = App::create(
-        route()
+        path!(/)
             .to(endpoint::any()
                 .say("Hello, world.\n"))
     )

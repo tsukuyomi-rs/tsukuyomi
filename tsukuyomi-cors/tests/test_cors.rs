@@ -38,7 +38,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors),
@@ -71,7 +71,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let app = App::create(
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors),
@@ -108,7 +108,7 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(
-        route() //
+        path!(/) //
             .to(endpoint::allow_only("GET, DELETE")? //
                 .reply(|| "hello"))
             .modify(cors),
@@ -142,7 +142,7 @@ fn simple_request_with_allow_credentials() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors),
@@ -196,7 +196,7 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         default_handler(cors.clone()), // OPTIONS *
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors)  // OPTIONS /
@@ -225,7 +225,7 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         default_handler(cors.clone()), // OPTIONS *
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors)
@@ -259,7 +259,7 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         default_handler(cors.clone()), // OPTIONS *
-        route()
+        path!(/)
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors)  // OPTIONS /
@@ -295,7 +295,7 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         default_handler(cors.clone()), // OPTIONS *
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors)
@@ -337,7 +337,7 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         default_handler(cors.clone()),
-        route() //
+        path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
             .modify(cors)
@@ -364,13 +364,11 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(chain![
-        route()
-            .segment("cors")?
+        path!(/"cors") //
             .to(endpoint::get() //
                 .reply(|| "cors"))
             .modify(cors.clone()),
-        route()
-            .segment("nocors")?
+        path!(/"nocors") //
             .to(endpoint::get().reply(|| "nocors")),
         default_handler(cors),
     ])?;
@@ -413,12 +411,10 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(chain![
-        route()
-            .segment("cors")?
+        path!(/"cors") //
             .to(endpoint::get().reply(|| "cors"))
             .modify(cors),
-        route()
-            .segment("nocors")? //
+        path!(/"nocors") //
             .to(endpoint::get() //
                 .reply(|| "nocors")),
     ])?;

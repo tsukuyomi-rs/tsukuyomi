@@ -13,7 +13,7 @@ fn new_empty() -> Result<()> {
 #[test]
 fn route_single_method() -> Result<()> {
     let app = App::create(
-        route() //
+        path!(/) //
             .to(endpoint::any().say("")),
     )?;
 
@@ -35,7 +35,7 @@ fn route_single_method() -> Result<()> {
 #[test]
 fn route_multiple_method() -> Result<()> {
     let app = App::create(
-        route() //
+        path!(/) //
             .to(endpoint::allow_only("GET, POST")?.say("")),
     )?;
 
@@ -60,11 +60,11 @@ fn route_multiple_method() -> Result<()> {
 fn scope_simple() -> Result<()> {
     let app = App::create(chain![
         mount("/").with(chain![
-            route().segment("a")?.to(endpoint::any().say("")),
-            route().segment("b")?.to(endpoint::any().say("")),
+            path!(/"a").to(endpoint::any().say("")),
+            path!(/"b").to(endpoint::any().say("")),
         ]),
-        route().segment("foo")?.to(endpoint::any().say("")),
-        mount("/c").with(route().segment("d")?.to(endpoint::any().say(""))),
+        path!(/"foo").to(endpoint::any().say("")),
+        mount("/c").with(path!(/"d").to(endpoint::any().say(""))),
     ])?;
 
     assert_matches!(
@@ -96,18 +96,18 @@ fn scope_nested() -> Result<()> {
     let app = App::create(chain![
         mount("/") // 0
             .with(chain![
-                route().segment("foo")?.to(endpoint::any().say("")), // /foo
-                route().segment("bar")?.to(endpoint::any().say("")), // /bar
+                path!(/"foo").to(endpoint::any().say("")), // /foo
+                path!(/"bar").to(endpoint::any().say("")), // /bar
             ]),
         mount("/baz") // 1
             .with(chain![
-                route().to(endpoint::any().say("")), // /baz
+                path!(/).to(endpoint::any().say("")), // /baz
                 mount("/") // 2
                     .with(chain![
-                        route().segment("foobar")?.to(endpoint::any().say("")), // /baz/foobar
+                        path!(/"foobar").to(endpoint::any().say("")), // /baz/foobar
                     ])
             ]), //
-        (route().segment("hoge")?) //
+        path!(/"hoge") //
             .to(endpoint::any().say("")) // /hoge
     ])?;
 
@@ -144,10 +144,8 @@ fn scope_nested() -> Result<()> {
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
     let app = App::create(chain![
-        route().segment("path")?.to(endpoint::get().reply(|| "")),
-        route()
-            .segment("path")?
-            .to(endpoint::allow_only("POST, PUT")?.reply(|| "")),
+        path!(/"path").to(endpoint::get().reply(|| "")),
+        path!(/"path").to(endpoint::allow_only("POST, PUT")?.reply(|| "")),
     ]);
     assert!(app.is_err());
     Ok(())
@@ -156,10 +154,10 @@ fn failcase_duplicate_uri() -> Result<()> {
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::create(chain![
-        (route().segment("path")?) //
+        path!(/"path") //
             .to(endpoint::any().reply(|| ""),),
         mount("/").with(
-            (route().segment("path")?) //
+            path!(/"path") //
                 .to(endpoint::post().reply(|| ""))
         )
     ]);

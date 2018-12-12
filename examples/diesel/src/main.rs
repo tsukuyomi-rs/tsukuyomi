@@ -35,7 +35,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let server = App::create_with_prefix(
         "/api/v1/posts",
         chain![
-            route() //
+            path!(/) //
                 .extract(db_conn.clone())
                 .to(chain![
                     endpoint::get()
@@ -82,7 +82,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                         }
                     }),
                 ]),
-            (route().param("id")?)
+            path!(/{path::param("id")}) //
                 .extract(db_conn)
                 .to(
                     endpoint::get().call(|id: i32, conn: Conn| blocking_section(move || {

@@ -10,10 +10,13 @@ use {
 fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
-    App::create(route().to(endpoint::any().say("Hello, Tsukuyomi.\n"))) //
-        .map(Server::new)?
-        .acceptor(tls_acceptor)
-        .run()
+    App::create(
+        path!(/) //
+            .to(endpoint::any().say("Hello, Tsukuyomi.\n")),
+    ) //
+    .map(Server::new)?
+    .acceptor(tls_acceptor)
+    .run()
 }
 
 fn build_tls_acceptor() -> failure::Fallible<tokio_rustls::TlsAcceptor> {

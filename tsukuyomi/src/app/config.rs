@@ -3,9 +3,14 @@ pub mod route;
 
 pub mod prelude {
     #[doc(no_inline)]
-    pub use super::route::route;
-    #[doc(no_inline)]
     pub use super::{default_handler, empty, mount, Config, ConfigExt};
+
+    #[doc(no_inline)]
+    pub use crate::path;
+
+    pub mod path {
+        pub use super::super::route::{catch_all, param, slash};
+    }
 
     pub mod endpoint {
         #[doc(no_inline)]

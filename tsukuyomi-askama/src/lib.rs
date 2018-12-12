@@ -21,8 +21,7 @@
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
 //! App::create(
-//!     route()
-//!         .param("name")?
+//!     path!(/ {path::param("name")})
 //!         .to(endpoint::get().reply(|name| Index { name }))
 //! )
 //! #   .map(drop)

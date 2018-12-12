@@ -18,13 +18,13 @@ fn main() -> tsukuyomi::server::Result<()> {
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 
     App::create(chain![
-        route().to(endpoint::any()
-            .extract(proxy_client.clone())
-            .call(|client: Client| client
-                .send_forwarded_request("http://www.example.com")
-                .and_then(|resp| resp.receive_all()))),
-        route()
-            .segment("streaming")?
+        path!(/) //
+            .to(endpoint::any()
+                .extract(proxy_client.clone())
+                .call(|client: Client| client
+                    .send_forwarded_request("http://www.example.com")
+                    .and_then(|resp| resp.receive_all()))),
+        path!(/"streaming") //
             .to(endpoint::any()
                 .extract(proxy_client)
                 .call(|client: Client| client

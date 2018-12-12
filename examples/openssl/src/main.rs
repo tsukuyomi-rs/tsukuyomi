@@ -23,7 +23,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let acceptor = builder.build();
 
     App::create(
-        route().to(endpoint::any() //
+        path!(/).to(endpoint::any() //
             .say("Hello, Tsukuyomi.\n")),
     ) //
     .map(Server::new)?

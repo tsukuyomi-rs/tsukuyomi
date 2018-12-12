@@ -19,7 +19,7 @@ struct User {
 
 fn main() -> tsukuyomi::server::Result<()> {
     App::create(
-        route() //
+        path!(/) //
             .to(chain![
                 endpoint::get().say(User {
                     name: "Sakura Kinomoto".into(),

@@ -12,7 +12,7 @@ use {
 #[test]
 fn unit_input() -> tsukuyomi::test::Result<()> {
     let app = App::create({
-        route() //
+        path!(/) //
             .to(endpoint::any().reply(|| "dummy"))
     })?;
 
@@ -26,10 +26,7 @@ fn unit_input() -> tsukuyomi::test::Result<()> {
 #[test]
 fn params() -> tsukuyomi::test::Result<()> {
     let app = App::create({
-        route()
-            .param("id")?
-            .param("name")?
-            .catch_all("path")? //
+        path!(/ { path::param("id") } / { path::param("name") } / { path::catch_all("path") })
             .to(endpoint::any()
                 .reply(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)))
     })?;
@@ -48,28 +45,23 @@ fn params() -> tsukuyomi::test::Result<()> {
 #[test]
 fn route_macros() -> tsukuyomi::app::Result<()> {
     App::create(chain![
-        route()
-            .segment("root")?
+        path!(/"root") //
             .to(endpoint::any().reply(|| "root")),
-        route()
-            .segment("params")?
-            .param("id")?
-            .param("name")?
+        path!(/ "params" / {path::param("id")} / {path::param("name")}) //
             .to(endpoint::any().reply(|id: i32, name: String| {
                 drop((id, name));
                 "dummy"
             })),
-        route().segment("posts")?.param("id")?.segment("edit")?.to({
-            endpoint::put()
-                .extract(extractor::body::plain::<String>())
-                .reply(|id: u32, body: String| {
-                    drop((id, body));
-                    "dummy"
-                })
-        }),
-        route()
-            .segment("static")?
-            .catch_all("path")?
+        path!(/ "posts" / {path::param("id")} / "edit") //
+            .to({
+                endpoint::put()
+                    .extract(extractor::body::plain::<String>())
+                    .reply(|id: u32, body: String| {
+                        drop((id, body));
+                        "dummy"
+                    })
+            }),
+        path!(/ "static" / {path::catch_all("path")}) //
             .to(endpoint::any().reply(|path: String| {
                 drop(path);
                 "dummy"
@@ -81,9 +73,10 @@ fn route_macros() -> tsukuyomi::app::Result<()> {
 #[test]
 fn plain_body() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        route().to(endpoint::post()
-            .extract(extractor::body::plain())
-            .reply(|body: String| body)),
+        path!(/) //
+            .to(endpoint::post()
+                .extract(extractor::body::plain())
+                .reply(|body: String| body)),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -128,9 +121,10 @@ fn json_body() -> tsukuyomi::test::Result<()> {
     }
 
     let app = App::create(
-        route().to(endpoint::post()
-            .extract(extractor::body::json())
-            .reply(|params: Params| format!("{},{}", params.id, params.name))),
+        path!(/) //
+            .to(endpoint::post()
+                .extract(extractor::body::json())
+                .reply(|params: Params| format!("{},{}", params.id, params.name))),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -173,9 +167,10 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
     }
 
     let app = App::create(
-        route().to(endpoint::post()
-            .extract(extractor::body::urlencoded())
-            .reply(|params: Params| format!("{},{}", params.id, params.name))),
+        path!(/) //
+            .to(endpoint::post()
+                .extract(extractor::body::urlencoded())
+                .reply(|params: Params| format!("{},{}", params.id, params.name))),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -256,12 +251,13 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let app = App::create(
-        (route().to({
-            endpoint::any()
-                .extract(extractor::local::remove(&MyData::KEY))
-                .reply(|x: MyData| x.0)
-        }))
-        .modify(InsertMyData::default()),
+        path!(/) //
+            .to({
+                endpoint::any()
+                    .extract(extractor::local::remove(&MyData::KEY))
+                    .reply(|x: MyData| x.0)
+            })
+            .modify(InsertMyData::default()),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -285,9 +281,10 @@ fn missing_local_data() -> tsukuyomi::test::Result<()> {
     }
 
     let app = App::create({
-        route().to(endpoint::any()
-            .extract(extractor::local::remove(&MyData::KEY))
-            .reply(|x: MyData| x.0))
+        path!(/) //
+            .to(endpoint::any()
+                .extract(extractor::local::remove(&MyData::KEY))
+                .reply(|x: MyData| x.0))
     })?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -308,7 +305,7 @@ fn optional() -> tsukuyomi::test::Result<()> {
     let extractor = ExtractorExt::new(extractor::body::json()).optional();
 
     let app = App::create(
-        route() //
+        path!(/) //
             .to({
                 endpoint::post() //
                     .extract(extractor)
@@ -356,7 +353,7 @@ fn either_or() -> tsukuyomi::test::Result<()> {
             .either_or(extractor::method::post().chain(extractor::body::urlencoded()));
 
     let app = App::create(
-        route() //
+        path!(/) //
             .to({
                 endpoint::allow_only("GET, POST")?
                     .extract(params_extractor)

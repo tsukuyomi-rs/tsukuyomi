@@ -7,9 +7,12 @@ use {
         core::{Chain, TryInto},
         endpoint::{Endpoint, EndpointAction},
         extractor::Extractor,
-        generic::Combine,
+        generic::{Combine, Tuple},
         handler::{Handler, ModifyHandler},
-        input::param::{FromPercentEncoded, PercentEncoded},
+        input::{
+            param::{FromPercentEncoded, PercentEncoded},
+            Input,
+        },
         output::Responder,
     },
     futures01::Future,
@@ -17,24 +20,10 @@ use {
     std::marker::PhantomData,
 };
 
-pub fn route() -> Builder<(), self::tags::Incomplete> {
-    Route::builder()
-}
-
 #[derive(Debug)]
 pub struct Route<H> {
     uri: Uri,
     handler: H,
-}
-
-impl Route<()> {
-    pub fn builder() -> Builder<(), self::tags::Incomplete> {
-        Builder {
-            uri: Uri::root(),
-            extractor: (),
-            _marker: std::marker::PhantomData,
-        }
-    }
 }
 
 impl<H> Route<H>
@@ -71,126 +60,266 @@ mod tags {
     pub struct Incomplete(());
 }
 
-/// A builder of `Scope` to register a route, which is matched to the requests
-/// with a certain path and method(s) and will return its response.
 #[derive(Debug)]
-pub struct Builder<E: Extractor = (), T = self::tags::Incomplete> {
-    uri: Uri,
-    extractor: E,
-    _marker: PhantomData<T>,
+pub struct Context<'a> {
+    components: Vec<UriComponent>,
+    _marker: PhantomData<&'a mut ()>,
 }
 
-impl<E> Builder<E, self::tags::Incomplete>
+pub trait PathConfig {
+    type Output: Tuple;
+    type Extractor: Extractor<Output = Self::Output>;
+    type Tag;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor>;
+}
+
+impl<L, R> PathConfig for Chain<L, R>
 where
-    E: Extractor,
+    L: PathConfig<Tag = self::tags::Incomplete>,
+    R: PathConfig,
+    L::Output: Combine<R::Output> + Send + 'static,
+    R::Output: Send + 'static,
 {
-    /// Appends a *static* segment into this route.
-    pub fn segment(mut self, s: impl Into<String>) -> crate::app::Result<Self> {
-        self.uri.push(UriComponent::Static(s.into()))?;
+    type Output = <L::Output as Combine<R::Output>>::Out;
+    type Extractor = Chain<L::Extractor, R::Extractor>;
+    type Tag = R::Tag;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+        let left = self.left.configure(cx)?;
+        let right = self.right.configure(cx)?;
+        Ok(Chain::new(left, right))
+    }
+}
+
+impl PathConfig for String {
+    type Output = ();
+    type Extractor = ();
+    type Tag = self::tags::Incomplete;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+        // TODO: validatation
+        cx.components.push(UriComponent::Static(self));
+        Ok(())
+    }
+}
+
+impl<'a> PathConfig for &'a str {
+    type Output = ();
+    type Extractor = ();
+    type Tag = self::tags::Incomplete;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+        // TODO: validatation
+        cx.components.push(UriComponent::Static(self.to_owned()));
+        Ok(())
+    }
+}
+
+/// Creates a `PathConfig` that appends a trailing slash to the path.
+pub fn slash() -> Slash {
+    Slash(())
+}
+
+#[derive(Debug)]
+pub struct Slash(());
+
+impl PathConfig for Slash {
+    type Output = ();
+    type Extractor = ();
+    type Tag = self::tags::Completed;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+        cx.components.push(UriComponent::Slash);
+        Ok(())
+    }
+}
+
+/// Creates a `PathConfig` that appends a parameter with the specified name to the path.
+pub fn param<T>(name: impl Into<String>) -> Param<T>
+where
+    T: FromPercentEncoded,
+{
+    Param {
+        name: name.into(),
+        _marker: PhantomData,
+    }
+}
+
+#[derive(Debug)]
+pub struct Param<T> {
+    name: String,
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> PathConfig for Param<T>
+where
+    T: FromPercentEncoded + Send + 'static,
+{
+    type Output = (T,);
+    type Extractor = Self;
+    type Tag = self::tags::Incomplete;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+        // TODO: validatation
+        cx.components
+            .push(UriComponent::Param(self.name.clone(), ':'));
         Ok(self)
     }
+}
 
-    /// Appends a trailing slash to the path of this route.
-    pub fn slash(self) -> Builder<E, self::tags::Completed> {
-        Builder {
-            uri: {
-                let mut uri = self.uri;
-                uri.push(UriComponent::Slash).expect("this is a bug.");
-                uri
-            },
-            extractor: self.extractor,
-            _marker: PhantomData,
+impl<T> Param<T>
+where
+    T: FromPercentEncoded + Send + 'static,
+{
+    fn extract_inner(&self, input: &mut Input<'_>) -> Result<(T,), crate::Error> {
+        let params = input
+            .params
+            .as_ref()
+            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?;
+        let s = params
+            .name(&self.name)
+            .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
+        T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
+            .map(|x| (x,))
+            .map_err(Into::into)
+    }
+}
+
+impl<T> Extractor for Param<T>
+where
+    T: FromPercentEncoded + Send + 'static,
+{
+    type Output = (T,);
+    type Error = crate::error::Error;
+    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
+
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+        futures01::future::result(self.extract_inner(input))
+    }
+}
+
+/// Creates a `PathConfig` that appends a *catch-all* parameter with the specified name to the path.
+pub fn catch_all<T>(name: impl Into<String>) -> CatchAll<T>
+where
+    T: FromPercentEncoded,
+{
+    CatchAll {
+        name: name.into(),
+        _marker: PhantomData,
+    }
+}
+
+#[derive(Debug)]
+pub struct CatchAll<T> {
+    name: String,
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> PathConfig for CatchAll<T>
+where
+    T: FromPercentEncoded + Send + 'static,
+{
+    type Output = (T,);
+    type Extractor = Self;
+    type Tag = self::tags::Completed;
+
+    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+        // TODO: validatation
+        cx.components
+            .push(UriComponent::Param(self.name.clone(), '*'));
+        Ok(self)
+    }
+}
+
+impl<T> CatchAll<T>
+where
+    T: FromPercentEncoded + Send + 'static,
+{
+    fn extract_inner(&self, input: &mut Input<'_>) -> Result<(T,), crate::Error> {
+        let params = input
+            .params
+            .as_ref()
+            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?;
+        let s = params
+            .catch_all()
+            .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
+        T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
+            .map(|x| (x,))
+            .map_err(Into::into)
+    }
+}
+
+impl<T> Extractor for CatchAll<T>
+where
+    T: FromPercentEncoded + Send + 'static,
+{
+    type Output = (T,);
+    type Error = crate::error::Error;
+    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
+
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+        futures01::future::result(self.extract_inner(input))
+    }
+}
+
+/// A macro for generating the code that creates a [`Path`] from the provided tokens.
+///
+/// [`Path`]: ./app/config/route/struct.Path.html
+#[macro_export]
+macro_rules! path {
+    (/) => ( $crate::app::config::route::Path::root() );
+    ($(/ $s:tt)+) => ( $crate::app::config::route::Path::create($crate::chain!($($s),*)).unwrap() );
+    ($(/ $s:tt)+ /) => ( $crate::app::config::route::Path::create($crate::chain!($($s),*, $crate::app::config::route::slash())).unwrap() );
+}
+
+#[derive(Debug)]
+pub struct Path<E: Extractor = ()> {
+    uri: Uri,
+    extractor: E,
+}
+
+impl Path<()> {
+    pub fn root() -> Self {
+        Self {
+            uri: Uri::root(),
+            extractor: (),
         }
     }
 
-    /// Appends a parameter with the specified name to the path of this route.
-    pub fn param<T>(
-        self,
-        name: impl Into<String>,
-    ) -> crate::app::Result<
-        Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>, self::tags::Incomplete>,
-    >
+    pub fn create<T>(config: T) -> crate::app::Result<Path<T::Extractor>>
     where
-        T: FromPercentEncoded + Send + 'static,
-        E::Output: Combine<(T,)> + Send + 'static,
+        T: PathConfig,
     {
-        let name = name.into();
-        Ok(Builder {
-            uri: {
-                let mut uri = self.uri;
-                uri.push(UriComponent::Param(name.clone(), ':'))?;
-                uri
-            },
-            extractor: Chain::new(
-                self.extractor,
-                crate::extractor::ready(move |input| match input.params {
-                    Some(ref params) => {
-                        let s = params.name(&name).ok_or_else(|| {
-                            crate::error::internal_server_error("invalid paramter name")
-                        })?;
-                        T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
-                            .map_err(Into::into)
-                    }
-                    None => Err(crate::error::internal_server_error("missing Params")),
-                }),
-            ),
+        let mut cx = Context {
+            components: vec![],
             _marker: PhantomData,
-        })
-    }
+        };
+        let extractor = config.configure(&mut cx)?;
 
-    /// Appends a *catch-all* parameter with the specified name to the path of this route.
-    pub fn catch_all<T>(
-        self,
-        name: impl Into<String>,
-    ) -> crate::app::Result<
-        Builder<impl Extractor<Output = <E::Output as Combine<(T,)>>::Out>, self::tags::Completed>,
-    >
-    where
-        T: FromPercentEncoded + Send + 'static,
-        E::Output: Combine<(T,)> + Send + 'static,
-    {
-        let name = name.into();
-        Ok(Builder {
-            uri: {
-                let mut uri = self.uri;
-                uri.push(UriComponent::Param(name.clone(), '*'))?;
-                uri
-            },
-            extractor: Chain::new(
-                self.extractor,
-                crate::extractor::ready(|input| match input.params {
-                    Some(ref params) => {
-                        let s = params.catch_all().ok_or_else(|| {
-                            crate::error::internal_server_error(
-                                "the catch-all parameter is not available",
-                            )
-                        })?;
-                        T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
-                            .map_err(Into::into)
-                    }
-                    None => Err(crate::error::internal_server_error("missing Params")),
-                }),
-            ),
-            _marker: PhantomData,
-        })
+        let mut uri = Uri::root();
+        for component in cx.components {
+            uri.push(component)?;
+        }
+
+        Ok(Path { uri, extractor })
     }
 }
 
-impl<E, Tag> Builder<E, Tag>
+impl<E> Path<E>
 where
     E: Extractor,
 {
-    /// Appends a supplemental `Extractor` to this route.
-    pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>, Tag>
+    /// Appends a supplemental `Extractor` to this path.
+    pub fn extract<E2>(self, other: E2) -> Path<Chain<E, E2>>
     where
         E2: Extractor,
         E::Output: Combine<E2::Output> + Send + 'static,
         E2::Output: Send + 'static,
     {
-        Builder {
-            extractor: Chain::new(self.extractor, other),
+        Path {
             uri: self.uri,
-            _marker: PhantomData,
+            extractor: Chain::new(self.extractor, other),
         }
     }
 

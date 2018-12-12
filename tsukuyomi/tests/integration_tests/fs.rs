@@ -8,8 +8,7 @@ use tsukuyomi::{
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
     App::create({
-        route()
-            .segment("index.html")?
+        path!(/"index.html") //
             .to(endpoint::get().send_file("/path/to/index.html", None))
     })
     .map(drop)

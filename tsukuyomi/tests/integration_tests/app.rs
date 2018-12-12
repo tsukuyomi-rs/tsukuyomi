@@ -23,8 +23,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        route() //
-            .segment("hello")?
+        path!(/"hello") //
             .to(endpoint::any().reply(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -46,7 +45,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
     let app = App::create_with_prefix(
         "/api/v1",
-        (route().segment("hello")?) //
+        path!(/"hello") //
             .to(endpoint::any().reply(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -60,7 +59,7 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        (route().segment("hello")?) //
+        path!(/"hello") //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body)),
@@ -91,7 +90,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
     let expires_in = time::now() + Duration::days(7);
 
     let app = App::create(chain![
-        (route().segment("login")?) //
+        path!(/"login") //
             .to(endpoint::any()
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
@@ -103,7 +102,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))
                 .reply(|| "Logged in")),
-        (route().segment("logout")?) //
+        path!(/"logout") //
             .to(endpoint::any()
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
@@ -182,10 +181,9 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                     "f2"
                 })
             }),
-            route().segment("posts")?.to(endpoint::post().say("posts")),
+            path!(/"posts").to(endpoint::post().say("posts")),
             mount("/events").with(
-                route()
-                    .segment("new")?
+                path!(/"new") //
                     .to(endpoint::post().say("new_event")),
             ),
         ]),

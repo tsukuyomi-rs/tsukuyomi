@@ -7,7 +7,7 @@ fn test_catch_unwind() {
         use tsukuyomi::app::{config::prelude::*, App};
 
         let app = App::create(
-            route() //
+            path!(/) //
                 .to(endpoint::any() //
                     .reply(|| -> &'static str { panic!("explicit panic") })),
         )?;
