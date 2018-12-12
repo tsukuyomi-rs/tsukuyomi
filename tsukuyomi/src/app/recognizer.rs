@@ -104,6 +104,10 @@ impl<T> Recognizer<T> {
     pub fn get(&self, index: usize) -> Option<&T> {
         Some(self.inner.get_index(index)?.1)
     }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
 }
 
 #[derive(Clone, PartialEq)]

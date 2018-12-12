@@ -1,7 +1,7 @@
 use {
     super::{
         super::uri::{Uri, UriComponent},
-        AppConfig, AppConfigContext,
+        Config, Context,
     },
     crate::{
         core::{Chain, TryInto},
@@ -49,7 +49,7 @@ where
     }
 }
 
-impl<H, M> AppConfig<M> for Route<H>
+impl<H, M> Config<M> for Route<H>
 where
     H: Handler,
     M: ModifyHandler<H>,
@@ -58,8 +58,8 @@ where
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
-        cx.add_route(self.uri, self.handler)
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
+        cx.add_route(self.uri.as_str(), self.handler)
     }
 }
 

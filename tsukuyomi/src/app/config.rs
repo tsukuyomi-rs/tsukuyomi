@@ -5,7 +5,7 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use super::route::route;
     #[doc(no_inline)]
-    pub use super::{default_handler, mount, with_modifier, AppConfig};
+    pub use super::{default_handler, mount, with_modifier, Config};
 
     pub mod endpoint {
         #[doc(no_inline)]
@@ -22,82 +22,71 @@ use {
         App, AppInner, Resource, ResourceId, ScopeData, Uri,
     },
     crate::{
-        core::{Chain, Never, TryInto},
+        core::{Chain, Never},
         handler::{Handler, ModifyHandler},
         output::Responder,
     },
-    indexmap::IndexMap,
     std::sync::Arc,
 };
 
 /// Creates an `App` using the specified configuration.
-pub fn configure(prefix: impl AsRef<str>, config: impl AppConfig<()>) -> super::Result<App> {
-    let mut inner = AppConfigContextInner {
-        resources: IndexMap::new(),
-        scopes: Arena::new(ScopeData {
-            prefix: prefix.as_ref().parse()?,
-            fallback: None,
-        }),
-    };
+pub fn configure(prefix: impl AsRef<str>, config: impl Config<()>) -> super::Result<App> {
+    let mut recognizer = Recognizer::default();
+    let mut scopes = Arena::new(ScopeData {
+        prefix: prefix.as_ref().parse()?,
+        fallback: None,
+    });
     config
-        .configure(&mut AppConfigContext {
-            inner: &mut inner,
+        .configure(&mut Context {
+            recognizer: &mut recognizer,
+            scopes: &mut scopes,
             scope_id: NodeId::root(),
             modifier: (),
         })
         .map_err(Into::into)?;
 
-    // create a route recognizer.
-    let mut recognizer = Recognizer::default();
-    for (uri, resource) in inner.resources {
-        recognizer.insert(uri.as_str(), resource)?;
-    }
-
     Ok(App {
-        inner: Arc::new(AppInner {
-            recognizer,
-            scopes: inner.scopes,
-        }),
+        inner: Arc::new(AppInner { recognizer, scopes }),
     })
 }
 
 /// A trait representing a set of elements that will be registered into a certain scope.
-pub trait AppConfig<M> {
+pub trait Config<M> {
     type Error: Into<super::Error>;
 
     /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error>;
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error>;
 }
 
-impl<M> AppConfig<M> for () {
+impl<M> Config<M> for () {
     type Error = Never;
 
-    fn configure(self, _: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, _: &mut Context<'_, M>) -> Result<(), Self::Error> {
         Ok(())
     }
 }
 
-impl<S1, S2, M> AppConfig<M> for Chain<S1, S2>
+impl<S1, S2, M> Config<M> for Chain<S1, S2>
 where
-    S1: AppConfig<M>,
-    S2: AppConfig<M>,
+    S1: Config<M>,
+    S2: Config<M>,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
         self.left.configure(cx).map_err(Into::into)?;
         self.right.configure(cx).map_err(Into::into)?;
         Ok(())
     }
 }
 
-impl<M, S> AppConfig<M> for Option<S>
+impl<M, S> Config<M> for Option<S>
 where
-    S: AppConfig<M>,
+    S: Config<M>,
 {
     type Error = S::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
         if let Some(scope) = self {
             scope.configure(cx)?;
         }
@@ -105,54 +94,43 @@ where
     }
 }
 
-impl<M, S, E> AppConfig<M> for Result<S, E>
+impl<M, S, E> Config<M> for Result<S, E>
 where
-    S: AppConfig<M>,
+    S: Config<M>,
     E: Into<super::Error>,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
         self.map_err(Into::into)?.configure(cx).map_err(Into::into)
     }
 }
 
-#[derive(Debug)]
-struct AppConfigContextInner {
-    resources: IndexMap<Uri, Resource>,
-    scopes: Arena<ScopeData>,
-}
-
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
-pub struct AppConfigContext<'a, M> {
-    inner: &'a mut AppConfigContextInner,
+pub struct Context<'a, M> {
+    recognizer: &'a mut Recognizer<Resource>,
+    scopes: &'a mut Arena<ScopeData>,
     scope_id: NodeId,
     modifier: M,
 }
 
-impl<'a, M> AppConfigContext<'a, M> {
+impl<'a, M> Context<'a, M> {
     #[doc(hidden)]
-    pub fn add_route<H>(&mut self, uri: impl TryInto<Uri>, handler: H) -> super::Result<()>
+    pub fn add_route<H>(&mut self, uri: impl AsRef<str>, handler: H) -> super::Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
         M::Handler: Send + Sync + 'static,
         M::Output: Responder,
     {
-        let uri = uri.try_into()?;
-        let uri = self.inner.scopes[self.scope_id].data.prefix.join(&uri)?;
-        if self.inner.resources.contains_key(&uri) {
-            return Err(super::Error::from(failure::format_err!(
-                "detect the duplicated URI: {}",
-                uri
-            )));
-        }
+        let uri: Uri = uri.as_ref().parse()?;
+        let uri = self.scopes[self.scope_id].data.prefix.join(&uri)?;
 
-        let id = ResourceId(self.inner.resources.len());
-        let scope = &self.inner.scopes[self.scope_id];
-        self.inner.resources.insert(
-            uri.clone(),
+        let id = ResourceId(self.recognizer.len());
+        let scope = &self.scopes[self.scope_id];
+        self.recognizer.insert(
+            uri.as_str(),
             Resource {
                 id,
                 scope: scope.id(),
@@ -165,7 +143,7 @@ impl<'a, M> AppConfigContext<'a, M> {
                 uri: uri.clone(),
                 handler: Box::new(self.modifier.modify(handler)),
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -179,7 +157,7 @@ impl<'a, M> AppConfigContext<'a, M> {
         M::Output: Responder,
     {
         let handler = self.modifier.modify(default_handler);
-        self.inner.scopes[self.scope_id].data.fallback = Some(Box::new(handler));
+        self.scopes[self.scope_id].data.fallback = Some(Box::new(handler));
         Ok(())
     }
 
@@ -187,12 +165,12 @@ impl<'a, M> AppConfigContext<'a, M> {
     pub fn add_scope<S>(&mut self, prefix: &str, scope: S) -> super::Result<()>
     where
         M: Clone,
-        S: AppConfig<M>,
+        S: Config<M>,
     {
         let prefix: Uri = prefix.parse()?;
 
-        let scope_id = self.inner.scopes.add_node(self.scope_id, {
-            let parent = &self.inner.scopes[self.scope_id].data;
+        let scope_id = self.scopes.add_node(self.scope_id, {
+            let parent = &self.scopes[self.scope_id].data;
             ScopeData {
                 prefix: parent.prefix.join(&prefix)?,
                 fallback: None,
@@ -200,8 +178,9 @@ impl<'a, M> AppConfigContext<'a, M> {
         })?;
 
         scope
-            .configure(&mut AppConfigContext {
-                inner: &mut *self.inner,
+            .configure(&mut Context {
+                recognizer: &mut *self.recognizer,
+                scopes: &mut *self.scopes,
                 scope_id,
                 modifier: self.modifier.clone(),
             })
@@ -211,12 +190,13 @@ impl<'a, M> AppConfigContext<'a, M> {
     }
 
     #[doc(hidden)]
-    pub fn with_modifier<M2>(&mut self, outer: M2) -> AppConfigContext<'_, Chain<M, M2>>
+    pub fn with_modifier<M2>(&mut self, outer: M2) -> Context<'_, Chain<M, M2>>
     where
         M: Clone,
     {
-        AppConfigContext {
-            inner: &mut *self.inner,
+        Context {
+            recognizer: &mut *self.recognizer,
+            scopes: &mut *self.scopes,
             scope_id: self.scope_id,
             modifier: Chain::new(self.modifier.clone(), outer),
         }
@@ -231,7 +211,7 @@ pub fn default_handler<H>(default_handler: H) -> DefaultHandler<H> {
 #[derive(Debug)]
 pub struct DefaultHandler<H>(H);
 
-impl<H, M> AppConfig<M> for DefaultHandler<H>
+impl<H, M> Config<M> for DefaultHandler<H>
 where
     H: Handler,
     M: ModifyHandler<H>,
@@ -240,14 +220,14 @@ where
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
         cx.set_default_handler(self.0)
     }
 }
 
 pub fn with_modifier<M, S>(modifier: M, scope: S) -> WithModifier<M, S>
 where
-    S: AppConfig<M>,
+    S: Config<M>,
 {
     WithModifier { modifier, scope }
 }
@@ -259,14 +239,14 @@ pub struct WithModifier<M, S> {
     scope: S,
 }
 
-impl<M, S, M2> AppConfig<M2> for WithModifier<M, S>
+impl<M, S, M2> Config<M2> for WithModifier<M, S>
 where
     M2: Clone,
-    S: AppConfig<Chain<M2, M>>,
+    S: Config<Chain<M2, M>>,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M2>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, cx: &mut Context<'_, M2>) -> std::result::Result<(), Self::Error> {
         self.scope
             .configure(&mut cx.with_modifier(self.modifier))
             .map_err(Into::into)
@@ -277,7 +257,7 @@ where
 pub fn mount<P, S>(prefix: P, scope: S) -> Mount<P, S>
 where
     P: AsRef<str>,
-    S: AppConfig<()>,
+    S: Config<()>,
 {
     Mount { prefix, scope }
 }
@@ -310,15 +290,15 @@ where
     }
 }
 
-impl<P, S, M> AppConfig<M> for Mount<P, S>
+impl<P, S, M> Config<M> for Mount<P, S>
 where
     P: AsRef<str>,
-    S: AppConfig<M>,
+    S: Config<M>,
     M: Clone,
 {
     type Error = super::Error;
 
-    fn configure(self, cx: &mut AppConfigContext<'_, M>) -> Result<(), Self::Error> {
+    fn configure(self, cx: &mut Context<'_, M>) -> Result<(), Self::Error> {
         cx.add_scope(self.prefix.as_ref(), self.scope)
     }
 }

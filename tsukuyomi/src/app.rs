@@ -12,7 +12,7 @@ mod uri;
 mod tests;
 
 pub use self::{
-    config::AppConfig,
+    config::Config,
     error::{Error, Result},
     service::AppService,
 };
@@ -43,11 +43,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn configure(config: impl AppConfig<()>) -> Result<Self> {
+    pub fn configure(config: impl Config<()>) -> Result<Self> {
         Self::with_prefix("/", config)
     }
 
-    pub fn with_prefix(prefix: impl AsRef<str>, config: impl AppConfig<()>) -> Result<Self> {
+    pub fn with_prefix(prefix: impl AsRef<str>, config: impl Config<()>) -> Result<Self> {
         self::config::configure(prefix, config)
     }
 }
