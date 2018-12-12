@@ -32,7 +32,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let database_url = env::var("DATABASE_URL")?;
     let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
-    let server = App::with_prefix(
+    let server = App::create_with_prefix(
         "/api/v1/posts",
         chain![
             route() //

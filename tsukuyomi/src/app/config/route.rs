@@ -58,8 +58,8 @@ where
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
-        cx.route(self.uri.as_str(), self.handler)
+    fn configure(self, scope: &mut Scope<'_, M>) -> Result<(), Self::Error> {
+        scope.at(self.uri.as_str(), self.handler)
     }
 }
 

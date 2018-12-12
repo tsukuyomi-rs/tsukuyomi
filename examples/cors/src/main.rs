@@ -31,23 +31,20 @@ fn main() -> tsukuyomi::server::Result<()> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    App::configure(chain![
+    App::create(chain![
         default_handler(cors.clone()), // handle OPTIONS *
-        with_modifier(cors, {
-            route()
-                .segment("user")?
-                .segment("info")?
-                .to(endpoint::post().extract(extractor::body::json()).reply(
-                    |info: UserInfo| -> tsukuyomi::Result<_> {
-                        if info.password != info.confirm_password {
-                            return Err(tsukuyomi::error::bad_request(
-                                "the field confirm_password is not matched to password.",
-                            ));
-                        }
-                        Ok(info)
-                    },
-                ))
-        }),
+        (route().segment("user")?.segment("info")?)
+            .to(endpoint::post().extract(extractor::body::json()).reply(
+                |info: UserInfo| -> tsukuyomi::Result<_> {
+                    if info.password != info.confirm_password {
+                        return Err(tsukuyomi::error::bad_request(
+                            "the field confirm_password is not matched to password.",
+                        ));
+                    }
+                    Ok(info)
+                },
+            ))
+            .modify(cors), // <-- add OPTIONS /user/info
     ]) //
     .map(tsukuyomi::server::Server::new)?
     .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))

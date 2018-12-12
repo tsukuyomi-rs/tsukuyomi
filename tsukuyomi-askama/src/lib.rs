@@ -20,7 +20,7 @@
 //! }
 //!
 //! # fn main() -> tsukuyomi::app::Result<()> {
-//! App::configure(
+//! App::create(
 //!     route()
 //!         .param("name")?
 //!         .to(endpoint::get().reply(|name| Index { name }))

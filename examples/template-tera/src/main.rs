@@ -22,11 +22,11 @@ impl Template for Index {
 fn main() -> tsukuyomi::server::Result<()> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    App::configure(with_modifier(
-        WithTera::from(engine),
+    App::create(
         (route().param("name")?) //
-            .to(endpoint::any().reply(|name| Index { name })),
-    )) //
+            .to(endpoint::any().reply(|name| Index { name }))
+            .modify(WithTera::from(engine)),
+    ) //
     .map(Server::new)?
     .run()
 }

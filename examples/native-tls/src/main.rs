@@ -14,7 +14,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let acceptor = NativeTlsAcceptor::builder(cert).build()?;
     let acceptor = TlsAcceptor::from(acceptor);
 
-    App::configure(
+    App::create(
         route().to(endpoint::any() // //
             .say("Hello, Tsukuyomi.\n")),
     ) //

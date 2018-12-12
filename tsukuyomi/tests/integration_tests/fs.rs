@@ -7,7 +7,7 @@ use tsukuyomi::{
 #[test]
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
-    App::configure({
+    App::create({
         route()
             .segment("index.html")?
             .to(endpoint::get().send_file("/path/to/index.html", None))
@@ -18,5 +18,5 @@ fn compiletest() -> tsukuyomi::app::Result<()> {
 #[test]
 #[ignore]
 fn compiletest_staticfiles() -> tsukuyomi::app::Result<()> {
-    App::configure(Staticfiles::new("./public")).map(drop)
+    App::create(Staticfiles::new("./public")).map(drop)
 }

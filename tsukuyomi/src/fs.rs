@@ -522,7 +522,7 @@ where
 
             let file_type = entry.file_type()?;
             if file_type.is_file() {
-                cx.route(
+                cx.at(
                     format!("/{}", name),
                     ServeFile {
                         path,
@@ -531,7 +531,7 @@ where
                     },
                 )?;
             } else if file_type.is_dir() {
-                cx.route(
+                cx.at(
                     format!("/{}/*path", name),
                     ServeFile {
                         path,

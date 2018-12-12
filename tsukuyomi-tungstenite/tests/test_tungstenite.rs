@@ -30,7 +30,7 @@ fn test_version_sync() {
 
 #[test]
 fn test_handshake() -> tsukuyomi::test::Result<()> {
-    let app = App::configure(
+    let app = App::create(
         route().segment("ws")?.to(endpoint::get()
             .extract(ws())
             .reply(|ws: Ws| ws.finish(|_| Ok(())))),

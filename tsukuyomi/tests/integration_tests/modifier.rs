@@ -54,13 +54,14 @@ where
 fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::configure(with_modifier(
-        MockModifier {
-            marker: marker.clone(),
-            name: "M",
-        },
-        route().to(endpoint::any().say("")), //
-    ))?;
+    let app = App::create(
+        route() //
+            .to(endpoint::any().say(""))
+            .modify(MockModifier {
+                marker: marker.clone(),
+                name: "M",
+            }),
+    )?;
 
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -78,19 +79,20 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::configure(with_modifier(
-        chain![
-            MockModifier {
-                marker: marker.clone(),
-                name: "M1",
-            },
-            MockModifier {
-                marker: marker.clone(),
-                name: "M2",
-            }
-        ],
-        route().to(endpoint::any().say("")),
-    ))?;
+    let app = App::create(
+        route() //
+            .to(endpoint::any().say(""))
+            .modify(chain![
+                MockModifier {
+                    marker: marker.clone(),
+                    name: "M1",
+                },
+                MockModifier {
+                    marker: marker.clone(),
+                    name: "M2",
+                }
+            ]),
+    )?;
     let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/")?;
@@ -103,25 +105,23 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::configure(with_modifier(
-        MockModifier {
-            marker: marker.clone(),
-            name: "M1",
-        },
+    let app = App::create(
         chain![
-            mount(
-                "/path1",
-                with_modifier(
-                    MockModifier {
+            mount("/path1", {
+                route() //
+                    .to(endpoint::any().say(""))
+                    .modify(MockModifier {
                         marker: marker.clone(),
                         name: "M2",
-                    },
-                    route().to(endpoint::any().say(""))
-                )
-            ), //
+                    })
+            }), //
             route().segment("path2")?.to(endpoint::any().say("")),
-        ],
-    ))?;
+        ]
+        .modify(MockModifier {
+            marker: marker.clone(),
+            name: "M1",
+        }),
+    )?;
     let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/path1")?;
@@ -138,38 +138,31 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::configure({
-        mount(
-            "/path",
-            with_modifier(
-                MockModifier {
+    let app = App::create({
+        mount("/path", {
+            mount(
+                "/to",
+                chain![
+                    route().to(endpoint::any().say("")),
+                    mount("/a", {
+                        route() //
+                            .to(endpoint::any().say(""))
+                            .modify(MockModifier {
+                                marker: marker.clone(),
+                                name: "M3",
+                            })
+                    })
+                ]
+                .modify(MockModifier {
                     marker: marker.clone(),
-                    name: "M1",
-                },
-                mount(
-                    "/to",
-                    with_modifier(
-                        MockModifier {
-                            marker: marker.clone(),
-                            name: "M2",
-                        },
-                        chain![
-                            route().to(endpoint::any().say("")),
-                            mount(
-                                "/a",
-                                with_modifier(
-                                    MockModifier {
-                                        marker: marker.clone(),
-                                        name: "M3",
-                                    },
-                                    route().to(endpoint::any().say(""))
-                                )
-                            ) //
-                        ],
-                    ),
-                ),
-            ),
-        )
+                    name: "M2",
+                }),
+            )
+            .modify(MockModifier {
+                marker: marker.clone(),
+                name: "M1",
+            })
+        })
     })?;
     let mut server = tsukuyomi::test::server(app)?;
 

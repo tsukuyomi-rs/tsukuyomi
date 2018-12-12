@@ -11,7 +11,7 @@ use {
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {
-    let app = App::configure(())?;
+    let app = App::create(empty())?;
     let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/")?;
@@ -22,7 +22,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
-    let app = App::configure(
+    let app = App::create(
         route() //
             .segment("hello")?
             .to(endpoint::any().reply(|| "Tsukuyomi")),
@@ -44,10 +44,9 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn with_app_prefix() -> tsukuyomi::test::Result<()> {
-    let app = App::with_prefix(
+    let app = App::create_with_prefix(
         "/api/v1",
-        route() //
-            .segment("hello")?
+        (route().segment("hello")?) //
             .to(endpoint::any().reply(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -60,9 +59,8 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
-    let app = App::configure(
-        route()
-            .segment("hello")? //
+    let app = App::create(
+        (route().segment("hello")?) //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
                 .reply(|body: String| body)),
@@ -92,9 +90,9 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
     let expires_in = time::now() + Duration::days(7);
 
-    let app = App::configure(chain![
-        route().segment("login")?.to({
-            endpoint::any()
+    let app = App::create(chain![
+        (route().segment("login")?) //
+            .to(endpoint::any()
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
                         Cookie::build("session", "dummy_session_id")
@@ -104,16 +102,14 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                     );
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))
-                .reply(|| "Logged in")
-        }),
-        route().segment("logout")?.to({
-            endpoint::any()
+                .reply(|| "Logged in")),
+        (route().segment("logout")?) //
+            .to(endpoint::any()
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))
-                .reply(|| "Logged out")
-        }),
+                .reply(|| "Logged out")),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -145,7 +141,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 
 // #[test]
 // fn default_options() -> tsukuyomi::test::Result<()> {
-//     let mut server = App::configure(with_modifier(
+//     let mut server = App::create(with_modifier(
 //         tsukuyomi::handler::modifiers::DefaultOptions::default(),
 //         route()
 //             .segment("path")?
@@ -170,7 +166,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
 
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::configure(chain![
+    let app = App::create(chain![
         default_handler({
             let marker = marker.clone();
             tsukuyomi::handler::ready(move |_| {

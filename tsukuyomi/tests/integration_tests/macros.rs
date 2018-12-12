@@ -99,7 +99,7 @@ mod responder {
             }
         }
 
-        let app = App::configure({
+        let app = App::create({
             route() //
                 .to(endpoint::any().reply(|| Foo("Foo".into())))
         })?;

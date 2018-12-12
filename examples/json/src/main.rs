@@ -18,7 +18,7 @@ struct User {
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::configure(
+    App::create(
         route() //
             .to(chain![
                 endpoint::get().say(User {

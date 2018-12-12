@@ -9,14 +9,14 @@ use {
 
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let app = App::configure(chain![
+    let app = App::create(chain![
         Route::from_parts(
             "/first",
             tsukuyomi::handler::ready(|input| -> tsukuyomi::Result<_> {
                 input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
                 Ok("")
             })
-        )?,
+        ),
         Route::from_parts(
             "/second",
             tsukuyomi::handler::ready(|input| -> tsukuyomi::Result<_> {
@@ -36,7 +36,7 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
-    let app = App::configure(chain![
+    let app = App::create(chain![
         Route::from_parts(
             "/first",
             tsukuyomi::handler::ready(|input| -> tsukuyomi::Result<_> {

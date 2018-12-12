@@ -17,7 +17,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 
-    App::configure(chain![
+    App::create(chain![
         route().to(endpoint::any()
             .extract(proxy_client.clone())
             .call(|client: Client| client

@@ -16,7 +16,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         .map(Into::into)
         .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
-    App::configure(
+    App::create(
         route() //
             .to(endpoint::any() //
                 .say("Hello, Tsukuyomi!\n")),

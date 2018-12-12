@@ -9,7 +9,7 @@ use {
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::configure(
+    App::create(
         (route().segment("ws")?) //
             .to(endpoint::get().extract(ws()).reply(|ws: Ws| {
                 ws.finish(|stream| {

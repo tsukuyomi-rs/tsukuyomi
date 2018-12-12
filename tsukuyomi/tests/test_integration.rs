@@ -4,9 +4,11 @@ mod integration_tests;
 #[should_panic]
 fn test_catch_unwind() {
     fn inner() -> tsukuyomi::test::Result<()> {
-        let app = tsukuyomi::App::configure(
-            tsukuyomi::app::config::route::route() //
-                .to(tsukuyomi::app::config::endpoint::any()
+        use tsukuyomi::app::{config::prelude::*, App};
+
+        let app = App::create(
+            route() //
+                .to(endpoint::any() //
                     .reply(|| -> &'static str { panic!("explicit panic") })),
         )?;
 

@@ -4,16 +4,17 @@ use {
 };
 
 #[test]
-fn empty() -> Result<()> {
-    let app = App::configure(())?;
+fn new_empty() -> Result<()> {
+    let app = App::create(empty())?;
     assert_matches!(app.inner.route("/", &mut None), Err(..));
     Ok(())
 }
 
 #[test]
 fn route_single_method() -> Result<()> {
-    let app = App::configure(
-        route().to(endpoint::any().say("")), //
+    let app = App::create(
+        route() //
+            .to(endpoint::any().say("")),
     )?;
 
     assert_matches!(
@@ -33,7 +34,7 @@ fn route_single_method() -> Result<()> {
 
 #[test]
 fn route_multiple_method() -> Result<()> {
-    let app = App::configure(
+    let app = App::create(
         route() //
             .to(endpoint::allow_only("GET, POST")?.say("")),
     )?;
@@ -57,7 +58,7 @@ fn route_multiple_method() -> Result<()> {
 
 #[test]
 fn scope_simple() -> Result<()> {
-    let app = App::configure(chain![
+    let app = App::create(chain![
         mount(
             "/",
             chain![
@@ -95,7 +96,7 @@ fn scope_simple() -> Result<()> {
 
 #[test]
 fn scope_nested() -> Result<()> {
-    let app = App::configure(chain![
+    let app = App::create(chain![
         mount(
             "/",
             chain![
@@ -153,7 +154,7 @@ fn scope_nested() -> Result<()> {
 
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
-    let app = App::configure(chain![
+    let app = App::create(chain![
         route().segment("path")?.to(endpoint::get().reply(|| "")),
         route()
             .segment("path")?
@@ -165,7 +166,7 @@ fn failcase_duplicate_uri() -> Result<()> {
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
-    let app = App::configure(chain![
+    let app = App::create(chain![
         route() //
             .segment("path")?
             .to(endpoint::any().reply(|| ""),),

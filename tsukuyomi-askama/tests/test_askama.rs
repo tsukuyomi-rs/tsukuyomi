@@ -22,7 +22,7 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let app = App::configure(
+    let app = App::create(
         route() //
             .to(endpoint::get() //
                 .reply(|| Index { name: "Alice" })),
@@ -45,12 +45,12 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
         name: &'static str,
     }
 
-    let app = App::configure(with_modifier(
-        tsukuyomi_askama::Renderer::default(),
+    let app = App::create(
         route() //
             .to(endpoint::get() //
-                .reply(|| Index { name: "Alice" })),
-    ))?;
+                .reply(|| Index { name: "Alice" }))
+            .modify(tsukuyomi_askama::Renderer::default()),
+    )?;
     let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/")?;

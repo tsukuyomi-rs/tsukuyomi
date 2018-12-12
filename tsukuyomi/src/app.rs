@@ -43,11 +43,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn configure(config: impl Config<()>) -> Result<Self> {
-        Self::with_prefix("/", config)
+    /// Creates a new `App` from the provided configuration.
+    pub fn create(config: impl Config<()>) -> Result<Self> {
+        Self::create_with_prefix("/", config)
     }
 
-    pub fn with_prefix(prefix: impl AsRef<str>, config: impl Config<()>) -> Result<Self> {
+    /// Creates a new `App` from the provided configuration and the prefix.
+    pub fn create_with_prefix(prefix: impl AsRef<str>, config: impl Config<()>) -> Result<Self> {
         self::config::configure(prefix, config)
     }
 }
