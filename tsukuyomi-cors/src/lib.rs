@@ -226,59 +226,49 @@ impl CORS {
     }
 }
 
-mod impl_handler_for_cors {
+mod impl_endpoint_for_cors {
     use {
         super::CORS,
-        futures::Poll,
         http::{Method, Response, StatusCode},
         tsukuyomi::{
+            endpoint::{Endpoint, EndpointAction},
             error::Error,
-            handler::{AllowedMethods, Handle, Handler},
+            handler::AllowedMethods,
             input::Input,
         },
     };
 
-    #[derive(Debug)]
-    pub struct CORSHandle(Option<Result<Response<()>, Error>>);
-
-    impl Handle for CORSHandle {
+    impl EndpointAction<()> for CORS {
         type Output = Response<()>;
         type Error = Error;
+        type Future = futures::future::FutureResult<Self::Output, Self::Error>;
 
-        fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
-            self.0
-                .take()
-                .expect("the future has already polled")
-                .map(Into::into)
-        }
-    }
-
-    /// The implementation of `Handler` for processing the CORS request.
-    ///
-    /// This fallback adds the processing for CORS preflight request for all URLs
-    /// registered in the scope. If the route explicitly handles `OPTIONS`, it will be
-    /// ignored.
-    impl Handler for CORS {
-        type Output = Response<()>;
-        type Handle = CORSHandle;
-
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            None
-        }
-
-        fn call(&self, input: &mut Input<'_>) -> Self::Handle {
-            if input.request.uri().path() != "*" || input.request.method() != Method::OPTIONS {
-                return CORSHandle(Some(Err(StatusCode::NOT_FOUND.into())));
-            }
-
+        fn call(self, input: &mut Input<'_>, _: ()) -> Self::Future {
             match self.inner.validate_origin(input.request) {
-                Ok(Some(origin)) => CORSHandle(Some(
+                Ok(Some(origin)) => futures::future::result(
                     self.inner
                         .process_preflight_request(input.request, origin)
                         .map_err(Into::into),
-                )),
-                Ok(None) => CORSHandle(Some(Err(StatusCode::NOT_FOUND.into()))),
-                Err(err) => CORSHandle(Some(Err(err.into()))),
+                ),
+                Ok(None) => futures::future::err(StatusCode::NOT_FOUND.into()),
+                Err(err) => futures::future::err(err.into()),
+            }
+        }
+    }
+
+    impl Endpoint<()> for CORS {
+        type Output = Response<()>;
+        type Action = Self;
+
+        fn allowed_methods(&self) -> Option<AllowedMethods> {
+            Some(AllowedMethods::from(Method::OPTIONS))
+        }
+
+        fn apply(&self, method: &Method) -> Option<Self::Action> {
+            if method == Method::OPTIONS {
+                Some(self.clone())
+            } else {
+                None
             }
         }
     }

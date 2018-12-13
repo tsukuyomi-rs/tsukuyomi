@@ -22,7 +22,7 @@ use {
 
 #[derive(Debug)]
 pub struct Route<H> {
-    uri: Uri,
+    uri: Option<Uri>,
     handler: H,
 }
 
@@ -30,10 +30,14 @@ impl<H> Route<H>
 where
     H: Handler,
 {
-    pub fn from_parts(uri: impl TryInto<Uri>, handler: H) -> crate::app::Result<Self> {
+    pub fn new(handler: H) -> Self {
+        Self { uri: None, handler }
+    }
+
+    pub fn uri(self, uri: impl TryInto<Uri>) -> crate::app::Result<Self> {
         Ok(Self {
-            uri: uri.try_into()?,
-            handler,
+            uri: Some(uri.try_into()?),
+            ..self
         })
     }
 }
@@ -48,7 +52,7 @@ where
     type Error = crate::app::Error;
 
     fn configure(self, scope: &mut Scope<'_, M>) -> Result<(), Self::Error> {
-        scope.at(self.uri.as_str(), self.handler)
+        scope.at(self.uri.as_ref().map(|uri| uri.as_str()), self.handler)
     }
 }
 
@@ -269,20 +273,28 @@ where
 #[macro_export]
 macro_rules! path {
     (/) => ( $crate::app::config::route::Path::root() );
+    (*) => ( $crate::app::config::route::Path::asterisk() );
     ($(/ $s:tt)+) => ( $crate::app::config::route::Path::create($crate::chain!($($s),*)).unwrap() );
     ($(/ $s:tt)+ /) => ( $crate::app::config::route::Path::create($crate::chain!($($s),*, $crate::app::config::route::slash())).unwrap() );
 }
 
 #[derive(Debug)]
 pub struct Path<E: Extractor = ()> {
-    uri: Uri,
+    uri: Option<Uri>,
     extractor: E,
 }
 
 impl Path<()> {
     pub fn root() -> Self {
         Self {
-            uri: Uri::root(),
+            uri: Some(Uri::root()),
+            extractor: (),
+        }
+    }
+
+    pub fn asterisk() -> Self {
+        Self {
+            uri: None,
             extractor: (),
         }
     }
@@ -302,7 +314,10 @@ impl Path<()> {
             uri.push(component)?;
         }
 
-        Ok(Path { uri, extractor })
+        Ok(Path {
+            uri: Some(uri),
+            extractor,
+        })
     }
 }
 

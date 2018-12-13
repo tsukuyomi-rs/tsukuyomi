@@ -32,7 +32,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         .build();
 
     App::create(chain![
-        default_handler(cors.clone()), // handle OPTIONS *
+        path!(*).to(cors.clone()), // handle OPTIONS *
         path!(/"user"/"info") //
             .to(endpoint::post() //
                 .extract(extractor::body::json())
@@ -44,7 +44,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     }
                     Ok(info)
                 },))
-            .modify(cors), // <-- add OPTIONS /user/info
+            .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
     ]) //
     .map(tsukuyomi::server::Server::new)?
     .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))

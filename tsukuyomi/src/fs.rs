@@ -523,7 +523,7 @@ where
             let file_type = entry.file_type()?;
             if file_type.is_file() {
                 cx.at(
-                    format!("/{}", name),
+                    Some(&format!("/{}", name)),
                     ServeFile {
                         path,
                         config: config.clone(),
@@ -532,7 +532,7 @@ where
                 )?;
             } else if file_type.is_dir() {
                 cx.at(
-                    format!("/{}/*path", name),
+                    Some(&format!("/{}/*path", name)),
                     ServeFile {
                         path,
                         config: config.clone(),

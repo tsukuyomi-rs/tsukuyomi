@@ -1,32 +1,63 @@
-use tsukuyomi::{
-    app::config::prelude::*, //
-    chain,
-    server::Server,
-    App,
+use {
+    std::path::PathBuf,
+    tsukuyomi::{
+        app::config::prelude::*, //
+        chain,
+        server::Server,
+        App,
+    },
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
     App::create(chain![
+        // a route that matches the root path.
         path!(/) //
-            .to(endpoint::any().say("Hello, world\n")),
+            .to({
+                // an endpoint that matches *all* methods with the root path.
+                endpoint::any() //
+                    .say("Hello, world\n") // replies by cloning a `Responder`.
+            }),
+        // a sub-scope with the prefix `/api/v1/`.
         mount("/api/v1/").with(chain![
+            // scopes can be nested.
             mount("/posts").with(chain![
+                // a route with the path `/api/v1/posts`.
                 path!(/) //
                     .to(chain![
-                        endpoint::get().say("list_posts"),
-                        endpoint::post().say("add_post"),
+                        // A route can take multiple endpoints by using the `chain!()`.
+                        //
+                        // If there are multiple endpoint matching the same method, the one specified earlier will be chosen.
+                        endpoint::get().say("list_posts"), // <-- GET /api/v1/posts
+                        endpoint::post().say("add_post"),  // <-- POST /api/v1/posts
+                        endpoint::any().say("other methods"), // <-- {PUT, DELETE, ...} /api/v1/posts
                     ]),
-                path!(/ {path::param("id")}) //
-                    .to(endpoint::any().reply(|id: i32| format!("get_post(id = {})", id))),
+                // A route that captures a parameter from the path.
+                path!(/{path::param("id")}) //
+                    .to({
+                        endpoint::any() //
+                            .reply(|id: i32| {
+                                // returns a `Responder`.
+                                format!("get_post(id = {})", id)
+                            })
+                    }),
             ]),
             mount("/user").with({
-                path!(/ "auth") //
+                path!(/"auth") //
                     .to(endpoint::any().say("Authentication"))
             }),
         ]),
+        // a route that captures a *catch-all* parameter.
         path!(/"static"/{path::catch_all("path")}) //
-            .to(endpoint::get()
-                .reply(|path: std::path::PathBuf| format!("path = {}\n", path.display()))),
+            .to({
+                endpoint::get() //
+                    .call(|path: PathBuf| {
+                        // returns a `Future` which will return a `Responder`.
+                        tsukuyomi::fs::NamedFile::open(path)
+                    })
+            }),
+        // A route that matches any path.
+        path!(*) //
+            .to(endpoint::any().say("default route"))
     ])
     .map(Server::new)?
     .run()

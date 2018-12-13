@@ -195,7 +195,7 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(chain![
-        default_handler(cors.clone()), // OPTIONS *
+        path!(*).to(cors.clone()), // OPTIONS *
         path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
@@ -224,7 +224,7 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let app = App::create(chain![
-        default_handler(cors.clone()), // OPTIONS *
+        path!(*).to(cors.clone()), // OPTIONS *
         path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
@@ -258,7 +258,7 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(chain![
-        default_handler(cors.clone()), // OPTIONS *
+        path!(*).to(cors.clone()), // OPTIONS *
         path!(/)
             .to(endpoint::get() //
                 .reply(|| "hello"))
@@ -294,7 +294,7 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(chain![
-        default_handler(cors.clone()), // OPTIONS *
+        path!(*).to(cors.clone()), // OPTIONS *
         path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
@@ -336,7 +336,7 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(chain![
-        default_handler(cors.clone()),
+        path!(*).to(cors.clone()),
         path!(/) //
             .to(endpoint::get() //
                 .reply(|| "hello"))
@@ -370,7 +370,7 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
             .modify(cors.clone()),
         path!(/"nocors") //
             .to(endpoint::get().reply(|| "nocors")),
-        default_handler(cors),
+        path!(*).to(cors),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 

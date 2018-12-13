@@ -166,22 +166,27 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(chain![
-        default_handler({
-            let marker = marker.clone();
-            tsukuyomi::handler::ready(move |_| {
-                marker.lock().unwrap().push("F1");
-                "f1"
-            })
-        }),
+        path!(*) //
+            .to(endpoint::any() //
+                .reply({
+                    let marker = marker.clone();
+                    move || {
+                        marker.lock().unwrap().push("F1");
+                        "f1"
+                    }
+                })),
         mount("/api/v1/").with(chain![
-            default_handler({
-                let marker = marker.clone();
-                tsukuyomi::handler::ready(move |_| {
-                    marker.lock().unwrap().push("F2");
-                    "f2"
-                })
-            }),
-            path!(/"posts").to(endpoint::post().say("posts")),
+            path!(*) //
+                .to(endpoint::any() //
+                    .reply({
+                        let marker = marker.clone();
+                        move || {
+                            marker.lock().unwrap().push("F2");
+                            "f2"
+                        }
+                    })),
+            path!(/"posts") //
+                .to(endpoint::post().say("posts")),
             mount("/events").with(
                 path!(/"new") //
                     .to(endpoint::post().say("new_event")),

@@ -92,6 +92,18 @@ where
     }
 }
 
+pub fn allow_any<T, R>(
+    f: impl Fn(&mut Input<'_>, T) -> R + Clone + Send + 'static,
+) -> impl Endpoint<T, Output = R::Item>
+where
+    T: 'static,
+    R: IntoFuture + 'static,
+    R::Future: Send + 'static,
+    R::Error: Into<Error>,
+{
+    endpoint(move |_| Some(action(f.clone())), None)
+}
+
 impl<E, T> Endpoint<T> for std::rc::Rc<E>
 where
     E: Endpoint<T>,

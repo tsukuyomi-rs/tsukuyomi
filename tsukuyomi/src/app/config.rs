@@ -3,7 +3,7 @@ pub mod route;
 
 pub mod prelude {
     #[doc(no_inline)]
-    pub use super::{default_handler, empty, mount, Config, ConfigExt};
+    pub use super::{empty, mount, Config, ConfigExt};
 
     #[doc(no_inline)]
     pub use crate::path;
@@ -66,34 +66,38 @@ pub struct Scope<'a, M> {
 
 impl<'a, M> Scope<'a, M> {
     /// Appends a `Handler` with the specified URI onto the current scope.
-    pub fn at<H>(&mut self, uri: impl AsRef<str>, handler: H) -> super::Result<()>
+    pub fn at<H>(&mut self, uri: Option<&str>, handler: H) -> super::Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
         M::Handler: Send + Sync + 'static,
         M::Output: Responder,
     {
-        let uri: Uri = uri.as_ref().parse()?;
-        let uri = self.scopes[self.scope_id].data.prefix.join(&uri)?;
+        if let Some(uri) = uri {
+            let uri: Uri = uri.parse()?;
+            let uri = self.scopes[self.scope_id].data.prefix.join(&uri)?;
 
-        let id = ResourceId(self.recognizer.len());
-        let scope = &self.scopes[self.scope_id];
-        self.recognizer.insert(
-            uri.as_str(),
-            Resource {
-                id,
-                scope: scope.id(),
-                ancestors: scope
-                    .ancestors()
-                    .into_iter()
-                    .cloned()
-                    .chain(Some(scope.id()))
-                    .collect(),
-                uri: uri.clone(),
-                handler: Box::new(self.modifier.modify(handler)),
-            },
-        )?;
-
+            let id = ResourceId(self.recognizer.len());
+            let scope = &self.scopes[self.scope_id];
+            self.recognizer.insert(
+                uri.as_str(),
+                Resource {
+                    id,
+                    scope: scope.id(),
+                    ancestors: scope
+                        .ancestors()
+                        .into_iter()
+                        .cloned()
+                        .chain(Some(scope.id()))
+                        .collect(),
+                    uri: uri.clone(),
+                    handler: Box::new(self.modifier.modify(handler)),
+                },
+            )?;
+        } else {
+            self.scopes[self.scope_id].data.fallback =
+                Some(Box::new(self.modifier.modify(handler)));
+        }
         Ok(())
     }
 
@@ -135,20 +139,6 @@ impl<'a, M> Scope<'a, M> {
                 modifier: &Chain::new(self.modifier, modifier),
             })
             .map_err(Into::into)
-    }
-
-    /// Registers a `Handler` at the current scope that will be called when the incoming
-    /// request does not match any route.
-    pub fn default_handler<H>(&mut self, default_handler: H) -> super::Result<()>
-    where
-        H: Handler,
-        M: ModifyHandler<H>,
-        M::Handler: Send + Sync + 'static,
-        M::Output: Responder,
-    {
-        let handler = self.modifier.modify(default_handler);
-        self.scopes[self.scope_id].data.fallback = Some(Box::new(handler));
-        Ok(())
     }
 }
 
@@ -224,28 +214,6 @@ impl<M> Config<M> for Empty {
 
     fn configure(self, _: &mut Scope<'_, M>) -> Result<(), Self::Error> {
         Ok(())
-    }
-}
-
-/// Creates a `Config` that registers a default handler onto the scope.
-pub fn default_handler<H>(default_handler: H) -> DefaultHandler<H> {
-    DefaultHandler(default_handler)
-}
-
-#[derive(Debug)]
-pub struct DefaultHandler<H>(H);
-
-impl<H, M> Config<M> for DefaultHandler<H>
-where
-    H: Handler,
-    M: ModifyHandler<H>,
-    M::Handler: Send + Sync + 'static,
-    M::Output: Responder,
-{
-    type Error = super::Error;
-
-    fn configure(self, cx: &mut Scope<'_, M>) -> Result<(), Self::Error> {
-        cx.default_handler(self.0)
     }
 }
 
@@ -329,10 +297,6 @@ pub trait ConfigExt: Sized {
         P: AsRef<str>,
     {
         self.with(mount(prefix).with(config))
-    }
-
-    fn default_handler<H>(self, default_handler: H) -> Chain<Self, DefaultHandler<H>> {
-        self.with(DefaultHandler(default_handler))
     }
 }
 
