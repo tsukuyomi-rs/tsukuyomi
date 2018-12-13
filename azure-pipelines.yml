@@ -1,7 +1,7 @@
 resources:
   containers:
     - container: tarpaulin
-      image: xd009642/tarpaulin:latest-nightly
+      image: xd009642/tarpaulin:develop-nightly
       options: --security-opt seccomp=unconfined
 
 jobs:
