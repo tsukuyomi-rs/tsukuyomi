@@ -309,7 +309,7 @@ mod impl_modify_handler_for_cors {
             CORSHandler {
                 handler,
                 allowed_methods,
-                cors_filter: self.clone(),
+                cors: self.clone(),
             }
         }
     }
@@ -318,36 +318,13 @@ mod impl_modify_handler_for_cors {
     pub struct CORSHandler<H> {
         handler: H,
         allowed_methods: Option<AllowedMethods>,
-        cors_filter: CORS,
-    }
-
-    #[derive(Debug)]
-    pub enum CORSHandle<H: Handle> {
-        Ready(Option<Result<Output, Error>>),
-        Simple(H),
-    }
-
-    impl<H: Handle> Handle for CORSHandle<H> {
-        type Output = Either<Output, H::Output>;
-        type Error = Error;
-
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
-            match self {
-                CORSHandle::Ready(ref mut result) => result
-                    .take()
-                    .expect("the future has already polled")
-                    .map(|output| Async::Ready(Either::Left(output))),
-                CORSHandle::Simple(ref mut handle) => handle
-                    .poll_ready(input)
-                    .map(|x| x.map(Either::Right))
-                    .map_err(Into::into),
-            }
-        }
+        cors: CORS,
     }
 
     #[allow(clippy::type_complexity)]
     impl<H: Handler> Handler for CORSHandler<H> {
         type Output = Either<Output, H::Output>;
+        type Error = Error;
         type Handle = CORSHandle<H::Handle>;
 
         fn allowed_methods(&self) -> Option<&AllowedMethods> {
@@ -355,12 +332,37 @@ mod impl_modify_handler_for_cors {
         }
 
         #[inline]
-        fn call(&self, input: &mut Input<'_>) -> Self::Handle {
-            match self.cors_filter.inner.process_request(input) {
-                Ok(Some(output)) => CORSHandle::Ready(Some(Ok(output))),
-                Ok(None) => CORSHandle::Simple(self.handler.call(input)),
-                Err(err) => CORSHandle::Ready(Some(Err(err.into()))),
+        fn handle(&self) -> Self::Handle {
+            CORSHandle {
+                applied: false,
+                cors: self.cors.clone(),
+                handle: self.handler.handle(),
             }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct CORSHandle<H: Handle> {
+        applied: bool,
+        cors: CORS,
+        handle: H,
+    }
+
+    impl<H: Handle> Handle for CORSHandle<H> {
+        type Output = Either<Output, H::Output>;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            if !self.applied {
+                self.applied = true;
+                if let Some(output) = self.cors.inner.process_request(input)? {
+                    return Ok(Async::Ready(Either::Left(output)));
+                }
+            }
+            self.handle
+                .poll_ready(input)
+                .map(|x| x.map(Either::Right))
+                .map_err(Into::into)
         }
     }
 }

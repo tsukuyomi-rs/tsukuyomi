@@ -200,15 +200,16 @@ where
 /// A trait representing the handler associated with the specified endpoint.
 pub trait Handler {
     type Output;
-    type Handle: Handle<Output = Self::Output> + Send + 'static;
+    type Error: Into<Error>;
+    type Handle: Handle<Output = Self::Output, Error = Self::Error> + Send + 'static;
 
     /// Returns a list of HTTP methods that this handler accepts.
     ///
     /// If it returns a `None`, it means that the handler accepts *all* methods.
     fn allowed_methods(&self) -> Option<&AllowedMethods>;
 
-    /// Creates an `AsyncResult` which handles the incoming request.
-    fn call(&self, input: &mut Input<'_>) -> Self::Handle;
+    /// Creates a `Handle` which handles the incoming request.
+    fn handle(&self) -> Self::Handle;
 }
 
 impl<H> Handler for Arc<H>
@@ -216,6 +217,7 @@ where
     H: Handler,
 {
     type Output = H::Output;
+    type Error = H::Error;
     type Handle = H::Handle;
 
     #[inline]
@@ -224,13 +226,13 @@ where
     }
 
     #[inline]
-    fn call(&self, input: &mut Input<'_>) -> Self::Handle {
-        (**self).call(input)
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
     }
 }
 
 pub fn handler<H>(
-    call: impl Fn(&mut Input<'_>) -> H,
+    handle_fn: impl Fn() -> H,
     allowed_methods: Option<AllowedMethods>,
 ) -> impl Handler<Output = H::Output>
 where
@@ -238,16 +240,17 @@ where
 {
     #[allow(missing_debug_implementations)]
     struct HandlerFn<F> {
-        call: F,
+        handle_fn: F,
         allowed_methods: Option<AllowedMethods>,
     }
 
     impl<F, H> Handler for HandlerFn<F>
     where
-        F: Fn(&mut Input<'_>) -> H,
+        F: Fn() -> H,
         H: Handle + Send + 'static,
     {
         type Output = H::Output;
+        type Error = H::Error;
         type Handle = H;
 
         #[inline]
@@ -256,29 +259,24 @@ where
         }
 
         #[inline]
-        fn call(&self, input: &mut Input<'_>) -> Self::Handle {
-            (self.call)(input)
+        fn handle(&self) -> Self::Handle {
+            (self.handle_fn)()
         }
     }
 
     HandlerFn {
-        call,
+        handle_fn,
         allowed_methods,
     }
 }
 
-pub fn ready<T>(f: impl Fn(&mut Input<'_>) -> T) -> impl Handler<Output = T>
-where
-    T: Send + 'static,
-{
+pub fn ready<T: 'static>(
+    f: impl Fn(&mut Input<'_>) -> T + Clone + Send + 'static,
+) -> impl Handler<Output = T> {
     handler(
-        move |input| {
-            let mut x = Some(f(input));
-            self::handle(move |_| {
-                Ok::<_, Never>(Async::Ready(
-                    x.take().expect("the future has already polled"),
-                ))
-            })
+        move || {
+            let f = f.clone();
+            self::handle(move |input| Ok::<_, Never>(Async::Ready(f(input))))
         },
         None,
     )
@@ -290,7 +288,7 @@ pub(crate) type HandleTask = dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + 
 
 pub(crate) trait BoxedHandler {
     fn allowed_methods(&self) -> Option<&AllowedMethods>;
-    fn call(&self, input: &mut Input<'_>) -> Box<HandleTask>;
+    fn call(&self) -> Box<HandleTask>;
 }
 
 impl fmt::Debug for dyn BoxedHandler + Send + Sync + 'static {
@@ -308,8 +306,8 @@ where
         Handler::allowed_methods(self)
     }
 
-    fn call(&self, input: &mut Input<'_>) -> Box<HandleTask> {
-        let mut handle = Handler::call(self, input);
+    fn call(&self) -> Box<HandleTask> {
+        let mut handle = Handler::handle(self);
         Box::new(move |input| {
             let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
             crate::output::internal::respond_to(x, input).map(Async::Ready)

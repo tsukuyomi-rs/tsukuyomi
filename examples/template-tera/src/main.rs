@@ -88,15 +88,16 @@ mod support_tera {
         H::Output: Template,
     {
         type Output = Response<String>;
+        type Error = Error;
         type Handle = WithTeraHandle<H::Handle>;
 
         fn allowed_methods(&self) -> Option<&AllowedMethods> {
             self.inner.allowed_methods()
         }
 
-        fn call(&self, input: &mut Input<'_>) -> Self::Handle {
+        fn handle(&self) -> Self::Handle {
             WithTeraHandle {
-                inner: self.inner.call(input),
+                inner: self.inner.handle(),
                 engine: self.engine.clone(),
             }
         }

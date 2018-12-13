@@ -38,15 +38,16 @@ where
     H: Handler,
 {
     type Output = H::Output;
+    type Error = H::Error;
     type Handle = H::Handle;
 
     fn allowed_methods(&self) -> Option<&AllowedMethods> {
         self.inner.allowed_methods()
     }
 
-    fn call(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
+    fn handle(&self) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
-        self.inner.call(input)
+        self.inner.handle()
     }
 }
 

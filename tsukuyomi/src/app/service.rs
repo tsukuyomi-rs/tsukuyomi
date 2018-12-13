@@ -130,10 +130,10 @@ impl AppFuture {
         } {
             Ok(resource) => {
                 self.resource_id = Some(resource.id);
-                Ok(resource.handler.call(input!(self)))
+                Ok(resource.handler.call())
             }
             Err(scope) => match self.inner.find_fallback(scope.id()) {
-                Some(fallback) => Ok(fallback.call(input!(self))),
+                Some(fallback) => Ok(fallback.call()),
                 None => Err(http::StatusCode::NOT_FOUND.into()),
             },
         }

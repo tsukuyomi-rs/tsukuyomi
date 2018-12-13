@@ -115,14 +115,15 @@ where
     H::Output: Template,
 {
     type Output = Rendered<H::Output>;
+    type Error = H::Error;
     type Handle = RenderedHandle<H::Handle>;
 
     fn allowed_methods(&self) -> Option<&AllowedMethods> {
         self.inner.allowed_methods()
     }
 
-    fn call(&self, input: &mut Input<'_>) -> Self::Handle {
-        RenderedHandle(self.inner.call(input))
+    fn handle(&self) -> Self::Handle {
+        RenderedHandle(self.inner.handle())
     }
 }
 

@@ -17,7 +17,7 @@ use {
     },
     futures01::Future,
     http::StatusCode,
-    std::marker::PhantomData,
+    std::{marker::PhantomData, sync::Arc},
 };
 
 #[derive(Debug)]
@@ -341,34 +341,34 @@ where
     /// Finalize the configuration in this route and creates the instance of `Route`.
     pub fn to<T>(self, endpoint: T) -> Route<impl Handler<Output = T::Output>>
     where
-        T: Endpoint<E::Output>,
-        T::Action: Send + 'static,
-        T::Output: 'static,
+        E: Send + Sync + 'static,
+        T: Endpoint<E::Output> + Send + Sync + 'static,
     {
         let Self { uri, extractor, .. } = self;
         let allowed_methods = endpoint.allowed_methods();
 
+        let extractor = Arc::new(extractor);
+        let endpoint = Arc::new(endpoint);
+
         let handler = crate::handler::handler(
-            move |input| {
+            move || {
                 #[allow(missing_debug_implementations)]
                 enum State<F1, F2, T> {
-                    Err(Option<crate::error::Error>),
+                    Init,
                     First(F1, T),
                     Second(F2),
                 }
 
-                let mut state = {
-                    match endpoint.apply(input.request.method()) {
-                        Some(endpoint) => State::First(extractor.extract(input), Some(endpoint)),
-                        None => State::Err(Some(StatusCode::METHOD_NOT_ALLOWED.into())),
-                    }
-                };
+                let extractor = extractor.clone();
+                let endpoint = endpoint.clone();
+                let mut state = State::Init;
 
                 crate::handler::handle(move |input| loop {
                     state = match state {
-                        State::Err(ref mut err) => {
-                            return Err(err.take().expect("the future has already polled"))
-                        }
+                        State::Init => match endpoint.apply(input.request.method()) {
+                            Some(action) => State::First(extractor.extract(input), Some(action)),
+                            None => return Err(StatusCode::METHOD_NOT_ALLOWED.into()),
+                        },
                         State::First(ref mut future, ref mut action) => {
                             let args = futures01::try_ready!(future.poll().map_err(Into::into));
                             let future = action.take().unwrap().call(input, args);

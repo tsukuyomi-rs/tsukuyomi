@@ -208,9 +208,12 @@ fn urlencoded_body() -> tsukuyomi::test::Result<()> {
 
 #[test]
 fn local_data() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::{
-        handler::{AllowedMethods, Handler, ModifyHandler},
-        input::localmap::local_key,
+    use {
+        futures01::Poll,
+        tsukuyomi::{
+            handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+            input::{localmap::local_key, Input},
+        },
     };
 
     #[derive(Clone)]
@@ -238,15 +241,35 @@ fn local_data() -> tsukuyomi::test::Result<()> {
 
     impl<H: Handler> Handler for InsertMyDataHandler<H> {
         type Output = H::Output;
-        type Handle = H::Handle;
+        type Error = H::Error;
+        type Handle = InsertMyDataHandle<H::Handle>;
 
         fn allowed_methods(&self) -> Option<&AllowedMethods> {
             self.0.allowed_methods()
         }
 
-        fn call(&self, input: &mut tsukuyomi::Input<'_>) -> Self::Handle {
-            input.locals.insert(&MyData::KEY, MyData("dummy".into()));
-            self.0.call(input)
+        fn handle(&self) -> Self::Handle {
+            InsertMyDataHandle {
+                handle: self.0.handle(),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    struct InsertMyDataHandle<H> {
+        handle: H,
+    }
+
+    impl<H: Handle> Handle for InsertMyDataHandle<H> {
+        type Output = H::Output;
+        type Error = H::Error;
+
+        fn poll_ready(&mut self, input: &mut Input) -> Poll<Self::Output, Self::Error> {
+            input
+                .locals
+                .entry(&MyData::KEY)
+                .or_insert_with(|| MyData("dummy".into()));
+            self.handle.poll_ready(input)
         }
     }
 

@@ -3,7 +3,7 @@
 use {
     crate::{
         error::Error,
-        handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+        handler::ModifyHandler,
         input::Input,
         output::{Responder, ResponseBody},
         rt::poll_blocking,
@@ -141,9 +141,7 @@ impl NamedFile {
     where
         P: AsRef<Path>,
     {
-        OpenFuture {
-            inner: OpenFutureInner::Opening(path, None),
-        }
+        OpenFuture { path, config: None }
     }
 
     /// Open a specified file with the provided configuration.
@@ -152,7 +150,8 @@ impl NamedFile {
         P: AsRef<Path>,
     {
         OpenFuture {
-            inner: OpenFutureInner::Opening(path, Some(config)),
+            path,
+            config: Some(config),
         }
     }
 
@@ -251,13 +250,8 @@ impl Responder for NamedFile {
 /// A future waiting for opening the file.
 #[derive(Debug)]
 pub struct OpenFuture<P> {
-    inner: OpenFutureInner<P>,
-}
-
-#[derive(Debug)]
-enum OpenFutureInner<P> {
-    Opening(P, Option<OpenConfig>),
-    Err(Option<crate::Error>),
+    path: P,
+    config: Option<OpenConfig>,
 }
 
 impl<P> Future for OpenFuture<P>
@@ -268,44 +262,24 @@ where
     type Error = crate::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.inner {
-            OpenFutureInner::Opening(ref path, ref mut config) => {
-                let (file, meta) = futures01::try_ready!(blocking_io(|| {
-                    let file = File::open(path)?;
-                    let meta = file.metadata()?;
-                    Ok((file, meta))
-                }));
+        let (file, meta) = futures01::try_ready!(blocking_io(|| {
+            let file = File::open(&self.path)?;
+            let meta = file.metadata()?;
+            Ok((file, meta))
+        }));
 
-                let config = config.take().unwrap_or_default();
+        let config = self.config.take().unwrap_or_default();
 
-                let last_modified = FileTime::from_last_modification_time(&meta);
-                let etag = ETag::from_metadata(&meta);
+        let last_modified = FileTime::from_last_modification_time(&meta);
+        let etag = ETag::from_metadata(&meta);
 
-                Ok(Async::Ready(NamedFile {
-                    file,
-                    meta,
-                    last_modified,
-                    etag,
-                    config,
-                }))
-            }
-            OpenFutureInner::Err(ref mut err) => {
-                Err(err.take().expect("the future has already polled"))
-            }
-        }
-    }
-}
-
-impl<P> Handle for OpenFuture<P>
-where
-    P: AsRef<Path>,
-{
-    type Output = NamedFile;
-    type Error = crate::Error;
-
-    #[inline]
-    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
-        self.poll()
+        Ok(Async::Ready(NamedFile {
+            file,
+            meta,
+            last_modified,
+            etag,
+            config,
+        }))
     }
 }
 
@@ -431,38 +405,77 @@ impl Deref for ArcPath {
 
 #[derive(Debug)]
 pub struct ServeFile {
+    inner: Arc<ServeFileInner>,
+}
+
+#[derive(Debug)]
+struct ServeFileInner {
     path: ArcPath,
     config: Option<OpenConfig>,
     extract_path: bool,
 }
 
-impl Handler for ServeFile {
-    type Output = NamedFile;
-    type Handle = OpenFuture<ArcPath>;
+mod impl_handler_for_serve_file {
+    use {
+        super::{ArcPath, NamedFile, OpenFuture, ServeFile, ServeFileInner},
+        crate::{
+            error::Error,
+            handler::{AllowedMethods, Handle, Handler},
+            input::Input,
+        },
+        futures01::{Future, Poll},
+        std::sync::Arc,
+    };
 
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        Some(&AllowedMethods::get())
+    impl Handler for ServeFile {
+        type Output = NamedFile;
+        type Error = Error;
+        type Handle = HandleServeFile;
+
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            Some(&AllowedMethods::get())
+        }
+
+        fn handle(&self) -> Self::Handle {
+            HandleServeFile {
+                inner: self.inner.clone(),
+                in_flight: None,
+            }
+        }
     }
 
-    fn call(&self, input: &mut Input<'_>) -> Self::Handle {
-        let path = if self.extract_path {
-            match input.params.as_ref().and_then(|params| params.catch_all()) {
-                Some(ref path) => self.path.join(path).into(),
-                None => {
-                    return OpenFuture {
-                        inner: OpenFutureInner::Err(Some(crate::error::internal_server_error(
-                            "missing params",
-                        ))),
-                    }
-                }
-            }
-        } else {
-            self.path.clone()
-        };
+    #[derive(Debug)]
+    pub struct HandleServeFile {
+        inner: Arc<ServeFileInner>,
+        in_flight: Option<OpenFuture<ArcPath>>,
+    }
 
-        match self.config {
-            Some(ref config) => NamedFile::open_with_config(path, config.clone()),
-            None => NamedFile::open(path),
+    impl Handle for HandleServeFile {
+        type Output = NamedFile;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            loop {
+                if let Some(ref mut in_flight) = self.in_flight {
+                    return in_flight.poll();
+                }
+
+                let path = if self.inner.extract_path {
+                    let path = input
+                        .params
+                        .as_ref()
+                        .and_then(|params| params.catch_all())
+                        .ok_or_else(|| crate::error::internal_server_error("missing params"))?;
+                    self.inner.path.join(path).into()
+                } else {
+                    self.inner.path.clone()
+                };
+
+                self.in_flight = Some(match self.inner.config {
+                    Some(ref config) => NamedFile::open_with_config(path, config.clone()),
+                    None => NamedFile::open(path),
+                });
+            }
         }
     }
 }
@@ -525,18 +538,22 @@ where
                 cx.at(
                     Some(&format!("/{}", name)),
                     ServeFile {
-                        path,
-                        config: config.clone(),
-                        extract_path: false,
+                        inner: Arc::new(ServeFileInner {
+                            path,
+                            config: config.clone(),
+                            extract_path: false,
+                        }),
                     },
                 )?;
             } else if file_type.is_dir() {
                 cx.at(
                     Some(&format!("/{}/*path", name)),
                     ServeFile {
-                        path,
-                        config: config.clone(),
-                        extract_path: true,
+                        inner: Arc::new(ServeFileInner {
+                            path,
+                            config: config.clone(),
+                            extract_path: false,
+                        }),
                     },
                 )?;
             } else {
