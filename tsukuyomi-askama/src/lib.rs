@@ -8,13 +8,13 @@
 //! use askama::Template;
 //! use tsukuyomi::{
 //!     app::config::prelude::*,
-//!     output::Responder,
+//!     output::IntoResponse,
 //!     App,
 //! };
 //!
-//! #[derive(Template, Responder)]
+//! #[derive(Template, IntoResponse)]
 //! #[template(source = "Hello, {{name}}!", ext = "html")]
-//! #[responder(respond_to = "tsukuyomi_askama::respond_to")]
+//! #[response(with = "tsukuyomi_askama::into_response")]
 //! struct Index {
 //!     name: String,
 //! }
@@ -22,7 +22,7 @@
 //! # fn main() -> tsukuyomi::app::Result<()> {
 //! App::create(
 //!     path!(/ {path::param("name")})
-//!         .to(endpoint::get().reply(|name| Index { name }))
+//!         .to(endpoint::get().call(|name| Index { name }))
 //! )
 //! #   .map(drop)
 //! # }
