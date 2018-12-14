@@ -1,7 +1,7 @@
 resources:
   containers:
-    - container: tarpaulin
-      image: xd009642/tarpaulin:develop-nightly
+    - container: tsukuyomi
+      image: ubntintrepid/tsukuyomi:latest
       options: --security-opt seccomp=unconfined
 
 jobs:
@@ -113,16 +113,21 @@ jobs:
       env:
         GH_TOKEN: $(myGitHubToken)
 
-  - job: linux_tarpaulin
-    displayName: Linux (cargo tarpaulin)
+  - job: linux_coverage
+    displayName: Linux (coverage test)
     pool:
       vmImage: 'ubuntu-16.04'
-    container: tarpaulin
+    container: tsukuyomi
     steps:
     - script: |
         git submodule update --init --depth=1
       displayName: 'sync local registry'
+    - script: |
+        cargo --version
+        rustc --version
+        kcov --version
+      displayName: show tool versions
     - script: bash .ci/run_coverage_test.sh
-      displayName: 'Run tarpaulin'
+      displayName: 'run coverage test'
       env:
         CODECOV_TOKEN: $(myCodecovToken)
