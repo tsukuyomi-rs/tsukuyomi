@@ -39,14 +39,14 @@ fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
         None => return Ok(None),
     };
 
-    let mut respond_to = None;
+    let mut into_response = None;
     for nm_item in meta_list.nested {
         if let syn::NestedMeta::Meta(ref item) = nm_item {
             if let syn::Meta::NameValue(ref pair) = item {
                 match pair.ident.to_string().as_ref() {
                     "with" => {
                         if let syn::Lit::Str(ref lit) = pair.lit {
-                            respond_to = lit.parse().map(Some).unwrap();
+                            into_response = lit.parse().map(Some).unwrap();
                         } else {
                             return Err(parse_error_at(&pair.lit, "the literal must be string"));
                         }
@@ -57,7 +57,7 @@ fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
         }
     }
 
-    Ok(respond_to)
+    Ok(into_response)
 }
 
 pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
@@ -244,7 +244,7 @@ macro_rules! t {
 t! {
     name: test_unit_struct,
     source: { struct A; },
-    body: { tsukuyomi::output::internal::respond_to((), input) },
+    body: { tsukuyomi::output::internal::into_response((), input) },
 }
 
 t! {
@@ -254,7 +254,7 @@ t! {
     },
     body: {
         match self {
-            A(__arg_0) => tsukuyomi::output::internal::respond_to(__arg_0, input),
+            A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, input),
         }
     },
 }
@@ -265,7 +265,7 @@ t! {
         struct A();
     },
     body: {
-        tsukuyomi::output::internal::respond_to((), input)
+        tsukuyomi::output::internal::into_response((), input)
     },
 }
 
@@ -278,7 +278,7 @@ t! {
     },
     body: {
         match self {
-            A { b: __arg_0, } => tsukuyomi::output::internal::respond_to(__arg_0, input),
+            A { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, input),
         }
     },
 }
@@ -289,7 +289,7 @@ t! {
         struct A {}
     },
     body: {
-        tsukuyomi::output::internal::respond_to((), input)
+        tsukuyomi::output::internal::into_response((), input)
     },
 }
 
@@ -306,11 +306,11 @@ t! {
     },
     body: {
         match self {
-            Either::A(__arg_0) => tsukuyomi::output::internal::respond_to(__arg_0, input),
-            Either::B { b: __arg_0, } => tsukuyomi::output::internal::respond_to(__arg_0, input),
-            Either::C => tsukuyomi::output::internal::respond_to((), input),
-            Either::D() => tsukuyomi::output::internal::respond_to((), input),
-            Either::E {} => tsukuyomi::output::internal::respond_to((), input),
+            Either::A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, input),
+            Either::B { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, input),
+            Either::C => tsukuyomi::output::internal::into_response((), input),
+            Either::D() => tsukuyomi::output::internal::into_response((), input),
+            Either::E {} => tsukuyomi::output::internal::into_response((), input),
         }
     },
 }
@@ -318,14 +318,14 @@ t! {
 t! {
     name: test_explicit_struct,
     source: {
-        #[responder(respond_to = "my::respond_to")]
+        #[response(with = "my::into_response")]
         struct A {
             x: X,
             y: Y,
         }
     },
     body: {
-        my::respond_to(self, input)
+        my::into_response(self, input)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)
     },
