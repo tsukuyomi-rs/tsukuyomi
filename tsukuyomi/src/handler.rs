@@ -8,7 +8,7 @@ use {
         output::{Output, Responder},
     },
     either::Either,
-    futures01::{Async, Poll},
+    futures01::{Async, Future, Poll},
     http::{header::HeaderValue, HttpTryFrom, Method},
     indexmap::{indexset, IndexSet},
     lazy_static::lazy_static,
@@ -307,10 +307,25 @@ where
     }
 
     fn call(&self) -> Box<HandleTask> {
-        let mut handle = Handler::handle(self);
-        Box::new(move |input| {
-            let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-            crate::output::internal::respond_to(x, input).map(Async::Ready)
+        enum State<A, B> {
+            First(A),
+            Second(B),
+        }
+
+        let mut state: State<H::Handle, <H::Output as Responder>::Future> =
+            State::First(self.handle());
+
+        Box::new(move |input| loop {
+            state = match state {
+                State::First(ref mut handle) => {
+                    let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
+                    State::Second(x.respond_to(input))
+                }
+                State::Second(ref mut respond) => {
+                    let response = futures01::try_ready!(respond.poll().map_err(Into::into));
+                    return Ok(Async::Ready(response.map(Into::into)));
+                }
+            };
         })
     }
 }

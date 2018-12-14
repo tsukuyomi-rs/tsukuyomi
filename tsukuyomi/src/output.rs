@@ -1,6 +1,7 @@
 //! Components for constructing HTTP responses.
 
-pub use tsukuyomi_macros::Responder;
+//pub use tsukuyomi_macros::Responder;
+
 use {
     crate::{
         core::Never,
@@ -8,33 +9,35 @@ use {
         input::{body::RequestBody, Input},
     },
     bytes::{Buf, Bytes, IntoBuf},
-    either::Either,
-    futures01::{Poll, Stream},
+    futures01::{
+        future::{self, FutureResult},
+        Future, IntoFuture, Poll, Stream,
+    },
     http::{header::HeaderMap, Response, StatusCode},
     hyper::body::{Body, Payload},
     serde::Serialize,
 };
 
 // not a public API.
-#[doc(hidden)]
-pub mod internal {
-    use crate::{
-        error::Error,
-        input::Input,
-        output::{Responder, ResponseBody},
-    };
-    pub use http::Response;
+// #[doc(hidden)]
+// pub mod internal {
+//     use crate::{
+//         error::Error,
+//         input::Input,
+//         output::{Responder, ResponseBody},
+//     };
+//     pub use http::Response;
 
-    #[inline]
-    pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
-    where
-        T: Responder,
-    {
-        Responder::respond_to(t, input)
-            .map(|resp| resp.map(Into::into))
-            .map_err(Into::into)
-    }
-}
+//     #[inline]
+//     pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
+//     where
+//         T: Responder,
+//     {
+//         Responder::respond_to(t, input)
+//             .map(|resp| resp.map(Into::into))
+//             .map_err(Into::into)
+//     }
+// }
 
 /// A type representing the message body in an HTTP response.
 #[derive(Debug, Default)]
@@ -152,28 +155,68 @@ pub trait Responder {
     /// The error type which will be returned from `respond_to`.
     type Error: Into<Error>;
 
+    /// The type of `Future` which will be returned from `respond_to`.
+    type Future: Future<Item = Response<Self::Body>, Error = Self::Error> + Send + 'static;
+
     /// Converts `self` to an HTTP response.
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error>;
+    fn respond_to(self, input: &mut Input<'_>) -> Self::Future;
 }
 
-impl<L, R> Responder for Either<L, R>
-where
-    L: Responder,
-    R: Responder,
-{
-    type Body = ResponseBody;
-    type Error = Error;
+mod impl_responder_for_either {
+    use {
+        super::{Responder, ResponseBody},
+        crate::{error::Error, input::Input},
+        either::Either,
+        futures01::{Future, Poll},
+        http::Response,
+    };
 
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        match self {
-            Either::Left(l) => l
-                .respond_to(input)
-                .map(|res| res.map(Into::into))
-                .map_err(Into::into),
-            Either::Right(r) => r
-                .respond_to(input)
-                .map(|res| res.map(Into::into))
-                .map_err(Into::into),
+    impl<L, R> Responder for Either<L, R>
+    where
+        L: Responder,
+        R: Responder,
+    {
+        type Body = ResponseBody;
+        type Error = Error;
+        type Future = EitherFuture<L::Future, R::Future>;
+
+        fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+            match self {
+                Either::Left(l) => EitherFuture::Left(l.respond_to(input)),
+                Either::Right(r) => EitherFuture::Right(r.respond_to(input)),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub enum EitherFuture<L, R> {
+        Left(L),
+        Right(R),
+    }
+
+    impl<L, R, A, B> Future for EitherFuture<L, R>
+    where
+        L: Future<Item = Response<A>>,
+        R: Future<Item = Response<B>>,
+        L::Error: Into<Error>,
+        R::Error: Into<Error>,
+        A: Into<ResponseBody>,
+        B: Into<ResponseBody>,
+    {
+        type Item = Response<ResponseBody>;
+        type Error = Error;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            match self {
+                EitherFuture::Left(l) => l
+                    .poll()
+                    .map(|x| x.map(|res| res.map(Into::into)))
+                    .map_err(Into::into),
+                EitherFuture::Right(r) => r
+                    .poll()
+                    .map(|x| x.map(|res| res.map(Into::into)))
+                    .map_err(Into::into),
+            }
         }
     }
 }
@@ -181,84 +224,154 @@ where
 impl Responder for () {
     type Body = ();
     type Error = Never;
+    type Future = FutureResult<Response<Self::Body>, Self::Error>;
 
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
         let mut response = Response::new(());
         *response.status_mut() = StatusCode::NO_CONTENT;
-        Ok(response)
+        future::ok(response)
     }
 }
 
-impl<T> Responder for Option<T>
-where
-    T: Responder,
-{
-    type Body = ResponseBody;
-    type Error = Error;
+mod impl_responder_for_option {
+    use {
+        super::{Responder, ResponseBody},
+        crate::{error::Error, input::Input},
+        futures01::{Future, Poll},
+        http::Response,
+    };
 
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self.ok_or_else(|| crate::error::not_found("None"))?
-            .respond_to(input)
-            .map(|response| response.map(Into::into))
-            .map_err(Into::into)
+    impl<T> Responder for Option<T>
+    where
+        T: Responder,
+    {
+        type Body = ResponseBody;
+        type Error = Error;
+        type Future = OptionFuture<T::Future>;
+
+        fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+            OptionFuture(self.map(|x| x.respond_to(input)))
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct OptionFuture<T>(Option<T>);
+
+    impl<T, Bd> Future for OptionFuture<T>
+    where
+        T: Future<Item = Response<Bd>>,
+        T::Error: Into<Error>,
+        Bd: Into<ResponseBody>,
+    {
+        type Item = Response<ResponseBody>;
+        type Error = Error;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            match self.0 {
+                Some(ref mut respond) => respond
+                    .poll()
+                    .map(|x| x.map(|res| res.map(Into::into)))
+                    .map_err(Into::into),
+                None => Err(crate::error::not_found("None")),
+            }
+        }
     }
 }
 
-impl<T, E> Responder for Result<T, E>
-where
-    T: Responder,
-    Error: From<E>,
-{
-    type Body = ResponseBody;
-    type Error = Error;
+mod impl_responder_for_result {
+    use {
+        super::{Responder, ResponseBody},
+        crate::{error::Error, input::Input},
+        futures01::{Future, Poll},
+        http::Response,
+    };
 
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self?
-            .respond_to(input)
-            .map(|response| response.map(Into::into))
-            .map_err(Into::into)
+    impl<T, E> Responder for Result<T, E>
+    where
+        T: Responder,
+        E: Into<Error> + Send + 'static,
+    {
+        type Body = ResponseBody;
+        type Error = Error;
+        type Future = ResultFuture<T::Future, E>;
+
+        fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+            ResultFuture {
+                inner: self.map(|x| x.respond_to(input)).map_err(Some),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct ResultFuture<T, E> {
+        inner: Result<T, Option<E>>,
+    }
+
+    impl<T, Bd, E> Future for ResultFuture<T, E>
+    where
+        T: Future<Item = Response<Bd>>,
+        T::Error: Into<Error>,
+        Bd: Into<ResponseBody>,
+        E: Into<Error> + Send + 'static,
+    {
+        type Item = Response<ResponseBody>;
+        type Error = Error;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            match self.inner {
+                Ok(ref mut respond) => respond
+                    .poll()
+                    .map(|x| x.map(|res| res.map(Into::into)))
+                    .map_err(Into::into),
+                Err(ref mut err) => Err(err.take().expect("the future has already polled").into()),
+            }
+        }
     }
 }
 
 impl<T> Responder for Response<T>
 where
-    T: Into<ResponseBody>,
+    T: Into<ResponseBody> + Send + 'static,
 {
     type Body = T;
     type Error = Never;
+    type Future = FutureResult<Response<Self::Body>, Self::Error>;
 
     #[inline]
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self)
+    fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
+        future::ok(self)
     }
 }
 
 impl Responder for &'static str {
     type Body = Self;
     type Error = Never;
+    type Future = FutureResult<Response<Self::Body>, Self::Error>;
 
     #[inline]
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::responder::plain(self, input)
+    fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+        future::result(self::responder::plain(self, input))
     }
 }
 
 impl Responder for String {
     type Body = Self;
     type Error = Never;
+    type Future = FutureResult<Response<Self::Body>, Self::Error>;
 
     #[inline]
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::responder::plain(self, input)
+    fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+        future::result(self::responder::plain(self, input))
     }
 }
 
 impl Responder for serde_json::Value {
     type Body = String;
     type Error = Never;
+    type Future = FutureResult<Response<Self::Body>, Self::Error>;
 
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self::responder::make_response(
+    fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
+        future::ok(self::responder::make_response(
             self.to_string(),
             "application/json",
         ))
@@ -266,27 +379,32 @@ impl Responder for serde_json::Value {
 }
 
 /// Creates an instance of `Responder` from the specified function.
-pub fn responder<F, T, E>(f: F) -> impl Responder
+pub fn responder<F, R, T, E>(f: F) -> impl Responder
 where
-    F: FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+    F: FnOnce(&mut Input<'_>) -> R,
+    R: IntoFuture<Item = Response<T>, Error = E>,
+    R::Future: Send + 'static,
     T: Into<ResponseBody>,
     E: Into<Error>,
 {
     #[allow(missing_debug_implementations)]
     pub struct ResponderFn<F>(F);
 
-    impl<F, T, E> Responder for ResponderFn<F>
+    impl<F, R, T, E> Responder for ResponderFn<F>
     where
-        F: FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+        F: FnOnce(&mut Input<'_>) -> R,
+        R: IntoFuture<Item = Response<T>, Error = E>,
+        R::Future: Send + 'static,
         T: Into<ResponseBody>,
         E: Into<Error>,
     {
         type Body = T;
         type Error = E;
+        type Future = R::Future;
 
         #[inline]
-        fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-            (self.0)(input)
+        fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+            (self.0)(input).into_future()
         }
     }
 
@@ -315,7 +433,7 @@ where
 #[inline]
 pub fn html<T>(body: T) -> impl Responder
 where
-    T: Into<ResponseBody>,
+    T: Into<ResponseBody> + Send + 'static,
 {
     self::responder(move |input| self::responder::html(body, input))
 }
@@ -349,14 +467,17 @@ pub mod redirect {
     impl Responder for Redirect {
         type Body = ();
         type Error = Never;
+        type Future = futures01::future::FutureResult<Response<Self::Body>, Self::Error>;
 
         #[inline]
-        fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(Response::builder()
-                .status(self.status)
-                .header("location", &*self.location)
-                .body(())
-                .expect("should be a valid response"))
+        fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
+            futures01::future::ok(
+                Response::builder()
+                    .status(self.status)
+                    .header("location", &*self.location)
+                    .body(())
+                    .expect("should be a valid response"),
+            )
         }
     }
 

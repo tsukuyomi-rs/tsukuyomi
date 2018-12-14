@@ -212,13 +212,8 @@ impl NamedFile {
         ));
         time::strftime("%c", &tm)
     }
-}
 
-impl Responder for NamedFile {
-    type Body = ResponseBody;
-    type Error = Error;
-
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond_inner(self, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error> {
         trace!("NamedFile::respond_to");
 
         if !self.is_modified(input.request.headers())? {
@@ -242,6 +237,16 @@ impl Responder for NamedFile {
             .header(header::ETAG, &*self.etag.to_string())
             .body(ResponseBody::wrap_stream(stream))
             .unwrap())
+    }
+}
+
+impl Responder for NamedFile {
+    type Body = ResponseBody;
+    type Error = Error;
+    type Future = futures01::future::FutureResult<Response<Self::Body>, Self::Error>;
+
+    fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+        futures01::future::result(self.respond_inner(input))
     }
 }
 
