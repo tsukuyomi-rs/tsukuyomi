@@ -1,6 +1,6 @@
 //! Components for constructing HTTP responses.
 
-//pub use tsukuyomi_macros::Responder;
+pub use tsukuyomi_macros::IntoResponse;
 
 use {
     crate::{
@@ -18,26 +18,26 @@ use {
     serde::Serialize,
 };
 
-// not a public API.
-// #[doc(hidden)]
-// pub mod internal {
-//     use crate::{
-//         error::Error,
-//         input::Input,
-//         output::{Responder, ResponseBody},
-//     };
-//     pub use http::Response;
+// the private API for custom derive.
+#[doc(hidden)]
+pub mod internal {
+    use crate::{
+        error::Error,
+        input::Input,
+        output::{IntoResponse, ResponseBody},
+    };
+    pub use http::Response;
 
-//     #[inline]
-//     pub fn respond_to<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
-//     where
-//         T: Responder,
-//     {
-//         Responder::respond_to(t, input)
-//             .map(|resp| resp.map(Into::into))
-//             .map_err(Into::into)
-//     }
-// }
+    #[inline]
+    pub fn into_response<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
+    where
+        T: IntoResponse,
+    {
+        IntoResponse::into_response(t, input)
+            .map(|resp| resp.map(Into::into))
+            .map_err(Into::into)
+    }
+}
 
 /// A type representing the message body in an HTTP response.
 #[derive(Debug, Default)]
@@ -125,27 +125,280 @@ impl Payload for ResponseBody {
     }
 }
 
-#[cfg(feature = "tower-middleware")]
-mod tower {
-    use {super::*, tower_web::util::BufStream};
+/// The type representing outputs returned from handlers.
+pub type Output = ::http::Response<ResponseBody>;
 
-    impl BufStream for ResponseBody {
-        type Item = hyper::Chunk;
-        type Error = hyper::Error;
+pub trait IntoResponse {
+    type Body: Into<ResponseBody>;
+    type Error: Into<Error>;
 
-        #[inline]
-        fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-            BufStream::poll(&mut self.0)
-        }
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error>;
+}
 
-        fn size_hint(&self) -> tower_web::util::buf_stream::SizeHint {
-            self.0.size_hint()
-        }
+impl IntoResponse for () {
+    type Body = ();
+    type Error = Never;
+
+    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        let mut response = Response::new(());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        Ok(response)
     }
 }
 
-/// The type representing outputs returned from handlers.
-pub type Output = ::http::Response<ResponseBody>;
+impl<T> IntoResponse for Option<T>
+where
+    T: IntoResponse,
+{
+    type Body = ResponseBody;
+    type Error = Error;
+
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        let x = self.ok_or_else(|| crate::error::not_found("None"))?;
+        x.into_response(input)
+            .map(|response| response.map(Into::into))
+            .map_err(Into::into)
+    }
+}
+
+impl<T, E> IntoResponse for Result<T, E>
+where
+    T: IntoResponse,
+    E: Into<Error>,
+{
+    type Body = ResponseBody;
+    type Error = Error;
+
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        self.map_err(Into::into)?
+            .into_response(input)
+            .map(|res| res.map(Into::into))
+            .map_err(Into::into)
+    }
+}
+
+impl<T> IntoResponse for Response<T>
+where
+    T: Into<ResponseBody>,
+{
+    type Body = T;
+    type Error = Never;
+
+    #[inline]
+    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        Ok(self)
+    }
+}
+
+impl IntoResponse for &'static str {
+    type Body = Self;
+    type Error = Never;
+
+    #[inline]
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response::plain(self, input)
+    }
+}
+
+impl IntoResponse for String {
+    type Body = Self;
+    type Error = Never;
+
+    #[inline]
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response::plain(self, input)
+    }
+}
+
+impl IntoResponse for serde_json::Value {
+    type Body = String;
+    type Error = Never;
+
+    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        Ok(self::into_response::make_response(
+            self.to_string(),
+            "application/json",
+        ))
+    }
+}
+
+/// A function to create a `IntoResponse` using the specified function.
+pub fn into_response<T, E>(
+    f: impl FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+) -> impl IntoResponse<
+    Body = T, //
+    Error = E,
+>
+where
+    T: Into<ResponseBody>,
+    E: Into<Error>,
+{
+    #[allow(missing_debug_implementations)]
+    pub struct IntoResponseFn<F>(F);
+
+    impl<F, T, E> IntoResponse for IntoResponseFn<F>
+    where
+        F: FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+        T: Into<ResponseBody>,
+        E: Into<Error>,
+    {
+        type Body = T;
+        type Error = E;
+
+        #[inline]
+        fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+            (self.0)(input)
+        }
+    }
+
+    IntoResponseFn(f)
+}
+
+/// Creates a JSON responder from the specified data.
+#[inline]
+pub fn json<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
+where
+    T: Serialize,
+{
+    self::into_response(move |input| self::into_response::json(data, input))
+}
+
+/// Creates a JSON responder with pretty output from the specified data.
+#[inline]
+pub fn json_pretty<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
+where
+    T: Serialize,
+{
+    self::into_response(move |input| self::into_response::json_pretty(data, input))
+}
+
+/// Creates an HTML responder with the specified response body.
+#[inline]
+pub fn html<T>(body: T) -> impl IntoResponse<Body = T, Error = Never>
+where
+    T: Into<ResponseBody>,
+{
+    self::into_response(move |input| self::into_response::html(body, input))
+}
+
+#[allow(missing_docs)]
+pub mod into_response {
+    use {
+        super::ResponseBody,
+        crate::{core::Never, error::Error, input::Input},
+        http::Response,
+        serde::Serialize,
+    };
+
+    #[inline]
+    pub fn json<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec(&data)
+            .map(|body| self::make_response(body, "application/json"))
+            .map_err(crate::error::internal_server_error)
+    }
+
+    #[inline]
+    pub fn json_pretty<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
+    where
+        T: Serialize,
+    {
+        serde_json::to_vec_pretty(&data)
+            .map(|body| self::make_response(body, "application/json"))
+            .map_err(crate::error::internal_server_error)
+    }
+
+    #[inline]
+    pub fn html<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
+    where
+        T: Into<ResponseBody>,
+    {
+        Ok(self::make_response(body, "text/html"))
+    }
+
+    #[inline]
+    pub fn plain<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
+    where
+        T: Into<ResponseBody>,
+    {
+        Ok(self::make_response(body, "text/plain; charset=utf-8"))
+    }
+
+    pub(super) fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
+        let mut response = Response::new(body);
+        response.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::header::HeaderValue::from_static(content_type),
+        );
+        response
+    }
+}
+
+#[allow(missing_docs)]
+pub mod redirect {
+    use {
+        super::*,
+        http::{Response, StatusCode},
+        std::borrow::Cow,
+    };
+
+    #[derive(Debug, Clone)]
+    pub struct Redirect {
+        status: StatusCode,
+        location: Cow<'static, str>,
+    }
+
+    impl Redirect {
+        pub fn new<T>(status: StatusCode, location: T) -> Self
+        where
+            T: Into<Cow<'static, str>>,
+        {
+            Self {
+                status,
+                location: location.into(),
+            }
+        }
+    }
+
+    impl IntoResponse for Redirect {
+        type Body = ();
+        type Error = Never;
+
+        #[inline]
+        fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+            Ok(Response::builder()
+                .status(self.status)
+                .header("location", &*self.location)
+                .body(())
+                .expect("should be a valid response"))
+        }
+    }
+
+    macro_rules! define_funcs {
+        ($( $name:ident => $STATUS:ident, )*) => {$(
+            #[inline]
+            pub fn $name<T>(location: T) -> Redirect
+            where
+                T: Into<Cow<'static, str>>,
+            {
+                Redirect::new(StatusCode::$STATUS, location)
+            }
+        )*};
+    }
+
+    define_funcs! {
+        moved_permanently => MOVED_PERMANENTLY,
+        found => FOUND,
+        see_other => SEE_OTHER,
+        temporary_redirect => TEMPORARY_REDIRECT,
+        permanent_redirect => PERMANENT_REDIRECT,
+        to => MOVED_PERMANENTLY,
+    }
+}
+
+// ==== Responder ====
 
 /// A trait representing the conversion to an HTTP response.
 pub trait Responder {
@@ -160,6 +413,23 @@ pub trait Responder {
 
     /// Converts `self` to an HTTP response.
     fn respond_to(self, input: &mut Input<'_>) -> Self::Future;
+}
+
+/// a branket impl of `Responder` for `IntoResponse`s.
+impl<T> Responder for T
+where
+    T: IntoResponse,
+    T::Body: Send + 'static,
+    T::Error: Send + 'static,
+{
+    type Body = T::Body;
+    type Error = T::Error;
+    type Future = FutureResult<Response<Self::Body>, Self::Error>;
+
+    #[inline]
+    fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
+        future::result(self.into_response(input))
+    }
 }
 
 mod impl_responder_for_either {
@@ -221,167 +491,15 @@ mod impl_responder_for_either {
     }
 }
 
-impl Responder for () {
-    type Body = ();
-    type Error = Never;
-    type Future = FutureResult<Response<Self::Body>, Self::Error>;
-
-    fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
-        let mut response = Response::new(());
-        *response.status_mut() = StatusCode::NO_CONTENT;
-        future::ok(response)
-    }
-}
-
-mod impl_responder_for_option {
-    use {
-        super::{Responder, ResponseBody},
-        crate::{error::Error, input::Input},
-        futures01::{Future, Poll},
-        http::Response,
-    };
-
-    impl<T> Responder for Option<T>
-    where
-        T: Responder,
-    {
-        type Body = ResponseBody;
-        type Error = Error;
-        type Future = OptionFuture<T::Future>;
-
-        fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
-            OptionFuture(self.map(|x| x.respond_to(input)))
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub struct OptionFuture<T>(Option<T>);
-
-    impl<T, Bd> Future for OptionFuture<T>
-    where
-        T: Future<Item = Response<Bd>>,
-        T::Error: Into<Error>,
-        Bd: Into<ResponseBody>,
-    {
-        type Item = Response<ResponseBody>;
-        type Error = Error;
-
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            match self.0 {
-                Some(ref mut respond) => respond
-                    .poll()
-                    .map(|x| x.map(|res| res.map(Into::into)))
-                    .map_err(Into::into),
-                None => Err(crate::error::not_found("None")),
-            }
-        }
-    }
-}
-
-mod impl_responder_for_result {
-    use {
-        super::{Responder, ResponseBody},
-        crate::{error::Error, input::Input},
-        futures01::{Future, Poll},
-        http::Response,
-    };
-
-    impl<T, E> Responder for Result<T, E>
-    where
-        T: Responder,
-        E: Into<Error> + Send + 'static,
-    {
-        type Body = ResponseBody;
-        type Error = Error;
-        type Future = ResultFuture<T::Future, E>;
-
-        fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
-            ResultFuture {
-                inner: self.map(|x| x.respond_to(input)).map_err(Some),
-            }
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub struct ResultFuture<T, E> {
-        inner: Result<T, Option<E>>,
-    }
-
-    impl<T, Bd, E> Future for ResultFuture<T, E>
-    where
-        T: Future<Item = Response<Bd>>,
-        T::Error: Into<Error>,
-        Bd: Into<ResponseBody>,
-        E: Into<Error> + Send + 'static,
-    {
-        type Item = Response<ResponseBody>;
-        type Error = Error;
-
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            match self.inner {
-                Ok(ref mut respond) => respond
-                    .poll()
-                    .map(|x| x.map(|res| res.map(Into::into)))
-                    .map_err(Into::into),
-                Err(ref mut err) => Err(err.take().expect("the future has already polled").into()),
-            }
-        }
-    }
-}
-
-impl<T> Responder for Response<T>
+/// A function to create a `Responder` using the specified function.
+pub fn respond<R, T, E>(
+    f: impl FnOnce(&mut Input<'_>) -> R,
+) -> impl Responder<
+    Body = T, //
+    Error = E,
+    Future = R::Future,
+>
 where
-    T: Into<ResponseBody> + Send + 'static,
-{
-    type Body = T;
-    type Error = Never;
-    type Future = FutureResult<Response<Self::Body>, Self::Error>;
-
-    #[inline]
-    fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
-        future::ok(self)
-    }
-}
-
-impl Responder for &'static str {
-    type Body = Self;
-    type Error = Never;
-    type Future = FutureResult<Response<Self::Body>, Self::Error>;
-
-    #[inline]
-    fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
-        future::result(self::responder::plain(self, input))
-    }
-}
-
-impl Responder for String {
-    type Body = Self;
-    type Error = Never;
-    type Future = FutureResult<Response<Self::Body>, Self::Error>;
-
-    #[inline]
-    fn respond_to(self, input: &mut Input<'_>) -> Self::Future {
-        future::result(self::responder::plain(self, input))
-    }
-}
-
-impl Responder for serde_json::Value {
-    type Body = String;
-    type Error = Never;
-    type Future = FutureResult<Response<Self::Body>, Self::Error>;
-
-    fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
-        future::ok(self::responder::make_response(
-            self.to_string(),
-            "application/json",
-        ))
-    }
-}
-
-/// Creates an instance of `Responder` from the specified function.
-pub fn responder<F, R, T, E>(f: F) -> impl Responder
-where
-    F: FnOnce(&mut Input<'_>) -> R,
     R: IntoFuture<Item = Response<T>, Error = E>,
     R::Future: Send + 'static,
     T: Into<ResponseBody>,
@@ -409,151 +527,4 @@ where
     }
 
     ResponderFn(f)
-}
-
-/// Creates a JSON responder from the specified data.
-#[inline]
-pub fn json<T>(data: T) -> impl Responder
-where
-    T: Serialize,
-{
-    self::responder(move |input| self::responder::json(data, input))
-}
-
-/// Creates a JSON responder with pretty output from the specified data.
-#[inline]
-pub fn json_pretty<T>(data: T) -> impl Responder
-where
-    T: Serialize,
-{
-    self::responder(move |input| self::responder::json_pretty(data, input))
-}
-
-/// Creates an HTML responder with the specified response body.
-#[inline]
-pub fn html<T>(body: T) -> impl Responder
-where
-    T: Into<ResponseBody> + Send + 'static,
-{
-    self::responder(move |input| self::responder::html(body, input))
-}
-
-#[allow(missing_docs)]
-pub mod redirect {
-    use {
-        super::*,
-        http::{Response, StatusCode},
-        std::borrow::Cow,
-    };
-
-    #[derive(Debug, Clone)]
-    pub struct Redirect {
-        status: StatusCode,
-        location: Cow<'static, str>,
-    }
-
-    impl Redirect {
-        pub fn new<T>(status: StatusCode, location: T) -> Self
-        where
-            T: Into<Cow<'static, str>>,
-        {
-            Self {
-                status,
-                location: location.into(),
-            }
-        }
-    }
-
-    impl Responder for Redirect {
-        type Body = ();
-        type Error = Never;
-        type Future = futures01::future::FutureResult<Response<Self::Body>, Self::Error>;
-
-        #[inline]
-        fn respond_to(self, _: &mut Input<'_>) -> Self::Future {
-            futures01::future::ok(
-                Response::builder()
-                    .status(self.status)
-                    .header("location", &*self.location)
-                    .body(())
-                    .expect("should be a valid response"),
-            )
-        }
-    }
-
-    macro_rules! define_funcs {
-        ($( $name:ident => $STATUS:ident, )*) => {$(
-            #[inline]
-            pub fn $name<T>(location: T) -> Redirect
-            where
-                T: Into<Cow<'static, str>>,
-            {
-                Redirect::new(StatusCode::$STATUS, location)
-            }
-        )*};
-    }
-
-    define_funcs! {
-        moved_permanently => MOVED_PERMANENTLY,
-        found => FOUND,
-        see_other => SEE_OTHER,
-        temporary_redirect => TEMPORARY_REDIRECT,
-        permanent_redirect => PERMANENT_REDIRECT,
-        to => MOVED_PERMANENTLY,
-    }
-}
-
-#[allow(missing_docs)]
-pub mod responder {
-    use {
-        super::ResponseBody,
-        crate::{core::Never, error::Error, input::Input},
-        http::Response,
-        serde::Serialize,
-    };
-
-    #[inline]
-    pub fn json<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
-    where
-        T: Serialize,
-    {
-        serde_json::to_vec(&data)
-            .map(|body| self::make_response(body, "application/json"))
-            .map_err(crate::error::internal_server_error)
-    }
-
-    #[inline]
-    pub fn json_pretty<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
-    where
-        T: Serialize,
-    {
-        serde_json::to_vec_pretty(&data)
-            .map(|body| self::make_response(body, "application/json"))
-            .map_err(crate::error::internal_server_error)
-    }
-
-    #[inline]
-    pub fn html<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
-    where
-        T: Into<ResponseBody>,
-    {
-        Ok(self::make_response(body, "text/html"))
-    }
-
-    #[inline]
-    pub fn plain<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
-    where
-        T: Into<ResponseBody>,
-    {
-        Ok(self::make_response(body, "text/plain; charset=utf-8"))
-    }
-
-    pub(super) fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
-        let mut response = Response::new(body);
-        response.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::header::HeaderValue::from_static(content_type),
-        );
-        response
-    }
 }

@@ -8,66 +8,66 @@ mod responder {
         },
     };
 
-    fn assert_impl_responder<T: tsukuyomi::output::Responder>() {}
+    fn assert_impl_into_response<T: tsukuyomi::output::IntoResponse>() {}
 
     #[test]
     #[ignore]
     #[allow(dead_code)]
     fn compiletest_struct() {
-        use tsukuyomi::output::Responder;
+        use tsukuyomi::output::IntoResponse;
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         struct Unit;
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         struct NewType(String);
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         struct SingleField {
             inner: String,
         }
 
-        assert_impl_responder::<Unit>();
-        assert_impl_responder::<NewType>();
-        assert_impl_responder::<SingleField>();
+        assert_impl_into_response::<Unit>();
+        assert_impl_into_response::<NewType>();
+        assert_impl_into_response::<SingleField>();
     }
 
     #[test]
     #[ignore]
     #[allow(dead_code)]
     fn compiletest_enum() {
-        use tsukuyomi::output::Responder;
+        use tsukuyomi::output::IntoResponse;
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         enum Never {}
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         enum Unit {
             Foo,
         }
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         enum Unnamed {
             Foo(String),
         }
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         enum Named {
             Foo { inner: String },
         }
 
-        #[derive(Responder)]
+        #[derive(IntoResponse)]
         enum Complex {
             Unit,
             Unnamed(()),
             Named { field: String },
         }
 
-        assert_impl_responder::<Never>();
-        assert_impl_responder::<Unit>();
-        assert_impl_responder::<Unnamed>();
-        assert_impl_responder::<Named>();
-        assert_impl_responder::<Complex>();
+        assert_impl_into_response::<Never>();
+        assert_impl_into_response::<Unit>();
+        assert_impl_into_response::<Unnamed>();
+        assert_impl_into_response::<Named>();
+        assert_impl_into_response::<Complex>();
     }
 
     mod sub {
@@ -76,7 +76,7 @@ mod responder {
             tsukuyomi::{core::Never, Input},
         };
 
-        pub fn respond_to<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>
+        pub fn display<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>
         where
             T: std::fmt::Display,
         {
@@ -89,8 +89,8 @@ mod responder {
 
     #[test]
     fn test_responder() -> tsukuyomi::test::Result<()> {
-        #[derive(tsukuyomi::output::Responder)]
-        #[responder(respond_to = "self::sub::respond_to")]
+        #[derive(tsukuyomi::output::IntoResponse)]
+        #[response(with = "self::sub::display")]
         struct Foo(String);
 
         impl fmt::Display for Foo {

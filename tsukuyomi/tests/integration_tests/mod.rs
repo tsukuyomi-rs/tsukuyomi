@@ -2,5 +2,5 @@ mod app;
 mod cookie;
 mod extract;
 mod fs;
-//mod macros;
+mod macros;
 mod modifier;
