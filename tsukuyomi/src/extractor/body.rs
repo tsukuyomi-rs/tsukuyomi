@@ -1,13 +1,13 @@
 //! Extractors for parsing message body.
 
 use {
-    bytes::Bytes,
     crate::{
         error::Error,
-        extractor::{ExtractStatus, Extractor},
-        input::body::RequestBody,
+        extractor::Extractor,
+        input::{body::RequestBody, header::ContentType},
     },
-    futures::{Async, Future},
+    bytes::Bytes,
+    futures01::Future,
     mime::Mime,
     serde::de::DeserializeOwned,
     std::str,
@@ -31,10 +31,7 @@ pub enum ExtractBodyError {
     #[fail(display = "charset in `Content-type` must be equal to `utf-8`")]
     NotUtf8Charset,
 
-    #[fail(
-        display = "the content of message body is invalid: {}",
-        cause
-    )]
+    #[fail(display = "the content of message body is invalid: {}", cause)]
     InvalidContent { cause: failure::Error },
 }
 
@@ -130,33 +127,38 @@ mod decode {
 
 fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: 'static,
-    D: self::decode::Decoder<T> + Send + Sync + 'static,
+    T: Send + 'static,
+    D: self::decode::Decoder<T>,
 {
     super::raw(move |input| {
-        {
-            let mime_opt = input.content_type()?;
-            decoder
-                .validate_mime(mime_opt)
-                .map_err(crate::error::bad_request)?;
+        if let Err(err) = {
+            crate::input::header::parse::<ContentType>(input) //
+                .and_then(|mime_opt| {
+                    decoder
+                        .validate_mime(mime_opt)
+                        .map_err(crate::error::bad_request)
+                })
+        } {
+            return futures01::future::Either::A(futures01::future::err(err));
         }
 
-        input.body().ok_or_else(stolen_payload).map(|body| {
-            let mut read_all = body.read_all();
-            ExtractStatus::Pending(futures::future::poll_fn(move || {
-                let data = futures::try_ready!(read_all.poll().map_err(Error::critical));
-                D::decode(&data)
-                    .map(|out| Async::Ready((out,)))
-                    .map_err(crate::error::bad_request)
-            }))
-        })
+        let read_all = match input.locals.remove(&RequestBody::KEY) {
+            Some(body) => body.read_all(),
+            None => return futures01::future::Either::A(futures01::future::err(stolen_payload())),
+        };
+
+        futures01::future::Either::B(read_all.from_err().and_then(|data| {
+            D::decode(&data)
+                .map(|out| (out,))
+                .map_err(crate::error::bad_request)
+        }))
     })
 }
 
 #[inline]
 pub fn plain<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::PlainTextDecoder::default())
 }
@@ -164,7 +166,7 @@ where
 #[inline]
 pub fn json<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::JsonDecoder::default())
 }
@@ -172,23 +174,25 @@ where
 #[inline]
 pub fn urlencoded<T>() -> impl Extractor<Output = (T,), Error = Error>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::UrlencodedDecoder::default())
 }
 
-pub fn raw() -> impl Extractor<Output = (Bytes,), Error = Error> {
-    super::raw(|input| {
-        input
-            .body()
-            .map(|body| {
-                ExtractStatus::Pending(body.read_all().map(|out| (out,)).map_err(Error::critical))
-            }).ok_or_else(stolen_payload)
+pub fn read_all() -> impl Extractor<Output = (Bytes,), Error = Error> {
+    super::raw(|input| match input.locals.remove(&RequestBody::KEY) {
+        Some(body) => {
+            futures01::future::Either::A(body.read_all().map(|x| (x,)).map_err(Into::into))
+        }
+        None => futures01::future::Either::B(futures01::future::err(stolen_payload())),
     })
 }
 
 pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
-    super::ready(|input| input.body().ok_or_else(stolen_payload))
+    super::ready(|input| match input.locals.remove(&RequestBody::KEY) {
+        Some(body) => Ok(body),
+        None => Err(stolen_payload()),
+    })
 }
 
 fn stolen_payload() -> crate::error::Error {

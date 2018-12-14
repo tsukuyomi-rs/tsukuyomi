@@ -1,18 +1,19 @@
-extern crate http;
-extern crate mime_guess;
-extern crate serde;
-extern crate tera;
-extern crate tsukuyomi;
+use {
+    crate::support_tera::{Template, WithTera},
+    serde::Serialize,
+    tsukuyomi::{
+        app::config::prelude::*, //
+        server::Server,
+        App,
+    },
+};
 
-use tsukuyomi::{app::directives::*, output::Responder};
-
-#[derive(Debug, serde::Serialize, Responder)]
-#[responder(respond_to = "crate::support_tera::respond_to")]
+#[derive(Debug, Serialize)]
 struct Index {
     name: String,
 }
 
-impl crate::support_tera::TemplateExt for Index {
+impl Template for Index {
     fn template_name(&self) -> &str {
         "index.html"
     }
@@ -21,57 +22,119 @@ impl crate::support_tera::TemplateExt for Index {
 fn main() -> tsukuyomi::server::Result<()> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    App::builder()
-        .with(state(engine))
-        .with(
-            route!("/:name") //
-                .reply(|name| Index { name }),
-        ) //
-        .build_server()?
-        .run()
+    App::create(
+        path!(/{path::param("name")})
+            .to(endpoint::any() //
+                .call(|name| Index { name }))
+            .modify(WithTera::from(engine)),
+    ) //
+    .map(Server::new)?
+    .run()
 }
 
 mod support_tera {
     use {
+        futures::Poll,
         http::{header::HeaderValue, Response},
+        std::sync::Arc,
         tera::Tera,
+        tsukuyomi::{
+            error::Error,
+            handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+            input::Input,
+        },
     };
 
-    pub trait TemplateExt {
+    pub trait Template: serde::Serialize {
         fn template_name(&self) -> &str;
         fn extension(&self) -> Option<&str> {
             None
         }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-    pub fn respond_to<T>(
-        ctx: T,
-        input: &mut tsukuyomi::input::Input<'_>,
-    ) -> tsukuyomi::error::Result<Response<String>>
+    #[derive(Debug)]
+    pub struct WithTera(Arc<Tera>);
+
+    impl From<Tera> for WithTera {
+        fn from(engine: Tera) -> Self {
+            WithTera(Arc::new(engine))
+        }
+    }
+
+    impl<H> ModifyHandler<H> for WithTera
     where
-        T: serde::Serialize + TemplateExt,
+        H: Handler,
+        H::Output: Template,
     {
-        let engine = input.states.try_get::<Tera>().ok_or_else(|| {
-            tsukuyomi::error::internal_server_error(
-                "Tera template engine is not available in this scope",
-            )
-        })?;
+        type Output = Response<String>;
+        type Handler = WithTeraHandler<H>;
 
-        let mut response = engine
-            .render(ctx.template_name(), &ctx)
-            .map(Response::new)
-            .map_err(tsukuyomi::error::internal_server_error)?;
+        fn modify(&self, inner: H) -> Self::Handler {
+            WithTeraHandler {
+                inner,
+                engine: self.0.clone(),
+            }
+        }
+    }
 
-        let content_type = HeaderValue::from_static(
-            ctx.extension()
-                .and_then(mime_guess::get_mime_type_str)
-                .unwrap_or("text/html; charset=utf-8"),
-        );
-        response
-            .headers_mut()
-            .insert(http::header::CONTENT_TYPE, content_type);
+    #[derive(Debug)]
+    pub struct WithTeraHandler<H> {
+        inner: H,
+        engine: Arc<Tera>,
+    }
 
-        Ok(response)
+    impl<H> Handler for WithTeraHandler<H>
+    where
+        H: Handler,
+        H::Output: Template,
+    {
+        type Output = Response<String>;
+        type Error = Error;
+        type Handle = WithTeraHandle<H::Handle>;
+
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.inner.allowed_methods()
+        }
+
+        fn handle(&self) -> Self::Handle {
+            WithTeraHandle {
+                inner: self.inner.handle(),
+                engine: self.engine.clone(),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct WithTeraHandle<H> {
+        inner: H,
+        engine: Arc<Tera>,
+    }
+
+    impl<H> Handle for WithTeraHandle<H>
+    where
+        H: Handle,
+        H::Output: Template,
+    {
+        type Output = Response<String>;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            let ctx = futures::try_ready!(self.inner.poll_ready(input).map_err(Into::into));
+            let content_type = HeaderValue::from_static(
+                ctx.extension()
+                    .and_then(mime_guess::get_mime_type_str)
+                    .unwrap_or("text/html; charset=utf-8"),
+            );
+            self.engine
+                .render(ctx.template_name(), &ctx)
+                .map(|body| {
+                    Response::builder()
+                        .header("content-type", content_type)
+                        .body(body)
+                        .expect("should be a valid response")
+                        .into()
+                })
+                .map_err(tsukuyomi::error::internal_server_error)
+        }
     }
 }

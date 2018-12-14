@@ -1,28 +1,29 @@
-extern crate either;
-extern crate serde;
-extern crate tsukuyomi;
-extern crate tsukuyomi_session;
-
 use {
     either::Either,
+    std::sync::Arc,
     tsukuyomi::{
-        app::directives::*,
-        extractor,
+        app::config::prelude::*,
+        chain, extractor,
         output::{html, redirect},
+        server::Server,
+        App,
     },
-    tsukuyomi_session::{backend::CookieBackend, session, Session, SessionStorage},
+    tsukuyomi_session::{
+        backend::CookieBackend, //
+        session,
+        Session,
+    },
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
     let backend = CookieBackend::plain();
-    let storage = SessionStorage::new(backend);
+    let session = Arc::new(session(backend));
 
-    App::builder()
-        .with(modifier(storage))
-        .with(
-            route!("/") //
-                .extract(session())
-                .call(|session: Session| -> tsukuyomi::Result<_> {
+    App::create(chain![
+        path!(/)
+            .extract(session.clone())
+            .to(
+                endpoint::get().call_async(|session: Session<_>| -> tsukuyomi::Result<_> {
                     let username = session.get::<String>("username")?;
                     let output = if let Some(username) = username {
                         Either::Right(html(format!(
@@ -38,11 +39,11 @@ fn main() -> tsukuyomi::server::Result<()> {
                     };
                     Ok(session.finish(output))
                 }),
-        ) //
-        .with(
-            route!("/login") //
-                .extract(session())
-                .reply(|session: Session| {
+            ),
+        path!(/"login") //
+            .extract(session.clone())
+            .to(chain![
+                endpoint::get().call(|session: Session<_>| {
                     let output = if session.contains("username") {
                         Either::Left(redirect::to("/"))
                     } else {
@@ -56,30 +57,26 @@ fn main() -> tsukuyomi::server::Result<()> {
                     };
                     session.finish(output)
                 }),
-        ) //
-        .with({
-            #[derive(Debug, serde::Deserialize)]
-            struct Form {
-                username: String,
-            }
-            route!("/login")
-                .extract(extractor::body::urlencoded())
-                .extract(session())
-                .call(
-                    |form: Form, mut session: Session| -> tsukuyomi::error::Result<_> {
-                        session.set("username", form.username)?;
-                        Ok(session.finish(redirect::to("/")))
-                    },
-                )
-        }) //
-        .with(
-            route!("/logout") //
-                .extract(session())
-                .reply(|mut session: Session| {
-                    session.remove("username");
-                    session.finish(redirect::to("/"))
-                }),
-        ) //
-        .build_server()?
-        .run()
+                endpoint::post()
+                    .extract(extractor::body::urlencoded())
+                    .call_async({
+                        #[derive(Debug, serde::Deserialize)]
+                        struct Form {
+                            username: String,
+                        }
+                        |mut session: Session<_>, form: Form| -> tsukuyomi::Result<_> {
+                            session.set("username", form.username)?;
+                            Ok(session.finish(redirect::to("/")))
+                        }
+                    }),
+            ]),
+        path!(/"logout") //
+            .extract(session)
+            .to(endpoint::get().call(|mut session: Session<_>| {
+                session.remove("username");
+                session.finish(redirect::to("/"))
+            }))
+    ])
+    .map(Server::new)?
+    .run()
 }

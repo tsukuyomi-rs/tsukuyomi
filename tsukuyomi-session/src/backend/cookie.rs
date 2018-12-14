@@ -1,66 +1,13 @@
 use {
-    cookie::{Cookie, CookieBuilder},
     crate::{Backend, RawSession},
+    cookie::{Cookie, CookieBuilder},
     serde_json,
-    std::{borrow::Cow, collections::HashMap, fmt},
+    std::{borrow::Cow, collections::HashMap, fmt, sync::Arc},
     tsukuyomi::{error::Result, input::Cookies, Input},
 };
 
 #[cfg(feature = "secure")]
 use cookie::Key;
-
-#[derive(Debug)]
-pub struct CookieSession {
-    inner: Inner,
-}
-
-#[derive(Debug)]
-enum Inner {
-    Empty,
-    Some(HashMap<String, String>),
-    Clear,
-}
-
-impl RawSession for CookieSession {
-    fn get(&self, name: &str) -> Option<&str> {
-        match self.inner {
-            Inner::Some(ref map) => map.get(name).map(|s| &**s),
-            _ => None,
-        }
-    }
-
-    fn set(&mut self, name: &str, value: String) {
-        match self.inner {
-            Inner::Empty => {}
-            Inner::Some(ref mut map) => {
-                map.insert(name.to_owned(), value);
-                return;
-            }
-            Inner::Clear => return,
-        }
-
-        match std::mem::replace(&mut self.inner, Inner::Empty) {
-            Inner::Empty => {
-                self.inner = Inner::Some({
-                    let mut map = HashMap::new();
-                    map.insert(name.to_owned(), value);
-                    map
-                });
-            }
-            Inner::Some(..) | Inner::Clear => unreachable!(),
-        }
-    }
-
-    fn remove(&mut self, name: &str) {
-        if let Inner::Some(ref mut map) = self.inner {
-            map.remove(name);
-        }
-    }
-
-    fn clear(&mut self) {
-        self.inner = Inner::Clear;
-    }
-}
 
 #[cfg(feature = "secure")]
 enum Security {
@@ -111,30 +58,24 @@ impl Security {
 }
 
 /// A `Backend` using a Cookie entry for storing the session data.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
+#[derive(Debug, Clone)]
 pub struct CookieBackend {
-    security: Security,
-    cookie_name: Cow<'static, str>,
-    builder: Box<dyn Fn(CookieBuilder) -> CookieBuilder + Send + Sync + 'static>,
-}
-
-#[cfg_attr(tarpaulin, skip)]
-impl fmt::Debug for CookieBackend {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CookieBackend")
-            .field("security", &self.security)
-            .field("cookie_name", &self.cookie_name)
-            .finish()
-    }
+    inner: Arc<CookieBackendInner>,
 }
 
 impl CookieBackend {
     fn new(security: Security) -> Self {
         Self {
-            security,
-            cookie_name: "tsukuyomi-session".into(),
-            builder: Box::new(|cookie| cookie),
+            inner: Arc::new(CookieBackendInner {
+                security,
+                cookie_name: "tsukuyomi-session".into(),
+                builder: Box::new(|cookie| cookie),
+            }),
         }
+    }
+
+    fn inner_mut(&mut self) -> &mut CookieBackendInner {
+        Arc::get_mut(&mut self.inner).expect("the instance has already shared")
     }
 
     /// Create a new `CookieBackend` that save uses the plain format.
@@ -157,24 +98,38 @@ impl CookieBackend {
     /// Sets the name of Cookie entry to be used for storing the session data.
     ///
     /// The default value is `"tsukuyomi-session"`.
-    pub fn cookie_name(self, value: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            cookie_name: value.into(),
-            ..self
-        }
+    pub fn cookie_name(mut self, value: impl Into<Cow<'static, str>>) -> Self {
+        self.inner_mut().cookie_name = value.into();
+        self
     }
 
     /// Sets the functions for modifying the saved Cookie entry.
     pub fn builder(
-        self,
+        mut self,
         builder: impl Fn(CookieBuilder) -> CookieBuilder + Send + Sync + 'static,
     ) -> Self {
-        Self {
-            builder: Box::new(builder),
-            ..self
-        }
+        self.inner_mut().builder = Box::new(builder);
+        self
     }
+}
 
+struct CookieBackendInner {
+    security: Security,
+    cookie_name: Cow<'static, str>,
+    builder: Box<dyn Fn(CookieBuilder) -> CookieBuilder + Send + Sync + 'static>,
+}
+
+#[cfg_attr(tarpaulin, skip)]
+impl fmt::Debug for CookieBackendInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CookieBackendInner")
+            .field("security", &self.security)
+            .field("cookie_name", &self.cookie_name)
+            .finish()
+    }
+}
+
+impl CookieBackendInner {
     fn deserialize(&self, s: &str) -> Result<HashMap<String, String>> {
         serde_json::from_str(s).map_err(tsukuyomi::error::bad_request)
     }
@@ -183,22 +138,18 @@ impl CookieBackend {
         serde_json::to_string(&map).expect("should be success")
     }
 
-    fn read_inner(&self, input: &mut Input<'_>) -> tsukuyomi::Result<CookieSession> {
+    fn read(&self, input: &mut Input<'_>) -> tsukuyomi::Result<Inner> {
         match self.security.get(&*self.cookie_name, input.cookies)? {
             Some(cookie) => {
                 let map = self.deserialize(cookie.value())?;
-                Ok(CookieSession {
-                    inner: Inner::Some(map),
-                })
+                Ok(Inner::Some(map))
             }
-            None => Ok(CookieSession {
-                inner: Inner::Empty,
-            }),
+            None => Ok(Inner::Empty),
         }
     }
 
-    fn write_inner(&self, input: &mut Input<'_>, session: CookieSession) -> tsukuyomi::Result<()> {
-        match session.inner {
+    fn write(&self, input: &mut Input<'_>, inner: Inner) -> tsukuyomi::Result<()> {
+        match inner {
             Inner::Empty => {}
             Inner::Some(map) => {
                 let value = self.serialize(&map);
@@ -221,13 +172,71 @@ impl CookieBackend {
 impl Backend for CookieBackend {
     type Session = CookieSession;
     type ReadSession = futures::future::FutureResult<Self::Session, tsukuyomi::Error>;
-    type WriteSession = futures::future::FutureResult<(), tsukuyomi::Error>;
 
     fn read(&self, input: &mut Input<'_>) -> Self::ReadSession {
-        futures::future::result(self.read_inner(input))
+        futures::future::result(self.inner.read(input).map(|inner| CookieSession {
+            inner,
+            backend: self.clone(),
+        }))
+    }
+}
+
+#[derive(Debug)]
+pub struct CookieSession {
+    inner: Inner,
+    backend: CookieBackend,
+}
+
+#[derive(Debug)]
+enum Inner {
+    Empty,
+    Some(HashMap<String, String>),
+    Clear,
+}
+
+impl RawSession for CookieSession {
+    type WriteSession = futures::future::FutureResult<(), tsukuyomi::Error>;
+
+    fn get(&self, name: &str) -> Option<&str> {
+        match self.inner {
+            Inner::Some(ref map) => map.get(name).map(|s| &**s),
+            _ => None,
+        }
     }
 
-    fn write(&self, input: &mut Input<'_>, session: Self::Session) -> Self::WriteSession {
-        futures::future::result(self.write_inner(input, session))
+    fn set(&mut self, name: &str, value: String) {
+        match self.inner {
+            Inner::Empty => {}
+            Inner::Some(ref mut map) => {
+                map.insert(name.to_owned(), value);
+                return;
+            }
+            Inner::Clear => return,
+        }
+
+        match std::mem::replace(&mut self.inner, Inner::Empty) {
+            Inner::Empty => {
+                self.inner = Inner::Some({
+                    let mut map = HashMap::new();
+                    map.insert(name.to_owned(), value);
+                    map
+                });
+            }
+            Inner::Some(..) | Inner::Clear => unreachable!(),
+        }
+    }
+
+    fn remove(&mut self, name: &str) {
+        if let Inner::Some(ref mut map) = self.inner {
+            map.remove(name);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.inner = Inner::Clear;
+    }
+
+    fn write(self, input: &mut Input<'_>) -> Self::WriteSession {
+        futures::future::result(self.backend.inner.write(input, self.inner))
     }
 }

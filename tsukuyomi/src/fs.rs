@@ -1,15 +1,16 @@
 //! The basic components for serving static files.
 
 use {
-    bytes::{BufMut, Bytes, BytesMut},
     crate::{
         error::Error,
+        handler::ModifyHandler,
         input::Input,
-        output::{Responder, ResponseBody},
+        output::{IntoResponse, Responder, ResponseBody},
         rt::poll_blocking,
     },
+    bytes::{BufMut, Bytes, BytesMut},
     filetime::FileTime,
-    futures::{Async, Future, Poll, Stream},
+    futures01::{Async, Future, Poll, Stream},
     http::{
         header::{self, HeaderMap},
         Response, StatusCode,
@@ -125,8 +126,84 @@ pub struct OpenConfig {
 // ==== NamedFile ====
 
 /// An instance of `Responder` for responding a file.
+#[derive(Debug, Clone)]
+pub struct NamedFile<P> {
+    path: P,
+    config: Option<OpenConfig>,
+}
+
+impl<P> NamedFile<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
+    /// Open a specified file with the default configuration.
+    pub fn open(path: P) -> Self {
+        Self { path, config: None }
+    }
+
+    /// Open a specified file with the provided configuration.
+    pub fn open_with_config(path: P, config: OpenConfig) -> Self {
+        Self {
+            path,
+            config: Some(config),
+        }
+    }
+}
+
+impl<P> Responder for NamedFile<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
+    type Response = NamedFileResponse;
+    type Error = crate::Error;
+    type Future = OpenNamedFile<P>;
+
+    #[inline]
+    fn respond(self, _: &mut Input<'_>) -> Self::Future {
+        OpenNamedFile {
+            path: self.path,
+            config: self.config,
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct NamedFile {
+pub struct OpenNamedFile<P> {
+    path: P,
+    config: Option<OpenConfig>,
+}
+
+impl<P> Future for OpenNamedFile<P>
+where
+    P: AsRef<Path>,
+{
+    type Item = NamedFileResponse;
+    type Error = crate::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let (file, meta) = futures01::try_ready!(blocking_io(|| {
+            let file = File::open(&self.path)?;
+            let meta = file.metadata()?;
+            Ok((file, meta))
+        }));
+
+        let config = self.config.take().unwrap_or_default();
+
+        let last_modified = FileTime::from_last_modification_time(&meta);
+        let etag = ETag::from_metadata(&meta);
+
+        Ok(Async::Ready(NamedFileResponse {
+            file,
+            meta,
+            last_modified,
+            etag,
+            config,
+        }))
+    }
+}
+
+#[derive(Debug)]
+pub struct NamedFileResponse {
     file: File,
     meta: Metadata,
     etag: ETag,
@@ -134,27 +211,8 @@ pub struct NamedFile {
     config: OpenConfig,
 }
 
-impl NamedFile {
-    /// Open a specified file with the default configuration.
-    pub fn open<P>(path: P) -> OpenFuture<P>
-    where
-        P: AsRef<Path>,
-    {
-        OpenFuture { path, config: None }
-    }
-
-    /// Open a specified file with the provided configuration.
-    pub fn open_with_config<P>(path: P, config: OpenConfig) -> OpenFuture<P>
-    where
-        P: AsRef<Path>,
-    {
-        OpenFuture {
-            path,
-            config: Some(config),
-        }
-    }
-
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_sign_loss))]
+impl NamedFileResponse {
+    #[allow(clippy::cast_sign_loss)]
     fn is_modified(&self, headers: &HeaderMap) -> Result<bool, Error> {
         if let Some(h) = headers.get(header::IF_NONE_MATCH) {
             trace!("NamedFile::is_modified(): validate If-None-Match");
@@ -203,7 +261,7 @@ impl NamedFile {
         }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_possible_wrap))]
+    #[allow(clippy::cast_possible_wrap)]
     fn last_modified(&self) -> Result<String, time::ParseError> {
         let tm = time::at(Timespec::new(
             self.last_modified.seconds(),
@@ -213,11 +271,11 @@ impl NamedFile {
     }
 }
 
-impl Responder for NamedFile {
+impl IntoResponse for NamedFileResponse {
     type Body = ResponseBody;
     type Error = Error;
 
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         trace!("NamedFile::respond_to");
 
         if !self.is_modified(input.request.headers())? {
@@ -241,44 +299,6 @@ impl Responder for NamedFile {
             .header(header::ETAG, &*self.etag.to_string())
             .body(ResponseBody::wrap_stream(stream))
             .unwrap())
-    }
-}
-
-// ==== OpenFuture ====
-
-/// A future waiting for opening the file.
-#[derive(Debug)]
-pub struct OpenFuture<P> {
-    path: P,
-    config: Option<OpenConfig>,
-}
-
-impl<P> Future for OpenFuture<P>
-where
-    P: AsRef<Path>,
-{
-    type Item = NamedFile;
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (file, meta) = futures::try_ready!(blocking_io(|| {
-            let file = File::open(&self.path)?;
-            let meta = file.metadata()?;
-            Ok((file, meta))
-        }));
-
-        let config = self.config.take().unwrap_or_default();
-
-        let last_modified = FileTime::from_last_modification_time(&meta);
-        let etag = ETag::from_metadata(&meta);
-
-        Ok(Async::Ready(NamedFile {
-            file,
-            meta,
-            last_modified,
-            etag,
-            config,
-        }))
     }
 }
 
@@ -316,7 +336,7 @@ impl Stream for ReadStream {
                 } => {
                     trace!("ReadStream::poll(): polling on the mode State::Reading");
 
-                    let buf = futures::try_ready!(blocking_io(|| {
+                    let buf = futures01::try_ready!(blocking_io(|| {
                         let mut buf = BytesMut::with_capacity(buf_size);
                         if !buf.has_remaining_mut() {
                             buf.reserve(buf_size);
@@ -359,7 +379,7 @@ fn blocking_io<T>(f: impl FnOnce() -> io::Result<T>) -> Poll<T, io::Error> {
 }
 
 // FIXME: replace usize to u64
-#[cfg_attr(feature = "cargo-clippy", allow(cast_possible_truncation))]
+#[allow(clippy::cast_possible_truncation)]
 fn finalize_block_size(buf_size: Option<usize>, meta: &Metadata) -> usize {
     match buf_size {
         Some(n) => cmp::min(meta.len(), n as u64) as usize,
@@ -378,9 +398,8 @@ fn block_size(_: &Metadata) -> u64 {
     DEFAULT_BUF_SIZE
 }
 
-#[allow(missing_debug_implementations)]
-#[derive(Clone)]
-struct ArcPath(Arc<PathBuf>);
+#[derive(Debug, Clone)]
+pub struct ArcPath(Arc<PathBuf>);
 
 impl From<PathBuf> for ArcPath {
     fn from(path: PathBuf) -> Self {
@@ -400,6 +419,67 @@ impl Deref for ArcPath {
     #[inline]
     fn deref(&self) -> &Self::Target {
         (*self.0).as_ref()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ServeFile {
+    inner: Arc<ServeFileInner>,
+}
+
+#[derive(Debug)]
+struct ServeFileInner {
+    path: ArcPath,
+    config: Option<OpenConfig>,
+    extract_path: bool,
+}
+
+mod impl_handler_for_serve_file {
+    use {
+        super::{ArcPath, NamedFile, ServeFile},
+        crate::{
+            error::Error,
+            handler::{AllowedMethods, Handle, Handler},
+            input::Input,
+        },
+        futures01::{Async, Poll},
+    };
+
+    impl Handler for ServeFile {
+        type Output = NamedFile<ArcPath>;
+        type Error = Error;
+        type Handle = Self;
+
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            Some(&AllowedMethods::get())
+        }
+
+        fn handle(&self) -> Self::Handle {
+            self.clone()
+        }
+    }
+
+    impl Handle for ServeFile {
+        type Output = NamedFile<ArcPath>;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            let path = if self.inner.extract_path {
+                let path = input
+                    .params
+                    .as_ref()
+                    .and_then(|params| params.catch_all())
+                    .ok_or_else(|| crate::error::internal_server_error("missing params"))?;
+                self.inner.path.join(path).into()
+            } else {
+                self.inner.path.clone()
+            };
+
+            Ok(Async::Ready(match self.inner.config {
+                Some(ref config) => NamedFile::open_with_config(path, config.clone()),
+                None => NamedFile::open(path),
+            }))
+        }
     }
 }
 
@@ -431,47 +511,56 @@ where
     }
 }
 
-impl<P> crate::app::scope::Scope for Staticfiles<P>
+impl<P, M> crate::app::config::Config<M> for Staticfiles<P>
 where
     P: AsRef<Path>,
+    M: ModifyHandler<ServeFile>,
+    M::Output: Responder,
+    M::Handler: Send + Sync + 'static,
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut crate::app::scope::Context<'_>) -> crate::app::Result<()> {
+    fn configure(self, cx: &mut crate::app::config::Scope<'_, M>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir)? {
             let entry = entry?;
-            let file_type = entry.file_type()?;
+
             let name = entry.file_name();
-            let name = name.to_str().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "the filename must be UTF-8")
-            })?;
+            let name = name
+                .to_str() //
+                .ok_or_else(|| failure::format_err!("the filename must be UTF-8"))?;
+
             let path = entry
                 .path()
                 .canonicalize()
                 .map(|path| ArcPath(Arc::new(path)))?;
-            let config = config.clone();
 
+            let file_type = entry.file_type()?;
             if file_type.is_file() {
-                crate::app::directives::route(format!("/{}", name))?
-                    .send_file(path, config)
-                    .configure(cx)?;
+                cx.at(
+                    Some(&format!("/{}", name)),
+                    ServeFile {
+                        inner: Arc::new(ServeFileInner {
+                            path,
+                            config: config.clone(),
+                            extract_path: false,
+                        }),
+                    },
+                )?;
             } else if file_type.is_dir() {
-                let root_dir = path;
-                crate::app::directives::route(format!("/{}/*path", name))?
-                    .extract(crate::extractor::param::wildcard())
-                    .call(move |suffix: PathBuf| {
-                        let path = root_dir.join(suffix);
-                        if let Some(ref config) = config {
-                            NamedFile::open_with_config(path, config.clone()).map_err(Into::into)
-                        } else {
-                            NamedFile::open(path).map_err(Into::into)
-                        }
-                    }) //
-                    .configure(cx)?;
+                cx.at(
+                    Some(&format!("/{}/*path", name)),
+                    ServeFile {
+                        inner: Arc::new(ServeFileInner {
+                            path,
+                            config: config.clone(),
+                            extract_path: false,
+                        }),
+                    },
+                )?;
             } else {
-                return Err(io::Error::new(io::ErrorKind::Other, "unexpected file type").into());
+                return Err(failure::format_err!("unexpected file type").into());
             }
         }
 

@@ -1,7 +1,7 @@
 resources:
   containers:
     - container: tarpaulin
-      image: xd009642/tarpaulin:latest-nightly
+      image: xd009642/tarpaulin:develop-nightly
       options: --security-opt seccomp=unconfined
 
 jobs:
@@ -74,7 +74,7 @@ jobs:
         nightly:
           rust_toolchain: nightly
         minimum_supported:
-          rust_toolchain: 1.30.0
+          rust_toolchain: 1.31.0
     steps:
     - script: |
         git submodule update --init --depth=1

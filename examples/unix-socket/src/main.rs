@@ -1,6 +1,8 @@
-extern crate tsukuyomi;
-
-use tsukuyomi::app::directives::*;
+use tsukuyomi::{
+    app::config::prelude::*, //
+    server::Server,
+    App,
+};
 
 #[cfg(not(unix))]
 fn main() {
@@ -14,12 +16,12 @@ fn main() -> tsukuyomi::server::Result<()> {
         .map(Into::into)
         .unwrap_or_else(|| "/tmp/tsukuyomi-uds.sock".into());
 
-    App::builder()
-        .with(
-            route!("/") //
-                .say("Hello, Tsukuyomi!\n"),
-        ) //
-        .build_server()?
-        .bind(sock_path)
-        .run()
+    App::create(
+        path!(/) //
+            .to(endpoint::any() //
+                .reply("Hello, Tsukuyomi!\n")),
+    )
+    .map(Server::new)?
+    .bind(sock_path)
+    .run()
 }

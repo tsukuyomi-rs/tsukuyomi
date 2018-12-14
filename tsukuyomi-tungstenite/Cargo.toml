@@ -1,15 +1,14 @@
 [package]
 name = "tsukuyomi-tungstenite"
 description = "The basic WebSocket support for Tsukuyomi, powered by tungstenite"
-version = "0.1.0"
+version = "0.2.0-dev"
+edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
-build = "build.rs"
-
 [dependencies]
-tsukuyomi = { version = "0.4.0", path = "../tsukuyomi" }
+tsukuyomi = { version = "0.5.0-dev", path = "../tsukuyomi" }
 
 base64 = "0.10"
 failure = "0.1.2"

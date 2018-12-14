@@ -1,25 +1,27 @@
-extern crate askama;
-extern crate tsukuyomi;
-extern crate tsukuyomi_askama;
-
 use {
     askama::Template,
-    tsukuyomi::{app::directives::*, output::Responder},
+    tsukuyomi::{
+        app::config::prelude::*, //
+        output::IntoResponse,
+        App,
+    },
 };
 
-#[derive(Template, Responder)]
+#[derive(Template, IntoResponse)]
 #[template(path = "index.html")]
-#[responder(respond_to = "tsukuyomi_askama::respond_to")]
+#[response(with = "tsukuyomi_askama::into_response")]
 struct Index {
     name: String,
 }
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::builder()
-        .with(
-            route!("/:name") //
-                .reply(|name| Index { name }),
-        ) //
-        .build_server()?
-        .run()
+    App::create({
+        path!(/{path::param("name")}) //
+            .to({
+                endpoint::get() //
+                    .call(|name| Index { name })
+            })
+    })
+    .map(tsukuyomi::server::Server::new)?
+    .run()
 }

@@ -1,8 +1,8 @@
 //! Extractors for parsing query string.
 
 use {
-    super::Extractor,
-    crate::{common::Never, error::Error},
+    super::Extractor, //
+    crate::{core::Never, error::Error},
     serde::de::DeserializeOwned,
 };
 
@@ -53,5 +53,5 @@ where
 }
 
 pub fn raw() -> impl Extractor<Output = (Option<String>,), Error = Never> {
-    super::ready(|input| Ok(input.request.uri().query().map(ToOwned::to_owned)))
+    super::ready(|input| Ok::<_, Never>(input.request.uri().query().map(ToOwned::to_owned)))
 }

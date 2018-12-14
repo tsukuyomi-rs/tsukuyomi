@@ -1,29 +1,22 @@
 use tsukuyomi::{
-    app::directives::*, //
-    fs::Staticfiles,
+    app::config::prelude::*, //
+    fs::{NamedFile, Staticfiles},
+    App,
 };
 
 #[test]
 #[ignore]
-fn compiletest() {
-    drop(
-        App::builder()
-            .with(
-                route!("/index.html") //
-                    .send_file("/path/to/index.html", None),
-            ) //
-            .build()
-            .unwrap(),
-    );
+fn compiletest() -> tsukuyomi::app::Result<()> {
+    App::create({
+        path!(/"index.html") //
+            .to(endpoint::get() //
+                .reply(NamedFile::open("/path/to/index.html")))
+    })
+    .map(drop)
 }
 
 #[test]
 #[ignore]
-fn compiletest_staticfiles() {
-    drop(
-        App::builder()
-            .with(Staticfiles::new("./public")) //
-            .build()
-            .unwrap(),
-    );
+fn compiletest_staticfiles() -> tsukuyomi::app::Result<()> {
+    App::create(Staticfiles::new("./public")).map(drop)
 }

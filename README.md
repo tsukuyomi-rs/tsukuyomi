@@ -5,7 +5,7 @@
 ---
 
 [![Crates.io][crates-io-badge]][crates-io]
-[![Minimal Rust Version: 1.30.0][rust-version-badge]][rust-version]
+[![Minimal Rust Version: 1.31.0][rust-version-badge]][rust-version]
 [![dependency status][deps-rs-badge]][deps-rs]
 [![Build Status][azure-pipelines-badge]][azure-pipelines]
 [![Coverage Status][codecov-badge]][codecov]
@@ -23,16 +23,19 @@
 ## Usage
 
 ```rust,no_run
-extern crate tsukuyomi;
-use tsukuyomi::app::directives::*;
+use tsukuyomi::{
+    app::config::prelude::*,
+    server::Server,
+    App,
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
-    let server = App::builder()
-        .with(
-            route!("/")
-                .say("Hello, world.\n")
-        )
-        .build_server()?;
+    let server = App::create(
+        path!(/)
+            .to(endpoint::any()
+                .reply("Hello, world.\n"))
+    )
+    .map(Server::new)?;
 
     let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
 
@@ -71,7 +74,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
-[rust-version-badge]: https://img.shields.io/badge/rustc-1.30.0+-lightgray.svg
+[rust-version-badge]: https://img.shields.io/badge/rustc-1.31.0+-yellow.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
 [deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi

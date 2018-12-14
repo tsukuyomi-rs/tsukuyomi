@@ -22,7 +22,6 @@ features = ["user-hooks"]
 [workspace]
 members = [
   "tsukuyomi",
-  "tsukuyomi/internal",
   "tsukuyomi/macros",
 
   "tsukuyomi-askama",
@@ -47,15 +46,14 @@ members = [
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
-  "examples/tower-middleware",
   "examples/unix-socket",
   "examples/websocket",
 ]
 
 [patch.crates-io]
-tsukuyomi = { version = "0.4.3", path = "tsukuyomi" }
-tsukuyomi-askama = { version = "0.1.0", path = "tsukuyomi-askama" }
-tsukuyomi-cors = { version = "0.1.0", path = "tsukuyomi-cors" }
-tsukuyomi-juniper = { version = "0.2.0", path = "tsukuyomi-juniper" }
-tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
-tsukuyomi-tungstenite = { version = "0.1.0", path = "tsukuyomi-tungstenite" }
+tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
+tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }
+tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
+tsukuyomi-juniper = { version = "0.3.0-dev", path = "tsukuyomi-juniper" }
+tsukuyomi-session = { version = "0.2.0-dev", path = "tsukuyomi-session" }
+tsukuyomi-tungstenite = { version = "0.2.0-dev", path = "tsukuyomi-tungstenite" }

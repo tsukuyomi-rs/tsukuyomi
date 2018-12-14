@@ -1,19 +1,18 @@
 [package]
 name = "tsukuyomi-cors"
-description = """
-CORS support for Tsukuyomi.
-"""
-version = "0.1.0"
+description = "CORS support for Tsukuyomi"
+version = "0.2.0-dev"
+edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
-build = "build.rs"
-
 [dependencies]
-tsukuyomi = "0.4.0"
-http = "0.1"
+tsukuyomi = "0.5.0-dev"
+either = "1"
 failure = "0.1.3"
+futures = "0.1"
+http = "0.1"
 
 [dev-dependencies]
 version-sync = "0.6"

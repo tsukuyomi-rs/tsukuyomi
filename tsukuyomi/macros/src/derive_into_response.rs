@@ -28,25 +28,25 @@ fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
     let mut meta = None;
     for attr in attrs {
         let m = attr.parse_meta()?;
-        if m.name() == "responder" {
+        if m.name() == "response" {
             meta = Some(m);
         }
     }
 
     let meta_list = match meta {
         Some(syn::Meta::List(inner)) => inner,
-        Some(..) => return Err(parse_error("attribute 'responder' has incorrect type")),
+        Some(..) => return Err(parse_error("attribute 'response' has incorrect type")),
         None => return Ok(None),
     };
 
-    let mut respond_to = None;
+    let mut into_response = None;
     for nm_item in meta_list.nested {
         if let syn::NestedMeta::Meta(ref item) = nm_item {
             if let syn::Meta::NameValue(ref pair) = item {
                 match pair.ident.to_string().as_ref() {
-                    "respond_to" => {
+                    "with" => {
                         if let syn::Lit::Str(ref lit) = pair.lit {
-                            respond_to = lit.parse().map(Some).unwrap();
+                            into_response = lit.parse().map(Some).unwrap();
                         } else {
                             return Err(parse_error_at(&pair.lit, "the literal must be string"));
                         }
@@ -57,24 +57,27 @@ fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
         }
     }
 
-    Ok(respond_to)
+    Ok(into_response)
 }
 
 pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
-    let respond_to = collect_attrs(&input.attrs)?;
-    Ok(ResponderInput { respond_to, input })
+    let into_response = collect_attrs(&input.attrs)?;
+    Ok(ResponderInput {
+        into_response,
+        input,
+    })
 }
 
 #[derive(Debug)]
 pub struct ResponderInput {
-    respond_to: Option<syn::Path>,
+    into_response: Option<syn::Path>,
     input: DeriveInput,
 }
 
 impl ResponderInput {
-    fn derive_explicit(&self, respond_to: &syn::Path) -> TokenStream {
+    fn derive_explicit(&self, into_response: &syn::Path) -> TokenStream {
         quote!(
-            #respond_to(self, input)
+            #into_response(self, input)
                 .map(|response| response.map(Into::into))
                 .map_err(Into::into)
         )
@@ -83,14 +86,14 @@ impl ResponderInput {
     #[allow(nonstandard_style)]
     fn derive_struct(&self, data: &syn::DataStruct) -> ParseResult<TokenStream> {
         let Self_ = &self.input.ident;
-        let respond_to = quote!(tsukuyomi::output::internal::respond_to);
-        let unit_respond_to = quote!(#respond_to((), input));
+        let into_response = quote!(tsukuyomi::output::internal::into_response);
+        let unit_respond_to = quote!(#into_response((), input));
         match data.fields {
             syn::Fields::Unit => Ok(unit_respond_to),
             syn::Fields::Unnamed(ref fields) => match fields.unnamed.len() {
                 0 => Ok(unit_respond_to),
                 1 => Ok(quote!(match self {
-                    #Self_(__arg_0) => #respond_to(__arg_0, input),
+                    #Self_(__arg_0) => #into_response(__arg_0, input),
                 })),
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
             },
@@ -100,7 +103,7 @@ impl ResponderInput {
                 1 => {
                     let field = &fields.named[0].ident;
                     Ok(quote!(match self {
-                        #Self_ { #field: __arg_0, } => #respond_to(__arg_0, input),
+                        #Self_ { #field: __arg_0, } => #into_response(__arg_0, input),
                     }))
                 }
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
@@ -124,22 +127,22 @@ impl ResponderInput {
     fn derive_enum_variant(&self, variant: &syn::Variant) -> ParseResult<TokenStream> {
         let Self_ = &self.input.ident;
         let Variant = &variant.ident;
-        let respond_to = quote!(tsukuyomi::output::internal::respond_to);
+        let into_response = quote!(tsukuyomi::output::internal::into_response);
         match variant.fields {
-            syn::Fields::Unit => Ok(quote!(#Self_ :: #Variant => #respond_to((), input))),
+            syn::Fields::Unit => Ok(quote!(#Self_ :: #Variant => #into_response((), input))),
 
             syn::Fields::Unnamed(ref fields) => match fields.unnamed.len() {
-                0 => Ok(quote!(#Self_ :: #Variant () => #respond_to((), input))),
-                1 => Ok(quote!(#Self_ :: #Variant (__arg_0) => #respond_to(__arg_0, input))),
+                0 => Ok(quote!(#Self_ :: #Variant () => #into_response((), input))),
+                1 => Ok(quote!(#Self_ :: #Variant (__arg_0) => #into_response(__arg_0, input))),
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
             },
 
             syn::Fields::Named(ref fields) => match fields.named.len() {
-                0 => Ok(quote!(#Self_ :: #Variant {} => #respond_to((), input))),
+                0 => Ok(quote!(#Self_ :: #Variant {} => #into_response((), input))),
                 1 => {
                     let field = &fields.named[0].ident;
                     Ok(
-                        quote!(#Self_ :: #Variant { #field: __arg_0, } => #respond_to(__arg_0, input)),
+                        quote!(#Self_ :: #Variant { #field: __arg_0, } => #into_response(__arg_0, input)),
                     )
                 }
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
@@ -149,29 +152,29 @@ impl ResponderInput {
 
     #[allow(nonstandard_style)]
     pub fn derive(&self) -> ParseResult<TokenStream> {
-        let derived = match (&self.respond_to, &self.input.data) {
-            (Some(respond_to), _) => self.derive_explicit(respond_to),
+        let derived = match (&self.into_response, &self.input.data) {
+            (Some(into_response), _) => self.derive_explicit(into_response),
             (None, syn::Data::Struct(ref data)) => self.derive_struct(data)?,
             (None, syn::Data::Enum(ref data)) => self.derive_enum(data)?,
             (None, syn::Data::Union(..)) => {
-                return Err(parse_error("tagged union is not supported."))
+                return Err(parse_error("tagged union is not supported."));
             }
         };
 
         let Self_ = &self.input.ident;
-        let Responder = quote!(tsukuyomi::output::Responder);
+        let IntoResponse = quote!(tsukuyomi::output::IntoResponse);
         let ResponseBody = quote!(tsukuyomi::output::ResponseBody);
         let Error = quote!(tsukuyomi::error::Error);
         let Input = quote!(tsukuyomi::input::Input);
         let Response = quote!(tsukuyomi::output::internal::Response);
 
         Ok(quote!(
-            impl #Responder for #Self_ {
+            impl #IntoResponse for #Self_ {
                 type Body = #ResponseBody;
                 type Error = #Error;
 
                 #[inline]
-                fn respond_to(self, input: &mut #Input<'_>) -> Result<#Response<Self::Body>, Self::Error> {
+                fn into_response(self, input: &mut #Input<'_>) -> Result<#Response<Self::Body>, Self::Error> {
                     #derived
                 }
             }
@@ -179,7 +182,7 @@ impl ResponderInput {
     }
 }
 
-pub fn derive_responder(input: TokenStream) -> ParseResult<TokenStream> {
+pub fn derive_into_response(input: TokenStream) -> ParseResult<TokenStream> {
     syn::parse2(input)
         .and_then(self::parse)
         .and_then(|input| input.derive())
@@ -197,17 +200,17 @@ macro_rules! t {
             use quote::*;
 
             let source: syn::DeriveInput = syn::parse_quote!($($source)*);
-            let output = derive_responder(quote!(#source)).unwrap();
+            let output = derive_into_response(quote!(#source)).unwrap();
 
             let expected = {
                 let Self_ = &source.ident;
                 quote! {
-                    impl tsukuyomi::output::Responder for #Self_ {
+                    impl tsukuyomi::output::IntoResponse for #Self_ {
                         type Body = tsukuyomi::output::ResponseBody;
                         type Error = tsukuyomi::error::Error;
 
                         #[inline]
-                        fn respond_to(self, input: &mut tsukuyomi::input::Input<'_>)
+                        fn into_response(self, input: &mut tsukuyomi::input::Input<'_>)
                             -> Result<tsukuyomi::output::internal::Response<Self::Body>, Self::Error>
                         {
                             $($body)*
@@ -230,7 +233,7 @@ macro_rules! t {
         fn $name() {
             use quote::*;
             let source: syn::DeriveInput = syn::parse_quote!($($source)*);
-            match derive_responder(quote!(#source)) {
+            match derive_into_response(quote!(#source)) {
                 Ok(..) => panic!("the derivation should be failed"),
                 Err(e) => assert_eq!(e.to_string(), $message.to_string()),
             }
@@ -241,7 +244,7 @@ macro_rules! t {
 t! {
     name: test_unit_struct,
     source: { struct A; },
-    body: { tsukuyomi::output::internal::respond_to((), input) },
+    body: { tsukuyomi::output::internal::into_response((), input) },
 }
 
 t! {
@@ -251,7 +254,7 @@ t! {
     },
     body: {
         match self {
-            A(__arg_0) => tsukuyomi::output::internal::respond_to(__arg_0, input),
+            A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, input),
         }
     },
 }
@@ -262,7 +265,7 @@ t! {
         struct A();
     },
     body: {
-        tsukuyomi::output::internal::respond_to((), input)
+        tsukuyomi::output::internal::into_response((), input)
     },
 }
 
@@ -275,7 +278,7 @@ t! {
     },
     body: {
         match self {
-            A { b: __arg_0, } => tsukuyomi::output::internal::respond_to(__arg_0, input),
+            A { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, input),
         }
     },
 }
@@ -286,7 +289,7 @@ t! {
         struct A {}
     },
     body: {
-        tsukuyomi::output::internal::respond_to((), input)
+        tsukuyomi::output::internal::into_response((), input)
     },
 }
 
@@ -303,11 +306,11 @@ t! {
     },
     body: {
         match self {
-            Either::A(__arg_0) => tsukuyomi::output::internal::respond_to(__arg_0, input),
-            Either::B { b: __arg_0, } => tsukuyomi::output::internal::respond_to(__arg_0, input),
-            Either::C => tsukuyomi::output::internal::respond_to((), input),
-            Either::D() => tsukuyomi::output::internal::respond_to((), input),
-            Either::E {} => tsukuyomi::output::internal::respond_to((), input),
+            Either::A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, input),
+            Either::B { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, input),
+            Either::C => tsukuyomi::output::internal::into_response((), input),
+            Either::D() => tsukuyomi::output::internal::into_response((), input),
+            Either::E {} => tsukuyomi::output::internal::into_response((), input),
         }
     },
 }
@@ -315,14 +318,14 @@ t! {
 t! {
     name: test_explicit_struct,
     source: {
-        #[responder(respond_to = "my::respond_to")]
+        #[response(with = "my::into_response")]
         struct A {
             x: X,
             y: Y,
         }
     },
     body: {
-        my::respond_to(self, input)
+        my::into_response(self, input)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)
     },

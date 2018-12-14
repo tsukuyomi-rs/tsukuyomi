@@ -1,7 +1,7 @@
 //! CORS support for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-cors/0.1.0")]
-#![warn(
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-cors/0.2.0-dev")]
+#![deny(
     missing_docs,
     missing_debug_implementations,
     nonstandard_style,
@@ -9,15 +9,7 @@
     rust_2018_compatibility,
     unused
 )]
-#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
-#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
-#![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
-#![cfg_attr(feature = "cargo-clippy", allow(stutter))]
-#![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
-
-extern crate failure;
-extern crate http;
-extern crate tsukuyomi;
+#![forbid(clippy::unimplemented)]
 
 use {
     failure::Fail,
@@ -38,17 +30,7 @@ use {
         HttpTryFrom, Method, Request, Response, StatusCode, Uri,
     },
     std::{collections::HashSet, sync::Arc, time::Duration},
-    tsukuyomi::{
-        app::{
-            fallback::{self, Fallback},
-            scope::Scope,
-        },
-        handler::AsyncResult, //
-        HttpError,
-        Input,
-        Modifier,
-        Output,
-    },
+    tsukuyomi::{HttpError, Input, Output},
 };
 
 /// A builder of `CORS`.
@@ -185,8 +167,10 @@ impl Builder {
                     }
                     acc += m.as_str();
                     acc
-                }).into(),
-        ).expect("should be a valid header value");
+                })
+                .into(),
+        )
+        .expect("should be a valid header value");
 
         let headers_value = self.headers.as_ref().map(|hdrs| {
             HeaderValue::from_shared(
@@ -198,8 +182,10 @@ impl Builder {
                         }
                         acc += hdr.as_str();
                         acc
-                    }).into(),
-            ).expect("should be a valid header value")
+                    })
+                    .into(),
+            )
+            .expect("should be a valid header value")
         });
 
         CORS {
@@ -240,57 +226,144 @@ impl CORS {
     }
 }
 
-/// The implementation of `Scope` for registering itself as `Modifier` and `Fallback`
-/// into a specific scope.
-impl Scope for CORS {
-    type Error = tsukuyomi::app::Error;
+mod impl_endpoint_for_cors {
+    use {
+        super::CORS,
+        http::{Method, Response, StatusCode},
+        tsukuyomi::{
+            endpoint::{Endpoint, EndpointAction},
+            error::Error,
+            handler::AllowedMethods,
+            input::Input,
+        },
+    };
 
-    fn configure(self, cx: &mut tsukuyomi::app::scope::Context<'_>) -> Result<(), Self::Error> {
-        tsukuyomi::app::directives::fallback(self.clone()) // <-- handles the fallback preflight request
-            .chain(tsukuyomi::app::directives::modifier(self)) // <-- handle explicit preflight/simple request
-            .configure(cx)
-    }
-}
+    impl EndpointAction<()> for CORS {
+        type Output = Response<()>;
+        type Error = Error;
+        type Future = futures::future::FutureResult<Self::Output, Self::Error>;
 
-/// The implementation of `Fallback` for processing the CORS request.
-///
-/// This fallback adds the processing for CORS preflight request for all URLs
-/// registered in the scope. If the route explicitly handles `OPTIONS`, it will be
-/// ignored.
-impl Fallback for CORS {
-    fn call(&self, cx: &fallback::Context<'_>) -> tsukuyomi::Result<Output> {
-        if cx.request().method() == Method::OPTIONS {
-            if let Some(origin) = self.inner.validate_origin(cx.request())? {
-                return self
-                    .inner
-                    .process_preflight_request(cx.request(), origin)
-                    .map(|response| response.map(Into::into))
-                    .map_err(Into::into);
+        fn call(self, input: &mut Input<'_>, _: ()) -> Self::Future {
+            match self.inner.validate_origin(input.request) {
+                Ok(Some(origin)) => futures::future::result(
+                    self.inner
+                        .process_preflight_request(input.request, origin)
+                        .map_err(Into::into),
+                ),
+                Ok(None) => futures::future::err(StatusCode::NOT_FOUND.into()),
+                Err(err) => futures::future::err(err.into()),
             }
         }
+    }
 
-        tsukuyomi::app::fallback::default(cx)
+    impl Endpoint<()> for CORS {
+        type Output = Response<()>;
+        type Action = Self;
+
+        fn allowed_methods(&self) -> Option<AllowedMethods> {
+            Some(AllowedMethods::from(Method::OPTIONS))
+        }
+
+        fn apply(&self, method: &Method) -> Option<Self::Action> {
+            if method == Method::OPTIONS {
+                Some(self.clone())
+            } else {
+                None
+            }
+        }
     }
 }
 
-/// The implementation of `Modifier` for processing CORS requests.
-///
-/// This modifier inserts the processing of CORS request for all `AsyncResult`s
-/// returned from the handlers in the scope.
-impl Modifier for CORS {
-    fn modify(&self, mut handle: AsyncResult<Output>) -> AsyncResult<Output> {
-        let inner = self.inner.clone();
-        let mut cors_handled = false;
+mod impl_modify_handler_for_cors {
+    use {
+        super::CORS,
+        either::Either,
+        futures::{Async, Poll},
+        http::Method,
+        tsukuyomi::{
+            error::Error,
+            handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+            input::Input,
+            output::Output,
+        },
+    };
 
-        AsyncResult::poll_fn(move |input| {
-            if !cors_handled {
-                cors_handled = true;
-                if let Some(output) = inner.process_request(input)? {
-                    return Ok(output.into());
+    /// The implementation of `Modifier` for processing CORS requests.
+    ///
+    /// This modifier inserts the processing of CORS request for all `AsyncResult`s
+    /// returned from the handlers in the scope.
+    impl<H> ModifyHandler<H> for CORS
+    where
+        H: Handler,
+        H::Output: 'static,
+    {
+        type Output = Either<Output, H::Output>;
+        type Handler = CORSHandler<H>;
+
+        fn modify(&self, handler: H) -> Self::Handler {
+            let allowed_methods = handler.allowed_methods().cloned().map(|mut methods| {
+                methods.extend(Some(Method::OPTIONS));
+                methods
+            });
+
+            CORSHandler {
+                handler,
+                allowed_methods,
+                cors: self.clone(),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct CORSHandler<H> {
+        handler: H,
+        allowed_methods: Option<AllowedMethods>,
+        cors: CORS,
+    }
+
+    #[allow(clippy::type_complexity)]
+    impl<H: Handler> Handler for CORSHandler<H> {
+        type Output = Either<Output, H::Output>;
+        type Error = Error;
+        type Handle = CORSHandle<H::Handle>;
+
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.allowed_methods.as_ref()
+        }
+
+        #[inline]
+        fn handle(&self) -> Self::Handle {
+            CORSHandle {
+                applied: false,
+                cors: self.cors.clone(),
+                handle: self.handler.handle(),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct CORSHandle<H: Handle> {
+        applied: bool,
+        cors: CORS,
+        handle: H,
+    }
+
+    impl<H: Handle> Handle for CORSHandle<H> {
+        type Output = Either<Output, H::Output>;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            if !self.applied {
+                self.applied = true;
+                if let Some(output) = self.cors.inner.process_request(input)? {
+                    return Ok(Async::Ready(Either::Left(output)));
                 }
             }
-            handle.poll_ready(input)
-        })
+            self.handle
+                .poll_ready(input)
+                .map(|x| x.map(Either::Right))
+                .map_err(Into::into)
+        }
     }
 }
 
@@ -459,7 +532,7 @@ impl Inner {
                 .map(|response| Some(response.map(Into::into)))
                 .map_err(Into::into)
         } else {
-            let response_headers = input.response_headers();
+            let response_headers = input.response_headers.get_or_insert_with(Default::default);
             self.process_simple_request(input.request, origin, response_headers)
                 .map(|_| None)
                 .map_err(Into::into)
@@ -503,8 +576,13 @@ impl From<CORSErrorKind> for CORSError {
 }
 
 impl HttpError for CORSError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::FORBIDDEN
+    type Body = String;
+
+    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(self.to_string())
+            .expect("should be a valid response")
     }
 }
 

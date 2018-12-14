@@ -1,9 +1,10 @@
-extern crate openssl;
-extern crate tsukuyomi;
-
 use {
     openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod},
-    tsukuyomi::app::directives::*,
+    tsukuyomi::{
+        app::config::prelude::*, //
+        server::Server,
+        App,
+    },
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
@@ -19,14 +20,13 @@ fn main() -> tsukuyomi::server::Result<()> {
             Err(AlpnError::NOACK)
         }
     });
-    let ssl_acceptor = builder.build();
+    let acceptor = builder.build();
 
-    App::builder()
-        .with(
-            route!("/") //
-                .say("Hello, Tsukuyomi.\n"),
-        ) //
-        .build_server()?
-        .acceptor(ssl_acceptor)
-        .run()
+    App::create(
+        path!(/).to(endpoint::any() //
+            .reply("Hello, Tsukuyomi.\n")),
+    ) //
+    .map(Server::new)?
+    .acceptor(acceptor)
+    .run()
 }

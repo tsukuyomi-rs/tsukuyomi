@@ -4,16 +4,16 @@ extern crate tsukuyomi_tungstenite;
 
 use {
     futures::prelude::*,
-    tsukuyomi::app::directives::*,
+    tsukuyomi::{app::config::prelude::*, server::Server, App},
     tsukuyomi_tungstenite::{ws, Message, Ws},
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
-    App::builder() //
-        .with(
-            route!("/ws") //
+    App::create(
+        path!(/"ws") //
+            .to(endpoint::get() //
                 .extract(ws())
-                .reply(|ws: Ws| {
+                .call(|ws: Ws| {
                     ws.finish(|stream| {
                         let (tx, rx) = stream.split();
                         rx.filter_map(|m| {
@@ -27,8 +27,8 @@ fn main() -> tsukuyomi::server::Result<()> {
                         .forward(tx)
                         .then(|_| Ok(()))
                     })
-                }),
-        ) //
-        .build_server()?
-        .run()
+                })),
+    ) //
+    .map(Server::new)?
+    .run()
 }

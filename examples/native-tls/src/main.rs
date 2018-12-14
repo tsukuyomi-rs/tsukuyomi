@@ -1,22 +1,25 @@
-extern crate failure;
-extern crate native_tls;
-extern crate tokio_tls;
-extern crate tsukuyomi;
-
-use tsukuyomi::app::directives::*;
+use {
+    native_tls::{Identity, TlsAcceptor as NativeTlsAcceptor},
+    tokio_tls::TlsAcceptor,
+    tsukuyomi::{
+        app::config::prelude::*, //
+        server::Server,
+        App,
+    },
+};
 
 fn main() -> tsukuyomi::server::Result<()> {
     let der = std::fs::read("./private/identity.p12")?;
-    let cert = native_tls::Identity::from_pkcs12(&der, "mypass")?;
-    let tls_acceptor =
-        tokio_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
+    let cert = Identity::from_pkcs12(&der, "mypass")?;
+    let acceptor = NativeTlsAcceptor::builder(cert).build()?;
+    let acceptor = TlsAcceptor::from(acceptor);
 
-    App::builder()
-        .with(
-            route!("/") //
-                .say("Hello, Tsukuyomi.\n"),
-        ) //
-        .build_server()?
-        .acceptor(tls_acceptor)
-        .run()
+    App::create(
+        path!(/) //
+            .to(endpoint::any() //
+                .reply("Hello, Tsukuyomi.\n")),
+    ) //
+    .map(Server::new)?
+    .acceptor(acceptor)
+    .run()
 }

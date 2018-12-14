@@ -1,7 +1,5 @@
 //! An implementation of typemap for managing request-local data.
 
-#![cfg(feature = "localmap")]
-
 use std::{
     any::TypeId,
     collections::{hash_map, HashMap},
@@ -29,12 +27,12 @@ macro_rules! local_key {
 
     (@declare $(#[$m:meta])* ($($vis:tt)*) $kw:tt $NAME:ident : $t:ty) => {
         $(#[$m])*
-        $($vis)* $kw $NAME: $crate::localmap::LocalKey<$t> = {
+        $($vis)* $kw $NAME: $crate::input::localmap::LocalKey<$t> = {
             fn __type_id() -> std::any::TypeId {
                 struct __A;
                 std::any::TypeId::of::<__A>()
             }
-            $crate::localmap::LocalKey {
+            $crate::input::localmap::LocalKey {
                 __type_id,
                 __marker: std::marker::PhantomData,
             }
@@ -108,7 +106,6 @@ trait BoxDowncastExt {
     unsafe fn downcast_unchecked<T: Send + 'static>(self) -> Box<T>;
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(use_self))]
 impl BoxDowncastExt for Box<dyn Opaque> {
     unsafe fn downcast_unchecked<T: Send + 'static>(self) -> Box<T> {
         Box::from_raw(Box::into_raw(self) as *mut T)

@@ -4,12 +4,18 @@ extern crate tsukuyomi_cors;
 
 use {
     serde::{Deserialize, Serialize},
-    tsukuyomi::{app::directives::*, extractor, Responder},
+    tsukuyomi::{
+        app::config::prelude::*, //
+        chain,
+        extractor,
+        output::IntoResponse,
+        App,
+    },
     tsukuyomi_cors::CORS,
 };
 
-#[derive(Debug, Deserialize, Serialize, Responder)]
-#[responder(respond_to = "tsukuyomi::output::responder::json")]
+#[derive(Debug, Deserialize, Serialize, IntoResponse)]
+#[response(with = "tsukuyomi::output::into_response::json")]
 struct UserInfo {
     username: String,
     email: String,
@@ -25,11 +31,10 @@ fn main() -> tsukuyomi::server::Result<()> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    App::builder()
-        .with(cors)
-        .with(
-            route!("/user/info")
-                .methods("POST")?
+    App::create(chain![
+        path!(*).to(cors.clone()), // handle OPTIONS *
+        path!(/"user"/"info") //
+            .to(endpoint::post() //
                 .extract(extractor::body::json())
                 .call(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
@@ -38,9 +43,10 @@ fn main() -> tsukuyomi::server::Result<()> {
                         ));
                     }
                     Ok(info)
-                }),
-        ) //
-        .build_server()?
-        .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
-        .run()
+                },))
+            .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
+    ]) //
+    .map(tsukuyomi::server::Server::new)?
+    .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
+    .run()
 }

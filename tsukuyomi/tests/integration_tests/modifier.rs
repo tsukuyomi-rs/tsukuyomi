@@ -1,10 +1,10 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        app::directives::*, //
-        handler::AsyncResult,
-        output::Output,
-        Modifier,
+        app::config::prelude::*, //
+        chain,
+        handler::{AllowedMethods, Handler, ModifyHandler},
+        App,
     },
 };
 
@@ -14,10 +14,40 @@ struct MockModifier {
     name: &'static str,
 }
 
-impl Modifier for MockModifier {
-    fn modify(&self, result: AsyncResult<Output>) -> AsyncResult<Output> {
+impl<H: Handler> ModifyHandler<H> for MockModifier {
+    type Output = H::Output;
+    type Handler = MockHandler<H>;
+
+    fn modify(&self, inner: H) -> Self::Handler {
+        MockHandler {
+            inner,
+            marker: self.marker.clone(),
+            name: self.name,
+        }
+    }
+}
+
+struct MockHandler<H> {
+    inner: H,
+    marker: Arc<Mutex<Vec<&'static str>>>,
+    name: &'static str,
+}
+
+impl<H> Handler for MockHandler<H>
+where
+    H: Handler,
+{
+    type Output = H::Output;
+    type Error = H::Error;
+    type Handle = H::Handle;
+
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        self.inner.allowed_methods()
+    }
+
+    fn handle(&self) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
-        result
+        self.inner.handle()
     }
 }
 
@@ -25,17 +55,16 @@ impl Modifier for MockModifier {
 fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::builder()
-        .with(
-            route!("/") //
-                .reply(|| ""),
-        ) //
-        .with(modifier(MockModifier {
-            marker: marker.clone(),
-            name: "M",
-        })) //
-        .build_server()?
-        .into_test_server()?;
+    let app = App::create(
+        path!(/) //
+            .to(endpoint::any().reply(""))
+            .modify(MockModifier {
+                marker: marker.clone(),
+                name: "M",
+            }),
+    )?;
+
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M"]);
@@ -51,20 +80,21 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
 fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::builder()
-        .with(
-            route!("/") //
-                .reply(|| ""),
-        ).with(modifier(MockModifier {
-            marker: marker.clone(),
-            name: "M1",
-        })) //
-        .with(modifier(MockModifier {
-            marker: marker.clone(),
-            name: "M2",
-        })) //
-        .build_server()?
-        .into_test_server()?;
+    let app = App::create(
+        path!(/) //
+            .to(endpoint::any().reply(""))
+            .modify(chain![
+                MockModifier {
+                    marker: marker.clone(),
+                    name: "M1",
+                },
+                MockModifier {
+                    marker: marker.clone(),
+                    name: "M2",
+                }
+            ]),
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -76,22 +106,24 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
 fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::builder()
-        .with(modifier(MockModifier {
+    let app = App::create(
+        chain![
+            mount("/path1").with({
+                path!(/) //
+                    .to(endpoint::any().reply(""))
+                    .modify(MockModifier {
+                        marker: marker.clone(),
+                        name: "M2",
+                    })
+            }), //
+            path!(/"path2").to(endpoint::any().reply("")),
+        ]
+        .modify(MockModifier {
             marker: marker.clone(),
             name: "M1",
-        })) //
-        .with(
-            mount("/path1")?
-                .with(modifier(MockModifier {
-                    marker: marker.clone(),
-                    name: "M2",
-                })) //
-                .with(route!("/").reply(|| "")),
-        ) //
-        .with(route!("/path2").reply(|| ""))
-        .build_server()?
-        .into_test_server()?;
+        }),
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/path1")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -107,32 +139,33 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
 fn nested_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = App::builder()
-        .with(
-            mount("/path")?
-                .with(modifier(MockModifier {
-                    marker: marker.clone(),
-                    name: "M1",
-                })) //
+    let app = App::create({
+        mount("/path").with({
+            mount("/to")
                 .with(
-                    mount("/to")?
-                        .with(modifier(MockModifier {
-                            marker: marker.clone(),
-                            name: "M2",
-                        })) //
-                        .with(route!("/").reply(|| ""))
-                        .with(
-                            mount("/a")?
-                                .with(modifier(MockModifier {
+                    chain![
+                        path!(/).to(endpoint::any().reply("")),
+                        mount("/a").with({
+                            path!(/) //
+                                .to(endpoint::any().reply(""))
+                                .modify(MockModifier {
                                     marker: marker.clone(),
                                     name: "M3",
-                                })) //
-                                .with(route!("/").reply(|| "")),
-                        ),
-                ),
-        ) //
-        .build_server()?
-        .into_test_server()?;
+                                })
+                        })
+                    ]
+                    .modify(MockModifier {
+                        marker: marker.clone(),
+                        name: "M2",
+                    }),
+                )
+                .modify(MockModifier {
+                    marker: marker.clone(),
+                    name: "M1",
+                })
+        })
+    })?;
+    let mut server = tsukuyomi::test::server(app)?;
 
     let _ = server.perform("/path/to")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);

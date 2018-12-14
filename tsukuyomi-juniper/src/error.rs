@@ -1,13 +1,13 @@
 use {
-    http::{Response, StatusCode},
+    futures::Poll,
+    http::{Request, Response, StatusCode},
     serde_json::json,
     std::fmt,
     tsukuyomi::{
-        error::HttpError, //
-        handler::AsyncResult,
+        error::{Error, HttpError}, //
+        handler::{AllowedMethods, Handle, Handler, ModifyHandler},
         input::Input,
-        modifier::Modifier,
-        output::Output,
+        output::ResponseBody,
     },
 };
 
@@ -37,27 +37,27 @@ impl fmt::Display for GraphQLParseError {
 }
 
 impl HttpError for GraphQLParseError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::BAD_REQUEST
-    }
+    type Body = String;
 
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
+    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
         let body = json!({
             "errors": [
                 {
                     "message": self.to_string(),
                 }
             ],
-        }).to_string();
+        })
+        .to_string();
         Response::builder()
+            .status(StatusCode::BAD_REQUEST)
             .header("content-type", "application/json")
-            .body(body.into())
+            .body(body)
             .expect("should be a valid response")
     }
 }
 
 #[derive(Debug)]
-pub struct GraphQLError(Box<dyn HttpError>);
+pub struct GraphQLError(Error);
 
 impl fmt::Display for GraphQLError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -66,22 +66,26 @@ impl fmt::Display for GraphQLError {
 }
 
 impl HttpError for GraphQLError {
-    fn status_code(&self) -> StatusCode {
-        self.0.status_code()
-    }
+    type Body = ResponseBody;
 
-    fn to_response(&mut self, _: &mut Input<'_>) -> Output {
+    fn into_response(self, request: &Request<()>) -> Response<Self::Body> {
         let body = json!({
             "errors": [
                 {
                     "message": self.to_string(),
                 }
             ],
-        }).to_string();
-        Response::builder()
-            .header("content-type", "application/json")
-            .body(body.into())
-            .expect("should be a valid response")
+        })
+        .to_string();
+
+        let mut response = self.0.into_response(request).map(|_| body.into());
+
+        response.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::header::HeaderValue::from_static("application/json"),
+        );
+
+        response
     }
 }
 
@@ -89,18 +93,63 @@ impl HttpError for GraphQLError {
 #[derive(Debug, Default)]
 pub struct GraphQLModifier(());
 
-impl Modifier for GraphQLModifier {
-    fn modify(&self, mut handle: AsyncResult<Output>) -> AsyncResult<Output> {
-        AsyncResult::poll_fn(move |input| {
-            handle.poll_ready(input).map_err(|err| {
-                if err.is::<GraphQLParseError>() || err.is::<GraphQLError>() {
-                    return err;
-                }
-                match err.into_http_error() {
-                    Ok(e) => GraphQLError(e).into(),
-                    Err(crit) => tsukuyomi::Error::critical(crit),
-                }
-            })
+impl<H> ModifyHandler<H> for GraphQLModifier
+where
+    H: Handler,
+{
+    type Output = H::Output;
+    type Handler = GraphQLHandler<H>;
+
+    #[inline]
+    fn modify(&self, inner: H) -> Self::Handler {
+        GraphQLHandler { inner }
+    }
+}
+
+#[derive(Debug)]
+pub struct GraphQLHandler<H> {
+    inner: H,
+}
+
+impl<H> Handler for GraphQLHandler<H>
+where
+    H: Handler,
+{
+    type Output = H::Output;
+    type Error = Error;
+    type Handle = GraphQLHandle<H::Handle>;
+
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        self.inner.allowed_methods()
+    }
+
+    fn handle(&self) -> Self::Handle {
+        GraphQLHandle {
+            inner: self.inner.handle(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct GraphQLHandle<H> {
+    inner: H,
+}
+
+impl<H> Handle for GraphQLHandle<H>
+where
+    H: Handle,
+{
+    type Output = H::Output;
+    type Error = Error;
+
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        self.inner.poll_ready(input).map_err(|err| {
+            let err = err.into();
+            if err.is::<GraphQLParseError>() || err.is::<GraphQLError>() {
+                err
+            } else {
+                GraphQLError(err).into()
+            }
         })
     }
 }

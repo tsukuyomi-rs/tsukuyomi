@@ -3,12 +3,21 @@ use {
     http::header::{Entry, HeaderMap},
     reqwest::IntoUrl,
     std::{mem, net::SocketAddr},
-    tsukuyomi::{extractor, server::io::Peer, Error, Extractor, Input, Never, Responder},
+    tsukuyomi::{
+        chain,
+        core::Never,
+        extractor, //
+        output::IntoResponse,
+        server::io::Peer,
+        Error,
+        Extractor,
+        Input,
+    },
 };
 
 #[derive(Debug)]
 pub struct Client {
-    client: reqwest::async::Client,
+    client: reqwest::r#async::Client,
     headers: HeaderMap,
     peer_addr: Peer<SocketAddr>,
 }
@@ -49,11 +58,11 @@ impl Client {
 }
 
 pub struct ProxyResponse {
-    resp: reqwest::async::Response,
+    resp: reqwest::r#async::Response,
 }
 
 impl ProxyResponse {
-    pub fn receive_all(mut self) -> impl Future<Error = Error, Item = impl Responder> {
+    pub fn receive_all(mut self) -> impl Future<Error = Error, Item = impl IntoResponse> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
@@ -70,16 +79,20 @@ impl ProxyResponse {
             .fold(Vec::with_capacity(content_length), |mut acc, chunk| {
                 acc.extend_from_slice(&*chunk);
                 Ok::<_, reqwest::Error>(acc)
-            }).map(move |chunks| response.map(|_| chunks))
+            })
+            .map(move |chunks| response.map(|_| chunks))
             .map_err(tsukuyomi::error::internal_server_error)
     }
 }
 
-impl Responder for ProxyResponse {
+impl IntoResponse for ProxyResponse {
     type Body = tsukuyomi::output::ResponseBody;
     type Error = Never;
 
-    fn respond_to(mut self, _: &mut Input<'_>) -> Result<http::Response<Self::Body>, Self::Error> {
+    fn into_response(
+        mut self,
+        _: &mut Input<'_>,
+    ) -> Result<http::Response<Self::Body>, Self::Error> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
@@ -90,16 +103,15 @@ impl Responder for ProxyResponse {
     }
 }
 
-pub fn proxy_client(
-    client: reqwest::async::Client,
-) -> impl Extractor<Output = (Client,), Error = Error> {
-    extractor::extension::clone()
-        .into_builder() // <-- start building
-        .and(extractor::header::clone_headers())
-        .and(extractor::value(client))
-        .map(|peer_addr, headers, client| Client {
-            client,
-            headers,
-            peer_addr,
-        })
+pub fn proxy_client(client: reqwest::r#async::Client) -> impl Extractor<Output = (Client,)> {
+    extractor::ExtractorExt::new(chain![
+        extractor::extension::clone(),
+        extractor::header::clone_headers(),
+        extractor::value(client),
+    ])
+    .map(|peer_addr, headers, client| Client {
+        client,
+        headers,
+        peer_addr,
+    })
 }

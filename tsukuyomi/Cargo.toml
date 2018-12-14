@@ -3,7 +3,8 @@ name = "tsukuyomi"
 description = """
 Asynchronous Web framework for Rust
 """
-version = "0.4.3"
+version = "0.5.0-dev"
+edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
@@ -37,10 +38,11 @@ cookie = { version = "0.11", features = ["percent-encode"] }
 either = "1.5"
 failure = "0.1.2"
 filetime = "0.2"
-futures = "0.1"
+futures01 = { package = "futures", version = "0.1" }
 http = "0.1"
 hyper = "0.12"
 indexmap = "1"
+lazy_static = "1"
 log = "0.4"
 mime = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -63,15 +65,8 @@ tokio-rustls = { version = "0.8", optional = true }
 openssl = { version = "0.10", optional = true }
 tokio-openssl = { version = "0.3", optional = true }
 
-tower-web = { version = "0.3", default-features = false, optional = true }
-
-[dependencies.tsukuyomi-internal]
-version = "=0.4.3" # <cargo-version-sync>
-path = "./internal"
-features = ["localmap"]
-
 [dependencies.tsukuyomi-macros]
-version = "=0.4.3" # <cargo-version-sync>
+version = "0.5.0-dev"
 path = "./macros"
 
 [dev-dependencies]
@@ -85,7 +80,6 @@ serde = { version = "1", features = ["derive"] }
 default = []
 full = [
   "secure",
-  "tower-middleware",
   "use-native-tls",
   "use-rustls",
   "use-openssl",
@@ -93,9 +87,6 @@ full = [
 
 # Enables the features around signing/encryption, depending on 'ring'.
 secure = ["cookie/secure"]
-
-# Enables the support for middlewares in tower-web.
-tower-middleware = ["tower-web"]
 
 # Enables the support for TLS acceptors.
 use-native-tls = ["native-tls", "tokio-tls"]

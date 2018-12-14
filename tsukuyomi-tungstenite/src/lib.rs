@@ -1,7 +1,7 @@
 //! The basic WebSocket support for Tsukuyomi, powered by tungstenite.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.1.0")]
-#![warn(
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.2.0-dev")]
+#![deny(
     missing_docs,
     missing_debug_implementations,
     nonstandard_style,
@@ -9,22 +9,11 @@
     rust_2018_compatibility,
     unused
 )]
-#![cfg_attr(tsukuyomi_deny_warnings, deny(warnings))]
-#![cfg_attr(tsukuyomi_deny_warnings, doc(test(attr(deny(warnings)))))]
-#![cfg_attr(feature = "cargo-clippy", warn(pedantic))]
-#![cfg_attr(feature = "cargo-clippy", forbid(unimplemented))]
-
-extern crate base64;
-extern crate failure;
-extern crate futures;
-extern crate http;
-extern crate sha1;
-extern crate tokio_tungstenite;
-extern crate tsukuyomi;
-extern crate tungstenite;
+#![doc(test(attr(deny(deprecated, unused,))))]
+#![forbid(clippy::unimplemented)]
 
 use {
-    futures::IntoFuture,
+    futures::{Future, IntoFuture},
     http::{
         header::{
             CONNECTION, //
@@ -33,14 +22,18 @@ use {
             SEC_WEBSOCKET_VERSION,
             UPGRADE,
         },
-        Response, StatusCode,
+        Request, Response, StatusCode,
     },
     sha1::{Digest, Sha1},
     tsukuyomi::{
         error::{Error, HttpError},
         extractor::Extractor,
-        input::{body::UpgradedIo, Input},
-        output::Responder,
+        input::{
+            body::{RequestBody, UpgradedIo},
+            Input,
+        },
+        output::IntoResponse,
+        rt::Executor,
     },
     tungstenite::protocol::Role,
 };
@@ -68,8 +61,13 @@ pub enum HandshakeError {
 }
 
 impl HttpError for HandshakeError {
-    fn status_code(&self) -> StatusCode {
-        StatusCode::BAD_REQUEST
+    type Body = String;
+
+    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
+        Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(self.to_string())
+            .expect("should be a valid response")
     }
 }
 
@@ -146,7 +144,7 @@ impl Ws {
     /// Creates the instance of `Responder` for creating the handshake response.
     ///
     /// This method takes a function to construct the task used after upgrading the protocol.
-    pub fn finish<F, R>(self, on_upgrade: F) -> impl Responder
+    pub fn finish<F, R>(self, on_upgrade: F) -> WsOutput<F>
     where
         F: FnOnce(WebSocketStream) -> R + Send + 'static,
         R: IntoFuture<Item = (), Error = ()>,
@@ -159,13 +157,14 @@ impl Ws {
     }
 }
 
-#[allow(missing_debug_implementations)]
-struct WsOutput<F> {
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct WsOutput<F> {
     ws: Ws,
     on_upgrade: F,
 }
 
-impl<F, R> Responder for WsOutput<F>
+impl<F, R> IntoResponse for WsOutput<F>
 where
     F: FnOnce(WebSocketStream) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
@@ -174,7 +173,7 @@ where
     type Body = ();
     type Error = Error;
 
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let Self {
             ws: Ws {
                 accept_hash,
@@ -183,11 +182,21 @@ where
             on_upgrade,
         } = self;
 
-        input
-            .upgrade(move |io: UpgradedIo| {
+        let body = input.locals.remove(&RequestBody::KEY).ok_or_else(|| {
+            tsukuyomi::error::internal_server_error("the request body has already taken by someone")
+        })?;
+
+        let task = body
+            .on_upgrade()
+            .map_err(|_| ())
+            .and_then(move |io: UpgradedIo| {
                 let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
                 on_upgrade(transport).into_future()
-            }).map_err(|_| {
+            });
+
+        tsukuyomi::rt::DefaultExecutor::current()
+            .spawn(Box::new(task))
+            .map_err(|_| {
                 tsukuyomi::error::internal_server_error("failed to spawn WebSocket task")
             })?;
 
