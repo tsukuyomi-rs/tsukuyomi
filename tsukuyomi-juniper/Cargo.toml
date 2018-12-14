@@ -3,15 +3,14 @@ name = "tsukuyomi-juniper"
 description = """
 Components for integrating GraphQL endpoints into Tsukuyomi.
 """
-version = "0.2.0"
+version = "0.3.0-dev"
+edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
-build = "build.rs"
-
 [dependencies]
-tsukuyomi = { version = "0.4.3", path = "../tsukuyomi" }
+tsukuyomi = { version = "0.5.0-dev", path = "../tsukuyomi" }
 juniper = "0.10"
 
 bytes = "0.4"

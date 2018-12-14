@@ -1,11 +1,11 @@
 use {
     bytes::Bytes,
     http::Response,
-    tsukuyomi::{input::Input, output::Responder},
+    tsukuyomi::{input::Input, output::IntoResponse},
 };
 
 /// Creates a handler function which returns a GraphiQL source.
-pub fn graphiql_source(url: impl AsRef<str> + 'static) -> impl Responder + Clone {
+pub fn graphiql_source(url: impl AsRef<str> + 'static) -> impl IntoResponse + Clone {
     GraphiQLSource {
         source: juniper::http::graphiql::graphiql_source(url.as_ref()).into(),
     }
@@ -16,12 +16,12 @@ struct GraphiQLSource {
     source: Bytes,
 }
 
-impl Responder for GraphiQLSource {
+impl IntoResponse for GraphiQLSource {
     type Body = Bytes;
-    type Error = tsukuyomi::Never;
+    type Error = tsukuyomi::core::Never;
 
     #[inline]
-    fn respond_to(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(Response::builder()
             .header("content-type", "text/html; charset=utf-8")
             .body(self.source)

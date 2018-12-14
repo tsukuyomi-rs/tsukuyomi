@@ -1,9 +1,4 @@
-#![cfg_attr(feature = "cargo-clippy", allow(double_parens))]
-
-extern crate futures;
-extern crate juniper;
-extern crate tsukuyomi;
-extern crate tsukuyomi_juniper;
+#![allow(clippy::double_parens)]
 
 mod context;
 mod schema;
@@ -12,7 +7,7 @@ use {
     crate::context::{Context, Database},
     futures::prelude::*,
     std::sync::{Arc, RwLock},
-    tsukuyomi::app::directives::*,
+    tsukuyomi::{app::config::prelude::*, chain, server::Server, App},
     tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
 };
 
@@ -30,27 +25,26 @@ fn main() -> tsukuyomi::server::Result<()> {
         })
     };
 
-    App::builder()
-        .with(
-            // renders the source of GraphiQL.
-            route!("/") //
-                .say(tsukuyomi_juniper::graphiql_source("/graphql")),
-        ) //
-        .with(
-            // the endpoint which handles GraphQL requests over HTTP.
-            route!("/graphql")
-                .methods("GET, POST")?
+    App::create(chain![
+        // renders the source of GraphiQL.
+        path!(/) //
+            .to(endpoint::get() //
+                .reply(tsukuyomi_juniper::graphiql_source("/graphql"))),
+        // a route which handles GraphQL requests over HTTP.
+        path!(/"graphql")
+            .to(endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request()) // <-- parses the incoming GraphQL request.
                 .extract(fetch_graphql_context) // <-- fetches a GraphQL context.
-                .modify(GraphQLModifier::default()) // <-- modifies all errors in the route to a GraphQL error.
-                .call(move |request: GraphQLRequest, context: Context| {
+                .call_async(move |request: GraphQLRequest, context: Context| {
                     // spawns a task that executes the (parsed) GraphQL request.
                     tsukuyomi::rt::spawn_fn({
                         let schema = schema.clone();
                         move || request.execute(&schema, &context)
-                    }).map_err(tsukuyomi::error::internal_server_error)
-                }),
-        ) //
-        .build_server()?
-        .run()
+                    })
+                    .map_err(tsukuyomi::error::internal_server_error)
+                }))
+            .modify(GraphQLModifier::default()) // <-- modifies all errors thrown from this route into GraphQL error.
+    ])
+    .map(Server::new)?
+    .run()
 }

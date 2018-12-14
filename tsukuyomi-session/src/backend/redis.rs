@@ -115,7 +115,6 @@ impl Backend for RedisBackend {
 }
 
 #[allow(missing_debug_implementations)]
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct RedisSession {
     inner: Inner,
     backend: RedisBackend,

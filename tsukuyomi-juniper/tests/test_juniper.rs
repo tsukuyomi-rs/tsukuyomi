@@ -18,8 +18,9 @@ use {
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{
-        app::directives::*,
+        app::config::prelude::*,
         test::{Output as TestOutput, Server as TestServer},
+        App,
     },
     tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
 };
@@ -32,22 +33,21 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
         EmptyMutation::<Database>::new(),
     ));
 
-    let test_server = App::builder()
-        .with({
-            let database = database.clone();
-            route!("/")
-                .methods("GET, POST")?
+    let app = App::create({
+        let database = database.clone();
+        path!(/)
+            .to(endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request())
                 .extract(tsukuyomi::extractor::value(schema))
-                .modify(GraphQLModifier::default())
-                .call(move |request: GraphQLRequest, schema: Arc<_>| {
+                .call_async(move |request: GraphQLRequest, schema: Arc<_>| {
                     let database = database.clone();
                     tsukuyomi::rt::blocking(move || request.execute(&schema, &*database))
                         .map_err(tsukuyomi::error::internal_server_error)
-                })
-        }) //
-        .build_server()?
-        .into_test_server()?;
+                }))
+            .modify(GraphQLModifier::default())
+    })?;
+
+    let test_server = tsukuyomi::test::server(app)?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),
@@ -80,7 +80,8 @@ impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
                 Request::post(custom_url_encode(url))
                     .header("content-type", "application/json")
                     .body(body),
-            ).unwrap();
+            )
+            .unwrap();
         make_test_response(&response)
     }
 }
@@ -92,7 +93,7 @@ fn custom_url_encode(url: &str) -> String {
     utf8_percent_encode(url, CUSTOM_ENCODE_SET).to_string()
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(cast_lossless))]
+#[allow(clippy::cast_lossless)]
 fn make_test_response(response: &Response<TestOutput>) -> http_tests::TestResponse {
     let status_code = response.status().as_u16() as i32;
     let content_type = response
