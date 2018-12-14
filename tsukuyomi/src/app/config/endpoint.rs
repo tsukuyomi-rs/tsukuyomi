@@ -4,13 +4,11 @@ use {
         endpoint::Endpoint,
         error::Error,
         extractor::Extractor,
-        fs::NamedFile,
         generic::{Combine, Func, Tuple},
         handler::AllowedMethods,
     },
     futures01::{Future, IntoFuture},
     http::Method,
-    std::path::Path,
 };
 
 pub fn any() -> Builder {
@@ -180,19 +178,5 @@ where
         R: Clone + Send + 'static,
     {
         self.reply(move || output.clone())
-    }
-
-    /// Creates a `Route` that sends the contents of file located at the specified path.
-    pub fn send_file(
-        self,
-        path: impl AsRef<Path>,
-        config: Option<crate::fs::OpenConfig>,
-    ) -> impl Endpoint<(), Output = NamedFile> {
-        let path = crate::fs::ArcPath::from(path.as_ref().to_path_buf());
-
-        self.call(move || match config {
-            Some(ref config) => NamedFile::open_with_config(path.clone(), config.clone()),
-            None => NamedFile::open(path.clone()),
-        })
     }
 }

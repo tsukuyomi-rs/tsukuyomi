@@ -126,8 +126,84 @@ pub struct OpenConfig {
 // ==== NamedFile ====
 
 /// An instance of `Responder` for responding a file.
+#[derive(Debug, Clone)]
+pub struct NamedFile<P> {
+    path: P,
+    config: Option<OpenConfig>,
+}
+
+impl<P> NamedFile<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
+    /// Open a specified file with the default configuration.
+    pub fn open(path: P) -> Self {
+        Self { path, config: None }
+    }
+
+    /// Open a specified file with the provided configuration.
+    pub fn open_with_config(path: P, config: OpenConfig) -> Self {
+        Self {
+            path,
+            config: Some(config),
+        }
+    }
+}
+
+impl<P> Responder for NamedFile<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
+    type Response = NamedFileResponse;
+    type Error = crate::Error;
+    type Future = OpenNamedFile<P>;
+
+    #[inline]
+    fn respond(self, _: &mut Input<'_>) -> Self::Future {
+        OpenNamedFile {
+            path: self.path,
+            config: self.config,
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct NamedFile {
+pub struct OpenNamedFile<P> {
+    path: P,
+    config: Option<OpenConfig>,
+}
+
+impl<P> Future for OpenNamedFile<P>
+where
+    P: AsRef<Path>,
+{
+    type Item = NamedFileResponse;
+    type Error = crate::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let (file, meta) = futures01::try_ready!(blocking_io(|| {
+            let file = File::open(&self.path)?;
+            let meta = file.metadata()?;
+            Ok((file, meta))
+        }));
+
+        let config = self.config.take().unwrap_or_default();
+
+        let last_modified = FileTime::from_last_modification_time(&meta);
+        let etag = ETag::from_metadata(&meta);
+
+        Ok(Async::Ready(NamedFileResponse {
+            file,
+            meta,
+            last_modified,
+            etag,
+            config,
+        }))
+    }
+}
+
+#[derive(Debug)]
+pub struct NamedFileResponse {
     file: File,
     meta: Metadata,
     etag: ETag,
@@ -135,26 +211,7 @@ pub struct NamedFile {
     config: OpenConfig,
 }
 
-impl NamedFile {
-    /// Open a specified file with the default configuration.
-    pub fn open<P>(path: P) -> OpenFuture<P>
-    where
-        P: AsRef<Path>,
-    {
-        OpenFuture { path, config: None }
-    }
-
-    /// Open a specified file with the provided configuration.
-    pub fn open_with_config<P>(path: P, config: OpenConfig) -> OpenFuture<P>
-    where
-        P: AsRef<Path>,
-    {
-        OpenFuture {
-            path,
-            config: Some(config),
-        }
-    }
-
+impl NamedFileResponse {
     #[allow(clippy::cast_sign_loss)]
     fn is_modified(&self, headers: &HeaderMap) -> Result<bool, Error> {
         if let Some(h) = headers.get(header::IF_NONE_MATCH) {
@@ -214,8 +271,7 @@ impl NamedFile {
     }
 }
 
-// FIXME: switch to `Responder`
-impl IntoResponse for NamedFile {
+impl IntoResponse for NamedFileResponse {
     type Body = ResponseBody;
     type Error = Error;
 
@@ -243,44 +299,6 @@ impl IntoResponse for NamedFile {
             .header(header::ETAG, &*self.etag.to_string())
             .body(ResponseBody::wrap_stream(stream))
             .unwrap())
-    }
-}
-
-// ==== OpenFuture ====
-
-/// A future waiting for opening the file.
-#[derive(Debug)]
-pub struct OpenFuture<P> {
-    path: P,
-    config: Option<OpenConfig>,
-}
-
-impl<P> Future for OpenFuture<P>
-where
-    P: AsRef<Path>,
-{
-    type Item = NamedFile;
-    type Error = crate::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let (file, meta) = futures01::try_ready!(blocking_io(|| {
-            let file = File::open(&self.path)?;
-            let meta = file.metadata()?;
-            Ok((file, meta))
-        }));
-
-        let config = self.config.take().unwrap_or_default();
-
-        let last_modified = FileTime::from_last_modification_time(&meta);
-        let etag = ETag::from_metadata(&meta);
-
-        Ok(Async::Ready(NamedFile {
-            file,
-            meta,
-            last_modified,
-            etag,
-            config,
-        }))
     }
 }
 
@@ -404,7 +422,7 @@ impl Deref for ArcPath {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ServeFile {
     inner: Arc<ServeFileInner>,
 }
@@ -418,65 +436,49 @@ struct ServeFileInner {
 
 mod impl_handler_for_serve_file {
     use {
-        super::{ArcPath, NamedFile, OpenFuture, ServeFile, ServeFileInner},
+        super::{ArcPath, NamedFile, ServeFile},
         crate::{
             error::Error,
             handler::{AllowedMethods, Handle, Handler},
             input::Input,
         },
-        futures01::{Future, Poll},
-        std::sync::Arc,
+        futures01::{Async, Poll},
     };
 
     impl Handler for ServeFile {
-        type Output = NamedFile;
+        type Output = NamedFile<ArcPath>;
         type Error = Error;
-        type Handle = HandleServeFile;
+        type Handle = Self;
 
         fn allowed_methods(&self) -> Option<&AllowedMethods> {
             Some(&AllowedMethods::get())
         }
 
         fn handle(&self) -> Self::Handle {
-            HandleServeFile {
-                inner: self.inner.clone(),
-                in_flight: None,
-            }
+            self.clone()
         }
     }
 
-    #[derive(Debug)]
-    pub struct HandleServeFile {
-        inner: Arc<ServeFileInner>,
-        in_flight: Option<OpenFuture<ArcPath>>,
-    }
-
-    impl Handle for HandleServeFile {
-        type Output = NamedFile;
+    impl Handle for ServeFile {
+        type Output = NamedFile<ArcPath>;
         type Error = Error;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
-            loop {
-                if let Some(ref mut in_flight) = self.in_flight {
-                    return in_flight.poll();
-                }
+            let path = if self.inner.extract_path {
+                let path = input
+                    .params
+                    .as_ref()
+                    .and_then(|params| params.catch_all())
+                    .ok_or_else(|| crate::error::internal_server_error("missing params"))?;
+                self.inner.path.join(path).into()
+            } else {
+                self.inner.path.clone()
+            };
 
-                let path = if self.inner.extract_path {
-                    let path = input
-                        .params
-                        .as_ref()
-                        .and_then(|params| params.catch_all())
-                        .ok_or_else(|| crate::error::internal_server_error("missing params"))?;
-                    self.inner.path.join(path).into()
-                } else {
-                    self.inner.path.clone()
-                };
-
-                self.in_flight = Some(match self.inner.config {
-                    Some(ref config) => NamedFile::open_with_config(path, config.clone()),
-                    None => NamedFile::open(path),
-                });
-            }
+            Ok(Async::Ready(match self.inner.config {
+                Some(ref config) => NamedFile::open_with_config(path, config.clone()),
+                None => NamedFile::open(path),
+            }))
         }
     }
 }

@@ -1,6 +1,6 @@
 use tsukuyomi::{
     app::config::prelude::*, //
-    fs::Staticfiles,
+    fs::{NamedFile, Staticfiles},
     App,
 };
 
@@ -9,7 +9,8 @@ use tsukuyomi::{
 fn compiletest() -> tsukuyomi::app::Result<()> {
     App::create({
         path!(/"index.html") //
-            .to(endpoint::get().send_file("/path/to/index.html", None))
+            .to(endpoint::get() //
+                .say(NamedFile::open("/path/to/index.html")))
     })
     .map(drop)
 }

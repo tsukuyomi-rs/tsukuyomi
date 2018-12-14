@@ -5,7 +5,7 @@ use {
         core::{Chain, Never, TryFrom}, //
         error::Error,
         input::Input,
-        output::{Output, Responder},
+        output::{IntoResponse, Output, Responder},
     },
     either::Either,
     futures01::{Async, Future, Poll},
@@ -319,11 +319,15 @@ where
             state = match state {
                 State::First(ref mut handle) => {
                     let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-                    State::Second(x.respond_to(input))
+                    State::Second(x.respond(input))
                 }
                 State::Second(ref mut respond) => {
-                    let response = futures01::try_ready!(respond.poll().map_err(Into::into));
-                    return Ok(Async::Ready(response.map(Into::into)));
+                    return Ok(Async::Ready(
+                        futures01::try_ready!(respond.poll().map_err(Into::into))
+                            .into_response(input)
+                            .map_err(Into::into)?
+                            .map(Into::into),
+                    ));
                 }
             };
         })
