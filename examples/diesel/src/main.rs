@@ -40,7 +40,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .to(chain![
                     endpoint::get()
                         .extract(extractor::ExtractorExt::new(extractor::query::query()).optional())
-                        .call({
+                        .call_async({
                             #[derive(Debug, serde::Deserialize)]
                             struct Param {
                                 #[serde(default)]
@@ -59,7 +59,9 @@ fn main() -> tsukuyomi::server::Result<()> {
                                 .map(tsukuyomi::output::json)
                             }
                         }),
-                    endpoint::post().extract(extractor::body::json()).call({
+                    endpoint::post()//
+                        .extract(extractor::body::json())
+                        .call_async({
                         #[derive(Debug, serde::Deserialize)]
                         struct Param {
                             title: String,
@@ -85,7 +87,8 @@ fn main() -> tsukuyomi::server::Result<()> {
             path!(/{path::param("id")}) //
                 .extract(db_conn)
                 .to(
-                    endpoint::get().call(|id: i32, conn: Conn| blocking_section(move || {
+                    endpoint::get()//
+                        .call_async(|id: i32, conn: Conn| blocking_section(move || {
                         use crate::schema::posts::dsl;
                         use diesel::prelude::*;
                         dsl::posts

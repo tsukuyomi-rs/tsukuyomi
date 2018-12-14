@@ -10,7 +10,7 @@ fn compiletest() -> tsukuyomi::app::Result<()> {
     App::create({
         path!(/"index.html") //
             .to(endpoint::get() //
-                .say(NamedFile::open("/path/to/index.html")))
+                .reply(NamedFile::open("/path/to/index.html")))
     })
     .map(drop)
 }

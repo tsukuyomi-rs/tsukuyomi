@@ -13,7 +13,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         path!(/"ws") //
             .to(endpoint::get() //
                 .extract(ws())
-                .reply(|ws: Ws| {
+                .call(|ws: Ws| {
                     ws.finish(|stream| {
                         let (tx, rx) = stream.split();
                         rx.filter_map(|m| {

@@ -50,13 +50,13 @@ use {
         error::{internal_server_error, Error},
         handler::{AllowedMethods, Handle, Handler, ModifyHandler},
         input::Input,
-        output::Responder,
+        output::IntoResponse,
     },
 };
 
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
-pub fn respond_to<T>(t: T, _: &mut Input<'_>) -> tsukuyomi::Result<Response<String>>
+pub fn into_response<T>(t: T, _: &mut Input<'_>) -> tsukuyomi::Result<Response<String>>
 where
     T: Template,
 {
@@ -77,13 +77,13 @@ where
 #[derive(Debug)]
 pub struct Rendered<T: Template>(T);
 
-impl<T: Template> Responder for Rendered<T> {
+impl<T: Template> IntoResponse for Rendered<T> {
     type Body = String;
     type Error = Error;
 
     #[inline]
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::respond_to(self.0, input)
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response(self.0, input)
     }
 }
 

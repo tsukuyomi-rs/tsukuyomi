@@ -9,7 +9,7 @@ fn test_catch_unwind() {
         let app = App::create(
             path!(/) //
                 .to(endpoint::any() //
-                    .reply(|| -> &'static str { panic!("explicit panic") })),
+                    .call(|| -> &'static str { panic!("explicit panic") })),
         )?;
 
         let mut server = tsukuyomi::test::server(app)?;

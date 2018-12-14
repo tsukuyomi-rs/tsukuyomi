@@ -1,7 +1,7 @@
 use tsukuyomi::{
     app::config::prelude::*, //
     chain,
-    fs::Staticfiles,
+    fs::{NamedFile, Staticfiles},
     server::Server,
     App,
 };
@@ -12,7 +12,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     App::create(chain![
         path!(/) //
             .to(endpoint::get() //
-                .send_file(manifest_dir.join("static/index.html"), None)),
+                .reply(NamedFile::open(manifest_dir.join("static/index.html")))),
         Staticfiles::new(manifest_dir.join("static")),
     ])
     .map(Server::new)?

@@ -32,7 +32,7 @@ use {
             body::{RequestBody, UpgradedIo},
             Input,
         },
-        output::Responder,
+        output::IntoResponse,
         rt::Executor,
     },
     tungstenite::protocol::Role,
@@ -144,7 +144,7 @@ impl Ws {
     /// Creates the instance of `Responder` for creating the handshake response.
     ///
     /// This method takes a function to construct the task used after upgrading the protocol.
-    pub fn finish<F, R>(self, on_upgrade: F) -> impl Responder
+    pub fn finish<F, R>(self, on_upgrade: F) -> WsOutput<F>
     where
         F: FnOnce(WebSocketStream) -> R + Send + 'static,
         R: IntoFuture<Item = (), Error = ()>,
@@ -157,13 +157,14 @@ impl Ws {
     }
 }
 
-#[allow(missing_debug_implementations)]
-struct WsOutput<F> {
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct WsOutput<F> {
     ws: Ws,
     on_upgrade: F,
 }
 
-impl<F, R> Responder for WsOutput<F>
+impl<F, R> IntoResponse for WsOutput<F>
 where
     F: FnOnce(WebSocketStream) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
@@ -172,7 +173,7 @@ where
     type Body = ();
     type Error = Error;
 
-    fn respond_to(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
         let Self {
             ws: Ws {
                 accept_hash,

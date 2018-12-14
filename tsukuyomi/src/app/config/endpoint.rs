@@ -89,8 +89,8 @@ where
         }
     }
 
-    /// Creates a `Dispatcher` with the specified function that returns its result immediately.
-    pub fn reply<T, F>(self, f: F) -> impl Endpoint<T, Output = F::Out>
+    /// Creates an `Endpoint` that replies its result immediately.
+    pub fn call<T, F>(self, f: F) -> impl Endpoint<T, Output = F::Out>
     where
         E::Output: Send + 'static,
         E::Error: Send + 'static,
@@ -123,8 +123,8 @@ where
         crate::endpoint::endpoint(apply, allowed_methods)
     }
 
-    /// Creates a `Dispatcher` with the specified function that returns its result as a `Future`.
-    pub fn call<T, F, R>(self, f: F) -> impl Endpoint<T, Output = R::Item>
+    /// Creates an `Endpoint` that replies its result as a `Future`.
+    pub fn call_async<T, F, R>(self, f: F) -> impl Endpoint<T, Output = R::Item>
     where
         E::Output: Send + 'static,
         T: Tuple + Combine<E::Output> + Send + 'static,
@@ -172,11 +172,11 @@ where
     E: Extractor<Output = ()> + Send + Sync + 'static,
     E::Error: Send + 'static,
 {
-    /// Creates a `Route` that just replies with the specified `Responder`.
-    pub fn say<R>(self, output: R) -> impl Endpoint<(), Output = R>
+    /// Creates an `Endpoint` that replies the specified value.
+    pub fn reply<R>(self, output: R) -> impl Endpoint<(), Output = R>
     where
         R: Clone + Send + 'static,
     {
-        self.reply(move || output.clone())
+        self.call(move || output.clone())
     }
 }

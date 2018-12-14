@@ -6,7 +6,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let server = App::create(
         path!(/) //
             .to(endpoint::any() //
-                .say("Hello, world!\n")),
+                .reply("Hello, world!\n")),
     ) //
     .map(Server::new)?;
 

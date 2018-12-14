@@ -40,7 +40,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let app = App::create(
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -73,7 +73,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let app = App::create(
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -110,7 +110,7 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
     let app = App::create(
         path!(/) //
             .to(endpoint::allow_only("GET, DELETE")? //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -144,7 +144,7 @@ fn simple_request_with_allow_credentials() -> tsukuyomi::test::Result<()> {
     let app = App::create(
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -198,7 +198,7 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
         path!(*).to(cors.clone()), // OPTIONS *
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors)  // OPTIONS /
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -227,7 +227,7 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
         path!(*).to(cors.clone()), // OPTIONS *
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors)
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -261,7 +261,7 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
         path!(*).to(cors.clone()), // OPTIONS *
         path!(/)
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors)  // OPTIONS /
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -297,7 +297,7 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
         path!(*).to(cors.clone()), // OPTIONS *
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors)
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -339,7 +339,7 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
         path!(*).to(cors.clone()),
         path!(/) //
             .to(endpoint::get() //
-                .reply(|| "hello"))
+                .call(|| "hello"))
             .modify(cors)
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -366,10 +366,10 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
         path!(/"cors") //
             .to(endpoint::get() //
-                .reply(|| "cors"))
+                .call(|| "cors"))
             .modify(cors.clone()),
         path!(/"nocors") //
-            .to(endpoint::get().reply(|| "nocors")),
+            .to(endpoint::get().call(|| "nocors")),
         path!(*).to(cors),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -412,11 +412,11 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         path!(/"cors") //
-            .to(endpoint::get().reply(|| "cors"))
+            .to(endpoint::get().call(|| "cors"))
             .modify(cors),
         path!(/"nocors") //
             .to(endpoint::get() //
-                .reply(|| "nocors")),
+                .call(|| "nocors")),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 

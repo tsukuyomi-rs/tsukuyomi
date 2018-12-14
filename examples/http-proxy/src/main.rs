@@ -21,13 +21,13 @@ fn main() -> tsukuyomi::server::Result<()> {
         path!(/) //
             .to(endpoint::any()
                 .extract(proxy_client.clone())
-                .call(|client: Client| client
+                .call_async(|client: Client| client
                     .send_forwarded_request("http://www.example.com")
                     .and_then(|resp| resp.receive_all()))),
         path!(/"streaming") //
             .to(endpoint::any()
                 .extract(proxy_client)
-                .call(|client: Client| client
+                .call_async(|client: Client| client
                     .send_forwarded_request("https://www.rust-lang.org/en-US/"))),
     ]) //
     .map(Server::new)?

@@ -101,7 +101,8 @@ mod responder {
 
         let app = App::create({
             path!(/) //
-                .to(endpoint::any().reply(|| Foo("Foo".into())))
+                .to(endpoint::any() //
+                    .call(|| Foo("Foo".into())))
         })?;
 
         let mut server = tsukuyomi::test::server(app)?;

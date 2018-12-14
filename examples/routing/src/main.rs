@@ -15,7 +15,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             .to({
                 // an endpoint that matches *all* methods with the root path.
                 endpoint::any() //
-                    .say("Hello, world\n") // replies by cloning a `Responder`.
+                    .reply("Hello, world\n") // replies by cloning a `Responder`.
             }),
         // a sub-scope with the prefix `/api/v1/`.
         mount("/api/v1/").with(chain![
@@ -27,15 +27,15 @@ fn main() -> tsukuyomi::server::Result<()> {
                         // A route can take multiple endpoints by using the `chain!()`.
                         //
                         // If there are multiple endpoint matching the same method, the one specified earlier will be chosen.
-                        endpoint::get().say("list_posts"), // <-- GET /api/v1/posts
-                        endpoint::post().say("add_post"),  // <-- POST /api/v1/posts
-                        endpoint::any().say("other methods"), // <-- {PUT, DELETE, ...} /api/v1/posts
+                        endpoint::get().reply("list_posts"), // <-- GET /api/v1/posts
+                        endpoint::post().reply("add_post"),  // <-- POST /api/v1/posts
+                        endpoint::any().reply("other methods"), // <-- {PUT, DELETE, ...} /api/v1/posts
                     ]),
                 // A route that captures a parameter from the path.
                 path!(/{path::param("id")}) //
                     .to({
                         endpoint::any() //
-                            .reply(|id: i32| {
+                            .call(|id: i32| {
                                 // returns a `Responder`.
                                 format!("get_post(id = {})", id)
                             })
@@ -43,7 +43,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             ]),
             mount("/user").with({
                 path!(/"auth") //
-                    .to(endpoint::any().say("Authentication"))
+                    .to(endpoint::any().reply("Authentication"))
             }),
         ]),
         // a route that captures a *catch-all* parameter.
@@ -57,7 +57,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             }),
         // A route that matches any path.
         path!(*) //
-            .to(endpoint::any().say("default route"))
+            .to(endpoint::any().reply("default route"))
     ])
     .map(Server::new)?
     .run()

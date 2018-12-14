@@ -24,7 +24,8 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     App::create(
         path!(/{path::param("name")})
-            .to(endpoint::any().reply(|name| Index { name }))
+            .to(endpoint::any() //
+                .call(|name| Index { name }))
             .modify(WithTera::from(engine)),
     ) //
     .map(Server::new)?

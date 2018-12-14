@@ -19,7 +19,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     App::create(
         path!(/) //
             .to(endpoint::any() //
-                .say("Hello, Tsukuyomi!\n")),
+                .reply("Hello, Tsukuyomi!\n")),
     )
     .map(Server::new)?
     .bind(sock_path)

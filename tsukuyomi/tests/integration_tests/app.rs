@@ -24,7 +24,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 fn single_route() -> tsukuyomi::test::Result<()> {
     let app = App::create(
         path!(/"hello") //
-            .to(endpoint::any().reply(|| "Tsukuyomi")),
+            .to(endpoint::any().call(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -46,7 +46,7 @@ fn with_app_prefix() -> tsukuyomi::test::Result<()> {
     let app = App::create_with_prefix(
         "/api/v1",
         path!(/"hello") //
-            .to(endpoint::any().reply(|| "Tsukuyomi")),
+            .to(endpoint::any().call(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -62,7 +62,7 @@ fn post_body() -> tsukuyomi::test::Result<()> {
         path!(/"hello") //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
-                .reply(|body: String| body)),
+                .call(|body: String| body)),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -101,14 +101,14 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                     );
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))
-                .reply(|| "Logged in")),
+                .call(|| "Logged in")),
         path!(/"logout") //
             .to(endpoint::any()
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))
-                .reply(|| "Logged out")),
+                .call(|| "Logged out")),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -145,7 +145,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 //         route()
 //             .segment("path")?
 //             .allowed_methods("GET, POST")?
-//             .reply(|| "post"),
+//             .call(|| "post"),
 //     ))
 //     .map(Server::new)?
 //     .into_test_server()?;
@@ -168,7 +168,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
         path!(*) //
             .to(endpoint::any() //
-                .reply({
+                .call({
                     let marker = marker.clone();
                     move || {
                         marker.lock().unwrap().push("F1");
@@ -178,7 +178,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
         mount("/api/v1/").with(chain![
             path!(*) //
                 .to(endpoint::any() //
-                    .reply({
+                    .call({
                         let marker = marker.clone();
                         move || {
                             marker.lock().unwrap().push("F2");
@@ -186,10 +186,10 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                         }
                     })),
             path!(/"posts") //
-                .to(endpoint::post().say("posts")),
+                .to(endpoint::post().reply("posts")),
             mount("/events").with(
                 path!(/"new") //
-                    .to(endpoint::post().say("new_event")),
+                    .to(endpoint::post().reply("new_event")),
             ),
         ]),
     ])?;

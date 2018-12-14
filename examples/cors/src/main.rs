@@ -8,14 +8,14 @@ use {
         app::config::prelude::*, //
         chain,
         extractor,
+        output::IntoResponse,
         App,
-        Responder,
     },
     tsukuyomi_cors::CORS,
 };
 
-#[derive(Debug, Deserialize, Serialize, Responder)]
-#[responder(respond_to = "tsukuyomi::output::responder::json")]
+#[derive(Debug, Deserialize, Serialize, IntoResponse)]
+#[response(with = "tsukuyomi::output::into_response::json")]
 struct UserInfo {
     username: String,
     email: String,
@@ -36,7 +36,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         path!(/"user"/"info") //
             .to(endpoint::post() //
                 .extract(extractor::body::json())
-                .reply(|info: UserInfo| -> tsukuyomi::Result<_> {
+                .call(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
                         return Err(tsukuyomi::error::bad_request(
                             "the field confirm_password is not matched to password.",

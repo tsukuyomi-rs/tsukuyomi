@@ -7,11 +7,11 @@ use {
         chain,
         core::Never,
         extractor, //
+        output::IntoResponse,
         server::io::Peer,
         Error,
         Extractor,
         Input,
-        Responder,
     },
 };
 
@@ -62,7 +62,7 @@ pub struct ProxyResponse {
 }
 
 impl ProxyResponse {
-    pub fn receive_all(mut self) -> impl Future<Error = Error, Item = impl Responder> {
+    pub fn receive_all(mut self) -> impl Future<Error = Error, Item = impl IntoResponse> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
@@ -85,11 +85,14 @@ impl ProxyResponse {
     }
 }
 
-impl Responder for ProxyResponse {
+impl IntoResponse for ProxyResponse {
     type Body = tsukuyomi::output::ResponseBody;
     type Error = Never;
 
-    fn respond_to(mut self, _: &mut Input<'_>) -> Result<http::Response<Self::Body>, Self::Error> {
+    fn into_response(
+        mut self,
+        _: &mut Input<'_>,
+    ) -> Result<http::Response<Self::Body>, Self::Error> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());

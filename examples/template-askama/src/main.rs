@@ -2,14 +2,14 @@ use {
     askama::Template,
     tsukuyomi::{
         app::config::prelude::*, //
-        output::Responder,
+        output::IntoResponse,
         App,
     },
 };
 
-#[derive(Template, Responder)]
+#[derive(Template, IntoResponse)]
 #[template(path = "index.html")]
-#[responder(respond_to = "tsukuyomi_askama::respond_to")]
+#[response(with = "tsukuyomi_askama::into_response")]
 struct Index {
     name: String,
 }
@@ -19,7 +19,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         path!(/{path::param("name")}) //
             .to({
                 endpoint::get() //
-                    .reply(|name| Index { name })
+                    .call(|name| Index { name })
             })
     })
     .map(tsukuyomi::server::Server::new)?
