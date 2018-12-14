@@ -4,7 +4,7 @@ use {
     tsukuyomi::{
         app::config::prelude::*,
         chain, extractor,
-        output::{html, redirect, IntoResponse},
+        output::{html, redirect},
         server::Server,
         App,
     },
@@ -14,23 +14,6 @@ use {
         Session,
     },
 };
-
-fn either<L, R>(either: Either<L, R>) -> impl IntoResponse
-where
-    L: IntoResponse,
-    R: IntoResponse,
-{
-    tsukuyomi::output::into_response(move |input| match either {
-        Either::Left(l) => l
-            .into_response(input)
-            .map(|res| res.map(Into::into))
-            .map_err(Into::into),
-        Either::Right(r) => r
-            .into_response(input)
-            .map(|res| res.map(Into::into))
-            .map_err(Into::into),
-    })
-}
 
 fn main() -> tsukuyomi::server::Result<()> {
     let backend = CookieBackend::plain();
@@ -54,7 +37,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     } else {
                         Either::Left(redirect::to("/login"))
                     };
-                    Ok(session.finish(either(output)))
+                    Ok(session.finish(output))
                 }),
             ),
         path!(/"login") //
@@ -72,7 +55,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                              </form>",
                         ))
                     };
-                    session.finish(either(output))
+                    session.finish(output)
                 }),
                 endpoint::post()
                     .extract(extractor::body::urlencoded())

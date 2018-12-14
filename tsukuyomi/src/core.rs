@@ -138,3 +138,9 @@ impl<F: Future> Future for MaybeDone<F> {
         }
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}

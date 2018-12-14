@@ -143,8 +143,12 @@ where
 mod impl_chain {
     use {
         super::{Endpoint, EndpointAction},
-        crate::{core::Chain, error::Error, handler::AllowedMethods, input::Input},
-        either::Either,
+        crate::{
+            core::{Chain, Either},
+            error::Error,
+            handler::AllowedMethods,
+            input::Input,
+        },
         futures01::{Future, Poll},
         http::Method,
     };
@@ -221,5 +225,3 @@ mod impl_chain {
         }
     }
 }
-
-// ==== builder ====

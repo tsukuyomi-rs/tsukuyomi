@@ -177,6 +177,32 @@ where
     }
 }
 
+mod impl_into_response_for_either {
+    use {super::*, either::Either};
+
+    impl<L, R> IntoResponse for Either<L, R>
+    where
+        L: IntoResponse,
+        R: IntoResponse,
+    {
+        type Body = ResponseBody;
+        type Error = Error;
+
+        fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+            match self {
+                Either::Left(l) => l
+                    .into_response(input)
+                    .map(|res| res.map(Into::into))
+                    .map_err(Into::into),
+                Either::Right(r) => r
+                    .into_response(input)
+                    .map(|res| res.map(Into::into))
+                    .map_err(Into::into),
+            }
+        }
+    }
+}
+
 impl<T> IntoResponse for Response<T>
 where
     T: Into<ResponseBody>,
@@ -431,11 +457,9 @@ where
 
 mod impl_responder_for_either {
     use {
-        super::{IntoResponse, Responder, ResponseBody},
-        crate::{error::Error, input::Input},
-        either::Either,
+        super::{IntoResponse, Responder},
+        crate::{core::Either, error::Error, input::Input},
         futures01::{Future, Poll},
-        http::Response,
     };
 
     impl<L, R> Responder for Either<L, R>
@@ -443,7 +467,7 @@ mod impl_responder_for_either {
         L: Responder,
         R: Responder,
     {
-        type Response = EitherResponse<L::Response, R::Response>;
+        type Response = either::Either<L::Response, R::Response>;
         type Error = Error;
         type Future = EitherFuture<L::Future, R::Future>;
 
@@ -470,46 +494,18 @@ mod impl_responder_for_either {
         L::Item: IntoResponse,
         R::Item: IntoResponse,
     {
-        type Item = EitherResponse<L::Item, R::Item>;
+        type Item = either::Either<L::Item, R::Item>;
         type Error = Error;
 
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             match self {
                 EitherFuture::Left(l) => l
                     .poll()
-                    .map(|x| x.map(EitherResponse::Left))
+                    .map(|x| x.map(either::Either::Left))
                     .map_err(Into::into),
                 EitherFuture::Right(r) => r
                     .poll()
-                    .map(|x| x.map(EitherResponse::Right))
-                    .map_err(Into::into),
-            }
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub enum EitherResponse<L, R> {
-        Left(L),
-        Right(R),
-    }
-
-    impl<L, R> IntoResponse for EitherResponse<L, R>
-    where
-        L: IntoResponse,
-        R: IntoResponse,
-    {
-        type Body = ResponseBody;
-        type Error = Error;
-
-        fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-            match self {
-                EitherResponse::Left(l) => l
-                    .into_response(input)
-                    .map(|res| res.map(Into::into))
-                    .map_err(Into::into),
-                EitherResponse::Right(r) => r
-                    .into_response(input)
-                    .map(|res| res.map(Into::into))
+                    .map(|x| x.map(either::Either::Right))
                     .map_err(Into::into),
             }
         }
