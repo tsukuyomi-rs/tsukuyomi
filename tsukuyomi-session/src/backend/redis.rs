@@ -1,12 +1,12 @@
 #![cfg(feature = "redis-backend")]
 
 use {
-    cookie::Cookie,
     crate::{Backend, RawSession},
+    cookie::Cookie,
     futures::{try_ready, Async, Future, Poll},
     redis::{r#async::Connection, Client, RedisFuture},
     std::time::Duration,
-    std::{borrow::Cow, collections::HashMap, mem},
+    std::{borrow::Cow, collections::HashMap, mem, sync::Arc},
     tsukuyomi::{
         error::{Error, Result},
         input::Input,
@@ -14,10 +14,111 @@ use {
     uuid::Uuid,
 };
 
+/// A `Backend` using Redis.
+#[derive(Debug, Clone)]
+pub struct RedisBackend {
+    inner: Arc<RedisBackendInner>,
+}
+
+impl RedisBackend {
+    /// Create a new `RedisBackend` from the specified Redis client.
+    pub fn new(client: Client) -> Self {
+        Self {
+            inner: Arc::new(RedisBackendInner {
+                client,
+                key_prefix: "tsukuyomi-session".into(),
+                cookie_name: "session-id".into(),
+                timeout: None,
+            }),
+        }
+    }
+
+    fn inner_mut(&mut self) -> &mut RedisBackendInner {
+        Arc::get_mut(&mut self.inner).expect("the value has already been shared")
+    }
+
+    /// Sets the prefix of key name used at storing the session data in Redis.
+    ///
+    /// The default value is `"tsukuyomi-session"`.
+    pub fn key_prefix(mut self, prefix: impl Into<Cow<'static, str>>) -> Self {
+        self.inner_mut().key_prefix = prefix.into();
+        self
+    }
+
+    /// Sets the name of Cookie entry for storing the session ID.
+    ///
+    /// The default value is `"session-id"`.
+    pub fn cookie_name(mut self, name: impl Into<Cow<'static, str>>) -> Self {
+        self.inner_mut().cookie_name = name.into();
+        self
+    }
+
+    /// Sets the timeout to be used at storing the session data in Redis.
+    ///
+    /// By default, the timeout is not set.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.inner_mut().timeout = Some(timeout);
+        self
+    }
+}
+
+#[derive(Debug)]
+struct RedisBackendInner {
+    client: Client,
+    key_prefix: Cow<'static, str>,
+    cookie_name: Cow<'static, str>,
+    timeout: Option<Duration>,
+}
+
+impl RedisBackendInner {
+    fn generate_redis_key(&self, id: &Uuid) -> String {
+        format!("{}:{}", self.key_prefix, id)
+    }
+
+    fn get_session_id(&self, input: &mut Input<'_>) -> Result<Option<Uuid>> {
+        match input.cookies.jar()?.get(&self.cookie_name) {
+            Some(cookie) => {
+                let session_id = cookie
+                    .value()
+                    .parse()
+                    .map_err(tsukuyomi::error::bad_request)?;
+                Ok(Some(session_id))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+impl Backend for RedisBackend {
+    type Session = RedisSession;
+    type ReadSession = ReadSession;
+
+    fn read(&self, input: &mut Input<'_>) -> Self::ReadSession {
+        let state = match self.inner.get_session_id(input) {
+            Ok(session_id) => {
+                let key_name = session_id
+                    .as_ref()
+                    .map(|session_id| self.inner.generate_redis_key(session_id));
+                ReadSessionState::Connecting {
+                    future: self.inner.client.get_async_connection(),
+                    key_name,
+                    session_id,
+                }
+            }
+            Err(err) => ReadSessionState::Failed(Some(err)),
+        };
+        ReadSession {
+            state,
+            backend: Some(self.clone()),
+        }
+    }
+}
+
 #[allow(missing_debug_implementations)]
 #[cfg_attr(feature = "cargo-clippy", allow(stutter))]
 pub struct RedisSession {
     inner: Inner,
+    backend: RedisBackend,
     conn: Connection,
     session_id: Option<Uuid>,
 }
@@ -30,6 +131,8 @@ enum Inner {
 }
 
 impl RawSession for RedisSession {
+    type WriteSession = WriteSession;
+
     fn get(&self, name: &str) -> Option<&str> {
         match self.inner {
             Inner::Some(ref map) => map.get(name).map(|s| &**s),
@@ -68,104 +171,14 @@ impl RawSession for RedisSession {
     fn clear(&mut self) {
         self.inner = Inner::Clear;
     }
-}
 
-/// A `Backend` using Redis.
-#[cfg_attr(feature = "cargo-clippy", allow(stutter))]
-#[derive(Debug)]
-pub struct RedisBackend {
-    client: Client,
-    key_prefix: Cow<'static, str>,
-    cookie_name: Cow<'static, str>,
-    timeout: Option<Duration>,
-}
-
-impl RedisBackend {
-    /// Create a new `RedisBackend` from the specified Redis client.
-    pub fn new(client: Client) -> Self {
-        Self {
-            client,
-            key_prefix: "tsukuyomi-session".into(),
-            cookie_name: "session-id".into(),
-            timeout: None,
-        }
-    }
-
-    /// Sets the prefix of key name used at storing the session data in Redis.
-    ///
-    /// The default value is `"tsukuyomi-session"`.
-    pub fn key_prefix(self, prefix: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            key_prefix: prefix.into(),
-            ..self
-        }
-    }
-
-    /// Sets the name of Cookie entry for storing the session ID.
-    ///
-    /// The default value is `"session-id"`.
-    pub fn cookie_name(self, name: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            cookie_name: name.into(),
-            ..self
-        }
-    }
-
-    /// Sets the timeout to be used at storing the session data in Redis.
-    ///
-    /// By default, the timeout is not set.
-    pub fn timeout(self, timeout: Duration) -> Self {
-        Self {
-            timeout: Some(timeout),
-            ..self
-        }
-    }
-
-    fn generate_redis_key(&self, id: &Uuid) -> String {
-        format!("{}:{}", self.key_prefix, id)
-    }
-
-    fn get_session_id(&self, input: &mut Input<'_>) -> Result<Option<Uuid>> {
-        match input.cookies.jar()?.get(&self.cookie_name) {
-            Some(cookie) => {
-                let session_id = cookie
-                    .value()
-                    .parse()
-                    .map_err(tsukuyomi::error::bad_request)?;
-                Ok(Some(session_id))
-            }
-            None => Ok(None),
-        }
-    }
-}
-
-impl Backend for RedisBackend {
-    type Session = RedisSession;
-    type ReadSession = ReadSession;
-    type WriteSession = WriteSession;
-
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadSession {
-        match self.get_session_id(input) {
-            Ok(session_id) => {
-                let key_name = session_id
-                    .as_ref()
-                    .map(|session_id| self.generate_redis_key(session_id));
-                ReadSession::Connecting {
-                    future: self.client.get_async_connection(),
-                    key_name,
-                    session_id,
-                }
-            }
-            Err(err) => ReadSession::Failed(Some(err)),
-        }
-    }
-
-    fn write(&self, input: &mut Input<'_>, session: Self::Session) -> Self::WriteSession {
+    fn write(self, input: &mut Input<'_>) -> Self::WriteSession {
         let RedisSession {
             inner,
+            backend,
             conn,
             session_id,
-        } = session;
+        } = self;
 
         match inner {
             Inner::Empty => WriteSession::Empty,
@@ -174,15 +187,15 @@ impl Backend for RedisBackend {
                 let session_id = session_id.unwrap_or_else(Uuid::new_v4);
                 match input.cookies.jar() {
                     Ok(jar) => jar.add(Cookie::new(
-                        self.cookie_name.clone(),
+                        backend.inner.cookie_name.clone(),
                         session_id.to_string(),
                     )),
                     Err(err) => return WriteSession::Failed(Some(err)),
                 }
-                let redis_key = self.generate_redis_key(&session_id);
+                let redis_key = backend.inner.generate_redis_key(&session_id);
 
                 let value = serde_json::to_string(&value).expect("should be successed");
-                let op = match self.timeout {
+                let op = match backend.inner.timeout {
                     Some(timeout) => redis::cmd("SETEX")
                         .arg(redis_key)
                         .arg(timeout.as_secs())
@@ -203,10 +216,10 @@ impl Backend for RedisBackend {
                     return WriteSession::Empty;
                 };
                 match input.cookies.jar() {
-                    Ok(jar) => jar.remove(Cookie::named(self.cookie_name.clone())),
+                    Ok(jar) => jar.remove(Cookie::named(backend.inner.cookie_name.clone())),
                     Err(err) => return WriteSession::Failed(Some(err)),
                 }
-                let redis_key = self.generate_redis_key(&session_id);
+                let redis_key = backend.inner.generate_redis_key(&session_id);
                 let op = redis::cmd("DEL").arg(redis_key).query_async(conn);
                 WriteSession::Op(op)
             }
@@ -215,7 +228,12 @@ impl Backend for RedisBackend {
 }
 
 #[allow(missing_debug_implementations)]
-pub enum ReadSession {
+pub struct ReadSession {
+    backend: Option<RedisBackend>,
+    state: ReadSessionState,
+}
+
+enum ReadSessionState {
     Failed(Option<Error>),
     Connecting {
         future: RedisFuture<Connection>,
@@ -234,32 +252,28 @@ impl Future for ReadSession {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        use self::ReadSession::*;
+        use self::ReadSessionState::*;
         loop {
-            let (conn, value) = match self {
+            let (conn, value) = match self.state {
                 Failed(ref mut err) => {
                     return Err(err.take().expect("the future has already polled."))
                 }
                 Connecting { ref mut future, .. } => {
-                    let conn = try_ready!(
-                        future
-                            .poll()
-                            .map_err(tsukuyomi::error::internal_server_error)
-                    );
+                    let conn = try_ready!(future
+                        .poll()
+                        .map_err(tsukuyomi::error::internal_server_error));
                     (Some(conn), None)
                 }
                 Fetch { ref mut future, .. } => {
-                    let (conn, value) = try_ready!(
-                        future
-                            .poll()
-                            .map_err(tsukuyomi::error::internal_server_error)
-                    );
+                    let (conn, value) = try_ready!(future
+                        .poll()
+                        .map_err(tsukuyomi::error::internal_server_error));
                     (Some(conn), value)
                 }
                 Done => panic!("unexpected state"),
             };
 
-            match (mem::replace(self, Done), conn, value) {
+            match (mem::replace(&mut self.state, Done), conn, value) {
                 (
                     Connecting {
                         key_name: Some(key_name),
@@ -269,7 +283,7 @@ impl Future for ReadSession {
                     Some(conn),
                     None,
                 ) => {
-                    *self = Fetch {
+                    self.state = Fetch {
                         future: redis::cmd("GET").arg(key_name).query_async(conn),
                         session_id,
                     };
@@ -280,6 +294,10 @@ impl Future for ReadSession {
                         .map_err(tsukuyomi::error::internal_server_error)?;
                     return Ok(Async::Ready(RedisSession {
                         inner: Inner::Some(map),
+                        backend: self
+                            .backend
+                            .take()
+                            .expect("the future has already been polled."),
                         conn,
                         session_id: Some(session_id),
                     }));
@@ -297,6 +315,10 @@ impl Future for ReadSession {
                 | (Fetch { .. }, Some(conn), None) => {
                     return Ok(Async::Ready(RedisSession {
                         inner: Inner::Empty,
+                        backend: self
+                            .backend
+                            .take()
+                            .expect("the future has already been polled."),
                         conn,
                         session_id: None,
                     }));

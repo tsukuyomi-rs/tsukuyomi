@@ -5,12 +5,11 @@ extern crate version_sync;
 
 use {
     http::Request,
-    tsukuyomi::app::directives::*,
+    tsukuyomi::{app::config::prelude::*, chain, App},
     tsukuyomi_session::{
         backend::CookieBackend, //
         session,
         Session,
-        SessionStorage,
     },
 };
 
@@ -22,44 +21,33 @@ fn test_version_sync() {
 #[test]
 fn smoketest() -> tsukuyomi::test::Result<()> {
     let backend = CookieBackend::plain().cookie_name("session");
-    let storage = SessionStorage::new(backend);
+    let session = std::sync::Arc::new(session(backend));
 
-    let mut server = App::builder()
-        .with(modifier(storage))
-        .with(route!("/counter").methods("GET")?.extract(session()).call(
-            |sess: Session| -> tsukuyomi::Result<_> {
-                let counter: Option<i64> = sess.get("counter")?;
-                Ok(sess.finish(format!("{:?}", counter)))
-            },
-        )) //
-        .with(route!("/counter").methods("PUT")?.extract(session()).call(
-            |mut sess: Session| -> tsukuyomi::Result<_> {
-                let counter: i64 = sess.get("counter")?.unwrap_or_default();
-                sess.set("counter", counter + 1)?;
-                Ok(sess.finish(format!("{}", counter)))
-            },
-        )) //
-        .with(
-            route!("/counter")
-                .methods("DELETE")?
-                .extract(session())
-                .reply(|mut sess: Session| {
-                    sess.remove("counter");
-                    sess.finish("removed")
-                }),
-        ) //
-        .with(
-            route!("/clear")
-                .methods("PUT")?
-                .extract(session())
-                .reply(|mut sess: Session| {
-                    sess.clear();
-                    sess.finish("cleared")
-                }),
-        ) //
-        .build_server()?
-        .into_test_server()?;
+    let app = App::create(chain![
+        path!(/"counter").extract(session.clone()).to(chain![
+            endpoint::get().call_async(|session: Session<_>| {
+                let counter: Option<i64> = session.get("counter")?;
+                Ok::<_, tsukuyomi::Error>(session.finish(format!("{:?}", counter)))
+            }),
+            endpoint::put().call_async(|mut session: Session<_>| {
+                let counter: i64 = session.get("counter")?.unwrap_or_default();
+                session.set("counter", counter + 1)?;
+                Ok::<_, tsukuyomi::Error>(session.finish(format!("{}", counter)))
+            }),
+            endpoint::delete().call(|mut session: Session<_>| {
+                session.remove("counter");
+                session.finish("removed")
+            }),
+        ]),
+        path!(/"clear")
+            .extract(session)
+            .to(endpoint::put().call(|mut session: Session<_>| {
+                session.clear();
+                session.finish("cleared")
+            }),)
+    ])?;
 
+    let mut server = tsukuyomi::test::server(app)?;
     let mut session = server.new_session()?.save_cookies(true);
 
     let response = session.perform(Request::get("/counter"))?;

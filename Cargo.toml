@@ -27,7 +27,7 @@ members = [
   "tsukuyomi-askama",
   "tsukuyomi-cors",
   # "tsukuyomi-juniper",
-  # "tsukuyomi-session",
+  "tsukuyomi-session",
   "tsukuyomi-tungstenite",
 
   "testcrates/doctest",
@@ -42,7 +42,7 @@ members = [
   "examples/openssl",
   "examples/routing",
   "examples/rustls",
-  # "examples/session",
+  "examples/session",
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
@@ -55,5 +55,5 @@ tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
 tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }
 tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
 # tsukuyomi-juniper = { version = "0.2.0", path = "tsukuyomi-juniper" }
-# tsukuyomi-session = { version = "0.1.0", path = "tsukuyomi-session" }
+tsukuyomi-session = { version = "0.2.0-dev", path = "tsukuyomi-session" }
 tsukuyomi-tungstenite = { version = "0.2.0-dev", path = "tsukuyomi-tungstenite" }
