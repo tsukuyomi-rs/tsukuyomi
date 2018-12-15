@@ -3,6 +3,7 @@
 use {
     super::Extractor,
     crate::{error::Error, input::localmap::LocalKey},
+    futures01::Future,
 };
 
 pub fn remove<T>(
@@ -10,7 +11,7 @@ pub fn remove<T>(
 ) -> impl Extractor<
     Output = (T,), //
     Error = Error,
-    Future = futures01::future::FutureResult<(T,), Error>,
+    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
 >
 where
     T: Send + 'static,
@@ -23,7 +24,7 @@ pub fn clone<T>(
 ) -> impl Extractor<
     Output = (T,), //
     Error = Error,
-    Future = futures01::future::FutureResult<(T,), Error>,
+    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
 >
 where
     T: Clone + Send + 'static,

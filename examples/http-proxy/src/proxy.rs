@@ -102,7 +102,13 @@ impl IntoResponse for ProxyResponse {
     }
 }
 
-pub fn proxy_client(client: reqwest::r#async::Client) -> impl Extractor<Output = (Client,)> {
+pub fn proxy_client(
+    client: reqwest::r#async::Client,
+) -> impl Extractor<
+    Output = (Client,), //
+    Error = tsukuyomi::Error,
+    Future = impl Future<Item = (Client,), Error = tsukuyomi::Error> + Send + 'static,
+> {
     chain![
         extractor::extension::clone(),
         extractor::header::clone_headers(),

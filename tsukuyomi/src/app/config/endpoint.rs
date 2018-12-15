@@ -1,14 +1,14 @@
 use {
     crate::{
         core::{Chain, TryInto},
+        endpoint::Endpoint,
         error::Error,
         extractor::Extractor,
-        generic::{Combine, Func, Tuple},
+        generic::{Combine, Func},
         handler::AllowedMethods,
     },
     futures01::IntoFuture,
     http::Method,
-    std::marker::PhantomData,
 };
 
 pub fn any() -> Builder {
@@ -74,15 +74,13 @@ impl Builder {
 
 impl<E> Builder<E>
 where
-    E: Extractor + Send + Sync + 'static,
-    E::Error: Send + 'static,
+    E: Extractor,
 {
     /// Appends a supplemental `Extractor` to this route.
     pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>>
     where
         E2: Extractor,
-        E::Output: Combine<E2::Output> + Send + 'static,
-        E2::Output: Send + 'static,
+        E::Output: Combine<E2::Output>,
     {
         Builder {
             extractor: Chain::new(self.extractor, other),
@@ -91,51 +89,88 @@ where
     }
 
     /// Creates an endpoint that replies its result immediately.
-    pub fn call<T, F>(self, f: F) -> self::call::CallEndpoint<T, E, F>
+    pub fn call<T, F>(
+        self,
+        f: F,
+    ) -> impl Endpoint<
+        T,
+        Output = F::Out,
+        Action = self::call::CallAction<E, F>, // private
+    >
     where
-        T: Combine<E::Output> + Send + 'static,
-        F: Func<<T as Combine<E::Output>>::Out> + Clone + Send + 'static,
-        F::Out: Send + 'static,
+        T: Combine<E::Output>,
+        F: Func<<T as Combine<E::Output>>::Out> + Clone,
     {
-        self::call::CallEndpoint {
-            allowed_methods: self.allowed_methods,
-            extractor: std::sync::Arc::new(self.extractor),
-            f,
-            _marker: PhantomData,
-        }
+        let apply_fn = {
+            let allowed_methods = self.allowed_methods.clone();
+            let extractor = std::sync::Arc::new(self.extractor);
+            move |method: &http::Method| {
+                if allowed_methods
+                    .as_ref()
+                    .map_or(false, |methods| !methods.contains(method))
+                {
+                    return None;
+                }
+                Some(self::call::CallAction {
+                    extractor: extractor.clone(),
+                    f: f.clone(),
+                })
+            }
+        };
+        crate::endpoint::endpoint(apply_fn, self.allowed_methods)
     }
 
     /// Creates an `Endpoint` that replies its result as a `Future`.
-    pub fn call_async<T, F, R>(self, f: F) -> self::call_async::CallAsyncEndpoint<T, E, F, R>
+    pub fn call_async<T, F, R>(
+        self,
+        f: F,
+    ) -> impl Endpoint<
+        T,
+        Output = R::Item,
+        Action = self::call_async::CallAsyncAction<E, F>, // private
+    >
     where
-        E::Output: Send + 'static,
-        T: Tuple + Combine<E::Output> + Send + 'static,
-        F: Func<<T as Combine<E::Output>>::Out, Out = R> + Clone + Send + 'static,
-        R: IntoFuture + 'static,
-        R::Future: Send + 'static,
+        T: Combine<E::Output>,
+        F: Func<<T as Combine<E::Output>>::Out, Out = R> + Clone,
+        R: IntoFuture,
         R::Error: Into<Error>,
     {
-        self::call_async::CallAsyncEndpoint {
-            allowed_methods: self.allowed_methods,
-            extractor: std::sync::Arc::new(self.extractor),
-            f,
-            _marker: PhantomData,
-        }
+        let apply_fn = {
+            let allowed_methods = self.allowed_methods.clone();
+            let extractor = std::sync::Arc::new(self.extractor);
+            move |method: &http::Method| {
+                if allowed_methods
+                    .as_ref()
+                    .map_or(false, |methods| !methods.contains(method))
+                {
+                    return None;
+                }
+
+                Some(self::call_async::CallAsyncAction {
+                    extractor: extractor.clone(),
+                    f: f.clone(),
+                })
+            }
+        };
+        crate::endpoint::endpoint(apply_fn, self.allowed_methods)
     }
 }
 
 impl<E> Builder<E>
 where
-    E: Extractor<Output = ()> + Send + Sync + 'static,
-    E::Error: Send + 'static,
+    E: Extractor<Output = ()>,
 {
     /// Creates an `Endpoint` that replies the specified value.
     pub fn reply<R>(
         self,
         output: R,
-    ) -> self::call::CallEndpoint<(), E, impl Func<(), Out = R> + Clone>
+    ) -> impl Endpoint<
+        (), //
+        Output = R,
+        Action = self::call::CallAction<E, impl Func<(), Out = R> + Clone>, // private
+    >
     where
-        R: Clone + Send + 'static,
+        R: Clone,
     {
         self.call(move || output.clone())
     }
@@ -144,88 +179,27 @@ where
 mod call {
     use {
         crate::{
-            endpoint::{Endpoint, EndpointAction},
+            endpoint::EndpointAction,
             error::Error,
             extractor::Extractor,
             generic::{Combine, Func, Tuple},
-            handler::AllowedMethods,
             input::Input,
         },
         futures01::{Async, Future, Poll},
-        std::{marker::PhantomData, sync::Arc},
+        std::sync::Arc,
     };
 
     #[derive(Debug)]
-    pub struct CallEndpoint<T, E, F>
-    where
-        T: Combine<E::Output> + Send + 'static,
-        E: Extractor + Send + Sync + 'static,
-        E::Error: Send + 'static,
-        F: Func<<T as Combine<E::Output>>::Out> + Clone + Send + 'static,
-        F::Out: Send + 'static,
-    {
+    pub struct CallAction<E, F> {
         pub(super) extractor: Arc<E>,
         pub(super) f: F,
-        pub(super) allowed_methods: Option<AllowedMethods>,
-        pub(super) _marker: PhantomData<fn(T)>,
     }
 
-    impl<T, E, F> Endpoint<T> for CallEndpoint<T, E, F>
+    impl<E, F, T> EndpointAction<T> for CallAction<E, F>
     where
-        T: Combine<E::Output> + Send + 'static,
-        E: Extractor + Send + Sync + 'static,
-        E::Error: Send + 'static,
-        F: Func<<T as Combine<E::Output>>::Out> + Clone + Send + 'static,
-        F::Out: Send + 'static,
-    {
-        type Output = F::Out;
-        type Action = CallAction<T, E, F>;
-
-        fn allowed_methods(&self) -> Option<AllowedMethods> {
-            self.allowed_methods.clone()
-        }
-
-        fn apply(&self, method: &http::Method) -> Option<Self::Action> {
-            if self
-                .allowed_methods
-                .as_ref()
-                .map_or(false, |methods| !methods.contains(method))
-            {
-                return None;
-            }
-
-            let f = self.f.clone();
-            let extractor = self.extractor.clone();
-
-            Some(CallAction {
-                extractor,
-                f,
-                _marker: PhantomData,
-            })
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct CallAction<T, E, F>
-    where
-        T: Combine<E::Output> + Send + 'static,
         E: Extractor,
-        E::Error: Send + 'static,
-        F: Func<<T as Combine<E::Output>>::Out> + Send + 'static,
-        F::Out: Send + 'static,
-    {
-        extractor: Arc<E>,
-        f: F,
-        _marker: PhantomData<fn(T)>,
-    }
-
-    impl<T, E, F> EndpointAction<T> for CallAction<T, E, F>
-    where
-        T: Combine<E::Output> + Send + 'static,
-        E: Extractor,
-        E::Error: Send + 'static,
-        F: Func<<T as Combine<E::Output>>::Out> + Send + 'static,
-        F::Out: Send + 'static,
+        F: Func<<T as Combine<E::Output>>::Out>,
+        T: Combine<E::Output>,
     {
         type Output = F::Out;
         type Error = E::Error;
@@ -272,79 +246,28 @@ mod call {
 mod call_async {
     use {
         crate::{
-            endpoint::{Endpoint, EndpointAction},
+            endpoint::EndpointAction,
             error::Error,
             extractor::Extractor,
             generic::{Combine, Func, Tuple},
-            handler::AllowedMethods,
             input::Input,
         },
         futures01::{Future, IntoFuture, Poll},
-        std::{marker::PhantomData, sync::Arc},
+        std::sync::Arc,
     };
 
-    #[derive(Debug)]
-    pub struct CallAsyncEndpoint<T, E, F, R> {
-        pub(super) allowed_methods: Option<AllowedMethods>,
+    #[allow(missing_debug_implementations)]
+    pub struct CallAsyncAction<E, F> {
         pub(super) extractor: Arc<E>,
         pub(super) f: F,
-        pub(super) _marker: PhantomData<fn(T) -> R>,
     }
 
-    impl<T, E, F, R> Endpoint<T> for CallAsyncEndpoint<T, E, F, R>
+    impl<E, F, T, R> EndpointAction<T> for CallAsyncAction<E, F>
     where
-        T: Combine<E::Output> + Send + 'static,
-        E: Extractor + Send + Sync + 'static,
-        E::Output: Send + 'static,
-        E::Error: 'static,
-        F: Func<<T as Combine<E::Output>>::Out, Out = R> + Clone + Send + 'static,
-        R: IntoFuture + 'static,
-        R::Future: Send + 'static,
-        R::Error: Into<Error>,
-    {
-        type Output = R::Item;
-        type Action = CallAsyncAction<T, E, F, R>;
-
-        fn allowed_methods(&self) -> Option<AllowedMethods> {
-            self.allowed_methods.clone()
-        }
-
-        fn apply(&self, method: &http::Method) -> Option<Self::Action> {
-            if self
-                .allowed_methods
-                .as_ref()
-                .map_or(false, |methods| !methods.contains(method))
-            {
-                return None;
-            }
-
-            let f = self.f.clone();
-            let extractor = self.extractor.clone();
-
-            Some(CallAsyncAction {
-                extractor,
-                f,
-                _marker: PhantomData,
-            })
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub struct CallAsyncAction<T, E, F, R> {
-        extractor: Arc<E>,
-        f: F,
-        _marker: PhantomData<fn(T) -> R>,
-    }
-
-    impl<T, E, F, R> EndpointAction<T> for CallAsyncAction<T, E, F, R>
-    where
-        T: Combine<E::Output> + Send + 'static,
         E: Extractor,
-        E::Output: Send + 'static,
-        E::Error: 'static,
-        F: Func<<T as Combine<E::Output>>::Out, Out = R> + Send + 'static,
-        R: IntoFuture + 'static,
-        R::Future: Send + 'static,
+        F: Func<<T as Combine<E::Output>>::Out, Out = R>,
+        T: Combine<E::Output>,
+        R: IntoFuture,
         R::Error: Into<Error>,
     {
         type Output = R::Item;

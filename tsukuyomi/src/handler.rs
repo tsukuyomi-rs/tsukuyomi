@@ -200,7 +200,7 @@ where
 pub trait Handler {
     type Output;
     type Error: Into<Error>;
-    type Handle: Handle<Output = Self::Output, Error = Self::Error> + Send + 'static;
+    type Handle: Handle<Output = Self::Output, Error = Self::Error>;
 
     /// Returns a list of HTTP methods that this handler accepts.
     ///
@@ -209,6 +209,25 @@ pub trait Handler {
 
     /// Creates a `Handle` which handles the incoming request.
     fn handle(&self) -> Self::Handle;
+}
+
+impl<H> Handler for std::rc::Rc<H>
+where
+    H: Handler,
+{
+    type Output = H::Output;
+    type Error = H::Error;
+    type Handle = H::Handle;
+
+    #[inline]
+    fn allowed_methods(&self) -> Option<&AllowedMethods> {
+        (**self).allowed_methods()
+    }
+
+    #[inline]
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
+    }
 }
 
 impl<H> Handler for Arc<H>
@@ -233,9 +252,12 @@ where
 pub fn handler<H>(
     handle_fn: impl Fn() -> H,
     allowed_methods: Option<AllowedMethods>,
-) -> impl Handler<Output = H::Output>
+) -> impl Handler<
+    Output = H::Output, //
+    Handle = H,
+>
 where
-    H: Handle + Send + 'static,
+    H: Handle,
 {
     #[allow(missing_debug_implementations)]
     struct HandlerFn<F> {
@@ -246,7 +268,7 @@ where
     impl<F, H> Handler for HandlerFn<F>
     where
         F: Fn() -> H,
-        H: Handle + Send + 'static,
+        H: Handle,
     {
         type Output = H::Output;
         type Error = H::Error;

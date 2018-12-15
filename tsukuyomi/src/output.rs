@@ -434,7 +434,7 @@ pub trait Responder {
     type Error: Into<Error>;
 
     /// The type of `Future` which will be returned from `respond_to`.
-    type Future: Future<Item = Self::Response, Error = Self::Error> + Send + 'static;
+    type Future: Future<Item = Self::Response, Error = Self::Error>;
 
     /// Converts itself into a `Future` that will be resolved as a `Response`.
     fn respond(self, input: &mut Input<'_>) -> Self::Future;
@@ -443,7 +443,7 @@ pub trait Responder {
 /// a branket impl of `Responder` for `IntoResponse`s.
 impl<T> Responder for T
 where
-    T: IntoResponse + Send + 'static,
+    T: IntoResponse,
 {
     type Response = T;
     type Error = Never;
@@ -522,7 +522,6 @@ pub fn respond<R>(
 >
 where
     R: IntoFuture,
-    R::Future: Send + 'static,
     R::Item: IntoResponse,
     R::Error: Into<Error>,
 {
@@ -533,7 +532,6 @@ where
     where
         F: FnOnce(&mut Input<'_>) -> R,
         R: IntoFuture,
-        R::Future: Send + 'static,
         R::Item: IntoResponse,
         R::Error: Into<Error>,
     {

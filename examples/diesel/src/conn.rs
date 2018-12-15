@@ -9,7 +9,15 @@ use {
 
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
 
-pub fn extractor<T>(url: T) -> Fallible<impl Extractor<Output = (Conn,)>>
+pub fn extractor<T>(
+    url: T,
+) -> Fallible<
+    impl Extractor<
+        Output = (Conn,), //
+        Error = tsukuyomi::Error,
+        Future = impl Future<Item = (Conn,), Error = tsukuyomi::Error> + Send + 'static,
+    >,
+>
 where
     T: Into<String>,
 {

@@ -22,7 +22,11 @@ fn parse_query_request(input: &mut Input<'_>) -> tsukuyomi::Result<GraphQLReques
 }
 
 /// Create an `Extractor` that parses the incoming request as GraphQL query.
-pub fn request() -> impl Extractor<Output = (GraphQLRequest,), Error = Error> {
+pub fn request() -> impl Extractor<
+    Output = (GraphQLRequest,), //
+    Error = Error,
+    Future = impl Future<Item = (GraphQLRequest,), Error = Error> + Send + 'static,
+> {
     tsukuyomi::extractor::raw(|input| {
         if input.request.method() == Method::GET {
             return futures::future::Either::A(futures::future::result(

@@ -1,12 +1,18 @@
 //! Extractors for accessing the protocol extensions.
 
-use crate::{
-    error::Error, //
-    extractor::Extractor,
+use {
+    crate::{
+        error::Error, //
+        extractor::Extractor,
+    },
+    futures01::Future,
 };
 
-pub fn clone<T>(
-) -> impl Extractor<Output = (T,), Error = Error, Future = futures01::future::FutureResult<(T,), Error>>
+pub fn clone<T>() -> impl Extractor<
+    Output = (T,), //
+    Error = Error,
+    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
+>
 where
     T: Clone + Send + Sync + 'static,
 {

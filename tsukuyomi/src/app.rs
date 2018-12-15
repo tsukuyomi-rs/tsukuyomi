@@ -168,6 +168,8 @@ impl<H> BoxedHandler for H
 where
     H: Handler + Send + Sync + 'static,
     H::Output: Responder,
+    <H::Output as Responder>::Future: Send + 'static,
+    H::Handle: Send + 'static,
 {
     fn call(&self) -> Box<BoxedHandle> {
         enum State<A, B> {

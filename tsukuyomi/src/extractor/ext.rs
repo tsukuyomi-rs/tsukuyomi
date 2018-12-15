@@ -6,13 +6,14 @@ use {
     },
 };
 
+pub use self::{either_or::EitherOr, map::Map, optional::Optional};
+
 pub trait ExtractorExt: Extractor + Sized {
     fn chain<E>(self, other: E) -> Chain<Self, E>
     where
         Self: Sized,
         E: Extractor,
-        Self::Output: Combine<E::Output> + Send + 'static,
-        E::Output: Send + 'static,
+        Self::Output: Combine<E::Output>,
     {
         Chain::new(self, other)
     }
@@ -20,7 +21,6 @@ pub trait ExtractorExt: Extractor + Sized {
     fn optional<T>(self) -> self::optional::Optional<Self, T>
     where
         Self: Extractor<Output = (T,)>,
-        T: Send + 'static,
     {
         self::optional::Optional {
             extractor: self,
@@ -31,9 +31,6 @@ pub trait ExtractorExt: Extractor + Sized {
     fn either_or<E>(self, other: E) -> self::either_or::EitherOr<Self, E>
     where
         E: Extractor<Output = Self::Output>,
-        E::Error: 'static,
-        Self::Output: Send + 'static,
-        Self::Error: 'static,
     {
         self::either_or::EitherOr {
             left: self,
@@ -43,7 +40,7 @@ pub trait ExtractorExt: Extractor + Sized {
 
     fn map<F>(self, f: F) -> self::map::Map<Self, F>
     where
-        F: Func<Self::Output> + Clone + Send + 'static,
+        F: Func<Self::Output> + Clone,
     {
         self::map::Map { extractor: self, f }
     }
@@ -67,8 +64,7 @@ mod chain {
     where
         L: Extractor,
         R: Extractor,
-        L::Output: Combine<R::Output> + Send + 'static,
-        R::Output: Send + 'static,
+        L::Output: Combine<R::Output>,
     {
         type Output = <L::Output as Combine<R::Output>>::Out;
         type Error = Error;
@@ -148,7 +144,6 @@ mod optional {
     impl<E, T> Extractor for Optional<E, T>
     where
         E: Extractor<Output = (T,)>,
-        T: Send + 'static,
     {
         type Output = (Option<T>,);
         type Error = Never;
@@ -183,7 +178,7 @@ mod optional {
 
 mod either_or {
     use {
-        crate::{error::Error, extractor::Extractor, input::Input},
+        crate::{error::Error, extractor::Extractor, generic::Tuple, input::Input},
         futures01::{Async, Future, Poll},
     };
 
@@ -193,15 +188,12 @@ mod either_or {
         pub(super) right: R,
     }
 
-    impl<L, R> Extractor for EitherOr<L, R>
+    impl<L, R, T: Tuple> Extractor for EitherOr<L, R>
     where
-        L: Extractor,
-        L::Output: Send + 'static,
-        L::Error: 'static,
-        R: Extractor<Output = L::Output>,
-        R::Error: 'static,
+        L: Extractor<Output = T>,
+        R: Extractor<Output = T>,
     {
-        type Output = L::Output;
+        type Output = T;
         type Error = Error;
         type Future = EitherOrFuture<L::Future, R::Future>;
 
