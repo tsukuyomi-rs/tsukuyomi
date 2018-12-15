@@ -18,7 +18,7 @@ use {
         app::config::prelude::*, //
         chain,
         error::Error,
-        extractor,
+        extractor::{self, ExtractorExt},
         rt::Future,
         server::Server,
         App,
@@ -39,7 +39,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .extract(db_conn.clone())
                 .to(chain![
                     endpoint::get()
-                        .extract(extractor::ExtractorExt::new(extractor::query::query()).optional())
+                        .extract(extractor::query::query().optional())
                         .call_async({
                             #[derive(Debug, serde::Deserialize)]
                             struct Param {

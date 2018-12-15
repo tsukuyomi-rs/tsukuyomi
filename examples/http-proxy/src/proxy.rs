@@ -6,7 +6,7 @@ use {
     tsukuyomi::{
         chain,
         core::Never,
-        extractor, //
+        extractor::{self, ExtractorExt}, //
         output::IntoResponse,
         server::io::Peer,
         Error,
@@ -103,11 +103,11 @@ impl IntoResponse for ProxyResponse {
 }
 
 pub fn proxy_client(client: reqwest::r#async::Client) -> impl Extractor<Output = (Client,)> {
-    extractor::ExtractorExt::new(chain![
+    chain![
         extractor::extension::clone(),
         extractor::header::clone_headers(),
         extractor::value(client),
-    ])
+    ]
     .map(|peer_addr, headers, client| Client {
         client,
         headers,

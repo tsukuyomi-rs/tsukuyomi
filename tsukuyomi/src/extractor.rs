@@ -2,10 +2,8 @@
 
 #![allow(missing_docs)]
 
-mod chain;
-mod ext;
-
 pub mod body;
+pub mod ext;
 pub mod extension;
 pub mod header;
 pub mod local;
@@ -16,9 +14,9 @@ pub use self::ext::ExtractorExt;
 
 use {
     crate::{
-        core::{Chain, Never},
+        core::Never, //
         error::Error,
-        generic::{Combine, Tuple},
+        generic::Tuple,
         input::Input,
     },
     futures01::{Future, IntoFuture},
@@ -36,16 +34,6 @@ pub trait Extractor {
 
     /// Performs extraction from the specified `Input`.
     fn extract(&self, input: &mut Input<'_>) -> Self::Future;
-
-    fn chain<E>(self, other: E) -> Chain<Self, E>
-    where
-        Self: Sized,
-        E: Extractor,
-        Self::Output: Combine<E::Output> + Send + 'static,
-        E::Output: Send + 'static,
-    {
-        Chain::new(self, other)
-    }
 }
 
 impl<E> Extractor for Box<E>

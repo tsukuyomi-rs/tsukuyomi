@@ -4,7 +4,7 @@ use {
         app::config::prelude::*, //
         chain,
         extractor,
-        extractor::{Extractor, ExtractorExt},
+        extractor::ExtractorExt,
         App,
     },
 };
@@ -325,7 +325,7 @@ fn optional() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let extractor = ExtractorExt::new(extractor::body::json()).optional();
+    let extractor = extractor::body::json().optional();
 
     let app = App::create(
         path!(/) //
@@ -370,10 +370,10 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let params_extractor =
-        ExtractorExt::new(extractor::method::get().chain(extractor::query::query()))
-            .either_or(extractor::method::post().chain(extractor::body::json()))
-            .either_or(extractor::method::post().chain(extractor::body::urlencoded()));
+    let params_extractor = extractor::method::get()
+        .chain(extractor::query::query())
+        .either_or(extractor::method::post().chain(extractor::body::json()))
+        .either_or(extractor::method::post().chain(extractor::body::urlencoded()));
 
     let app = App::create(
         path!(/) //
