@@ -145,12 +145,13 @@ mod call {
     use {
         crate::{
             endpoint::{Endpoint, EndpointAction},
+            error::Error,
             extractor::Extractor,
-            generic::{Combine, Func},
+            generic::{Combine, Func, Tuple},
             handler::AllowedMethods,
             input::Input,
         },
-        futures01::Future,
+        futures01::{Async, Future, Poll},
         std::{marker::PhantomData, sync::Arc},
     };
 
@@ -228,15 +229,42 @@ mod call {
     {
         type Output = F::Out;
         type Error = E::Error;
-        type Future = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+        type Future = CallFuture<E::Future, F, T>;
 
         fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            let Self { extractor, f, .. } = self;
-            Box::new(
-                extractor
-                    .extract(input)
-                    .then(move |result| result.map(|args2| f.call(args.combine(args2)))),
-            )
+            CallFuture {
+                future: self.extractor.extract(input),
+                f: self.f,
+                args: Some(args),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct CallFuture<Fut, F, T> {
+        future: Fut,
+        f: F,
+        args: Option<T>,
+    }
+
+    impl<Fut, F, T> Future for CallFuture<Fut, F, T>
+    where
+        Fut: Future,
+        Fut::Item: Tuple,
+        Fut::Error: Into<Error>,
+        F: Func<<T as Combine<Fut::Item>>::Out>,
+        T: Combine<Fut::Item>,
+    {
+        type Item = F::Out;
+        type Error = Fut::Error;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            let args2 = futures01::try_ready!(self.future.poll());
+            let args = self
+                .args
+                .take()
+                .expect("the future has already been polled.");
+            Ok(Async::Ready(self.f.call(args.combine(args2))))
         }
     }
 }
@@ -247,11 +275,11 @@ mod call_async {
             endpoint::{Endpoint, EndpointAction},
             error::Error,
             extractor::Extractor,
-            generic::{Combine, Func},
+            generic::{Combine, Func, Tuple},
             handler::AllowedMethods,
             input::Input,
         },
-        futures01::{Future, IntoFuture},
+        futures01::{Future, IntoFuture, Poll},
         std::{marker::PhantomData, sync::Arc},
     };
 
@@ -321,20 +349,57 @@ mod call_async {
     {
         type Output = R::Item;
         type Error = Error;
-        type Future = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+        type Future = CallAsyncFuture<E::Future, F, R, T>;
 
         fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            let Self { extractor, f, .. } = self;
-            Box::new(
-                extractor
-                    .extract(input)
-                    .map_err(Into::into)
-                    .and_then(move |args2| {
-                        f.call(args.combine(args2))
-                            .into_future()
-                            .map_err(Into::into)
-                    }),
-            )
+            CallAsyncFuture {
+                state: State::First(self.extractor.extract(input)),
+                f: self.f,
+                args: Some(args),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    enum State<Fut1, Fut2> {
+        First(Fut1),
+        Second(Fut2),
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct CallAsyncFuture<Fut, F, R: IntoFuture, T> {
+        state: State<Fut, R::Future>,
+        f: F,
+        args: Option<T>,
+    }
+
+    impl<Fut, F, R, T> Future for CallAsyncFuture<Fut, F, R, T>
+    where
+        Fut: Future,
+        Fut::Item: Tuple,
+        Fut::Error: Into<Error>,
+        F: Func<<T as Combine<Fut::Item>>::Out, Out = R>,
+        R: IntoFuture,
+        R::Error: Into<Error>,
+        T: Combine<Fut::Item>,
+    {
+        type Item = R::Item;
+        type Error = Error;
+
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            loop {
+                self.state = match self.state {
+                    State::First(ref mut future) => {
+                        let args2 = futures01::try_ready!(future.poll().map_err(Into::into));
+                        let args = self
+                            .args
+                            .take()
+                            .expect("the future has already been polled.");
+                        State::Second(self.f.call(args.combine(args2)).into_future())
+                    }
+                    State::Second(ref mut future) => return future.poll().map_err(Into::into),
+                };
+            }
         }
     }
 }

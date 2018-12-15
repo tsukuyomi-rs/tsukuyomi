@@ -137,7 +137,10 @@ mod decoded {
             extractor::Extractor,
             input::{body::RequestBody, header::ContentType, Input},
         },
-        futures01::Future,
+        futures01::{
+            future::{err, Either, FutureResult},
+            Future,
+        },
         std::marker::PhantomData,
     };
 
@@ -150,14 +153,14 @@ mod decoded {
     impl<T, D> Extractor for Decoded<T, D>
     where
         T: Send + 'static,
-        D: super::decode::Decoder<T>,
+        D: super::decode::Decoder<T> + 'static,
     {
         type Output = (T,);
         type Error = Error;
-        type Future = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+        type Future = Either<FutureResult<(T,), Error>, DecodedFuture<T, D>>;
 
         fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-            if let Err(err) = {
+            if let Err(e) = {
                 crate::input::header::parse::<ContentType>(input) //
                     .and_then(|mime_opt| {
                         self.decoder
@@ -165,19 +168,39 @@ mod decoded {
                             .map_err(crate::error::bad_request)
                     })
             } {
-                return Box::new(futures01::future::err(err));
+                return Either::A(err(e));
             }
 
             let read_all = match input.locals.remove(&RequestBody::KEY) {
                 Some(body) => body.read_all(),
-                None => return Box::new(futures01::future::err(super::stolen_payload())),
+                None => return Either::A(err(super::stolen_payload())),
             };
 
-            Box::new(read_all.from_err().and_then(|data| {
-                D::decode(&data)
-                    .map(|out| (out,))
-                    .map_err(crate::error::bad_request)
-            }))
+            Either::B(DecodedFuture {
+                read_all,
+                _marker: PhantomData,
+            })
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct DecodedFuture<T, D> {
+        read_all: crate::input::body::ReadAll,
+        _marker: PhantomData<fn(D) -> T>,
+    }
+
+    impl<T, D> Future for DecodedFuture<T, D>
+    where
+        D: super::decode::Decoder<T>,
+    {
+        type Item = (T,);
+        type Error = Error;
+
+        fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {
+            let data = futures01::try_ready!(self.read_all.poll());
+            D::decode(&data)
+                .map(|out| (out,).into())
+                .map_err(crate::error::bad_request)
         }
     }
 }
@@ -218,7 +241,10 @@ mod read_all {
             input::{body::RequestBody, Input},
         },
         bytes::Bytes,
-        futures01::Future,
+        futures01::{
+            future::{self, err, Either, FutureResult},
+            Future,
+        },
     };
 
     #[derive(Debug)]
@@ -227,12 +253,22 @@ mod read_all {
     impl Extractor for ReadAll {
         type Output = (Bytes,);
         type Error = Error;
-        type Future = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+        type Future = Either<
+            FutureResult<(Bytes,), Error>,
+            future::MapErr<
+                future::Map<crate::input::body::ReadAll, fn(Bytes) -> (Bytes,)>,
+                fn(hyper::Error) -> Error,
+            >,
+        >;
 
         fn extract(&self, input: &mut Input<'_>) -> Self::Future {
             match input.locals.remove(&RequestBody::KEY) {
-                Some(body) => Box::new(body.read_all().map(|x| (x,)).map_err(Into::into)),
-                None => Box::new(futures01::future::err(super::stolen_payload())),
+                Some(body) => Either::B(
+                    body.read_all()
+                        .map((|x| (x,)) as fn(_) -> _)
+                        .map_err(Into::into as fn(_) -> _),
+                ),
+                None => Either::A(err(super::stolen_payload())),
             }
         }
     }
