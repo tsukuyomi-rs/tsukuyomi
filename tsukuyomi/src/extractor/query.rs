@@ -16,7 +16,11 @@ pub enum ExtractQueryError {
     InvalidQuery { cause: failure::Error },
 }
 
-pub fn query<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn query<T>() -> impl Extractor<
+    Output = (T,), //
+    Error = Error,
+    Future = futures01::future::FutureResult<(T,), Error>,
+>
 where
     T: DeserializeOwned + Send + 'static,
 {
@@ -33,7 +37,11 @@ where
     })
 }
 
-pub fn optional<T>() -> impl Extractor<Output = (Option<T>,), Error = Error>
+pub fn optional<T>() -> impl Extractor<
+    Output = (Option<T>,), //
+    Error = Error,
+    Future = futures01::future::FutureResult<(Option<T>,), Error>,
+>
 where
     T: DeserializeOwned + Send + 'static,
 {
@@ -52,6 +60,10 @@ where
     })
 }
 
-pub fn raw() -> impl Extractor<Output = (Option<String>,), Error = Never> {
-    super::ready(|input| Ok::<_, Never>(input.request.uri().query().map(ToOwned::to_owned)))
+pub fn raw() -> impl Extractor<
+    Output = (Option<String>,), //
+    Error = Never,
+    Future = futures01::future::FutureResult<(Option<String>,), Never>,
+> {
+    super::ready(|input| Ok(input.request.uri().query().map(ToOwned::to_owned)))
 }

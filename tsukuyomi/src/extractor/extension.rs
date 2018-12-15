@@ -5,7 +5,8 @@ use crate::{
     extractor::Extractor,
 };
 
-pub fn clone<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn clone<T>(
+) -> impl Extractor<Output = (T,), Error = Error, Future = futures01::future::FutureResult<(T,), Error>>
 where
     T: Clone + Send + Sync + 'static,
 {

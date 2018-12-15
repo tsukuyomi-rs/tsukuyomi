@@ -5,7 +5,7 @@ use {
     },
     crate::{
         core::{Chain, TryInto},
-        endpoint::{Endpoint, EndpointAction},
+        endpoint::Endpoint,
         extractor::Extractor,
         generic::{Combine, Tuple},
         handler::{Handler, ModifyHandler},
@@ -15,8 +15,6 @@ use {
         },
         output::Responder,
     },
-    futures01::Future,
-    http::StatusCode,
     std::{marker::PhantomData, sync::Arc},
 };
 
@@ -339,48 +337,125 @@ where
     }
 
     /// Finalize the configuration in this route and creates the instance of `Route`.
-    pub fn to<T>(self, endpoint: T) -> Route<impl Handler<Output = T::Output>>
+    pub fn to<T>(self, endpoint: T) -> Route<self::handler::RouteHandler<E, T>>
     where
         E: Send + Sync + 'static,
         T: Endpoint<E::Output> + Send + Sync + 'static,
     {
         let Self { uri, extractor, .. } = self;
-        let allowed_methods = endpoint.allowed_methods();
 
+        let allowed_methods = endpoint.allowed_methods();
         let extractor = Arc::new(extractor);
         let endpoint = Arc::new(endpoint);
 
-        let handler = crate::handler::handler(
-            move || {
-                #[allow(missing_debug_implementations)]
-                enum State<F1, F2, T> {
-                    Init,
-                    First(F1, T),
-                    Second(F2),
-                }
-
-                let extractor = extractor.clone();
-                let endpoint = endpoint.clone();
-                let mut state = State::Init;
-
-                crate::handler::handle(move |input| loop {
-                    state = match state {
-                        State::Init => match endpoint.apply(input.request.method()) {
-                            Some(action) => State::First(extractor.extract(input), Some(action)),
-                            None => return Err(StatusCode::METHOD_NOT_ALLOWED.into()),
-                        },
-                        State::First(ref mut future, ref mut action) => {
-                            let args = futures01::try_ready!(future.poll().map_err(Into::into));
-                            let future = action.take().unwrap().call(input, args);
-                            State::Second(future)
-                        }
-                        State::Second(ref mut future) => return future.poll().map_err(Into::into),
-                    }
-                })
+        Route {
+            uri,
+            handler: self::handler::RouteHandler {
+                endpoint,
+                extractor,
+                allowed_methods,
             },
-            allowed_methods,
-        );
+        }
+    }
+}
 
-        Route { uri, handler }
+mod handler {
+    use {
+        crate::{
+            endpoint::{Endpoint, EndpointAction},
+            error::Error,
+            extractor::Extractor,
+            handler::{AllowedMethods, Handle, Handler},
+            input::Input,
+        },
+        futures01::{try_ready, Future, Poll},
+        http::StatusCode,
+        std::sync::Arc,
+    };
+
+    #[derive(Debug)]
+    pub struct RouteHandler<E, T> {
+        pub(super) allowed_methods: Option<AllowedMethods>,
+        pub(super) extractor: Arc<E>,
+        pub(super) endpoint: Arc<T>,
+    }
+
+    impl<E, T> Handler for RouteHandler<E, T>
+    where
+        E: Extractor + Send + Sync + 'static,
+        T: Endpoint<E::Output> + Send + Sync + 'static,
+    {
+        type Output = T::Output;
+        type Error = Error;
+        type Handle = RouteHandle<E, T>;
+
+        #[inline]
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.allowed_methods.as_ref()
+        }
+
+        #[inline]
+        fn handle(&self) -> Self::Handle {
+            RouteHandle {
+                extractor: self.extractor.clone(),
+                endpoint: self.endpoint.clone(),
+                state: RouteHandleState::Init,
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct RouteHandle<E, T>
+    where
+        E: Extractor,
+        T: Endpoint<E::Output>,
+    {
+        extractor: Arc<E>,
+        endpoint: Arc<T>,
+        state: RouteHandleState<E, T>,
+    }
+
+    #[allow(missing_debug_implementations)]
+    enum RouteHandleState<E, T>
+    where
+        E: Extractor,
+        T: Endpoint<E::Output>,
+    {
+        Init,
+        First(E::Future, Option<T::Action>),
+        Second(<T::Action as EndpointAction<E::Output>>::Future),
+    }
+
+    impl<E, T> Handle for RouteHandle<E, T>
+    where
+        E: Extractor,
+        T: Endpoint<E::Output>,
+    {
+        type Output = T::Output;
+        type Error = Error;
+
+        #[inline]
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+            loop {
+                self.state = match self.state {
+                    RouteHandleState::Init => {
+                        let action = self
+                            .endpoint
+                            .apply(input.request.method())
+                            .ok_or_else(|| StatusCode::METHOD_NOT_ALLOWED)?;
+                        let extract = self.extractor.extract(input);
+                        RouteHandleState::First(extract, Some(action))
+                    }
+                    RouteHandleState::First(ref mut future, ref mut action) => {
+                        let args = try_ready!(future.poll().map_err(Into::into));
+                        let future = action.take().unwrap().call(input, args);
+                        RouteHandleState::Second(future)
+                    }
+                    RouteHandleState::Second(ref mut future) => {
+                        return future.poll().map_err(Into::into)
+                    }
+                }
+            }
+        }
     }
 }

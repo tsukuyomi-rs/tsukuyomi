@@ -1,16 +1,10 @@
 //! Extractors for parsing message body.
 
 use {
-    crate::{
-        error::Error,
-        extractor::Extractor,
-        input::{body::RequestBody, header::ContentType},
-    },
     bytes::Bytes,
-    futures01::Future,
     mime::Mime,
     serde::de::DeserializeOwned,
-    std::str,
+    std::{marker::PhantomData, str},
 };
 
 #[doc(hidden)]
@@ -125,38 +119,71 @@ mod decode {
     }
 }
 
-fn decoded<T, D>(decoder: D) -> impl Extractor<Output = (T,), Error = Error>
+fn decoded<T, D>(decoder: D) -> self::decoded::Decoded<T, D>
 where
     T: Send + 'static,
     D: self::decode::Decoder<T>,
 {
-    super::raw(move |input| {
-        if let Err(err) = {
-            crate::input::header::parse::<ContentType>(input) //
-                .and_then(|mime_opt| {
-                    decoder
-                        .validate_mime(mime_opt)
-                        .map_err(crate::error::bad_request)
-                })
-        } {
-            return futures01::future::Either::A(futures01::future::err(err));
+    self::decoded::Decoded {
+        decoder,
+        _marker: PhantomData,
+    }
+}
+
+mod decoded {
+    use {
+        crate::{
+            error::Error,
+            extractor::Extractor,
+            input::{body::RequestBody, header::ContentType, Input},
+        },
+        futures01::Future,
+        std::marker::PhantomData,
+    };
+
+    #[derive(Debug)]
+    pub struct Decoded<T, D> {
+        pub(super) decoder: D,
+        pub(super) _marker: PhantomData<fn() -> T>,
+    }
+
+    impl<T, D> Extractor for Decoded<T, D>
+    where
+        T: Send + 'static,
+        D: super::decode::Decoder<T>,
+    {
+        type Output = (T,);
+        type Error = Error;
+        type Future = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+
+        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+            if let Err(err) = {
+                crate::input::header::parse::<ContentType>(input) //
+                    .and_then(|mime_opt| {
+                        self.decoder
+                            .validate_mime(mime_opt)
+                            .map_err(crate::error::bad_request)
+                    })
+            } {
+                return Box::new(futures01::future::err(err));
+            }
+
+            let read_all = match input.locals.remove(&RequestBody::KEY) {
+                Some(body) => body.read_all(),
+                None => return Box::new(futures01::future::err(super::stolen_payload())),
+            };
+
+            Box::new(read_all.from_err().and_then(|data| {
+                D::decode(&data)
+                    .map(|out| (out,))
+                    .map_err(crate::error::bad_request)
+            }))
         }
-
-        let read_all = match input.locals.remove(&RequestBody::KEY) {
-            Some(body) => body.read_all(),
-            None => return futures01::future::Either::A(futures01::future::err(stolen_payload())),
-        };
-
-        futures01::future::Either::B(read_all.from_err().and_then(|data| {
-            D::decode(&data)
-                .map(|out| (out,))
-                .map_err(crate::error::bad_request)
-        }))
-    })
+    }
 }
 
 #[inline]
-pub fn plain<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn plain<T>() -> self::decoded::Decoded<T, impl self::decode::Decoder<T>>
 where
     T: DeserializeOwned + Send + 'static,
 {
@@ -164,7 +191,7 @@ where
 }
 
 #[inline]
-pub fn json<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn json<T>() -> self::decoded::Decoded<T, impl self::decode::Decoder<T>>
 where
     T: DeserializeOwned + Send + 'static,
 {
@@ -172,27 +199,71 @@ where
 }
 
 #[inline]
-pub fn urlencoded<T>() -> impl Extractor<Output = (T,), Error = Error>
+pub fn urlencoded<T>() -> self::decoded::Decoded<T, impl self::decode::Decoder<T>>
 where
     T: DeserializeOwned + Send + 'static,
 {
     self::decoded(self::decode::UrlencodedDecoder::default())
 }
 
-pub fn read_all() -> impl Extractor<Output = (Bytes,), Error = Error> {
-    super::raw(|input| match input.locals.remove(&RequestBody::KEY) {
-        Some(body) => {
-            futures01::future::Either::A(body.read_all().map(|x| (x,)).map_err(Into::into))
-        }
-        None => futures01::future::Either::B(futures01::future::err(stolen_payload())),
-    })
+pub fn read_all() -> self::read_all::ReadAll {
+    self::read_all::ReadAll(())
 }
 
-pub fn stream() -> impl Extractor<Output = (RequestBody,), Error = Error> {
-    super::ready(|input| match input.locals.remove(&RequestBody::KEY) {
-        Some(body) => Ok(body),
-        None => Err(stolen_payload()),
-    })
+mod read_all {
+    use {
+        crate::{
+            error::Error,
+            extractor::Extractor,
+            input::{body::RequestBody, Input},
+        },
+        bytes::Bytes,
+        futures01::Future,
+    };
+
+    #[derive(Debug)]
+    pub struct ReadAll(pub(super) ());
+
+    impl Extractor for ReadAll {
+        type Output = (Bytes,);
+        type Error = Error;
+        type Future = Box<dyn Future<Item = Self::Output, Error = Self::Error> + Send + 'static>;
+
+        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+            match input.locals.remove(&RequestBody::KEY) {
+                Some(body) => Box::new(body.read_all().map(|x| (x,)).map_err(Into::into)),
+                None => Box::new(futures01::future::err(super::stolen_payload())),
+            }
+        }
+    }
+}
+
+pub fn stream() -> self::stream::Stream {
+    self::stream::Stream(())
+}
+
+mod stream {
+    use crate::{
+        error::Error,
+        extractor::Extractor,
+        input::{body::RequestBody, Input},
+    };
+
+    #[derive(Debug)]
+    pub struct Stream(pub(super) ());
+
+    impl Extractor for Stream {
+        type Output = (RequestBody,);
+        type Error = Error;
+        type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
+
+        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+            match input.locals.remove(&RequestBody::KEY) {
+                Some(body) => futures01::future::ok((body,)),
+                None => futures01::future::err(super::stolen_payload()),
+            }
+        }
+    }
 }
 
 fn stolen_payload() -> crate::error::Error {

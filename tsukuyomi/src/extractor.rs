@@ -136,7 +136,9 @@ where
     Raw(f)
 }
 
-pub fn guard<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
+pub fn guard<F, E>(
+    f: F,
+) -> impl Extractor<Output = (), Error = E, Future = futures01::future::FutureResult<(), E>>
 where
     F: Fn(&mut Input<'_>) -> Result<(), E>,
     E: Into<Error> + Send + 'static,
@@ -144,7 +146,9 @@ where
     self::raw(move |input| futures01::future::result(f(input)))
 }
 
-pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,), Error = E>
+pub fn ready<F, T, E>(
+    f: F,
+) -> impl Extractor<Output = (T,), Error = E, Future = futures01::future::FutureResult<(T,), E>>
 where
     F: Fn(&mut Input<'_>) -> Result<T, E>,
     T: Send + 'static,
@@ -153,21 +157,35 @@ where
     self::raw(move |input| futures01::future::result(f(input).map(|x| (x,))))
 }
 
-pub fn value<T>(value: T) -> impl Extractor<Output = (T,), Error = Never>
+pub fn value<T>(
+    value: T,
+) -> impl Extractor<Output = (T,), Error = Never, Future = futures01::future::FutureResult<(T,), Never>>
 where
     T: Clone + Send + 'static,
 {
     self::ready(move |_| Ok(value.clone()))
 }
 
-pub fn method() -> impl Extractor<Output = (http::Method,), Error = Never> {
+pub fn method() -> impl Extractor<
+    Output = (http::Method,),
+    Error = Never,
+    Future = futures01::future::FutureResult<(http::Method,), Never>,
+> {
     self::ready(|input| Ok(input.request.method().clone()))
 }
 
-pub fn uri() -> impl Extractor<Output = (http::Uri,), Error = Never> {
+pub fn uri() -> impl Extractor<
+    Output = (http::Uri,),
+    Error = Never,
+    Future = futures01::future::FutureResult<(http::Uri,), Never>,
+> {
     self::ready(|input| Ok(input.request.uri().clone()))
 }
 
-pub fn version() -> impl Extractor<Output = (http::Version,), Error = Never> {
+pub fn version() -> impl Extractor<
+    Output = (http::Version,),
+    Error = Never,
+    Future = futures01::future::FutureResult<(http::Version,), Never>,
+> {
     self::ready(|input| Ok(input.request.version()))
 }
