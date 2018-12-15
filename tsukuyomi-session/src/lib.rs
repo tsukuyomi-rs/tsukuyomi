@@ -21,7 +21,7 @@ use {
         error::Error, //
         extractor::Extractor,
         input::Input,
-        output::{IntoResponse, Responder},
+        output::Responder,
     },
 };
 
@@ -108,11 +108,20 @@ where
     }
 
     /// Finalize the current session with the specified output.
-    pub fn finish<T>(self, output: T) -> impl Responder<Response = T, Error = Error>
+    pub fn finish<T>(self, output: T) -> impl Responder<Response = T::Response, Error = Error>
     where
-        T: IntoResponse + Send + 'static,
+        T: Responder,
+        T::Response: Send + 'static,
     {
-        tsukuyomi::output::respond(move |input| self.raw.write(input).map(move |()| output))
+        tsukuyomi::output::respond(move |input| {
+            let write_session = self.raw.write(input);
+            let mut output = output.respond(input);
+            write_session
+                .join(futures::future::poll_fn(move || {
+                    output.poll().map_err(Into::into)
+                }))
+                .map(move |((), output)| output)
+        })
     }
 }
 
