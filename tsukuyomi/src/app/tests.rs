@@ -1,12 +1,12 @@
 use {
-    super::{config::prelude::*, App, ResourceId, Result},
+    super::{config::prelude::*, App, EndpointId, Result},
     matches::assert_matches,
 };
 
 #[test]
 fn new_empty() -> Result<()> {
     let app = App::create(empty())?;
-    assert_matches!(app.inner.route("/", &mut None), Err(..));
+    assert_matches!(app.inner.find_endpoint("/", &mut None), Err(..));
     Ok(())
 }
 
@@ -18,15 +18,15 @@ fn route_single_method() -> Result<()> {
     )?;
 
     assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
 
-    assert_matches!(app.inner.route("/path/to", &mut None), Err(..));
+    assert_matches!(app.inner.find_endpoint("/path/to", &mut None), Err(..));
 
     assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
 
     Ok(())
@@ -40,17 +40,17 @@ fn route_multiple_method() -> Result<()> {
     )?;
 
     assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
     assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
 
     assert_matches!(
-        app.inner.route("/", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
 
     Ok(())
@@ -68,24 +68,24 @@ fn scope_simple() -> Result<()> {
     ])?;
 
     assert_matches!(
-        app.inner.route("/a", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/a", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
     assert_matches!(
-        app.inner.route("/b", &mut None),
-        Ok(resource) if resource.id == ResourceId(1)
+        app.inner.find_endpoint("/b", &mut None),
+        Ok(resource) if resource.id == EndpointId(1)
     );
     assert_matches!(
-        app.inner.route("/foo", &mut None),
-        Ok(resource) if resource.id == ResourceId(2)
+        app.inner.find_endpoint("/foo", &mut None),
+        Ok(resource) if resource.id == EndpointId(2)
     );
     assert_matches!(
-        app.inner.route("/c/d", &mut None),
-        Ok(resource) if resource.id == ResourceId(3)
+        app.inner.find_endpoint("/c/d", &mut None),
+        Ok(resource) if resource.id == EndpointId(3)
     );
     assert_matches!(
-        app.inner.route("/c/d", &mut None),
-        Ok(resource) if resource.id == ResourceId(3)
+        app.inner.find_endpoint("/c/d", &mut None),
+        Ok(resource) if resource.id == EndpointId(3)
     );
 
     Ok(())
@@ -112,31 +112,31 @@ fn scope_nested() -> Result<()> {
     ])?;
 
     assert_matches!(
-        app.inner.route("/foo", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/foo", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
     assert_matches!(
-        app.inner.route("/bar", &mut None),
-        Ok(resource) if resource.id == ResourceId(1)
+        app.inner.find_endpoint("/bar", &mut None),
+        Ok(resource) if resource.id == EndpointId(1)
     );
     assert_matches!(
-        app.inner.route("/foo", &mut None),
-        Ok(resource) if resource.id == ResourceId(0)
+        app.inner.find_endpoint("/foo", &mut None),
+        Ok(resource) if resource.id == EndpointId(0)
     );
     assert_matches!(
-        app.inner.route("/baz", &mut None),
-        Ok(resource) if resource.id == ResourceId(2)
+        app.inner.find_endpoint("/baz", &mut None),
+        Ok(resource) if resource.id == EndpointId(2)
     );
     assert_matches!(
-        app.inner.route("/baz/foobar", &mut None),
-        Ok(resource) if resource.id == ResourceId(3)
+        app.inner.find_endpoint("/baz/foobar", &mut None),
+        Ok(resource) if resource.id == EndpointId(3)
     );
     assert_matches!(
-        app.inner.route("/hoge", &mut None),
-        Ok(resource) if resource.id == ResourceId(4)
+        app.inner.find_endpoint("/hoge", &mut None),
+        Ok(resource) if resource.id == EndpointId(4)
     );
 
-    assert_matches!(app.inner.route("/baz/", &mut None), Err(..));
+    assert_matches!(app.inner.find_endpoint("/baz/", &mut None), Err(..));
 
     Ok(())
 }

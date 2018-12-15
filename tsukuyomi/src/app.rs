@@ -4,8 +4,8 @@ pub mod config;
 
 mod error;
 mod recognizer;
+mod scope;
 mod service;
-mod tree;
 mod uri;
 
 #[cfg(test)]
@@ -22,17 +22,18 @@ pub(crate) use self::{recognizer::Captures, uri::CaptureNames};
 use {
     self::{
         recognizer::{RecognizeError, Recognizer},
-        tree::{Arena, Node, NodeId},
+        scope::{Scope, ScopeId, Scopes},
         uri::Uri,
     },
     crate::{
         core::Never, //
-        handler::BoxedHandler,
-        input::body::RequestBody,
-        output::ResponseBody,
+        handler::{Handle, Handler},
+        input::{body::RequestBody, Input},
+        output::{IntoResponse, Responder, ResponseBody},
     },
+    futures01::{Async, Future, Poll},
     http::{Request, Response},
-    std::sync::Arc,
+    std::{fmt, sync::Arc},
     tower_service::NewService,
 };
 
@@ -71,16 +72,16 @@ impl NewService for App {
 
 #[derive(Debug)]
 struct AppInner {
-    recognizer: Recognizer<Resource>,
-    scopes: Arena<ScopeData>,
+    recognizer: Recognizer<Endpoint>,
+    scopes: Scopes<ScopeData>,
 }
 
 impl AppInner {
-    fn scope(&self, id: NodeId) -> &Node<ScopeData> {
+    fn scope(&self, id: ScopeId) -> &Scope<ScopeData> {
         &self.scopes[id]
     }
 
-    fn resource(&self, id: ResourceId) -> &Resource {
+    fn endpoint(&self, id: EndpointId) -> &Endpoint {
         self.recognizer.get(id.0).expect("the wrong resource ID")
     }
 
@@ -88,18 +89,18 @@ impl AppInner {
     fn infer_scope<'a>(
         &self,
         path: &str,
-        resources: impl IntoIterator<Item = &'a Resource>,
-    ) -> &Node<ScopeData> {
+        endpoints: impl IntoIterator<Item = &'a Endpoint>,
+    ) -> &Scope<ScopeData> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
-            let mut ancestors: Option<&[NodeId]> = None;
-            for resource in resources {
-                let ancestors = ancestors.get_or_insert(&resource.ancestors);
+            let mut ancestors: Option<&[ScopeId]> = None;
+            for endpoint in endpoints {
+                let ancestors = ancestors.get_or_insert(&endpoint.ancestors);
                 let n = (*ancestors)
                     .iter()
-                    .zip(&resource.ancestors)
+                    .zip(&endpoint.ancestors)
                     .position(|(a, b)| a != b)
-                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), resource.ancestors.len()));
+                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), endpoint.ancestors.len()));
                 *ancestors = &ancestors[..n];
             }
             ancestors
@@ -114,32 +115,32 @@ impl AppInner {
                     .or_else(|| ancestors.last())
                     .cloned()
             })
-            .unwrap_or_else(NodeId::root);
+            .unwrap_or_else(ScopeId::root);
 
         self.scope(node_id)
     }
 
-    fn find_fallback(&self, start: NodeId) -> Option<&(dyn BoxedHandler + Send + Sync + 'static)> {
+    fn find_default_handler(&self, start: ScopeId) -> Option<&dyn BoxedHandler> {
         let scope = self.scope(start);
-        if let Some(ref f) = scope.data.fallback {
+        if let Some(ref f) = scope.data.default_handler {
             return Some(&**f);
         }
         scope
             .ancestors()
             .into_iter()
             .rev()
-            .filter_map(|&id| self.scope(id).data.fallback.as_ref().map(|f| &**f))
+            .filter_map(|&id| self.scope(id).data.default_handler.as_ref().map(|f| &**f))
             .next()
     }
 
-    fn route(
+    fn find_endpoint(
         &self,
         path: &str,
         captures: &mut Option<Captures>,
-    ) -> std::result::Result<&Resource, &Node<ScopeData>> {
+    ) -> std::result::Result<&Endpoint, &Scope<ScopeData>> {
         match self.recognizer.recognize(path, captures) {
-            Ok(resource) => Ok(resource),
-            Err(RecognizeError::NotMatched) => Err(self.scope(NodeId::root())),
+            Ok(endpoint) => Ok(endpoint),
+            Err(RecognizeError::NotMatched) => Err(self.scope(ScopeId::root())),
             Err(RecognizeError::PartiallyMatched(candidates)) => Err(self.infer_scope(
                 path,
                 candidates.iter().filter_map(|i| self.recognizer.get(i)),
@@ -151,18 +152,64 @@ impl AppInner {
 #[derive(Debug)]
 struct ScopeData {
     prefix: Uri,
-    fallback: Option<Box<dyn BoxedHandler + Send + Sync + 'static>>,
+    default_handler: Option<Box<dyn BoxedHandler>>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct ResourceId(usize);
+struct EndpointId(usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
 #[derive(Debug)]
-struct Resource {
-    id: ResourceId,
-    scope: NodeId,
-    ancestors: Vec<NodeId>,
+struct Endpoint {
+    id: EndpointId,
+    scope: ScopeId,
+    ancestors: Vec<ScopeId>,
     uri: Uri,
-    handler: Box<dyn BoxedHandler + Send + Sync + 'static>,
+    handler: Box<dyn BoxedHandler>,
+}
+
+type BoxedHandle =
+    dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error> + Send + 'static;
+
+trait BoxedHandler: Send + Sync + 'static {
+    fn call(&self) -> Box<BoxedHandle>;
+}
+
+impl fmt::Debug for dyn BoxedHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BoxedHandler").finish()
+    }
+}
+
+impl<H> BoxedHandler for H
+where
+    H: Handler + Send + Sync + 'static,
+    H::Output: Responder,
+{
+    fn call(&self) -> Box<BoxedHandle> {
+        enum State<A, B> {
+            First(A),
+            Second(B),
+        }
+
+        let mut state: State<H::Handle, <H::Output as Responder>::Future> =
+            State::First(self.handle());
+
+        Box::new(move |input| loop {
+            state = match state {
+                State::First(ref mut handle) => {
+                    let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
+                    State::Second(x.respond(input))
+                }
+                State::Second(ref mut respond) => {
+                    return Ok(Async::Ready(
+                        futures01::try_ready!(respond.poll().map_err(Into::into))
+                            .into_response(input.request)
+                            .map_err(Into::into)?
+                            .map(Into::into),
+                    ));
+                }
+            };
+        })
+    }
 }

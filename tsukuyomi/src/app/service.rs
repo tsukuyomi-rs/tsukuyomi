@@ -1,8 +1,7 @@
 use {
-    super::{recognizer::Captures, AppInner, ResourceId},
+    super::{recognizer::Captures, AppInner, BoxedHandle, EndpointId},
     crate::{
         core::Never,
-        handler::HandleTask,
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
     },
@@ -59,14 +58,14 @@ pub struct AppFuture {
     cookie_jar: Option<CookieJar>,
     response_headers: Option<HeaderMap>,
     locals: LocalMap,
-    resource_id: Option<ResourceId>,
+    endpoint_id: Option<EndpointId>,
     captures: Option<Captures>,
     state: AppFutureState,
 }
 
 enum AppFutureState {
     Init,
-    InFlight(Box<HandleTask>),
+    InFlight(Box<BoxedHandle>),
     Done,
 }
 
@@ -85,10 +84,10 @@ macro_rules! input {
         &mut Input {
             request: &$self.request,
             params: {
-                &if let Some(resource_id) = $self.resource_id {
+                &if let Some(endpoint_id) = $self.endpoint_id {
                     Some(Params {
                         path: $self.request.uri().path(),
-                        names: $self.inner.resource(resource_id).uri.capture_names(),
+                        names: $self.inner.endpoint(endpoint_id).uri.capture_names(),
                         captures: $self.captures.as_ref(),
                     })
                 } else {
@@ -114,25 +113,25 @@ impl AppFuture {
             cookie_jar: None,
             response_headers: None,
             locals,
-            resource_id: None,
+            endpoint_id: None,
             captures: None,
             state: AppFutureState::Init,
         }
     }
 
-    fn process_recognize(&mut self) -> Result<Box<HandleTask>, crate::Error> {
-        self.resource_id = None;
+    fn process_recognize(&mut self) -> Result<Box<BoxedHandle>, crate::Error> {
+        self.endpoint_id = None;
         self.captures = None;
 
-        match {
-            self.inner
-                .route(self.request.uri().path(), &mut self.captures)
-        } {
-            Ok(resource) => {
-                self.resource_id = Some(resource.id);
-                Ok(resource.handler.call())
+        match self
+            .inner
+            .find_endpoint(self.request.uri().path(), &mut self.captures)
+        {
+            Ok(endpoint) => {
+                self.endpoint_id = Some(endpoint.id);
+                Ok(endpoint.handler.call())
             }
-            Err(scope) => match self.inner.find_fallback(scope.id()) {
+            Err(scope) => match self.inner.find_default_handler(scope.id()) {
                 Some(fallback) => Ok(fallback.call()),
                 None => Err(http::StatusCode::NOT_FOUND.into()),
             },

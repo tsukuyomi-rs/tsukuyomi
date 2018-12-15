@@ -5,14 +5,13 @@ use {
         core::{Chain, Never, TryFrom}, //
         error::Error,
         input::Input,
-        output::{IntoResponse, Responder, ResponseBody},
     },
     either::Either,
-    futures01::{Async, Future, Poll},
-    http::{header::HeaderValue, HttpTryFrom, Method, Response},
+    futures01::{Async, Poll},
+    http::{header::HeaderValue, HttpTryFrom, Method},
     indexmap::{indexset, IndexSet},
     lazy_static::lazy_static,
-    std::{fmt, iter::FromIterator, sync::Arc},
+    std::{iter::FromIterator, sync::Arc},
 };
 
 /// A set of request methods that a route accepts.
@@ -280,59 +279,6 @@ pub fn ready<T: 'static>(
         },
         None,
     )
-}
-
-// ==== boxed ====
-
-pub(crate) type HandleTask =
-    dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, Error> + Send + 'static;
-
-pub(crate) trait BoxedHandler {
-    fn allowed_methods(&self) -> Option<&AllowedMethods>;
-    fn call(&self) -> Box<HandleTask>;
-}
-
-impl fmt::Debug for dyn BoxedHandler + Send + Sync + 'static {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BoxedHandler").finish()
-    }
-}
-
-impl<H> BoxedHandler for H
-where
-    H: Handler + Send + Sync + 'static,
-    H::Output: Responder,
-{
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        Handler::allowed_methods(self)
-    }
-
-    fn call(&self) -> Box<HandleTask> {
-        enum State<A, B> {
-            First(A),
-            Second(B),
-        }
-
-        let mut state: State<H::Handle, <H::Output as Responder>::Future> =
-            State::First(self.handle());
-
-        Box::new(move |input| loop {
-            state = match state {
-                State::First(ref mut handle) => {
-                    let x = futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-                    State::Second(x.respond(input))
-                }
-                State::Second(ref mut respond) => {
-                    return Ok(Async::Ready(
-                        futures01::try_ready!(respond.poll().map_err(Into::into))
-                            .into_response(input.request)
-                            .map_err(Into::into)?
-                            .map(Into::into),
-                    ));
-                }
-            };
-        })
-    }
 }
 
 /// A trait representing a type for modifying the instance of `Handler`.

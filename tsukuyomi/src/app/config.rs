@@ -23,8 +23,8 @@ pub mod prelude {
 use {
     super::{
         recognizer::Recognizer,
-        tree::{Arena, NodeId},
-        App, AppInner, Resource, ResourceId, ScopeData, Uri,
+        scope::{ScopeId, Scopes},
+        App, AppInner, Endpoint, EndpointId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never},
@@ -37,15 +37,15 @@ use {
 /// Creates an `App` using the specified configuration.
 pub fn configure(prefix: impl AsRef<str>, config: impl Config<()>) -> super::Result<App> {
     let mut recognizer = Recognizer::default();
-    let mut scopes = Arena::new(ScopeData {
+    let mut scopes = Scopes::new(ScopeData {
         prefix: prefix.as_ref().parse()?,
-        fallback: None,
+        default_handler: None,
     });
     config
         .configure(&mut Scope {
             recognizer: &mut recognizer,
             scopes: &mut scopes,
-            scope_id: NodeId::root(),
+            scope_id: ScopeId::root(),
             modifier: &(),
         })
         .map_err(Into::into)?;
@@ -58,10 +58,10 @@ pub fn configure(prefix: impl AsRef<str>, config: impl Config<()>) -> super::Res
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
 pub struct Scope<'a, M> {
-    recognizer: &'a mut Recognizer<Resource>,
-    scopes: &'a mut Arena<ScopeData>,
+    recognizer: &'a mut Recognizer<Endpoint>,
+    scopes: &'a mut Scopes<ScopeData>,
     modifier: &'a M,
-    scope_id: NodeId,
+    scope_id: ScopeId,
 }
 
 impl<'a, M> Scope<'a, M> {
@@ -77,11 +77,11 @@ impl<'a, M> Scope<'a, M> {
             let uri: Uri = uri.parse()?;
             let uri = self.scopes[self.scope_id].data.prefix.join(&uri)?;
 
-            let id = ResourceId(self.recognizer.len());
+            let id = EndpointId(self.recognizer.len());
             let scope = &self.scopes[self.scope_id];
             self.recognizer.insert(
                 uri.as_str(),
-                Resource {
+                Endpoint {
                     id,
                     scope: scope.id(),
                     ancestors: scope
@@ -95,7 +95,7 @@ impl<'a, M> Scope<'a, M> {
                 },
             )?;
         } else {
-            self.scopes[self.scope_id].data.fallback =
+            self.scopes[self.scope_id].data.default_handler =
                 Some(Box::new(self.modifier.modify(handler)));
         }
         Ok(())
@@ -109,7 +109,7 @@ impl<'a, M> Scope<'a, M> {
             let parent = &self.scopes[self.scope_id].data;
             ScopeData {
                 prefix: parent.prefix.join(&prefix)?,
-                fallback: None,
+                default_handler: None,
             }
         })?;
 
