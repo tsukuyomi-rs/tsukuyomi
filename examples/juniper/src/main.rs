@@ -5,7 +5,6 @@ mod schema;
 
 use {
     crate::context::{Context, Database},
-    futures::prelude::*,
     std::sync::{Arc, RwLock},
     tsukuyomi::{app::config::prelude::*, chain, server::Server, App},
     tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
@@ -35,13 +34,9 @@ fn main() -> tsukuyomi::server::Result<()> {
             .to(endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request()) // <-- parses the incoming GraphQL request.
                 .extract(fetch_graphql_context) // <-- fetches a GraphQL context.
-                .call_async(move |request: GraphQLRequest, context: Context| {
-                    // spawns a task that executes the (parsed) GraphQL request.
-                    tsukuyomi::rt::spawn_fn({
-                        let schema = schema.clone();
-                        move || request.execute(&schema, &context)
-                    })
-                    .map_err(tsukuyomi::error::internal_server_error)
+                .call(move |request: GraphQLRequest, context: Context| {
+                    // creates a `Responder` that executes a GraphQL request with the specified schema and context.
+                    request.execute(schema.clone(), context)
                 }))
             .modify(GraphQLModifier::default()) // <-- modifies all errors thrown from this route into GraphQL error.
     ])

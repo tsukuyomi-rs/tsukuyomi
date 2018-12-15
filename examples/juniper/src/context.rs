@@ -21,6 +21,13 @@ pub struct Context {
 
 impl juniper::Context for Context {}
 
+impl AsRef<Self> for Context {
+    #[inline]
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
 impl Context {
     pub fn get_human(&self, id: &str) -> FieldResult<Human> {
         let id: u32 = id.parse()?;

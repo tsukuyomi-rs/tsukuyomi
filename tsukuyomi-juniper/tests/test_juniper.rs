@@ -12,7 +12,6 @@ fn test_version_sync() {
 }
 
 use {
-    futures::prelude::*,
     http::{Request, Response},
     juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
@@ -39,10 +38,9 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
             .to(endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request())
                 .extract(tsukuyomi::extractor::value(schema))
-                .call_async(move |request: GraphQLRequest, schema: Arc<_>| {
+                .call(move |request: GraphQLRequest, schema: Arc<_>| {
                     let database = database.clone();
-                    tsukuyomi::rt::blocking(move || request.execute(&schema, &*database))
-                        .map_err(tsukuyomi::error::internal_server_error)
+                    request.execute(schema, database)
                 }))
             .modify(GraphQLModifier::default())
     })?;

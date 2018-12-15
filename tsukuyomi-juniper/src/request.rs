@@ -1,14 +1,14 @@
 use {
     crate::{error::GraphQLParseError, Schema},
     futures::{Async, Future},
-    http::{Method, Request, Response, StatusCode},
+    http::{Method, Response, StatusCode},
     juniper::InputValue,
     percent_encoding::percent_decode,
     tsukuyomi::{
         error::Error,
         extractor::Extractor,
         input::{body::RequestBody, header::ContentType, Input},
-        output::IntoResponse,
+        output::Responder,
     },
 };
 
@@ -147,58 +147,87 @@ impl GraphQLRequest {
         ))
     }
 
-    /// Executes this request using the specified schema and context.
-    ///
-    /// Note that this method will block the current thread due to the restriction of Juniper.
-    pub fn execute<S>(self, schema: &S, context: &S::Context) -> GraphQLResponse
+    /// Creates a `Responder` that executes this request using the specified schema and context.
+    pub fn execute<S, CtxT>(self, schema: S, context: CtxT) -> GraphQLResponse<S, CtxT>
     where
-        S: Schema,
+        S: Schema + Send + 'static,
+        CtxT: AsRef<S::Context> + Send + 'static,
     {
-        use self::GraphQLRequestKind::*;
-        match self.0 {
-            Single(request) => {
-                let response = request.execute(schema.as_root_node(), context);
-                GraphQLResponse {
-                    is_ok: response.is_ok(),
-                    body: serde_json::to_vec(&response),
-                }
-            }
-            Batch(requests) => {
-                let responses: Vec<_> = requests
-                    .iter()
-                    .map(|request| request.execute(schema.as_root_node(), context))
-                    .collect();
-                GraphQLResponse {
-                    is_ok: responses.iter().all(|response| response.is_ok()),
-                    body: serde_json::to_vec(&responses),
-                }
-            }
+        GraphQLResponse {
+            request: self,
+            schema,
+            context,
         }
     }
 }
 
 /// The type representing the result from the executing a GraphQL request.
 #[derive(Debug)]
-pub struct GraphQLResponse {
-    is_ok: bool,
-    body: Result<Vec<u8>, serde_json::Error>,
+pub struct GraphQLResponse<S, CtxT> {
+    request: GraphQLRequest,
+    schema: S,
+    context: CtxT,
 }
 
-impl IntoResponse for GraphQLResponse {
-    type Body = Vec<u8>;
+impl<S, CtxT> Responder for GraphQLResponse<S, CtxT>
+where
+    S: Schema + Send + 'static,
+    CtxT: AsRef<S::Context> + Send + 'static,
+{
+    type Response = Response<Vec<u8>>;
     type Error = Error;
+    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
 
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        let status = if self.is_ok {
-            StatusCode::OK
-        } else {
-            StatusCode::BAD_REQUEST
-        };
-        let body = self.body.map_err(tsukuyomi::error::internal_server_error)?;
-        Ok(Response::builder()
-            .status(status)
-            .header("content-type", "application/json")
-            .body(body)
-            .expect("should be a valid response"))
+    fn respond(self, _: &mut Input<'_>) -> Self::Future {
+        let Self {
+            request,
+            schema,
+            context,
+        } = self;
+        Box::new(
+            tsukuyomi::rt::spawn_fn(move || -> tsukuyomi::Result<_> {
+                use self::GraphQLRequestKind::*;
+                match request.0 {
+                    Single(request) => {
+                        let response = request.execute(schema.as_root_node(), context.as_ref());
+                        let status = if response.is_ok() {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        };
+                        let body = serde_json::to_vec(&response)
+                            .map_err(tsukuyomi::error::internal_server_error)?;
+                        Ok(Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(body)
+                            .expect("should be a valid response"))
+                    }
+                    Batch(requests) => {
+                        let responses: Vec<_> = requests
+                            .iter()
+                            .map(|request| request.execute(schema.as_root_node(), context.as_ref()))
+                            .collect();
+                        let status = if responses.iter().all(|response| response.is_ok()) {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        };
+                        let body = serde_json::to_vec(&responses)
+                            .map_err(tsukuyomi::error::internal_server_error)?;
+                        Ok(Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(body)
+                            .expect("should be a valid response"))
+                    }
+                }
+            })
+            .then(|result| {
+                result
+                    .map_err(tsukuyomi::error::internal_server_error)
+                    .and_then(|result| result)
+            }),
+        )
     }
 }

@@ -11,7 +11,7 @@ cargo doc --no-deps -p tsukuyomi --all-features
 
 cargo doc --no-deps -p tsukuyomi-askama
 cargo doc --no-deps -p tsukuyomi-cors
-#cargo doc --no-deps -p tsukuyomi-juniper
+cargo doc --no-deps -p tsukuyomi-juniper
 cargo doc --no-deps -p tsukuyomi-session --all-features
 cargo doc --no-deps -p tsukuyomi-tungstenite
 
