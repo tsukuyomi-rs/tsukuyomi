@@ -30,7 +30,7 @@ use {
         HttpTryFrom, Method, Request, Response, StatusCode, Uri,
     },
     std::{collections::HashSet, sync::Arc, time::Duration},
-    tsukuyomi::{HttpError, Input, Output},
+    tsukuyomi::{HttpError, Input},
 };
 
 /// A builder of `CORS`.
@@ -279,12 +279,11 @@ mod impl_modify_handler_for_cors {
         super::CORS,
         either::Either,
         futures::{Async, Poll},
-        http::Method,
+        http::{Method, Response},
         tsukuyomi::{
             error::Error,
             handler::{AllowedMethods, Handle, Handler, ModifyHandler},
             input::Input,
-            output::Output,
         },
     };
 
@@ -297,7 +296,7 @@ mod impl_modify_handler_for_cors {
         H: Handler,
         H::Output: 'static,
     {
-        type Output = Either<Output, H::Output>;
+        type Output = Either<Response<()>, H::Output>;
         type Handler = CORSHandler<H>;
 
         fn modify(&self, handler: H) -> Self::Handler {
@@ -323,7 +322,7 @@ mod impl_modify_handler_for_cors {
 
     #[allow(clippy::type_complexity)]
     impl<H: Handler> Handler for CORSHandler<H> {
-        type Output = Either<Output, H::Output>;
+        type Output = Either<Response<()>, H::Output>;
         type Error = Error;
         type Handle = CORSHandle<H::Handle>;
 
@@ -349,7 +348,7 @@ mod impl_modify_handler_for_cors {
     }
 
     impl<H: Handle> Handle for CORSHandle<H> {
-        type Output = Either<Output, H::Output>;
+        type Output = Either<Response<()>, H::Output>;
         type Error = Error;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
@@ -522,14 +521,14 @@ impl Inner {
         Ok(())
     }
 
-    fn process_request(&self, input: &mut Input<'_>) -> Result<Option<Output>, CORSError> {
+    fn process_request(&self, input: &mut Input<'_>) -> Result<Option<Response<()>>, CORSError> {
         let origin = match self.validate_origin(input.request)? {
             Some(origin) => origin,
             None => return Ok(None), // do nothing
         };
         if input.request.method() == Method::OPTIONS {
             self.process_preflight_request(input.request, origin)
-                .map(|response| Some(response.map(Into::into)))
+                .map(Some)
                 .map_err(Into::into)
         } else {
             let response_headers = input.response_headers.get_or_insert_with(Default::default);

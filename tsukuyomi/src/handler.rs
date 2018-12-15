@@ -5,11 +5,11 @@ use {
         core::{Chain, Never, TryFrom}, //
         error::Error,
         input::Input,
-        output::{IntoResponse, Output, Responder},
+        output::{IntoResponse, Responder, ResponseBody},
     },
     either::Either,
     futures01::{Async, Future, Poll},
-    http::{header::HeaderValue, HttpTryFrom, Method},
+    http::{header::HeaderValue, HttpTryFrom, Method, Response},
     indexmap::{indexset, IndexSet},
     lazy_static::lazy_static,
     std::{fmt, iter::FromIterator, sync::Arc},
@@ -284,7 +284,8 @@ pub fn ready<T: 'static>(
 
 // ==== boxed ====
 
-pub(crate) type HandleTask = dyn FnMut(&mut Input<'_>) -> Poll<Output, Error> + Send + 'static;
+pub(crate) type HandleTask =
+    dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, Error> + Send + 'static;
 
 pub(crate) trait BoxedHandler {
     fn allowed_methods(&self) -> Option<&AllowedMethods>;
@@ -324,7 +325,7 @@ where
                 State::Second(ref mut respond) => {
                     return Ok(Async::Ready(
                         futures01::try_ready!(respond.poll().map_err(Into::into))
-                            .into_response(input)
+                            .into_response(input.request)
                             .map_err(Into::into)?
                             .map(Into::into),
                     ));

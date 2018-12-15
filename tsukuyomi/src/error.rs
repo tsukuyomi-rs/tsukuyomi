@@ -8,10 +8,7 @@
 //! [`HttpError`]: ./trait.HttpError.html
 
 use {
-    crate::{
-        core::Never,
-        output::{Output, ResponseBody},
-    },
+    crate::{core::Never, output::ResponseBody},
     http::{Request, Response, StatusCode},
     std::{any::Any, fmt, io},
 };
@@ -21,14 +18,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// A trait representing error values to be converted into an HTTP response.
 ///
-/// The role of this trait is similar to `Responder`, but there are the following
+/// The role of this trait is similar to `IntoResponse`, but there are the following
 /// differences:
 ///
-/// * `HttpError` cannot access the entire of request context.
 /// * `HttpError::into_response` is infallible.
-/// * The error values are stored as an object, and the conversion into
-///   HTTP responses will be deferred until just before replying to the
-///   client.
+/// * The error values are stored as an object.
 pub trait HttpError: fmt::Display + fmt::Debug + Send + 'static + Sized {
     type Body: Into<ResponseBody>;
 
@@ -206,7 +200,7 @@ pub struct Error {
     obj: Box<AnyObj>,
     fmt_debug_fn: fn(&AnyObj, &mut fmt::Formatter<'_>) -> fmt::Result,
     fmt_display_fn: fn(&AnyObj, &mut fmt::Formatter<'_>) -> fmt::Result,
-    into_response_fn: fn(Box<AnyObj>, &Request<()>) -> Output,
+    into_response_fn: fn(Box<AnyObj>, &Request<()>) -> Response<ResponseBody>,
 }
 
 impl fmt::Debug for Error {
@@ -242,7 +236,10 @@ impl Error {
             fmt::Display::fmt(this, f)
         }
 
-        fn into_response<E: HttpError>(this: Box<AnyObj>, request: &Request<()>) -> Output {
+        fn into_response<E: HttpError>(
+            this: Box<AnyObj>,
+            request: &Request<()>,
+        ) -> Response<ResponseBody> {
             let this = *this.downcast::<E>().expect("the wrong type id");
             HttpError::into_response(this, request).map(Into::into)
         }
@@ -284,7 +281,7 @@ impl Error {
     }
 
     /// Consumes itself and creates an HTTP response from its value.
-    pub fn into_response(self, request: &Request<()>) -> Output {
+    pub fn into_response(self, request: &Request<()>) -> Response<ResponseBody> {
         (self.into_response_fn)(self.obj, request)
     }
 }

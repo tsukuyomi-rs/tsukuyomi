@@ -13,7 +13,7 @@ use {
         future::{self, FutureResult},
         Future, IntoFuture, Poll, Stream,
     },
-    http::{header::HeaderMap, Response, StatusCode},
+    http::{header::HeaderMap, Request, Response, StatusCode},
     hyper::body::{Body, Payload},
     serde::Serialize,
 };
@@ -21,20 +21,21 @@ use {
 // the private API for custom derive.
 #[doc(hidden)]
 pub mod internal {
-    use crate::{
-        error::Error,
-        input::Input,
-        output::{IntoResponse, ResponseBody},
+    pub use {
+        crate::{
+            error::Error,
+            output::{IntoResponse, ResponseBody},
+        },
+        http::{Request, Response},
     };
-    pub use http::Response;
 
     #[inline]
-    pub fn into_response<T>(t: T, input: &mut Input<'_>) -> Result<Response<ResponseBody>, Error>
+    pub fn into_response<T>(t: T, request: &Request<()>) -> Result<Response<ResponseBody>, Error>
     where
         T: IntoResponse,
     {
-        IntoResponse::into_response(t, input)
-            .map(|resp| resp.map(Into::into))
+        IntoResponse::into_response(t, request)
+            .map(|response| response.map(Into::into))
             .map_err(Into::into)
     }
 }
@@ -125,21 +126,19 @@ impl Payload for ResponseBody {
     }
 }
 
-/// The type representing outputs returned from handlers.
-pub type Output = ::http::Response<ResponseBody>;
-
+/// A trait representing the conversion into an HTTP response.
 pub trait IntoResponse {
     type Body: Into<ResponseBody>;
     type Error: Into<Error>;
 
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error>;
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error>;
 }
 
 impl IntoResponse for () {
     type Body = ();
     type Error = Never;
 
-    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         let mut response = Response::new(());
         *response.status_mut() = StatusCode::NO_CONTENT;
         Ok(response)
@@ -153,9 +152,9 @@ where
     type Body = ResponseBody;
     type Error = Error;
 
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         let x = self.ok_or_else(|| crate::error::not_found("None"))?;
-        x.into_response(input)
+        x.into_response(request)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)
     }
@@ -169,10 +168,10 @@ where
     type Body = ResponseBody;
     type Error = Error;
 
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         self.map_err(Into::into)?
-            .into_response(input)
-            .map(|res| res.map(Into::into))
+            .into_response(request)
+            .map(|response| response.map(Into::into))
             .map_err(Into::into)
     }
 }
@@ -188,15 +187,15 @@ mod impl_into_response_for_either {
         type Body = ResponseBody;
         type Error = Error;
 
-        fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
             match self {
                 Either::Left(l) => l
-                    .into_response(input)
-                    .map(|res| res.map(Into::into))
+                    .into_response(request)
+                    .map(|response| response.map(Into::into))
                     .map_err(Into::into),
                 Either::Right(r) => r
-                    .into_response(input)
-                    .map(|res| res.map(Into::into))
+                    .into_response(request)
+                    .map(|response| response.map(Into::into))
                     .map_err(Into::into),
             }
         }
@@ -211,7 +210,7 @@ where
     type Error = Never;
 
     #[inline]
-    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(self)
     }
 }
@@ -221,8 +220,8 @@ impl IntoResponse for &'static str {
     type Error = Never;
 
     #[inline]
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response::plain(self, input)
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response::plain(self, request)
     }
 }
 
@@ -231,8 +230,8 @@ impl IntoResponse for String {
     type Error = Never;
 
     #[inline]
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response::plain(self, input)
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response::plain(self, request)
     }
 }
 
@@ -240,7 +239,7 @@ impl IntoResponse for serde_json::Value {
     type Body = String;
     type Error = Never;
 
-    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         Ok(self::into_response::make_response(
             self.to_string(),
             "application/json",
@@ -250,7 +249,7 @@ impl IntoResponse for serde_json::Value {
 
 /// A function to create a `IntoResponse` using the specified function.
 pub fn into_response<T, E>(
-    f: impl FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+    f: impl FnOnce(&Request<()>) -> Result<Response<T>, E>,
 ) -> impl IntoResponse<
     Body = T, //
     Error = E,
@@ -264,7 +263,7 @@ where
 
     impl<F, T, E> IntoResponse for IntoResponseFn<F>
     where
-        F: FnOnce(&mut Input<'_>) -> Result<Response<T>, E>,
+        F: FnOnce(&Request<()>) -> Result<Response<T>, E>,
         T: Into<ResponseBody>,
         E: Into<Error>,
     {
@@ -272,8 +271,8 @@ where
         type Error = E;
 
         #[inline]
-        fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-            (self.0)(input)
+        fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+            (self.0)(request)
         }
     }
 
@@ -286,7 +285,7 @@ pub fn json<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
 where
     T: Serialize,
 {
-    self::into_response(move |input| self::into_response::json(data, input))
+    self::into_response(move |request| self::into_response::json(data, request))
 }
 
 /// Creates a JSON responder with pretty output from the specified data.
@@ -295,7 +294,7 @@ pub fn json_pretty<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Erro
 where
     T: Serialize,
 {
-    self::into_response(move |input| self::into_response::json_pretty(data, input))
+    self::into_response(move |request| self::into_response::json_pretty(data, request))
 }
 
 /// Creates an HTML responder with the specified response body.
@@ -304,20 +303,20 @@ pub fn html<T>(body: T) -> impl IntoResponse<Body = T, Error = Never>
 where
     T: Into<ResponseBody>,
 {
-    self::into_response(move |input| self::into_response::html(body, input))
+    self::into_response(move |request| self::into_response::html(body, request))
 }
 
 #[allow(missing_docs)]
 pub mod into_response {
     use {
         super::ResponseBody,
-        crate::{core::Never, error::Error, input::Input},
-        http::Response,
+        crate::{core::Never, error::Error},
+        http::{Request, Response},
         serde::Serialize,
     };
 
     #[inline]
-    pub fn json<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
+    pub fn json<T>(data: T, _: &Request<()>) -> Result<Response<Vec<u8>>, Error>
     where
         T: Serialize,
     {
@@ -327,7 +326,7 @@ pub mod into_response {
     }
 
     #[inline]
-    pub fn json_pretty<T>(data: T, _: &mut Input<'_>) -> Result<Response<Vec<u8>>, Error>
+    pub fn json_pretty<T>(data: T, _: &Request<()>) -> Result<Response<Vec<u8>>, Error>
     where
         T: Serialize,
     {
@@ -337,7 +336,7 @@ pub mod into_response {
     }
 
     #[inline]
-    pub fn html<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
+    pub fn html<T>(body: T, _: &Request<()>) -> Result<Response<T>, Never>
     where
         T: Into<ResponseBody>,
     {
@@ -345,7 +344,7 @@ pub mod into_response {
     }
 
     #[inline]
-    pub fn plain<T>(body: T, _: &mut Input<'_>) -> Result<Response<T>, Never>
+    pub fn plain<T>(body: T, _: &Request<()>) -> Result<Response<T>, Never>
     where
         T: Into<ResponseBody>,
     {
@@ -393,7 +392,7 @@ pub mod redirect {
         type Error = Never;
 
         #[inline]
-        fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+        fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
             Ok(Response::builder()
                 .status(self.status)
                 .header("location", &*self.location)
@@ -426,8 +425,9 @@ pub mod redirect {
 
 // ==== Responder ====
 
-/// A trait representing the conversion to an HTTP response.
+/// A trait representing a reply to the client.
 pub trait Responder {
+    /// The type of response
     type Response: IntoResponse;
 
     /// The error type which will be returned from `respond_to`.
@@ -436,7 +436,7 @@ pub trait Responder {
     /// The type of `Future` which will be returned from `respond_to`.
     type Future: Future<Item = Self::Response, Error = Self::Error> + Send + 'static;
 
-    /// Converts `self` to an HTTP response.
+    /// Converts itself into a `Future` that will be resolved as a `Response`.
     fn respond(self, input: &mut Input<'_>) -> Self::Future;
 }
 

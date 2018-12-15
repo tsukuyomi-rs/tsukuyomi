@@ -1,7 +1,7 @@
 use {
     crate::{error::GraphQLParseError, Schema},
     futures::{Async, Future},
-    http::{Method, Response, StatusCode},
+    http::{Method, Request, Response, StatusCode},
     juniper::InputValue,
     percent_encoding::percent_decode,
     tsukuyomi::{
@@ -188,7 +188,7 @@ impl IntoResponse for GraphQLResponse {
     type Body = Vec<u8>;
     type Error = Error;
 
-    fn into_response(self, _: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         let status = if self.is_ok {
             StatusCode::OK
         } else {

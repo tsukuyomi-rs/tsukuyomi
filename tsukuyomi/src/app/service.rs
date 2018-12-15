@@ -4,7 +4,7 @@ use {
         core::Never,
         handler::HandleTask,
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
-        output::{Output, ResponseBody},
+        output::ResponseBody,
     },
     cookie::CookieJar,
     futures01::{Async, Future, Poll},
@@ -139,7 +139,7 @@ impl AppFuture {
         }
     }
 
-    fn process_before_reply(&mut self, output: &mut Output) {
+    fn process_before_reply(&mut self, output: &mut Response<ResponseBody>) {
         // append Cookie entries.
         if let Some(ref jar) = self.cookie_jar {
             for cookie in jar.delta() {

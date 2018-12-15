@@ -43,7 +43,7 @@ use {
     futures::Poll,
     http::{
         header::{HeaderValue, CONTENT_TYPE},
-        Response,
+        Request, Response,
     },
     mime_guess::get_mime_type_str,
     tsukuyomi::{
@@ -56,7 +56,7 @@ use {
 
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
-pub fn into_response<T>(t: T, _: &mut Input<'_>) -> tsukuyomi::Result<Response<String>>
+pub fn into_response<T>(t: T, _: &Request<()>) -> tsukuyomi::Result<Response<String>>
 where
     T: Template,
 {
@@ -82,8 +82,8 @@ impl<T: Template> IntoResponse for Rendered<T> {
     type Error = Error;
 
     #[inline]
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response(self.0, input)
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response(self.0, request)
     }
 }
 

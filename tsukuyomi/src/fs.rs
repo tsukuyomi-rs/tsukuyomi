@@ -13,7 +13,7 @@ use {
     futures01::{Async, Future, Poll, Stream},
     http::{
         header::{self, HeaderMap},
-        Response, StatusCode,
+        Request, Response, StatusCode,
     },
     log::trace,
     std::{
@@ -275,10 +275,10 @@ impl IntoResponse for NamedFileResponse {
     type Body = ResponseBody;
     type Error = Error;
 
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         trace!("NamedFile::respond_to");
 
-        if !self.is_modified(input.request.headers())? {
+        if !self.is_modified(request.headers())? {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_MODIFIED)
                 .body(ResponseBody::empty())

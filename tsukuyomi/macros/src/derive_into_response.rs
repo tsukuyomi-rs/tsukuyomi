@@ -77,7 +77,7 @@ pub struct ResponderInput {
 impl ResponderInput {
     fn derive_explicit(&self, into_response: &syn::Path) -> TokenStream {
         quote!(
-            #into_response(self, input)
+            #into_response(self, request)
                 .map(|response| response.map(Into::into))
                 .map_err(Into::into)
         )
@@ -87,13 +87,13 @@ impl ResponderInput {
     fn derive_struct(&self, data: &syn::DataStruct) -> ParseResult<TokenStream> {
         let Self_ = &self.input.ident;
         let into_response = quote!(tsukuyomi::output::internal::into_response);
-        let unit_respond_to = quote!(#into_response((), input));
+        let unit_respond_to = quote!(#into_response((), request));
         match data.fields {
             syn::Fields::Unit => Ok(unit_respond_to),
             syn::Fields::Unnamed(ref fields) => match fields.unnamed.len() {
                 0 => Ok(unit_respond_to),
                 1 => Ok(quote!(match self {
-                    #Self_(__arg_0) => #into_response(__arg_0, input),
+                    #Self_(__arg_0) => #into_response(__arg_0, request),
                 })),
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
             },
@@ -103,7 +103,7 @@ impl ResponderInput {
                 1 => {
                     let field = &fields.named[0].ident;
                     Ok(quote!(match self {
-                        #Self_ { #field: __arg_0, } => #into_response(__arg_0, input),
+                        #Self_ { #field: __arg_0, } => #into_response(__arg_0, request),
                     }))
                 }
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
@@ -129,20 +129,20 @@ impl ResponderInput {
         let Variant = &variant.ident;
         let into_response = quote!(tsukuyomi::output::internal::into_response);
         match variant.fields {
-            syn::Fields::Unit => Ok(quote!(#Self_ :: #Variant => #into_response((), input))),
+            syn::Fields::Unit => Ok(quote!(#Self_ :: #Variant => #into_response((), request))),
 
             syn::Fields::Unnamed(ref fields) => match fields.unnamed.len() {
-                0 => Ok(quote!(#Self_ :: #Variant () => #into_response((), input))),
-                1 => Ok(quote!(#Self_ :: #Variant (__arg_0) => #into_response(__arg_0, input))),
+                0 => Ok(quote!(#Self_ :: #Variant () => #into_response((), request))),
+                1 => Ok(quote!(#Self_ :: #Variant (__arg_0) => #into_response(__arg_0, request))),
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
             },
 
             syn::Fields::Named(ref fields) => match fields.named.len() {
-                0 => Ok(quote!(#Self_ :: #Variant {} => #into_response((), input))),
+                0 => Ok(quote!(#Self_ :: #Variant {} => #into_response((), request))),
                 1 => {
                     let field = &fields.named[0].ident;
                     Ok(
-                        quote!(#Self_ :: #Variant { #field: __arg_0, } => #into_response(__arg_0, input)),
+                        quote!(#Self_ :: #Variant { #field: __arg_0, } => #into_response(__arg_0, request)),
                     )
                 }
                 _ => Err(parse_error_at(fields, "multiple fields is not supported.")),
@@ -162,10 +162,10 @@ impl ResponderInput {
         };
 
         let Self_ = &self.input.ident;
-        let IntoResponse = quote!(tsukuyomi::output::IntoResponse);
-        let ResponseBody = quote!(tsukuyomi::output::ResponseBody);
-        let Error = quote!(tsukuyomi::error::Error);
-        let Input = quote!(tsukuyomi::input::Input);
+        let IntoResponse = quote!(tsukuyomi::output::internal::IntoResponse);
+        let ResponseBody = quote!(tsukuyomi::output::internal::ResponseBody);
+        let Error = quote!(tsukuyomi::output::internal::Error);
+        let Request = quote!(tsukuyomi::output::internal::Request);
         let Response = quote!(tsukuyomi::output::internal::Response);
 
         Ok(quote!(
@@ -174,7 +174,7 @@ impl ResponderInput {
                 type Error = #Error;
 
                 #[inline]
-                fn into_response(self, input: &mut #Input<'_>) -> Result<#Response<Self::Body>, Self::Error> {
+                fn into_response(self, request: &#Request<()>) -> Result<#Response<Self::Body>, Self::Error> {
                     #derived
                 }
             }
@@ -205,12 +205,12 @@ macro_rules! t {
             let expected = {
                 let Self_ = &source.ident;
                 quote! {
-                    impl tsukuyomi::output::IntoResponse for #Self_ {
-                        type Body = tsukuyomi::output::ResponseBody;
-                        type Error = tsukuyomi::error::Error;
+                    impl tsukuyomi::output::internal::IntoResponse for #Self_ {
+                        type Body = tsukuyomi::output::internal::ResponseBody;
+                        type Error = tsukuyomi::output::internal::Error;
 
                         #[inline]
-                        fn into_response(self, input: &mut tsukuyomi::input::Input<'_>)
+                        fn into_response(self, request: &tsukuyomi::output::internal::Request<()>)
                             -> Result<tsukuyomi::output::internal::Response<Self::Body>, Self::Error>
                         {
                             $($body)*
@@ -244,7 +244,7 @@ macro_rules! t {
 t! {
     name: test_unit_struct,
     source: { struct A; },
-    body: { tsukuyomi::output::internal::into_response((), input) },
+    body: { tsukuyomi::output::internal::into_response((), request) },
 }
 
 t! {
@@ -254,7 +254,7 @@ t! {
     },
     body: {
         match self {
-            A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, input),
+            A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, request),
         }
     },
 }
@@ -265,7 +265,7 @@ t! {
         struct A();
     },
     body: {
-        tsukuyomi::output::internal::into_response((), input)
+        tsukuyomi::output::internal::into_response((), request)
     },
 }
 
@@ -278,7 +278,7 @@ t! {
     },
     body: {
         match self {
-            A { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, input),
+            A { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, request),
         }
     },
 }
@@ -289,7 +289,7 @@ t! {
         struct A {}
     },
     body: {
-        tsukuyomi::output::internal::into_response((), input)
+        tsukuyomi::output::internal::into_response((), request)
     },
 }
 
@@ -306,11 +306,11 @@ t! {
     },
     body: {
         match self {
-            Either::A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, input),
-            Either::B { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, input),
-            Either::C => tsukuyomi::output::internal::into_response((), input),
-            Either::D() => tsukuyomi::output::internal::into_response((), input),
-            Either::E {} => tsukuyomi::output::internal::into_response((), input),
+            Either::A(__arg_0) => tsukuyomi::output::internal::into_response(__arg_0, request),
+            Either::B { b: __arg_0, } => tsukuyomi::output::internal::into_response(__arg_0, request),
+            Either::C => tsukuyomi::output::internal::into_response((), request),
+            Either::D() => tsukuyomi::output::internal::into_response((), request),
+            Either::E {} => tsukuyomi::output::internal::into_response((), request),
         }
     },
 }
@@ -325,7 +325,7 @@ t! {
         }
     },
     body: {
-        my::into_response(self, input)
+        my::into_response(self, request)
             .map(|response| response.map(Into::into))
             .map_err(Into::into)
     },

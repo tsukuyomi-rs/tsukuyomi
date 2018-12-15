@@ -72,11 +72,11 @@ mod responder {
 
     mod sub {
         use {
-            http::Response,
-            tsukuyomi::{core::Never, Input},
+            http::{Request, Response},
+            tsukuyomi::core::Never,
         };
 
-        pub fn display<T>(this: T, _: &mut Input<'_>) -> Result<Response<String>, Never>
+        pub fn display<T>(this: T, _: &Request<()>) -> Result<Response<String>, Never>
         where
             T: std::fmt::Display,
         {

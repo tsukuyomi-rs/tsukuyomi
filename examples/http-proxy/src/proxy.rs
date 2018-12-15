@@ -11,7 +11,6 @@ use {
         server::io::Peer,
         Error,
         Extractor,
-        Input,
     },
 };
 
@@ -91,7 +90,7 @@ impl IntoResponse for ProxyResponse {
 
     fn into_response(
         mut self,
-        _: &mut Input<'_>,
+        _: &http::Request<()>,
     ) -> Result<http::Response<Self::Body>, Self::Error> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();

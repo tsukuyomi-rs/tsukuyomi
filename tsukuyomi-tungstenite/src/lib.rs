@@ -32,7 +32,7 @@ use {
             body::{RequestBody, UpgradedIo},
             Input,
         },
-        output::IntoResponse,
+        output::Responder,
         rt::Executor,
     },
     tungstenite::protocol::Role,
@@ -164,16 +164,17 @@ pub struct WsOutput<F> {
     on_upgrade: F,
 }
 
-impl<F, R> IntoResponse for WsOutput<F>
+impl<F, R> Responder for WsOutput<F>
 where
     F: FnOnce(WebSocketStream) -> R + Send + 'static,
     R: IntoFuture<Item = (), Error = ()>,
     R::Future: Send + 'static,
 {
-    type Body = ();
+    type Response = Response<()>;
     type Error = Error;
+    type Future = futures::future::FutureResult<Self::Response, Self::Error>;
 
-    fn into_response(self, input: &mut Input<'_>) -> Result<Response<Self::Body>, Self::Error> {
+    fn respond(self, input: &mut Input<'_>) -> Self::Future {
         let Self {
             ws: Ws {
                 accept_hash,
@@ -182,30 +183,35 @@ where
             on_upgrade,
         } = self;
 
-        let body = input.locals.remove(&RequestBody::KEY).ok_or_else(|| {
-            tsukuyomi::error::internal_server_error("the request body has already taken by someone")
-        })?;
+        let body = match input.locals.remove(&RequestBody::KEY) {
+            Some(body) => body,
+            None => {
+                return futures::future::err(tsukuyomi::error::internal_server_error(
+                    "the request body has already been stolen by someone",
+                ))
+            }
+        };
 
         let task = body
             .on_upgrade()
-            .map_err(|_| ())
+            .map_err(|e| log::error!("failed to upgrade the request: {}", e))
             .and_then(move |io: UpgradedIo| {
                 let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
                 on_upgrade(transport).into_future()
             });
 
-        tsukuyomi::rt::DefaultExecutor::current()
-            .spawn(Box::new(task))
-            .map_err(|_| {
-                tsukuyomi::error::internal_server_error("failed to spawn WebSocket task")
-            })?;
+        if let Err(err) = tsukuyomi::rt::DefaultExecutor::current().spawn(Box::new(task)) {
+            return futures::future::err(tsukuyomi::error::internal_server_error(err));
+        }
 
-        Ok(Response::builder()
-            .status(StatusCode::SWITCHING_PROTOCOLS)
-            .header(UPGRADE, "websocket")
-            .header(CONNECTION, "upgrade")
-            .header(SEC_WEBSOCKET_ACCEPT, &*accept_hash)
-            .body(())
-            .expect("should be a valid response"))
+        futures::future::ok(
+            Response::builder()
+                .status(StatusCode::SWITCHING_PROTOCOLS)
+                .header(UPGRADE, "websocket")
+                .header(CONNECTION, "upgrade")
+                .header(SEC_WEBSOCKET_ACCEPT, &*accept_hash)
+                .body(())
+                .expect("should be a valid response"),
+        )
     }
 }

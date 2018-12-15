@@ -42,7 +42,7 @@ pub use crate::{
     handler::Handler,
     input::Input,
     output::{
-        Output, //
+        IntoResponse, //
         Responder,
     },
 };
