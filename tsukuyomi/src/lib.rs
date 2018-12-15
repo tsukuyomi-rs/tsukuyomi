@@ -28,6 +28,7 @@ pub mod input;
 pub mod output;
 pub mod rt;
 pub mod server;
+pub mod service;
 pub mod test;
 
 #[doc(inline)]

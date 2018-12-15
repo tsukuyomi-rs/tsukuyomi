@@ -2,7 +2,6 @@
 
 pub mod io;
 pub mod runtime;
-pub mod service;
 
 mod error;
 
@@ -14,11 +13,14 @@ use {
     self::{
         io::{Acceptor, Connection, ConnectionInfo, Listener},
         runtime::Runtime,
-        service::{HttpService, MakeHttpService, NewService},
     },
+    crate::service::{HttpService, MakeHttpService},
     futures01::{Future, Stream},
     http::Request,
-    hyper::{body::Body, server::conn::Http},
+    hyper::{
+        body::{Body, Payload},
+        server::conn::Http,
+    },
     std::{net::SocketAddr, rc::Rc, sync::Arc},
 };
 
@@ -27,7 +29,7 @@ use {
 /// An HTTP server.
 #[derive(Debug)]
 pub struct Server<S, L = SocketAddr, A = (), R = tokio::runtime::Runtime> {
-    new_service: S,
+    make_service: S,
     listener: L,
     acceptor: A,
     protocol: Http,
@@ -36,12 +38,12 @@ pub struct Server<S, L = SocketAddr, A = (), R = tokio::runtime::Runtime> {
 
 impl<S> Server<S>
 where
-    S: NewService,
+    S: MakeHttpService<(), hyper::Body>,
 {
     /// Create a new `Server` with the specified `NewService` and default configuration.
-    pub fn new(new_service: S) -> Self {
+    pub fn new(make_service: S) -> Self {
         Self {
-            new_service,
+            make_service,
             listener: ([127, 0, 0, 1], 4000).into(),
             acceptor: (),
             protocol: Http::new(),
@@ -59,7 +61,7 @@ impl<S, L, A, R> Server<S, L, A, R> {
         L2: Listener,
     {
         Server {
-            new_service: self.new_service,
+            make_service: self.make_service,
             listener,
             acceptor: self.acceptor,
             protocol: self.protocol,
@@ -77,7 +79,7 @@ impl<S, L, A, R> Server<S, L, A, R> {
         A2: Acceptor<L::Conn>,
     {
         Server {
-            new_service: self.new_service,
+            make_service: self.make_service,
             listener: self.listener,
             acceptor,
             protocol: self.protocol,
@@ -95,7 +97,7 @@ impl<S, L, A, R> Server<S, L, A, R> {
     /// Sets the instance of runtime to the specified `runtime`.
     pub fn runtime<R2>(self, runtime: R2) -> Server<S, L, A, R2> {
         Server {
-            new_service: self.new_service,
+            make_service: self.make_service,
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: self.protocol,
@@ -108,7 +110,7 @@ impl<S, L, A, R> Server<S, L, A, R> {
     /// [`current_thread::Runtime`]: https://docs.rs/tokio/0.1/tokio/runtime/current_thread/struct.Runtime.html
     pub fn current_thread(self) -> Server<S, L, A, tokio::runtime::current_thread::Runtime> {
         Server {
-            new_service: self.new_service,
+            make_service: self.make_service,
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: self.protocol,
@@ -120,13 +122,13 @@ impl<S, L, A, R> Server<S, L, A, R> {
 /// A macro for creating a server task from the specified components.
 macro_rules! serve {
     (
-        new_service: $new_service:expr,
+        make_service: $make_service:expr,
         listener: $listener:expr,
         acceptor: $acceptor:expr,
         protocol: $protocol:expr,
         spawn: $spawn:expr,
     ) => {{
-        let new_service = $new_service;
+        let make_service = $make_service;
         let listener = $listener;
         let acceptor = $acceptor;
         let protocol = $protocol;
@@ -144,9 +146,9 @@ macro_rules! serve {
                     .map_err(|e| log::error!("acceptor error: {}", e.into()));
 
                 let protocol = protocol.clone();
-                let service = new_service
-                    .make_http_service()
-                    .map_err(|e| log::error!("new_service error: {}", e.into()));
+                let service = make_service
+                    .make_http_service(())
+                    .map_err(|e| log::error!("make_service error: {}", e.into()));
 
                 let task = accept.and_then(move |io| {
                     let info = io.connection_info();
@@ -177,10 +179,13 @@ macro_rules! serve {
 
 impl<S, T, A> Server<S, T, A, tokio::runtime::Runtime>
 where
-    S: MakeHttpService + Send + 'static,
+    S: MakeHttpService<(), hyper::Body> + Send + 'static,
+    S::ResponseBody: Payload,
+    S::Error: Into<CritError>,
+    S::MakeError: Into<CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
-    <S::Service as HttpService>::Future: Send + 'static,
+    <S::Service as HttpService<hyper::Body>>::Future: Send + 'static,
     T: Listener,
     T::Incoming: Send + 'static,
     A: Acceptor<T::Conn> + Send + 'static,
@@ -197,7 +202,7 @@ where
         };
 
         let serve = serve! {
-            new_service: self.new_service,
+            make_service: self.make_service,
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Arc::new(
@@ -212,10 +217,13 @@ where
 
 impl<S, T, A> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
-    S: MakeHttpService,
+    S: MakeHttpService<(), hyper::Body>,
+    S::ResponseBody: Payload,
+    S::Error: Into<CritError>,
+    S::MakeError: Into<CritError>,
     S::Future: 'static,
     S::Service: 'static,
-    <S::Service as HttpService>::Future: 'static,
+    <S::Service as HttpService<hyper::Body>>::Future: 'static,
     T: Listener,
     T::Incoming: 'static,
     A: Acceptor<T::Conn> + 'static,
@@ -232,7 +240,7 @@ where
         };
 
         let serve = serve! {
-            new_service: self.new_service,
+            make_service: self.make_service,
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Rc::new(
@@ -253,7 +261,9 @@ struct LiftedHttpService<S, T> {
 
 impl<S, T> hyper::service::Service for LiftedHttpService<S, T>
 where
-    S: HttpService,
+    S: HttpService<hyper::Body>,
+    S::ResponseBody: Payload,
+    S::Error: Into<CritError>,
     T: ConnectionInfo,
 {
     type ReqBody = Body;
@@ -266,6 +276,6 @@ where
         if let Some(ref info) = self.info {
             info.insert_into(request.extensions_mut());
         }
-        self.service.call_http(request.map(S::RequestBody::from))
+        self.service.call_http(request)
     }
 }

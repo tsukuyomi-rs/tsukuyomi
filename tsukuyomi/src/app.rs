@@ -26,15 +26,13 @@ use {
         uri::Uri,
     },
     crate::{
-        core::Never, //
-        handler::{Handle, Handler},
-        input::{body::RequestBody, Input},
+        handler::{Handle, Handler}, //
+        input::Input,
         output::{IntoResponse, Responder, ResponseBody},
     },
     futures01::{Async, Future, Poll},
-    http::{Request, Response},
+    http::Response,
     std::{fmt, sync::Arc},
-    tower_service::NewService,
 };
 
 /// The main type which represents an HTTP application.
@@ -52,21 +50,6 @@ impl App {
     /// Creates a new `App` from the provided configuration and the prefix.
     pub fn create_with_prefix(prefix: impl AsRef<str>, config: impl Config<()>) -> Result<Self> {
         self::config::configure(prefix, config)
-    }
-}
-
-impl NewService for App {
-    type Request = Request<RequestBody>;
-    type Response = Response<ResponseBody>;
-    type Error = Never;
-    type Service = AppService;
-    type InitError = Never;
-    type Future = futures01::future::FutureResult<Self::Service, Self::InitError>;
-
-    fn new_service(&self) -> Self::Future {
-        futures01::future::ok(AppService {
-            inner: self.inner.clone(),
-        })
     }
 }
 

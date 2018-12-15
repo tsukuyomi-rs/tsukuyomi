@@ -52,7 +52,7 @@ serde_urlencoded = "0.5"
 time = "0.1"
 tokio = "0.1"
 tokio-threadpool = "0.1"
-tower-service = "0.1"
+tower-service = "0.2"
 url = "1.7.1"
 uuid = "0.7.1"
 

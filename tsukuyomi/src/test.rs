@@ -14,7 +14,7 @@ pub use self::{
     server::{Server, Session},
 };
 
-use crate::server::service::MakeHttpService;
+use crate::service::MakeHttpService;
 
 pub trait ResponseExt {
     fn header<H>(&self, name: H) -> Result<&http::header::HeaderValue>
@@ -32,24 +32,24 @@ impl<T> ResponseExt for http::Response<T> {
     }
 }
 
-pub fn server<S>(new_service: S) -> self::Result<Server<S, tokio::runtime::Runtime>>
+pub fn server<S>(make_service: S) -> self::Result<Server<S, tokio::runtime::Runtime>>
 where
-    S: MakeHttpService,
+    S: MakeHttpService<(), hyper::Body>,
 {
     let mut builder = tokio::runtime::Builder::new();
     builder.core_threads(1);
     builder.blocking_threads(1);
     builder.name_prefix("tsukuyomi-test");
     let runtime = builder.build()?;
-    Ok(Server::new(new_service, runtime))
+    Ok(Server::new(make_service, runtime))
 }
 
 pub fn current_thread_server<S>(
-    new_service: S,
+    make_service: S,
 ) -> self::Result<Server<S, tokio::runtime::current_thread::Runtime>>
 where
-    S: MakeHttpService,
+    S: MakeHttpService<(), hyper::Body>,
 {
     let runtime = tokio::runtime::current_thread::Runtime::new()?;
-    Ok(Server::new(new_service, runtime))
+    Ok(Server::new(make_service, runtime))
 }

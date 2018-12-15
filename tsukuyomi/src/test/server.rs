@@ -5,9 +5,9 @@ use {
         input::Input,
         output::{Output, Receive},
     },
-    crate::server::{
+    crate::{
+        server::CritError,
         service::{HttpService, MakeHttpService},
-        CritError,
     },
     cookie::Cookie,
     futures01::{Future, Poll},
@@ -22,18 +22,18 @@ use {
 /// A test server which emulates an HTTP service without using the low-level I/O.
 #[derive(Debug)]
 pub struct Server<S, Rt = tokio::runtime::Runtime> {
-    new_service: S,
+    make_service: S,
     runtime: Rt,
 }
 
 impl<S, Rt> Server<S, Rt>
 where
-    S: MakeHttpService,
+    S: MakeHttpService<(), hyper::Body>,
 {
     /// Creates an instance of `TestServer` from the specified components.
-    pub fn new(new_service: S, runtime: Rt) -> Self {
+    pub fn new(make_service: S, runtime: Rt) -> Self {
         Self {
-            new_service,
+            make_service,
             runtime,
         }
     }
@@ -50,7 +50,7 @@ pub struct Session<'a, S, Rt: 'a> {
 
 impl<'a, S, Rt> Session<'a, S, Rt>
 where
-    S: HttpService,
+    S: HttpService<hyper::Body>,
 {
     fn new(service: S, runtime: &'a mut Rt) -> Self {
         Session {
@@ -81,11 +81,11 @@ where
         &mut *self.runtime
     }
 
-    fn build_request<T>(&self, input: T) -> super::Result<Request<S::RequestBody>>
+    fn build_request<T>(&self, input: T) -> super::Result<Request<hyper::Body>>
     where
         T: Input,
     {
-        let mut request = input.build_request()?.map(S::RequestBody::from);
+        let mut request = input.build_request()?;
         if let Some(cookies) = &self.cookies {
             for (k, v) in cookies {
                 request.headers_mut().append(
@@ -135,16 +135,18 @@ mod threadpool {
 
     impl<S> Server<S, Runtime>
     where
-        S: MakeHttpService,
+        S: MakeHttpService<(), hyper::Body>,
+        S::ResponseBody: Payload,
+        S::Error: Into<CritError>,
         S::Future: Send + 'static,
-        S::InitError: Send + 'static,
+        S::MakeError: Into<CritError> + Send + 'static,
         S::Service: Send + 'static,
     {
         /// Create a `Session` associated with this server.
         pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
             let service = block_on(
                 &mut self.runtime,
-                self.new_service.make_http_service().map_err(Into::into),
+                self.make_service.make_http_service(()).map_err(Into::into),
             )
             .map_err(failure::Error::from_boxed_compat)?;
 
@@ -154,7 +156,7 @@ mod threadpool {
         pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
         where
             T: Input,
-            <S::Service as HttpService>::Future: Send + 'static,
+            <S::Service as HttpService<hyper::Body>>::Future: Send + 'static,
         {
             let mut session = self.new_session()?;
             session.perform(input)
@@ -163,7 +165,9 @@ mod threadpool {
 
     impl<'a, S> Session<'a, S, Runtime>
     where
-        S: HttpService,
+        S: HttpService<hyper::Body>,
+        S::ResponseBody: Payload,
+        S::Error: Into<CritError>,
         S::Future: Send + 'static,
     {
         /// Applies an HTTP request to this client and await its response.
@@ -188,13 +192,16 @@ mod current_thread {
 
     impl<S> Server<S, Runtime>
     where
-        S: MakeHttpService,
+        S: MakeHttpService<(), hyper::Body>,
+        S::ResponseBody: Payload,
+        S::Error: Into<CritError>,
+        S::MakeError: Into<CritError>,
     {
         /// Create a `Session` associated with this server.
         pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
             let service = self
                 .runtime
-                .block_on(self.new_service.make_http_service())
+                .block_on(self.make_service.make_http_service(()))
                 .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
             Ok(Session::new(service, &mut self.runtime))
         }
@@ -210,7 +217,9 @@ mod current_thread {
 
     impl<'a, S> Session<'a, S, Runtime>
     where
-        S: HttpService,
+        S: HttpService<hyper::Body>,
+        S::ResponseBody: Payload,
+        S::Error: Into<CritError>,
     {
         /// Applies an HTTP request to this client and await its response.
         pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
