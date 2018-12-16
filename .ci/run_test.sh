@@ -1,7 +1,5 @@
 #!/bin/bash
 
-export TSUKUYOMI_DENY_WARNINGS=true
-
 set -ex
 
 rustc --version

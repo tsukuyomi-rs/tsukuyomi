@@ -2061,6 +2061,7 @@ dependencies = [
  "tsukuyomi-macros 0.5.0-dev",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

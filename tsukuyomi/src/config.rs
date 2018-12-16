@@ -115,6 +115,7 @@ where
     H: Handler,
 {
     /// Creates a `Route` with the speicified path and handler.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(uri: impl TryInto<Uri>, handler: H) -> Result<Self> {
         Ok(Self {
             uri: Some(uri.try_into()?),
