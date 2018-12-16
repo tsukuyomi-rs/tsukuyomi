@@ -4,7 +4,7 @@ extern crate tsukuyomi_tungstenite;
 
 use {
     futures::prelude::*,
-    tsukuyomi::{app::config::prelude::*, server::Server, App},
+    tsukuyomi::{config::prelude::*, App, Server},
     tsukuyomi_tungstenite::{ws, Message, Ws},
 };
 

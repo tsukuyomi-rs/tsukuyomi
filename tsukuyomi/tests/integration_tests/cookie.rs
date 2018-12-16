@@ -1,6 +1,6 @@
 use {
     cookie::Cookie,
-    tsukuyomi::{app::config::prelude::*, chain, App},
+    tsukuyomi::{config::prelude::*, App},
 };
 
 #[test]

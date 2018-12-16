@@ -15,7 +15,7 @@ pub fn any() -> Builder {
     Builder::allow_any()
 }
 
-pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> crate::app::Result<Builder> {
+pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Builder> {
     Builder::allow_only(methods)
 }
 
@@ -64,7 +64,7 @@ impl Builder {
         }
     }
 
-    pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> crate::app::Result<Self> {
+    pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Self> {
         Ok(Self {
             extractor: (),
             allowed_methods: Some(methods.try_into()?),

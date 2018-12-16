@@ -15,13 +15,12 @@ use {
     dotenv::dotenv,
     std::{env, sync::Arc},
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         error::Error,
         extractor::{self, ExtractorExt},
         rt::Future,
-        server::Server,
         App,
+        Server,
     },
 };
 
@@ -32,9 +31,8 @@ fn main() -> tsukuyomi::server::Result<()> {
     let database_url = env::var("DATABASE_URL")?;
     let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
-    let server = App::create_with_prefix(
-        "/api/v1/posts",
-        chain![
+    let server = App::create({
+        mount("/api/v1/posts").with(chain![
             path!(/) //
                 .extract(db_conn.clone())
                 .to(chain![
@@ -99,8 +97,8 @@ fn main() -> tsukuyomi::server::Result<()> {
                     })
                     .map(|post_opt| post_opt.map(tsukuyomi::output::json))),
                 )
-        ],
-    )
+        ])
+    })
     .map(Server::new)?;
 
     server.run()

@@ -2,11 +2,11 @@ use {
     either::Either,
     std::sync::Arc,
     tsukuyomi::{
-        app::config::prelude::*,
-        chain, extractor,
+        config::prelude::*, //
+        extractor,
         output::{html, redirect},
-        server::Server,
         App,
+        Server,
     },
     tsukuyomi_session::{
         backend::CookieBackend, //

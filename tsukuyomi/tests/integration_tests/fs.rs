@@ -1,5 +1,5 @@
 use tsukuyomi::{
-    app::config::prelude::*, //
+    config::prelude::*, //
     fs::{NamedFile, Staticfiles},
     App,
 };

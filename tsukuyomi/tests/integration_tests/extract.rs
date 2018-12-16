@@ -1,8 +1,7 @@
 use {
     http::Request,
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         extractor,
         extractor::ExtractorExt,
         App,

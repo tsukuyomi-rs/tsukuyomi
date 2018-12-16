@@ -1,9 +1,9 @@
 use {
     std::{path::Path, sync::Arc},
     tsukuyomi::{
-        app::config::prelude::*, //
-        server::Server,
+        config::prelude::*, //
         App,
+        Server,
     },
 };
 

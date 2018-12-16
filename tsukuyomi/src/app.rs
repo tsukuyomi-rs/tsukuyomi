@@ -1,34 +1,29 @@
 //! Components for constructing HTTP applications.
 
-pub mod config;
-
-mod error;
+mod config;
 mod recognizer;
 mod scope;
 mod service;
-mod uri;
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) use self::recognizer::Captures;
 pub use self::{
-    config::Config,
-    error::{Error, Result},
+    config::{Config, Error, Result, Scope},
     service::AppService,
 };
-
-pub(crate) use self::{recognizer::Captures, uri::CaptureNames};
 
 use {
     self::{
         recognizer::{RecognizeError, Recognizer},
-        scope::{Scope, ScopeId, Scopes},
-        uri::Uri,
+        scope::{Scope as ScopeNode, ScopeId, Scopes},
     },
     crate::{
         handler::{Handle, Handler}, //
         input::Input,
         output::{IntoResponse, Responder, ResponseBody},
+        uri::Uri,
     },
     futures01::{Async, Future, Poll},
     http::Response,
@@ -43,13 +38,8 @@ pub struct App {
 
 impl App {
     /// Creates a new `App` from the provided configuration.
-    pub fn create(config: impl Config<()>) -> Result<Self> {
-        Self::create_with_prefix("/", config)
-    }
-
-    /// Creates a new `App` from the provided configuration and the prefix.
-    pub fn create_with_prefix(prefix: impl AsRef<str>, config: impl Config<()>) -> Result<Self> {
-        self::config::configure(prefix, config)
+    pub fn create(config: impl Config<()>) -> self::config::Result<Self> {
+        self::config::configure(config)
     }
 }
 
@@ -60,7 +50,7 @@ struct AppInner {
 }
 
 impl AppInner {
-    fn scope(&self, id: ScopeId) -> &Scope<ScopeData> {
+    fn scope(&self, id: ScopeId) -> &ScopeNode<ScopeData> {
         &self.scopes[id]
     }
 
@@ -73,7 +63,7 @@ impl AppInner {
         &self,
         path: &str,
         endpoints: impl IntoIterator<Item = &'a Endpoint>,
-    ) -> &Scope<ScopeData> {
+    ) -> &ScopeNode<ScopeData> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[ScopeId]> = None;
@@ -120,7 +110,7 @@ impl AppInner {
         &self,
         path: &str,
         captures: &mut Option<Captures>,
-    ) -> std::result::Result<&Endpoint, &Scope<ScopeData>> {
+    ) -> std::result::Result<&Endpoint, &ScopeNode<ScopeData>> {
         match self.recognizer.recognize(path, captures) {
             Ok(endpoint) => Ok(endpoint),
             Err(RecognizeError::NotMatched) => Err(self.scope(ScopeId::root())),

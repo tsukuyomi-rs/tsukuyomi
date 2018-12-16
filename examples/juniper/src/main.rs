@@ -6,7 +6,7 @@ mod schema;
 use {
     crate::context::{Context, Database},
     std::sync::{Arc, RwLock},
-    tsukuyomi::{app::config::prelude::*, chain, server::Server, App},
+    tsukuyomi::{config::prelude::*, App, Server},
     tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
 };
 

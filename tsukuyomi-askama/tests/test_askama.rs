@@ -1,10 +1,10 @@
 use {
     askama::Template,
     tsukuyomi::{
-        app::config::prelude::*, //
-        output::IntoResponse,
+        config::prelude::*, //
         test::ResponseExt,
         App,
+        IntoResponse,
     },
 };
 

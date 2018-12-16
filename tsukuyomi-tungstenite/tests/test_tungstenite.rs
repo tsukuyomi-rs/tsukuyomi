@@ -16,7 +16,7 @@ use {
         Request,
     },
     tsukuyomi::{
-        app::config::prelude::*, //
+        config::prelude::*, //
         test::ResponseExt,
         App,
     },

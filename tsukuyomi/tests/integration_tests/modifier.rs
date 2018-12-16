@@ -1,8 +1,7 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         handler::{AllowedMethods, Handler, ModifyHandler},
         App,
     },

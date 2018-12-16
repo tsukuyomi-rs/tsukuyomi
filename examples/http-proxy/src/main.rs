@@ -6,10 +6,9 @@ use {
     crate::proxy::Client, //
     futures::prelude::*,
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
-        server::Server,
+        config::prelude::*, //
         App,
+        Server,
     },
 };
 

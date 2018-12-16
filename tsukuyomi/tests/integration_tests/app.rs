@@ -1,8 +1,7 @@
 use {
     http::{header, Request, StatusCode},
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         extractor,
         test::ResponseExt,
         App,
@@ -11,7 +10,7 @@ use {
 
 #[test]
 fn empty_routes() -> tsukuyomi::test::Result<()> {
-    let app = App::create(empty())?;
+    let app = App::create(())?;
     let mut server = tsukuyomi::test::server(app)?;
 
     let response = server.perform("/")?;
@@ -37,21 +36,6 @@ fn single_route() -> tsukuyomi::test::Result<()> {
     );
     assert_eq!(response.header(header::CONTENT_LENGTH)?, "9");
     assert_eq!(*response.body().to_bytes(), b"Tsukuyomi"[..]);
-
-    Ok(())
-}
-
-#[test]
-fn with_app_prefix() -> tsukuyomi::test::Result<()> {
-    let app = App::create_with_prefix(
-        "/api/v1",
-        path!(/"hello") //
-            .to(endpoint::any().call(|| "Tsukuyomi")),
-    )?;
-    let mut server = tsukuyomi::test::server(app)?;
-
-    assert_eq!(server.perform("/api/v1/hello")?.status(), 200);
-    assert_eq!(server.perform("/hello")?.status(), 404);
 
     Ok(())
 }

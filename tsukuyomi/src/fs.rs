@@ -511,7 +511,7 @@ where
     }
 }
 
-impl<P, M> crate::app::config::Config<M> for Staticfiles<P>
+impl<P, M> crate::app::Config<M> for Staticfiles<P>
 where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
@@ -522,7 +522,7 @@ where
 {
     type Error = crate::app::Error;
 
-    fn configure(self, cx: &mut crate::app::config::Scope<'_, M>) -> crate::app::Result<()> {
+    fn configure(self, scope: &mut crate::app::Scope<'_, M>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir)? {
@@ -540,8 +540,8 @@ where
 
             let file_type = entry.file_type()?;
             if file_type.is_file() {
-                cx.at(
-                    Some(&format!("/{}", name)),
+                scope.route(
+                    Some(format!("/{}", name)),
                     ServeFile {
                         inner: Arc::new(ServeFileInner {
                             path,
@@ -551,13 +551,13 @@ where
                     },
                 )?;
             } else if file_type.is_dir() {
-                cx.at(
-                    Some(&format!("/{}/*path", name)),
+                scope.route(
+                    Some(format!("/{}/*path", name)),
                     ServeFile {
                         inner: Arc::new(ServeFileInner {
                             path,
                             config: config.clone(),
-                            extract_path: false,
+                            extract_path: true,
                         }),
                     },
                 )?;

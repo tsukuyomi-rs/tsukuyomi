@@ -1,11 +1,12 @@
 use {
-    super::{config::prelude::*, App, EndpointId, Result},
+    super::{config::Result, App, EndpointId},
+    crate::config::prelude::*,
     matches::assert_matches,
 };
 
 #[test]
 fn new_empty() -> Result<()> {
-    let app = App::create(empty())?;
+    let app = App::create(())?;
     assert_matches!(app.inner.find_endpoint("/", &mut None), Err(..));
     Ok(())
 }

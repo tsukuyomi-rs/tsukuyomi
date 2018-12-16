@@ -1,15 +1,11 @@
-extern crate serde;
-extern crate tsukuyomi;
-extern crate tsukuyomi_cors;
-
 use {
     serde::{Deserialize, Serialize},
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         extractor,
         output::IntoResponse,
         App,
+        Server,
     },
     tsukuyomi_cors::CORS,
 };
@@ -46,7 +42,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                 },))
             .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
     ]) //
-    .map(tsukuyomi::server::Server::new)?
+    .map(Server::new)?
     .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
     .run()
 }

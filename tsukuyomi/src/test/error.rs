@@ -19,7 +19,7 @@ impl fmt::Display for Error {
 
 #[derive(Debug, failure::Fail)]
 pub enum Compat {
-    #[fail(display = "app error: {}", _0)]
+    #[fail(display = "app configuration error: {}", _0)]
     App(crate::app::Error),
     #[fail(display = "custom error: {}", _0)]
     Custom(failure::Error),

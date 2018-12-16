@@ -1,13 +1,13 @@
-extern crate tsukuyomi;
-
-use tsukuyomi::{app::config::prelude::*, server::Server, App};
+use tsukuyomi::{App, Server};
 
 fn main() -> tsukuyomi::server::Result<()> {
-    let server = App::create(
+    let server = App::create({
+        use tsukuyomi::config::prelude::*;
+
         path!(/) //
             .to(endpoint::any() //
-                .reply("Hello, world!\n")),
-    ) //
+                .reply("Hello, world!\n"))
+    }) //
     .map(Server::new)?;
 
     server.run()

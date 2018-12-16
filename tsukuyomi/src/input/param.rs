@@ -1,5 +1,5 @@
 use {
-    crate::app::{CaptureNames, Captures},
+    crate::{app::Captures, uri::CaptureNames},
     std::borrow::Cow,
     std::ops::Index,
     std::str::Utf8Error,

@@ -1,11 +1,6 @@
-extern crate http;
-extern crate tsukuyomi;
-extern crate tsukuyomi_session;
-extern crate version_sync;
-
 use {
     http::Request,
-    tsukuyomi::{app::config::prelude::*, chain, App},
+    tsukuyomi::{config::prelude::*, App},
     tsukuyomi_session::{
         backend::CookieBackend, //
         session,

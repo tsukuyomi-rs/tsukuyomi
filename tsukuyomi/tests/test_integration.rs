@@ -4,7 +4,7 @@ mod integration_tests;
 #[should_panic]
 fn test_catch_unwind() {
     fn inner() -> tsukuyomi::test::Result<()> {
-        use tsukuyomi::app::{config::prelude::*, App};
+        use tsukuyomi::{config::prelude::*, App};
 
         let app = App::create(
             path!(/) //

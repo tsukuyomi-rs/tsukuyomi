@@ -1,9 +1,10 @@
 use {
     askama::Template,
     tsukuyomi::{
-        app::config::prelude::*, //
-        output::IntoResponse,
+        config::prelude::*, //
         App,
+        IntoResponse,
+        Server,
     },
 };
 
@@ -22,6 +23,6 @@ fn main() -> tsukuyomi::server::Result<()> {
                     .call(|name| Index { name })
             })
     })
-    .map(tsukuyomi::server::Server::new)?
+    .map(Server::new)?
     .run()
 }

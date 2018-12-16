@@ -17,8 +17,10 @@
 pub mod core;
 
 mod generic;
+mod uri;
 
 pub mod app;
+pub mod config;
 pub mod endpoint;
 pub mod error;
 pub mod extractor;
@@ -46,4 +48,5 @@ pub use crate::{
         IntoResponse, //
         Responder,
     },
+    server::Server,
 };

@@ -1,8 +1,3 @@
-extern crate http;
-extern crate tsukuyomi;
-extern crate tsukuyomi_cors;
-extern crate version_sync;
-
 use {
     http::{
         header::{
@@ -20,8 +15,7 @@ use {
         Method, Request,
     },
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         test::ResponseExt,
         App,
     },

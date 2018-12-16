@@ -2,7 +2,7 @@ mod responder {
     use {
         std::fmt,
         tsukuyomi::{
-            app::config::prelude::*, //
+            config::prelude::*, //
             test::ResponseExt,
             App,
         },

@@ -1,10 +1,9 @@
 use {
     std::path::PathBuf,
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
-        server::Server,
+        config::prelude::*, //
         App,
+        Server,
     },
 };
 

@@ -90,6 +90,12 @@ impl TryFrom<String> for Uri {
     }
 }
 
+impl AsRef<str> for Uri {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl Uri {
     pub fn root() -> Self {
         Uri(UriKind::Root)

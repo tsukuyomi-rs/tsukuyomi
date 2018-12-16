@@ -23,24 +23,24 @@
 ## Usage
 
 ```rust,no_run
-use tsukuyomi::{
-    app::config::prelude::*,
-    server::Server,
-    App,
+use {
+    std::net::SocketAddr,
+    tsukuyomi::{App, Server},
 };
 
 fn main() -> tsukuyomi::server::Result<()> {
-    let server = App::create(
+    let app = App::create({
+        use tsukuyomi::config::prelude::*;
+
         path!(/)
             .to(endpoint::any()
                 .reply("Hello, world.\n"))
-    )
-    .map(Server::new)?;
+    })?;
 
-    let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
-
+    let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
     println!("Listening on http://{}", addr);
-    server.bind(addr).run()
+
+    Server::new(app).bind(addr).run()
 }
 ```
 

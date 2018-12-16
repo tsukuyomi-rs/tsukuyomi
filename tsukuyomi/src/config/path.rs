@@ -1,60 +1,21 @@
 use {
     super::{
         super::uri::{Uri, UriComponent},
-        Config, Scope,
+        Route,
     },
     crate::{
-        core::{Chain, TryInto},
+        core::Chain,
         endpoint::Endpoint,
         extractor::Extractor,
         generic::{Combine, Tuple},
-        handler::{Handler, ModifyHandler},
+        handler::Handler,
         input::{
             param::{FromPercentEncoded, PercentEncoded},
             Input,
         },
-        output::Responder,
     },
     std::{marker::PhantomData, sync::Arc},
 };
-
-#[derive(Debug)]
-pub struct Route<H> {
-    uri: Option<Uri>,
-    handler: H,
-}
-
-impl<H> Route<H>
-where
-    H: Handler,
-{
-    pub fn new(handler: H) -> Self {
-        Self { uri: None, handler }
-    }
-
-    pub fn uri(self, uri: impl TryInto<Uri>) -> crate::app::Result<Self> {
-        Ok(Self {
-            uri: Some(uri.try_into()?),
-            ..self
-        })
-    }
-}
-
-impl<H, M> Config<M> for Route<H>
-where
-    H: Handler,
-    M: ModifyHandler<H>,
-    M::Output: Responder,
-    <M::Output as Responder>::Future: Send + 'static,
-    M::Handler: Send + Sync + 'static,
-    <M::Handler as Handler>::Handle: Send + 'static,
-{
-    type Error = crate::app::Error;
-
-    fn configure(self, scope: &mut Scope<'_, M>) -> Result<(), Self::Error> {
-        scope.at(self.uri.as_ref().map(|uri| uri.as_str()), self.handler)
-    }
-}
 
 mod tags {
     #[derive(Debug)]
@@ -75,7 +36,7 @@ pub trait PathConfig {
     type Extractor: Extractor<Output = Self::Output>;
     type Tag;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor>;
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor>;
 }
 
 impl<L, R> PathConfig for Chain<L, R>
@@ -88,7 +49,7 @@ where
     type Extractor = Chain<L::Extractor, R::Extractor>;
     type Tag = R::Tag;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         let left = self.left.configure(cx)?;
         let right = self.right.configure(cx)?;
         Ok(Chain::new(left, right))
@@ -100,7 +61,7 @@ impl PathConfig for String {
     type Extractor = ();
     type Tag = self::tags::Incomplete;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         // TODO: validatation
         cx.components.push(UriComponent::Static(self));
         Ok(())
@@ -112,7 +73,7 @@ impl<'a> PathConfig for &'a str {
     type Extractor = ();
     type Tag = self::tags::Incomplete;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         // TODO: validatation
         cx.components.push(UriComponent::Static(self.to_owned()));
         Ok(())
@@ -132,7 +93,7 @@ impl PathConfig for Slash {
     type Extractor = ();
     type Tag = self::tags::Completed;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         cx.components.push(UriComponent::Slash);
         Ok(())
     }
@@ -163,7 +124,7 @@ where
     type Extractor = Self;
     type Tag = self::tags::Incomplete;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         // TODO: validatation
         cx.components
             .push(UriComponent::Param(self.name.clone(), ':'));
@@ -227,7 +188,7 @@ where
     type Extractor = Self;
     type Tag = self::tags::Completed;
 
-    fn configure(self, cx: &mut Context<'_>) -> crate::app::Result<Self::Extractor> {
+    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         // TODO: validatation
         cx.components
             .push(UriComponent::Param(self.name.clone(), '*'));
@@ -271,10 +232,10 @@ where
 /// [`Path`]: ./app/config/route/struct.Path.html
 #[macro_export]
 macro_rules! path {
-    (/) => ( $crate::app::config::route::Path::root() );
-    (*) => ( $crate::app::config::route::Path::asterisk() );
-    ($(/ $s:tt)+) => ( $crate::app::config::route::Path::create($crate::chain!($($s),*)).unwrap() );
-    ($(/ $s:tt)+ /) => ( $crate::app::config::route::Path::create($crate::chain!($($s),*, $crate::app::config::route::slash())).unwrap() );
+    (/) => ( $crate::config::path::Path::root() );
+    (*) => ( $crate::config::path::Path::asterisk() );
+    ($(/ $s:tt)+) => ( $crate::config::path::Path::create($crate::chain!($($s),*)).unwrap() );
+    ($(/ $s:tt)+ /) => ( $crate::config::route::Path::create($crate::chain!($($s),*, $crate::app::config::route::slash())).unwrap() );
 }
 
 #[derive(Debug)]
@@ -298,7 +259,7 @@ impl Path<()> {
         }
     }
 
-    pub fn create<T>(config: T) -> crate::app::Result<Path<T::Extractor>>
+    pub fn create<T>(config: T) -> super::Result<Path<T::Extractor>>
     where
         T: PathConfig,
     {

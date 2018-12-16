@@ -2,9 +2,9 @@ use {
     native_tls::{Identity, TlsAcceptor as NativeTlsAcceptor},
     tokio_tls::TlsAcceptor,
     tsukuyomi::{
-        app::config::prelude::*, //
-        server::Server,
+        config::prelude::*, //
         App,
+        Server,
     },
 };
 

@@ -1,9 +1,9 @@
 use {
     openssl::ssl::{AlpnError, SslAcceptor, SslFiletype, SslMethod},
     tsukuyomi::{
-        app::config::prelude::*, //
-        server::Server,
+        config::prelude::*, //
         App,
+        Server,
     },
 };
 

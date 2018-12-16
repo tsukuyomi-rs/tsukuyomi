@@ -1,7 +1,7 @@
 use tsukuyomi::{
-    app::config::prelude::*, //
-    server::Server,
+    config::prelude::*, //
     App,
+    Server,
 };
 
 #[cfg(not(unix))]

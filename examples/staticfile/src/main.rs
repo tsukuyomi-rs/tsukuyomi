@@ -1,9 +1,8 @@
 use tsukuyomi::{
-    app::config::prelude::*, //
-    chain,
+    config::prelude::*, //
     fs::{NamedFile, Staticfiles},
-    server::Server,
     App,
+    Server,
 };
 
 fn main() -> tsukuyomi::server::Result<()> {

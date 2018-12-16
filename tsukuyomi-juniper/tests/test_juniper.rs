@@ -1,11 +1,3 @@
-extern crate futures;
-extern crate http;
-extern crate juniper;
-extern crate percent_encoding;
-extern crate tsukuyomi;
-extern crate tsukuyomi_juniper;
-extern crate version_sync;
-
 #[test]
 fn test_version_sync() {
     version_sync::assert_html_root_url_updated!("src/lib.rs");
@@ -17,7 +9,7 @@ use {
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{
-        app::config::prelude::*,
+        config::prelude::*,
         test::{Output as TestOutput, Server as TestServer},
         App,
     },

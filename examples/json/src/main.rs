@@ -1,12 +1,11 @@
 use {
     serde::{Deserialize, Serialize},
     tsukuyomi::{
-        app::config::prelude::*, //
-        chain,
+        config::prelude::*, //
         extractor,
-        output::IntoResponse,
-        server::Server,
         App,
+        IntoResponse,
+        Server,
     },
 };
 

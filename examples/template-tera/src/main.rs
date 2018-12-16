@@ -2,9 +2,9 @@ use {
     crate::support_tera::{Template, WithTera},
     serde::Serialize,
     tsukuyomi::{
-        app::config::prelude::*, //
-        server::Server,
+        config::prelude::*, //
         App,
+        Server,
     },
 };
 
