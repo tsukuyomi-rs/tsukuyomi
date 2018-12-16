@@ -70,8 +70,10 @@ impl<'a, M> Scope<'a, M> {
     where
         H: Handler,
         M: ModifyHandler<H>,
-        M::Handler: Send + Sync + 'static,
         M::Output: Responder,
+        <M::Output as Responder>::Future: Send + 'static,
+        M::Handler: Send + Sync + 'static,
+        <M::Handler as Handler>::Handle: Send + 'static,
     {
         if let Some(uri) = uri {
             let uri: Uri = uri.parse()?;

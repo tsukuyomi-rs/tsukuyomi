@@ -2,10 +2,8 @@
 
 #![allow(missing_docs)]
 
-mod chain;
-mod ext;
-
 pub mod body;
+pub mod ext;
 pub mod extension;
 pub mod header;
 pub mod local;
@@ -16,9 +14,9 @@ pub use self::ext::ExtractorExt;
 
 use {
     crate::{
-        core::{Chain, Never},
+        core::Never, //
         error::Error,
-        generic::{Combine, Tuple},
+        generic::Tuple,
         input::Input,
     },
     futures01::{Future, IntoFuture},
@@ -32,20 +30,10 @@ pub trait Extractor {
     type Error: Into<Error>;
 
     /// The type representing asyncrhonous computations performed during extraction.
-    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
+    type Future: Future<Item = Self::Output, Error = Self::Error>;
 
     /// Performs extraction from the specified `Input`.
     fn extract(&self, input: &mut Input<'_>) -> Self::Future;
-
-    fn chain<E>(self, other: E) -> Chain<Self, E>
-    where
-        Self: Sized,
-        E: Extractor,
-        Self::Output: Combine<E::Output> + Send + 'static,
-        E::Output: Send + 'static,
-    {
-        Chain::new(self, other)
-    }
 }
 
 impl<E> Extractor for Box<E>
@@ -103,11 +91,16 @@ impl Extractor for () {
 
 // ==== primitives ====
 
-pub fn raw<F, R>(f: F) -> impl Extractor<Output = R::Item, Error = R::Error, Future = R::Future>
+pub fn raw<F, R>(
+    f: F,
+) -> impl Extractor<
+    Output = R::Item, //
+    Error = R::Error,
+    Future = R::Future,
+>
 where
     F: Fn(&mut Input<'_>) -> R,
     R: IntoFuture,
-    R::Future: Send + 'static,
     R::Item: Tuple,
     R::Error: Into<Error>,
 {
@@ -119,7 +112,6 @@ where
     where
         F: Fn(&mut Input<'_>) -> R,
         R: IntoFuture,
-        R::Future: Send + 'static,
         R::Item: Tuple,
         R::Error: Into<Error>,
     {
@@ -136,38 +128,118 @@ where
     Raw(f)
 }
 
-pub fn guard<F, E>(f: F) -> impl Extractor<Output = (), Error = E>
+pub fn guard<F, E>(
+    f: F,
+) -> impl Extractor<
+    Output = (),
+    Error = E,
+    Future = self::guard::GuardFuture<E>, // private
+>
 where
     F: Fn(&mut Input<'_>) -> Result<(), E>,
-    E: Into<Error> + Send + 'static,
+    E: Into<Error>,
 {
-    self::raw(move |input| futures01::future::result(f(input)))
+    self::raw(move |input| self::guard::GuardFuture(Some(f(input))))
 }
 
-pub fn ready<F, T, E>(f: F) -> impl Extractor<Output = (T,), Error = E>
+mod guard {
+    #[allow(missing_debug_implementations)]
+    pub struct GuardFuture<E>(pub(super) Option<Result<(), E>>);
+
+    impl<E> futures01::Future for GuardFuture<E> {
+        type Item = ();
+        type Error = E;
+
+        #[inline]
+        fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {
+            self.0
+                .take()
+                .expect("the future has already been polled")
+                .map(Into::into)
+        }
+    }
+}
+
+pub fn ready<F, T, E>(
+    f: F,
+) -> impl Extractor<
+    Output = (T,), //
+    Error = E,
+    Future = self::ready::ReadyFuture<T, E>, // private
+>
 where
     F: Fn(&mut Input<'_>) -> Result<T, E>,
-    T: Send + 'static,
-    E: Into<Error> + Send + 'static,
+    E: Into<Error>,
 {
-    self::raw(move |input| futures01::future::result(f(input).map(|x| (x,))))
+    self::raw(move |input| self::ready::ReadyFuture(Some(f(input))))
 }
 
-pub fn value<T>(value: T) -> impl Extractor<Output = (T,), Error = Never>
+mod ready {
+    #[allow(missing_debug_implementations)]
+    pub struct ReadyFuture<T, E>(pub(super) Option<Result<T, E>>);
+
+    impl<T, E> futures01::Future for ReadyFuture<T, E> {
+        type Item = (T,);
+        type Error = E;
+
+        #[inline]
+        fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {
+            self.0
+                .take()
+                .expect("the future has already been polled")
+                .map(|x| (x,).into())
+        }
+    }
+}
+
+pub fn value<T>(
+    value: T,
+) -> impl Extractor<
+    Output = (T,),
+    Error = Never,
+    Future = self::value::ValueFuture<T>, // private
+>
 where
-    T: Clone + Send + 'static,
+    T: Clone,
 {
-    self::ready(move |_| Ok(value.clone()))
+    self::raw(move |_| self::value::ValueFuture(Some(value.clone())))
 }
 
-pub fn method() -> impl Extractor<Output = (http::Method,), Error = Never> {
+mod value {
+    #[allow(missing_debug_implementations)]
+    pub struct ValueFuture<T>(pub(super) Option<T>);
+
+    impl<T> futures01::Future for ValueFuture<T> {
+        type Item = (T,);
+        type Error = crate::core::Never;
+
+        #[inline]
+        fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {
+            Ok((self.0.take().expect("the future has already been polled"),).into())
+        }
+    }
+}
+
+pub fn method() -> impl Extractor<
+    Output = (http::Method,), //
+    Error = Never,
+    Future = impl Future<Item = (http::Method,), Error = Never> + Send + 'static,
+> {
     self::ready(|input| Ok(input.request.method().clone()))
 }
 
-pub fn uri() -> impl Extractor<Output = (http::Uri,), Error = Never> {
+pub fn uri() -> impl Extractor<
+    Output = (http::Uri,), //
+    Error = Never,
+    Future = impl Future<Item = (http::Uri,), Error = Never> + Send + 'static,
+> {
     self::ready(|input| Ok(input.request.uri().clone()))
 }
 
-pub fn version() -> impl Extractor<Output = (http::Version,), Error = Never> {
+pub fn version() -> impl Extractor<
+    Output = (http::Version,), //
+    Error = Never,
+    Future = impl Future<Item = (http::Version,), Error = Never> + Send + 'static,
+> {
     self::ready(|input| Ok(input.request.version()))
 }

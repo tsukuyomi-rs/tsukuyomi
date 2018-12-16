@@ -2,11 +2,16 @@
 
 use {
     super::Extractor,
-    crate::{core::Never, input::header::HeaderField},
+    crate::{core::Never, error::Error, input::header::HeaderField},
+    futures01::Future,
     http::header::{HeaderMap, HeaderName, HeaderValue},
 };
 
-pub fn parse<H>() -> impl Extractor<Output = (H::Value,)>
+pub fn parse<H>() -> impl Extractor<
+    Output = (H::Value,), //
+    Error = Error,
+    Future = impl Future<Item = (H::Value,), Error = Error> + Send + 'static,
+>
 where
     H: HeaderField,
     H::Value: Clone,
@@ -18,7 +23,14 @@ where
     })
 }
 
-pub fn exact<T>(name: HeaderName, value: T) -> impl Extractor<Output = ()>
+pub fn exact<T>(
+    name: HeaderName,
+    value: T,
+) -> impl Extractor<
+    Output = (), //
+    Error = Error,
+    Future = impl Future<Item = (), Error = Error> + Send + 'static,
+>
 where
     T: PartialEq<HeaderValue>,
 {
@@ -35,6 +47,10 @@ where
     })
 }
 
-pub fn clone_headers() -> impl Extractor<Output = (HeaderMap,)> {
-    super::ready(|input| Ok::<_, Never>(input.request.headers().clone()))
+pub fn clone_headers() -> impl Extractor<
+    Output = (HeaderMap,), //
+    Error = Never,
+    Future = impl Future<Item = (HeaderMap,), Error = Never> + Send + 'static,
+> {
+    super::ready(|input| Ok(input.request.headers().clone()))
 }

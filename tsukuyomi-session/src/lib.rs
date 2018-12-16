@@ -108,9 +108,17 @@ where
     }
 
     /// Finalize the current session with the specified output.
-    pub fn finish<T>(self, output: T) -> impl Responder<Response = T::Response, Error = Error>
+    pub fn finish<T>(
+        self,
+        output: T,
+    ) -> impl Responder<
+        Response = T::Response,
+        Error = Error,
+        Future = impl Future<Item = T::Response, Error = Error> + Send + 'static,
+    >
     where
         T: Responder,
+        T::Future: Send + 'static,
         T::Response: Send + 'static,
     {
         tsukuyomi::output::respond(move |input| {
@@ -126,9 +134,31 @@ where
 }
 
 /// Create an `Extractor` which returns a `Session`.
-pub fn session<B>(backend: B) -> impl Extractor<Output = (Session<B::Session>,), Error = Error>
+pub fn session<B>(backend: B) -> SessionExtractor<B>
 where
     B: Backend,
 {
-    tsukuyomi::extractor::raw(move |input| backend.read(input).map(|raw| (Session { raw },)))
+    SessionExtractor { backend }
+}
+
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct SessionExtractor<B> {
+    backend: B,
+}
+
+#[allow(clippy::type_complexity)]
+impl<B> Extractor for SessionExtractor<B>
+where
+    B: Backend,
+{
+    type Output = (Session<B::Session>,);
+    type Error = Error;
+    type Future = futures::future::Map<B::ReadSession, fn(B::Session) -> Self::Output>;
+
+    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+        self.backend
+            .read(input)
+            .map((|raw| (Session { raw },)) as fn(_) -> _)
+    }
 }

@@ -121,7 +121,11 @@ fn handshake(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
 }
 
 /// Create an `Extractor` that handles the WebSocket handshake process and returns a `Ws`.
-pub fn ws() -> impl Extractor<Output = (Ws,), Error = HandshakeError> {
+pub fn ws() -> impl Extractor<
+    Output = (Ws,), //
+    Error = HandshakeError,
+    Future = impl Future<Item = (Ws,), Error = HandshakeError> + Send + 'static,
+> {
     tsukuyomi::extractor::ready(|input| self::handshake(input))
 }
 

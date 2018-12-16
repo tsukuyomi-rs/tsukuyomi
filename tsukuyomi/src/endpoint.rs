@@ -7,7 +7,7 @@ use {
 pub trait EndpointAction<T> {
     type Output;
     type Error: Into<Error>;
-    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
+    type Future: Future<Item = Self::Output, Error = Self::Error>;
 
     fn call(self, input: &mut Input<'_>, args: T) -> Self::Future;
 }
@@ -17,7 +17,6 @@ pub fn action<T, R>(
 ) -> impl EndpointAction<T, Output = R::Item, Future = R::Future>
 where
     R: IntoFuture,
-    R::Future: Send + 'static,
     R::Error: Into<Error>,
 {
     #[allow(missing_debug_implementations)]
@@ -27,7 +26,6 @@ where
     where
         F: FnOnce(&mut Input<'_>, T) -> R,
         R: IntoFuture,
-        R::Future: Send + 'static,
         R::Error: Into<Error>,
     {
         type Output = R::Item;
@@ -44,7 +42,7 @@ where
 
 pub trait Endpoint<T> {
     type Output;
-    type Action: EndpointAction<T, Output = Self::Output> + Send + 'static;
+    type Action: EndpointAction<T, Output = Self::Output>;
 
     /// Returns a list of HTTP methods that the returned endpoint accepts.
     ///
@@ -59,7 +57,7 @@ pub fn endpoint<T, A>(
     allowed_methods: Option<AllowedMethods>,
 ) -> impl Endpoint<T, Output = A::Output, Action = A>
 where
-    A: EndpointAction<T> + Send + 'static,
+    A: EndpointAction<T>,
 {
     #[allow(missing_debug_implementations)]
     struct ApplyFn<F> {
@@ -70,7 +68,7 @@ where
     impl<F, T, A> Endpoint<T> for ApplyFn<F>
     where
         F: Fn(&Method) -> Option<A>,
-        A: EndpointAction<T> + Send + 'static,
+        A: EndpointAction<T>,
     {
         type Output = A::Output;
         type Action = A;
@@ -92,16 +90,53 @@ where
     }
 }
 
-pub fn allow_any<T, R>(
-    f: impl Fn(&mut Input<'_>, T) -> R + Clone + Send + 'static,
-) -> impl Endpoint<T, Output = R::Item>
+pub fn allow_any<F, T, R>(
+    f: F,
+) -> impl Endpoint<
+    T, //
+    Output = R::Item,
+    Action = self::allow_any::AllowAnyAction<T, F, R>,
+>
 where
-    T: 'static,
-    R: IntoFuture + 'static,
-    R::Future: Send + 'static,
+    F: Fn(&mut Input<'_>, T) -> R + Clone,
+    R: IntoFuture,
     R::Error: Into<Error>,
 {
-    endpoint(move |_| Some(action(f.clone())), None)
+    endpoint(
+        move |_| {
+            Some(self::allow_any::AllowAnyAction {
+                f: f.clone(),
+                _marker: std::marker::PhantomData,
+            })
+        },
+        None,
+    )
+}
+
+mod allow_any {
+    use super::{EndpointAction, Error, Input, IntoFuture};
+    use std::marker::PhantomData;
+
+    #[allow(missing_debug_implementations)]
+    pub struct AllowAnyAction<T, F, R> {
+        pub(super) f: F,
+        pub(super) _marker: PhantomData<fn(T) -> R>,
+    }
+
+    impl<T, F, R> EndpointAction<T> for AllowAnyAction<T, F, R>
+    where
+        F: Fn(&mut Input<'_>, T) -> R,
+        R: IntoFuture,
+        R::Error: Into<Error>,
+    {
+        type Output = R::Item;
+        type Error = R::Error;
+        type Future = R::Future;
+
+        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+            (self.f)(input, args).into_future()
+        }
+    }
 }
 
 impl<E, T> Endpoint<T> for std::rc::Rc<E>

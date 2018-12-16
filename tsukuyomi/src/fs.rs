@@ -3,7 +3,7 @@
 use {
     crate::{
         error::Error,
-        handler::ModifyHandler,
+        handler::{Handler, ModifyHandler},
         input::Input,
         output::{IntoResponse, Responder, ResponseBody},
         rt::poll_blocking,
@@ -516,7 +516,9 @@ where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
     M::Output: Responder,
+    <M::Output as Responder>::Future: Send + 'static,
     M::Handler: Send + Sync + 'static,
+    <M::Handler as Handler>::Handle: Send + 'static,
 {
     type Error = crate::app::Error;
 
