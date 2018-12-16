@@ -7,9 +7,9 @@
 //!
 //! use askama::Template;
 //! use tsukuyomi::{
-//!     app::config::prelude::*,
-//!     output::IntoResponse,
+//!     config::prelude::*,
 //!     App,
+//!     IntoResponse,
 //! };
 //!
 //! #[derive(Template, IntoResponse)]
