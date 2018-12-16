@@ -20,7 +20,7 @@ def run_command(cmd, **kwargs):
     return subprocess.run(cmd, **kwargs)
 
 def collect_artifacts(*args):
-    command = ["cargo", "test", "--no-run", "--message-format=json"] + list(*args) + ["--skip", "version_sync"]
+    command = ["cargo", "test", "--no-run", "--message-format=json"] + list(*args)
     output = run_command(command, stdout = subprocess.PIPE)
 
     return \
@@ -54,5 +54,5 @@ if __name__ == '__main__':
     print("[dbg] kcov_out =", kcov_out, file = sys.stderr)
 
     for artifact in collect_artifacts(sys.argv[1:]):
-        kcov_cmd = ["kcov", "--exclude-pattern=/.cargo", kcov_out, artifact]
+        kcov_cmd = ["kcov", "--exclude-pattern=/.cargo", kcov_out, artifact, "--skip", "version_sync"]
         run_command(kcov_cmd)
