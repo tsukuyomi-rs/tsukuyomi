@@ -3,7 +3,7 @@
 use {
     crate::{
         error::Error,
-        handler::{Handler, ModifyHandler},
+        handler::ModifyHandler,
         input::Input,
         output::{IntoResponse, Responder, ResponseBody},
         rt::poll_blocking,
@@ -511,18 +511,16 @@ where
     }
 }
 
-impl<P, M> crate::app::Config<M> for Staticfiles<P>
+impl<P, M, T> crate::app::Config<M, T> for Staticfiles<P>
 where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
-    M::Output: Responder,
-    <M::Output as Responder>::Future: Send + 'static,
-    M::Handler: Send + Sync + 'static,
-    <M::Handler as Handler>::Handle: Send + 'static,
+    M::Handler: Into<T::Handler>,
+    T: crate::app::AppData,
 {
     type Error = crate::app::Error;
 
-    fn configure(self, scope: &mut crate::app::Scope<'_, M>) -> crate::app::Result<()> {
+    fn configure(self, scope: &mut crate::app::Scope<'_, M, T>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir)? {

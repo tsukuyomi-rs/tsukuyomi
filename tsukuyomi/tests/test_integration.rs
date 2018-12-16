@@ -22,3 +22,20 @@ fn test_catch_unwind() {
         eprintln!("unexpected error: {:?}", err);
     }
 }
+
+#[test]
+fn test_current_thread() -> tsukuyomi::test::Result<()> {
+    use tsukuyomi::{config::prelude::*, App};
+
+    let ptr = std::rc::Rc::new(());
+
+    let app = App::create_local(path!(/).to(endpoint::any().call(move || {
+        let _ptr = ptr.clone();
+        "dummy"
+    })))?;
+
+    let mut server = tsukuyomi::test::current_thread_server(app)?;
+    let _ = server.perform("/")?;
+
+    Ok(())
+}

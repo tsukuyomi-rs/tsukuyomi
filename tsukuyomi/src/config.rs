@@ -24,9 +24,9 @@ pub mod prelude {
 pub use crate::app::{Config, Error, Result, Scope};
 
 use crate::{
+    app::AppData,
     core::{Chain, TryInto},
     handler::{Handler, ModifyHandler},
-    output::Responder,
     uri::Uri,
 };
 
@@ -57,14 +57,15 @@ where
     }
 }
 
-impl<P, T, M> Config<M> for Mount<P, T>
+impl<P, T, M, D> Config<M, D> for Mount<P, T>
 where
     P: AsRef<str>,
-    T: Config<M>,
+    T: Config<M, D>,
+    D: AppData,
 {
     type Error = Error;
 
-    fn configure(self, scope: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, scope: &mut Scope<'_, M, D>) -> std::result::Result<(), Self::Error> {
         scope.mount(self.prefix, self.config)
     }
 }
@@ -81,13 +82,14 @@ pub struct Modify<M, T> {
     config: T,
 }
 
-impl<M, T, M2> Config<M2> for Modify<M, T>
+impl<M, T, M2, D> Config<M2, D> for Modify<M, T>
 where
-    for<'a> T: Config<Chain<&'a M2, M>>,
+    for<'a> T: Config<Chain<&'a M2, M>, D>,
+    D: AppData,
 {
     type Error = Error;
 
-    fn configure(self, cx: &mut Scope<'_, M2>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M2, D>) -> std::result::Result<(), Self::Error> {
         cx.modify(self.modifier, self.config)
     }
 }
@@ -126,18 +128,16 @@ where
     }
 }
 
-impl<H, M> Config<M> for Route<H>
+impl<H, M, T> Config<M, T> for Route<H>
 where
     H: Handler,
     M: ModifyHandler<H>,
-    M::Output: Responder,
-    <M::Output as Responder>::Future: Send + 'static,
-    M::Handler: Send + Sync + 'static,
-    <M::Handler as Handler>::Handle: Send + 'static,
+    M::Handler: Into<T::Handler>,
+    T: AppData,
 {
     type Error = Error;
 
-    fn configure(self, scope: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, scope: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
         scope.route(self.uri, self.handler)
     }
 }

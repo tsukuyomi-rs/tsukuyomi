@@ -2,12 +2,11 @@ use {
     super::{
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
-        App, AppInner, Endpoint, EndpointId, ScopeData, Uri,
+        App, AppData, AppInner, Endpoint, EndpointId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never},
         handler::{Handler, ModifyHandler},
-        output::Responder,
     },
     failure::Fail,
     std::{fmt, sync::Arc},
@@ -63,7 +62,7 @@ pub enum Compat {
 }
 
 /// Creates an `App` using the specified configuration.
-pub(super) fn configure(config: impl Config<()>) -> Result<App> {
+pub(super) fn configure<T: AppData>(config: impl Config<(), T>) -> Result<App<T>> {
     let mut recognizer = Recognizer::default();
     let mut scopes = Scopes::new(ScopeData {
         prefix: Uri::root(),
@@ -85,23 +84,23 @@ pub(super) fn configure(config: impl Config<()>) -> Result<App> {
 
 /// A type representing the contextual information in `Scope::configure`.
 #[derive(Debug)]
-pub struct Scope<'a, M> {
-    recognizer: &'a mut Recognizer<Endpoint>,
-    scopes: &'a mut Scopes<ScopeData>,
+pub struct Scope<'a, M, T: AppData> {
+    recognizer: &'a mut Recognizer<Endpoint<T>>,
+    scopes: &'a mut Scopes<ScopeData<T>>,
     modifier: &'a M,
     scope_id: ScopeId,
 }
 
-impl<'a, M> Scope<'a, M> {
+impl<'a, M, T> Scope<'a, M, T>
+where
+    T: AppData,
+{
     /// Appends a `Handler` with the specified URI onto the current scope.
     pub fn route<H>(&mut self, uri: Option<impl AsRef<str>>, handler: H) -> Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
-        M::Output: Responder,
-        <M::Output as Responder>::Future: Send + 'static,
-        M::Handler: Send + Sync + 'static,
-        <M::Handler as Handler>::Handle: Send + 'static,
+        M::Handler: Into<T::Handler>,
     {
         if let Some(uri) = uri {
             let uri: Uri = uri.as_ref().parse()?;
@@ -121,18 +120,18 @@ impl<'a, M> Scope<'a, M> {
                         .chain(Some(scope.id()))
                         .collect(),
                     uri: uri.clone(),
-                    handler: Box::new(self.modifier.modify(handler)),
+                    handler: self.modifier.modify(handler).into(),
                 },
             )?;
         } else {
             self.scopes[self.scope_id].data.default_handler =
-                Some(Box::new(self.modifier.modify(handler)));
+                Some(self.modifier.modify(handler).into());
         }
         Ok(())
     }
 
     /// Creates a sub-scope with the provided prefix onto the current scope.
-    pub fn mount(&mut self, prefix: impl AsRef<str>, config: impl Config<M>) -> Result<()> {
+    pub fn mount(&mut self, prefix: impl AsRef<str>, config: impl Config<M, T>) -> Result<()> {
         let prefix: Uri = prefix.as_ref().parse()?;
 
         let scope_id = self.scopes.add_node(self.scope_id, {
@@ -159,7 +158,7 @@ impl<'a, M> Scope<'a, M> {
     pub fn modify<M2>(
         &mut self,
         modifier: M2,
-        config: impl Config<Chain<&'a M, M2>>,
+        config: impl Config<Chain<&'a M, M2>, T>,
     ) -> Result<()> {
         config
             .configure(&mut Scope {
@@ -173,46 +172,49 @@ impl<'a, M> Scope<'a, M> {
 }
 
 /// A trait representing a set of elements that will be registered into a certain scope.
-pub trait Config<M> {
+pub trait Config<M, T: AppData> {
     type Error: Into<Error>;
 
     /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error>;
+    fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error>;
 }
 
-impl<F, M, E> Config<M> for F
+impl<F, M, T, E> Config<M, T> for F
 where
-    F: FnOnce(&mut Scope<'_, M>) -> std::result::Result<(), E>,
+    F: FnOnce(&mut Scope<'_, M, T>) -> std::result::Result<(), E>,
     E: Into<Error>,
+    T: AppData,
 {
     type Error = E;
 
-    fn configure(self, cx: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
         self(cx)
     }
 }
 
-impl<S1, S2, M> Config<M> for Chain<S1, S2>
+impl<S1, S2, M, T> Config<M, T> for Chain<S1, S2>
 where
-    S1: Config<M>,
-    S2: Config<M>,
+    S1: Config<M, T>,
+    S2: Config<M, T>,
+    T: AppData,
 {
     type Error = Error;
 
-    fn configure(self, cx: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
         self.left.configure(cx).map_err(Into::into)?;
         self.right.configure(cx).map_err(Into::into)?;
         Ok(())
     }
 }
 
-impl<M, S> Config<M> for Option<S>
+impl<M, S, T> Config<M, T> for Option<S>
 where
-    S: Config<M>,
+    S: Config<M, T>,
+    T: AppData,
 {
     type Error = S::Error;
 
-    fn configure(self, cx: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
         if let Some(scope) = self {
             scope.configure(cx)?;
         }
@@ -220,22 +222,26 @@ where
     }
 }
 
-impl<M, S, E> Config<M> for std::result::Result<S, E>
+impl<M, S, E, T> Config<M, T> for std::result::Result<S, E>
 where
-    S: Config<M>,
+    S: Config<M, T>,
     E: Into<Error>,
+    T: AppData,
 {
     type Error = Error;
 
-    fn configure(self, cx: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
         self.map_err(Into::into)?.configure(cx).map_err(Into::into)
     }
 }
 
-impl<M> Config<M> for () {
+impl<M, T> Config<M, T> for ()
+where
+    T: AppData,
+{
     type Error = Never;
 
-    fn configure(self, _: &mut Scope<'_, M>) -> std::result::Result<(), Self::Error> {
+    fn configure(self, _: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
 }
