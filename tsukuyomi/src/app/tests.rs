@@ -1,5 +1,5 @@
 use {
-    super::{config::Result, App, EndpointId},
+    super::{config::Result, App, EndpointId, LocalApp},
     crate::config::prelude::*,
     matches::assert_matches,
 };
@@ -170,10 +170,13 @@ fn failcase_different_scope_at_the_same_uri() -> Result<()> {
 fn current_thread() -> Result<()> {
     let ptr = std::rc::Rc::new(());
 
-    let _app = App::create_local(path!(/).to(endpoint::any().call(move || {
-        let _ptr = ptr.clone();
-        "dummy"
-    })))?;
+    let _app = LocalApp::create(
+        path!(/) //
+            .to(endpoint::any().call(move || {
+                let _ptr = ptr.clone();
+                "dummy"
+            })),
+    )?;
 
     Ok(())
 }

@@ -1,4 +1,5 @@
 #![allow(clippy::needless_pass_by_value)]
+#![recursion_limit = "128"]
 
 mod proxy;
 

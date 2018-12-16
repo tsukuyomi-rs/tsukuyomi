@@ -30,14 +30,17 @@ fn test_catch_unwind() {
 
 #[test]
 fn test_current_thread() -> tsukuyomi::test::Result<()> {
-    use tsukuyomi::{config::prelude::*, App};
+    use tsukuyomi::{app::LocalApp, config::prelude::*};
 
     let ptr = std::rc::Rc::new(());
 
-    let app = App::create_local(path!(/).to(endpoint::any().call(move || {
-        let _ptr = ptr.clone();
-        "dummy"
-    })))?;
+    let app = LocalApp::create(
+        path!(/) //
+            .to(endpoint::any().call(move || {
+                let _ptr = ptr.clone();
+                "dummy"
+            })),
+    )?;
 
     let mut server = tsukuyomi::test::current_thread_server(app)?;
     let _ = server.perform("/")?;

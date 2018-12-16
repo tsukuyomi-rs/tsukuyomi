@@ -2,7 +2,7 @@ use {
     super::{
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
-        App, AppData, AppInner, Endpoint, EndpointId, ScopeData, Uri,
+        AppBase, AppInner, Endpoint, EndpointId, ScopeData, Uri,
     },
     crate::{
         core::{Chain, Never},
@@ -61,30 +61,229 @@ pub enum Compat {
     Custom { cause: failure::Error },
 }
 
-/// Creates an `App` using the specified configuration.
-pub(super) fn configure<T: AppData>(config: impl Config<(), T>) -> Result<App<T>> {
-    let mut recognizer = Recognizer::default();
-    let mut scopes = Scopes::new(ScopeData {
-        prefix: Uri::root(),
-        default_handler: None,
-    });
-    config
-        .configure(&mut Scope {
-            recognizer: &mut recognizer,
-            scopes: &mut scopes,
-            scope_id: ScopeId::root(),
-            modifier: &(),
-        })
-        .map_err(Into::into)?;
+/// A trait to specify the concurrency of trait objects inside of `AppBase`.
+pub trait Concurrency: self::imp::ConcurrencyImpl {}
 
-    Ok(App {
-        inner: Arc::new(AppInner { recognizer, scopes }),
-    })
+mod imp {
+    use {
+        crate::{input::Input, output::ResponseBody},
+        futures01::Poll,
+        http::Response,
+    };
+
+    pub trait ConcurrencyImpl: 'static {
+        type Handler;
+        type Handle;
+
+        fn handle(handler: &Self::Handler) -> Self::Handle;
+        fn poll_ready(
+            handle: &mut Self::Handle,
+            input: &mut Input<'_>,
+        ) -> Poll<Response<ResponseBody>, crate::error::Error>;
+    }
 }
 
-/// A type representing the contextual information in `Scope::configure`.
+/// The implementor of `Concurrency` which means that `App` is thread safe.
+#[allow(missing_debug_implementations)]
+pub struct ThreadSafe(());
+
+mod thread_safe {
+    use {
+        crate::{
+            error::Error,
+            handler::{Handle, Handler},
+            input::Input,
+            output::{IntoResponse, Responder, ResponseBody},
+        },
+        futures01::{Async, Future, Poll},
+        http::Response,
+        std::fmt,
+    };
+
+    impl super::Concurrency for super::ThreadSafe {}
+
+    impl super::imp::ConcurrencyImpl for super::ThreadSafe {
+        type Handler = BoxedHandler;
+        type Handle = Box<BoxedHandle>;
+
+        fn handle(handler: &Self::Handler) -> Self::Handle {
+            (handler.0)()
+        }
+
+        fn poll_ready(
+            handle: &mut Self::Handle,
+            input: &mut Input<'_>,
+        ) -> Poll<Response<ResponseBody>, Error> {
+            (handle)(input)
+        }
+    }
+
+    type BoxedHandle =
+        dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error>
+            + Send
+            + 'static;
+
+    pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + Send + Sync + 'static>);
+
+    impl fmt::Debug for BoxedHandler {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("BoxedHandler").finish()
+        }
+    }
+
+    impl<H> From<H> for BoxedHandler
+    where
+        H: Handler + Send + Sync + 'static,
+        H::Output: Responder,
+        <H::Output as Responder>::Future: Send + 'static,
+        H::Handle: Send + 'static,
+    {
+        fn from(handler: H) -> Self {
+            BoxedHandler(Box::new(move || {
+                enum State<A, B> {
+                    First(A),
+                    Second(B),
+                }
+
+                let mut state: State<H::Handle, <H::Output as Responder>::Future> =
+                    State::First(handler.handle());
+
+                Box::new(move |input| loop {
+                    state = match state {
+                        State::First(ref mut handle) => {
+                            let x =
+                                futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
+                            State::Second(x.respond(input))
+                        }
+                        State::Second(ref mut respond) => {
+                            return Ok(Async::Ready(
+                                futures01::try_ready!(respond.poll().map_err(Into::into))
+                                    .into_response(input.request)
+                                    .map_err(Into::into)?
+                                    .map(Into::into),
+                            ));
+                        }
+                    };
+                })
+            }))
+        }
+    }
+}
+
+/// The implementor of `Concurrency` which means that `App` is *not* thread safe.
+#[allow(missing_debug_implementations)]
+pub struct CurrentThread(());
+
+mod current_thread {
+    use {
+        crate::{
+            error::Error,
+            handler::{Handle, Handler},
+            input::Input,
+            output::{IntoResponse, Responder, ResponseBody},
+        },
+        futures01::{Async, Future, Poll},
+        http::Response,
+        std::fmt,
+    };
+
+    impl super::Concurrency for super::CurrentThread {}
+
+    impl super::imp::ConcurrencyImpl for super::CurrentThread {
+        type Handler = BoxedHandler;
+        type Handle = Box<BoxedHandle>;
+
+        fn handle(handler: &Self::Handler) -> Self::Handle {
+            (handler.0)()
+        }
+
+        fn poll_ready(
+            handle: &mut Self::Handle,
+            input: &mut Input<'_>,
+        ) -> Poll<Response<ResponseBody>, Error> {
+            (handle)(input)
+        }
+    }
+
+    type BoxedHandle =
+        dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error> + 'static;
+
+    pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + 'static>);
+
+    impl fmt::Debug for BoxedHandler {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("BoxedHandler").finish()
+        }
+    }
+
+    impl<H> From<H> for BoxedHandler
+    where
+        H: Handler + 'static,
+        H::Output: Responder,
+        <H::Output as Responder>::Future: 'static,
+        H::Handle: 'static,
+    {
+        fn from(handler: H) -> Self {
+            BoxedHandler(Box::new(move || {
+                enum State<A, B> {
+                    First(A),
+                    Second(B),
+                }
+
+                let mut state: State<H::Handle, <H::Output as Responder>::Future> =
+                    State::First(handler.handle());
+
+                Box::new(move |input| loop {
+                    state = match state {
+                        State::First(ref mut handle) => {
+                            let x =
+                                futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
+                            State::Second(x.respond(input))
+                        }
+                        State::Second(ref mut respond) => {
+                            return Ok(Async::Ready(
+                                futures01::try_ready!(respond.poll().map_err(Into::into))
+                                    .into_response(input.request)
+                                    .map_err(Into::into)?
+                                    .map(Into::into),
+                            ));
+                        }
+                    };
+                })
+            }))
+        }
+    }
+}
+
+impl<T> AppBase<T>
+where
+    T: Concurrency,
+{
+    /// Creates a new `App` from the provided configuration.
+    pub fn create(config: impl Config<(), T>) -> Result<Self> {
+        let mut recognizer = Recognizer::default();
+        let mut scopes = Scopes::new(ScopeData {
+            prefix: Uri::root(),
+            default_handler: None,
+        });
+        config
+            .configure(&mut Scope {
+                recognizer: &mut recognizer,
+                scopes: &mut scopes,
+                scope_id: ScopeId::root(),
+                modifier: &(),
+            })
+            .map_err(Into::into)?;
+
+        Ok(Self {
+            inner: Arc::new(AppInner { recognizer, scopes }),
+        })
+    }
+}
+
+/// A type representing the contextual information in `Config::configure`.
 #[derive(Debug)]
-pub struct Scope<'a, M, T: AppData> {
+pub struct Scope<'a, M, T: Concurrency> {
     recognizer: &'a mut Recognizer<Endpoint<T>>,
     scopes: &'a mut Scopes<ScopeData<T>>,
     modifier: &'a M,
@@ -93,9 +292,9 @@ pub struct Scope<'a, M, T: AppData> {
 
 impl<'a, M, T> Scope<'a, M, T>
 where
-    T: AppData,
+    T: Concurrency,
 {
-    /// Appends a `Handler` with the specified URI onto the current scope.
+    /// Adds a route onto the current scope.
     pub fn route<H>(&mut self, uri: Option<impl AsRef<str>>, handler: H) -> Result<()>
     where
         H: Handler,
@@ -171,8 +370,8 @@ where
     }
 }
 
-/// A trait representing a set of elements that will be registered into a certain scope.
-pub trait Config<M, T: AppData> {
+/// A trait that represents the settings for configuring an `AppBase`.
+pub trait Config<M, T: Concurrency> {
     type Error: Into<Error>;
 
     /// Applies this configuration to the specified context.
@@ -183,7 +382,7 @@ impl<F, M, T, E> Config<M, T> for F
 where
     F: FnOnce(&mut Scope<'_, M, T>) -> std::result::Result<(), E>,
     E: Into<Error>,
-    T: AppData,
+    T: Concurrency,
 {
     type Error = E;
 
@@ -196,7 +395,7 @@ impl<S1, S2, M, T> Config<M, T> for Chain<S1, S2>
 where
     S1: Config<M, T>,
     S2: Config<M, T>,
-    T: AppData,
+    T: Concurrency,
 {
     type Error = Error;
 
@@ -210,7 +409,7 @@ where
 impl<M, S, T> Config<M, T> for Option<S>
 where
     S: Config<M, T>,
-    T: AppData,
+    T: Concurrency,
 {
     type Error = S::Error;
 
@@ -226,7 +425,7 @@ impl<M, S, E, T> Config<M, T> for std::result::Result<S, E>
 where
     S: Config<M, T>,
     E: Into<Error>,
-    T: AppData,
+    T: Concurrency,
 {
     type Error = Error;
 
@@ -237,7 +436,7 @@ where
 
 impl<M, T> Config<M, T> for ()
 where
-    T: AppData,
+    T: Concurrency,
 {
     type Error = Never;
 

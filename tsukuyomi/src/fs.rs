@@ -511,16 +511,16 @@ where
     }
 }
 
-impl<P, M, T> crate::app::Config<M, T> for Staticfiles<P>
+impl<P, M, C> crate::app::config::Config<M, C> for Staticfiles<P>
 where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
-    M::Handler: Into<T::Handler>,
-    T: crate::app::AppData,
+    M::Handler: Into<C::Handler>,
+    C: crate::app::config::Concurrency,
 {
     type Error = crate::app::Error;
 
-    fn configure(self, scope: &mut crate::app::Scope<'_, M, T>) -> crate::app::Result<()> {
+    fn configure(self, scope: &mut crate::app::config::Scope<'_, M, C>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir)? {

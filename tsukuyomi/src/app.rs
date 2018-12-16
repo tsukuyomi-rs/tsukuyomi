@@ -1,6 +1,6 @@
 //! Components for constructing HTTP applications.
 
-mod config;
+pub mod config;
 mod recognizer;
 mod scope;
 mod service;
@@ -10,53 +10,41 @@ mod tests;
 
 pub(crate) use self::recognizer::Captures;
 pub use self::{
-    config::{Config, Error, Result, Scope},
+    config::{Error, Result},
     service::AppService,
 };
 
 use {
     self::{
+        config::Concurrency,
         recognizer::{RecognizeError, Recognizer},
-        scope::{Scope as ScopeNode, ScopeId, Scopes},
+        scope::{Scope, ScopeId, Scopes},
     },
-    crate::{input::Input, output::ResponseBody, uri::Uri},
-    futures01::Poll,
-    http::Response,
+    crate::uri::Uri,
     std::{fmt, sync::Arc},
 };
 
-/// The main type which represents an HTTP application.
+/// The main type representing an HTTP application.
 #[derive(Debug, Clone)]
-pub struct App<T: AppData = ThreadSafe> {
-    inner: Arc<AppInner<T>>,
+pub struct AppBase<C: Concurrency = self::config::ThreadSafe> {
+    inner: Arc<AppInner<C>>,
 }
 
-impl App<ThreadSafe> {
-    /// Creates a new `App` from the provided configuration.
-    pub fn create(config: impl Config<(), ThreadSafe>) -> self::config::Result<Self> {
-        self::config::configure(config)
-    }
-}
-
-impl App<CurrentThread> {
-    /// Creates a new `App` from the provided configuration.
-    pub fn create_local(config: impl Config<(), CurrentThread>) -> self::config::Result<Self> {
-        self::config::configure(config)
-    }
-}
+pub type App = AppBase<self::config::ThreadSafe>;
+pub type LocalApp = AppBase<self::config::CurrentThread>;
 
 #[derive(Debug)]
-struct AppInner<T: AppData> {
-    recognizer: Recognizer<Endpoint<T>>,
-    scopes: Scopes<ScopeData<T>>,
+struct AppInner<C: Concurrency> {
+    recognizer: Recognizer<Endpoint<C>>,
+    scopes: Scopes<ScopeData<C>>,
 }
 
-impl<T: AppData> AppInner<T> {
-    fn scope(&self, id: ScopeId) -> &ScopeNode<ScopeData<T>> {
+impl<C: Concurrency> AppInner<C> {
+    fn scope(&self, id: ScopeId) -> &Scope<ScopeData<C>> {
         &self.scopes[id]
     }
 
-    fn endpoint(&self, id: EndpointId) -> &Endpoint<T> {
+    fn endpoint(&self, id: EndpointId) -> &Endpoint<C> {
         self.recognizer.get(id.0).expect("the wrong resource ID")
     }
 
@@ -64,8 +52,8 @@ impl<T: AppData> AppInner<T> {
     fn infer_scope<'a>(
         &self,
         path: &str,
-        endpoints: impl IntoIterator<Item = &'a Endpoint<T>>,
-    ) -> &ScopeNode<ScopeData<T>> {
+        endpoints: impl IntoIterator<Item = &'a Endpoint<C>>,
+    ) -> &Scope<ScopeData<C>> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[ScopeId]> = None;
@@ -95,7 +83,7 @@ impl<T: AppData> AppInner<T> {
         self.scope(node_id)
     }
 
-    fn find_default_handler(&self, start: ScopeId) -> Option<&T::Handler> {
+    fn find_default_handler(&self, start: ScopeId) -> Option<&C::Handler> {
         let scope = self.scope(start);
         if let Some(ref f) = scope.data.default_handler {
             return Some(f);
@@ -112,7 +100,7 @@ impl<T: AppData> AppInner<T> {
         &self,
         path: &str,
         captures: &mut Option<Captures>,
-    ) -> std::result::Result<&Endpoint<T>, &ScopeNode<ScopeData<T>>> {
+    ) -> std::result::Result<&Endpoint<C>, &Scope<ScopeData<C>>> {
         match self.recognizer.recognize(path, captures) {
             Ok(endpoint) => Ok(endpoint),
             Err(RecognizeError::NotMatched) => Err(self.scope(ScopeId::root())),
@@ -124,12 +112,12 @@ impl<T: AppData> AppInner<T> {
     }
 }
 
-struct ScopeData<T: AppData> {
+struct ScopeData<C: Concurrency> {
     prefix: Uri,
-    default_handler: Option<T::Handler>,
+    default_handler: Option<C::Handler>,
 }
 
-impl<T: AppData> fmt::Debug for ScopeData<T> {
+impl<C: Concurrency> fmt::Debug for ScopeData<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopeData")
             .field("prefix", &self.prefix)
@@ -145,15 +133,15 @@ impl<T: AppData> fmt::Debug for ScopeData<T> {
 struct EndpointId(usize);
 
 /// A type representing a set of endpoints with the same HTTP path.
-struct Endpoint<T: AppData> {
+struct Endpoint<C: Concurrency> {
     id: EndpointId,
     scope: ScopeId,
     ancestors: Vec<ScopeId>,
     uri: Uri,
-    handler: T::Handler,
+    handler: C::Handler,
 }
 
-impl<T: AppData> fmt::Debug for Endpoint<T> {
+impl<C: Concurrency> fmt::Debug for Endpoint<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Endpoint")
             .field("id", &self.id)
@@ -161,184 +149,5 @@ impl<T: AppData> fmt::Debug for Endpoint<T> {
             .field("ancestors", &self.ancestors)
             .field("uri", &self.uri)
             .finish()
-    }
-}
-
-// ==== AppData ====
-
-pub trait AppData: Default + Send + Sync + 'static {
-    type Handler;
-    type Handle;
-
-    fn handle(handler: &Self::Handler) -> Self::Handle;
-    fn poll_ready(
-        handle: &mut Self::Handle,
-        input: &mut Input<'_>,
-    ) -> Poll<Response<ResponseBody>, crate::error::Error>;
-}
-
-#[derive(Debug, Default)]
-pub struct ThreadSafe(());
-
-mod thread_safe {
-    use {
-        crate::{
-            error::Error,
-            handler::{Handle, Handler},
-            input::Input,
-            output::{IntoResponse, Responder, ResponseBody},
-        },
-        futures01::{Async, Future, Poll},
-        http::Response,
-        std::fmt,
-    };
-
-    impl super::AppData for super::ThreadSafe {
-        type Handler = BoxedHandler;
-        type Handle = Box<BoxedHandle>;
-
-        fn handle(handler: &Self::Handler) -> Self::Handle {
-            (handler.0)()
-        }
-
-        fn poll_ready(
-            handle: &mut Self::Handle,
-            input: &mut Input<'_>,
-        ) -> Poll<Response<ResponseBody>, Error> {
-            (handle)(input)
-        }
-    }
-
-    type BoxedHandle =
-        dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error>
-            + Send
-            + 'static;
-
-    pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + Send + Sync + 'static>);
-
-    impl fmt::Debug for BoxedHandler {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.debug_struct("BoxedHandler").finish()
-        }
-    }
-
-    impl<H> From<H> for BoxedHandler
-    where
-        H: Handler + Send + Sync + 'static,
-        H::Output: Responder,
-        <H::Output as Responder>::Future: Send + 'static,
-        H::Handle: Send + 'static,
-    {
-        fn from(handler: H) -> Self {
-            BoxedHandler(Box::new(move || {
-                enum State<A, B> {
-                    First(A),
-                    Second(B),
-                }
-
-                let mut state: State<H::Handle, <H::Output as Responder>::Future> =
-                    State::First(handler.handle());
-
-                Box::new(move |input| loop {
-                    state = match state {
-                        State::First(ref mut handle) => {
-                            let x =
-                                futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-                            State::Second(x.respond(input))
-                        }
-                        State::Second(ref mut respond) => {
-                            return Ok(Async::Ready(
-                                futures01::try_ready!(respond.poll().map_err(Into::into))
-                                    .into_response(input.request)
-                                    .map_err(Into::into)?
-                                    .map(Into::into),
-                            ));
-                        }
-                    };
-                })
-            }))
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct CurrentThread(());
-
-mod current_thread {
-    use {
-        crate::{
-            error::Error,
-            handler::{Handle, Handler},
-            input::Input,
-            output::{IntoResponse, Responder, ResponseBody},
-        },
-        futures01::{Async, Future, Poll},
-        http::Response,
-        std::fmt,
-    };
-
-    impl super::AppData for super::CurrentThread {
-        type Handler = BoxedHandler;
-        type Handle = Box<BoxedHandle>;
-
-        fn handle(handler: &Self::Handler) -> Self::Handle {
-            (handler.0)()
-        }
-
-        fn poll_ready(
-            handle: &mut Self::Handle,
-            input: &mut Input<'_>,
-        ) -> Poll<Response<ResponseBody>, Error> {
-            (handle)(input)
-        }
-    }
-
-    type BoxedHandle =
-        dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error> + 'static;
-
-    pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + 'static>);
-
-    impl fmt::Debug for BoxedHandler {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.debug_struct("BoxedHandler").finish()
-        }
-    }
-
-    impl<H> From<H> for BoxedHandler
-    where
-        H: Handler + 'static,
-        H::Output: Responder,
-        <H::Output as Responder>::Future: 'static,
-        H::Handle: 'static,
-    {
-        fn from(handler: H) -> Self {
-            BoxedHandler(Box::new(move || {
-                enum State<A, B> {
-                    First(A),
-                    Second(B),
-                }
-
-                let mut state: State<H::Handle, <H::Output as Responder>::Future> =
-                    State::First(handler.handle());
-
-                Box::new(move |input| loop {
-                    state = match state {
-                        State::First(ref mut handle) => {
-                            let x =
-                                futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-                            State::Second(x.respond(input))
-                        }
-                        State::Second(ref mut respond) => {
-                            return Ok(Async::Ready(
-                                futures01::try_ready!(respond.poll().map_err(Into::into))
-                                    .into_response(input.request)
-                                    .map_err(Into::into)?
-                                    .map(Into::into),
-                            ));
-                        }
-                    };
-                })
-            }))
-        }
     }
 }
