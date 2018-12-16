@@ -20,7 +20,7 @@ def run_command(cmd, **kwargs):
     return subprocess.run(cmd, **kwargs)
 
 def collect_artifacts(*args):
-    command = ["cargo", "test", "--no-run", "--message-format=json"] + list(*args)
+    command = ["cargo", "test", "--no-run", "--message-format=json"] + list(*args) + ["--skip", "version_sync"]
     output = run_command(command, stdout = subprocess.PIPE)
 
     return \
