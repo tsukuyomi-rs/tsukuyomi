@@ -1,10 +1,10 @@
 use {
     super::{config::Concurrency, recognizer::Captures, AppBase, AppInner, EndpointId},
     crate::{
-        core::Never,
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
         service::{MakeService, Service},
+        util::Never,
     },
     cookie::CookieJar,
     futures01::{Async, Future, Poll},

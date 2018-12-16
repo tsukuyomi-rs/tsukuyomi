@@ -25,9 +25,9 @@ pub use crate::app::config::{Config, Error, Result, Scope};
 
 use crate::{
     app::config::Concurrency,
-    core::{Chain, TryInto},
     handler::{Handler, ModifyHandler},
     uri::Uri,
+    util::{Chain, TryInto},
 };
 
 /// Creates a `Config` that creates a sub-scope with the provided prefix.

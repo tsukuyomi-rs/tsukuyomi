@@ -1,11 +1,11 @@
 use {
     crate::{
-        core::{Chain, TryInto},
         endpoint::Endpoint,
         error::Error,
         extractor::Extractor,
         generic::{Combine, Func},
         handler::AllowedMethods,
+        util::{Chain, TryInto},
     },
     futures01::IntoFuture,
     http::Method,

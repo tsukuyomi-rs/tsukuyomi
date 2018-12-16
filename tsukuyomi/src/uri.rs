@@ -1,5 +1,5 @@
 use {
-    crate::core::{Never, TryFrom},
+    crate::util::{Never, TryFrom},
     failure::Error,
     indexmap::{indexset, IndexSet},
     std::{

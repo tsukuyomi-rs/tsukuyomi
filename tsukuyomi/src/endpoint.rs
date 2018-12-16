@@ -179,10 +179,10 @@ mod impl_chain {
     use {
         super::{Endpoint, EndpointAction},
         crate::{
-            core::{Chain, Either},
             error::Error,
             handler::AllowedMethods,
             input::Input,
+            util::{Chain, Either},
         },
         futures01::{Future, Poll},
         http::Method,

@@ -8,7 +8,7 @@
 //! [`HttpError`]: ./trait.HttpError.html
 
 use {
-    crate::{core::Never, output::ResponseBody},
+    crate::{output::ResponseBody, util::Never},
     http::{Request, Response, StatusCode},
     std::{any::Any, fmt, io},
 };

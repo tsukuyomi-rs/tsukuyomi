@@ -2,7 +2,7 @@
 
 use {
     super::Extractor, //
-    crate::{core::Never, error::Error},
+    crate::{error::Error, util::Never},
     futures01::Future,
     serde::de::DeserializeOwned,
 };

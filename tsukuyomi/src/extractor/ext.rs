@@ -1,8 +1,8 @@
 use {
     super::Extractor,
     crate::{
-        core::Chain, //
         generic::{Combine, Func},
+        util::Chain, //
     },
 };
 
@@ -52,10 +52,10 @@ mod chain {
     use {
         super::Extractor,
         crate::{
-            core::{Chain, MaybeDone},
             error::Error,
             generic::{Combine, Tuple},
             input::Input,
+            util::{Chain, MaybeDone},
         },
         futures01::{Async, Future, Poll},
     };
@@ -131,7 +131,7 @@ mod chain {
 
 mod optional {
     use {
-        crate::{core::Never, extractor::Extractor, input::Input},
+        crate::{extractor::Extractor, input::Input, util::Never},
         futures01::{Async, Future, Poll},
     };
 

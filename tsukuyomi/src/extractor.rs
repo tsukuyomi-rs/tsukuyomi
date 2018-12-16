@@ -14,10 +14,10 @@ pub use self::ext::ExtractorExt;
 
 use {
     crate::{
-        core::Never, //
         error::Error,
         generic::Tuple,
         input::Input,
+        util::Never, //
     },
     futures01::{Future, IntoFuture},
 };
@@ -211,7 +211,7 @@ mod value {
 
     impl<T> futures01::Future for ValueFuture<T> {
         type Item = (T,);
-        type Error = crate::core::Never;
+        type Error = crate::util::Never;
 
         #[inline]
         fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {

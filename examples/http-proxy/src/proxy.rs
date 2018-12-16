@@ -5,10 +5,10 @@ use {
     std::{mem, net::SocketAddr},
     tsukuyomi::{
         chain,
-        core::Never,
         extractor::{self, ExtractorExt}, //
         output::IntoResponse,
         server::io::Peer,
+        util::Never,
         Error,
         Extractor,
     },

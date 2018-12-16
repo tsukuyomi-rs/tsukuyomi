@@ -4,7 +4,6 @@ use {
         Route,
     },
     crate::{
-        core::Chain,
         endpoint::Endpoint,
         extractor::Extractor,
         generic::{Combine, Tuple},
@@ -13,6 +12,7 @@ use {
             param::{FromPercentEncoded, PercentEncoded},
             Input,
         },
+        util::Chain,
     },
     std::{marker::PhantomData, sync::Arc},
 };

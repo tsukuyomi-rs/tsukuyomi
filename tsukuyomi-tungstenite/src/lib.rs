@@ -32,7 +32,7 @@ use {
             body::{RequestBody, UpgradedIo},
             Input,
         },
-        output::Responder,
+        responder::Responder,
         rt::Executor,
     },
     tungstenite::protocol::Role,

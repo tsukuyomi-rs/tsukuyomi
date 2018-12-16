@@ -21,7 +21,7 @@ use {
         error::Error, //
         extractor::Extractor,
         input::Input,
-        output::Responder,
+        responder::Responder,
     },
 };
 
@@ -121,7 +121,7 @@ where
         T::Future: Send + 'static,
         T::Response: Send + 'static,
     {
-        tsukuyomi::output::respond(move |input| {
+        tsukuyomi::responder::respond(move |input| {
             let write_session = self.raw.write(input);
             let mut output = output.respond(input);
             write_session

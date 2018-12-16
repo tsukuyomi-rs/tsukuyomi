@@ -1,4 +1,4 @@
-//! Definition of commonly used components.
+//! Miscellaneous components used within the framework.
 
 use {
     futures01::{Async, Future, Poll},
@@ -37,6 +37,11 @@ pub trait TryFrom<T>: Sized {
     fn try_from(value: T) -> Result<Self, Self::Error>;
 }
 
+/// A trait representing the conversion into a value of specified type.
+///
+/// This trait is an emulation of the standard [`TryInto`].
+///
+/// [`TryInto`]: https://doc.rust-lang.org/nightly/std/convert/trait.TryInto.html
 pub trait TryInto<T> {
     type Error: Into<failure::Error>;
 
@@ -68,13 +73,14 @@ impl<L, R> Chain<L, R> {
     }
 }
 
+/// A macro for creating a chain of expressions.
 #[macro_export]
 macro_rules! chain {
     ($e:expr) => ( $e );
     ($e:expr, ) => ( $e );
-    ($e1:expr, $e2:expr) => ( $crate::core::Chain::new($e1, $e2) );
+    ($e1:expr, $e2:expr) => ( $crate::util::Chain::new($e1, $e2) );
     ($e1:expr, $e2:expr, $($t:expr),*) => {
-        $crate::core::Chain::new($e1, chain!($e2, $($t),*))
+        $crate::util::Chain::new($e1, chain!($e2, $($t),*))
     };
     ($e1:expr, $e2:expr, $($t:expr,)+) => ( chain!{ $e1, $e2, $($t),+ } );
 }

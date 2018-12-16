@@ -2,7 +2,7 @@
 
 use {
     super::Extractor,
-    crate::{core::Never, error::Error, input::header::HeaderField},
+    crate::{error::Error, input::header::HeaderField, util::Never},
     futures01::Future,
     http::header::{HeaderMap, HeaderName, HeaderValue},
 };

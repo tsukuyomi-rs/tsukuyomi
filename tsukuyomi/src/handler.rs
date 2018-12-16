@@ -2,9 +2,9 @@
 
 use {
     crate::{
-        core::{Chain, Never, TryFrom}, //
         error::Error,
         input::Input,
+        util::{Chain, Never, TryFrom}, //
     },
     either::Either,
     futures01::{Async, Poll},

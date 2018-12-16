@@ -73,7 +73,7 @@ mod responder {
     mod sub {
         use {
             http::{Request, Response},
-            tsukuyomi::core::Never,
+            tsukuyomi::util::Never,
         };
 
         pub fn display<T>(this: T, _: &Request<()>) -> Result<Response<String>, Never>

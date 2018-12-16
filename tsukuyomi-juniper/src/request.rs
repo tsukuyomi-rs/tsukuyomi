@@ -8,7 +8,7 @@ use {
         error::Error,
         extractor::Extractor,
         input::{body::RequestBody, header::ContentType, Input},
-        output::Responder,
+        responder::Responder,
     },
 };
 
