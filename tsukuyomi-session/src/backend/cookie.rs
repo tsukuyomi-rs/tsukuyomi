@@ -3,7 +3,7 @@ use {
     cookie::{Cookie, CookieBuilder},
     serde_json,
     std::{borrow::Cow, collections::HashMap, fmt, sync::Arc},
-    tsukuyomi::{error::Result, input::Cookies, Input},
+    tsukuyomi::{error::Result, future::TryFuture, input::Cookies, Input},
 };
 
 #[cfg(feature = "secure")]
@@ -171,12 +171,16 @@ impl CookieBackendInner {
 
 impl Backend for CookieBackend {
     type Session = CookieSession;
-    type ReadSession = futures::future::FutureResult<Self::Session, tsukuyomi::Error>;
+    type ReadSession =
+        Box<dyn TryFuture<Ok = Self::Session, Error = tsukuyomi::Error> + Send + 'static>;
 
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadSession {
-        futures::future::result(self.inner.read(input).map(|inner| CookieSession {
-            inner,
-            backend: self.clone(),
+    fn read(&self) -> Self::ReadSession {
+        let this = self.clone();
+        Box::new(tsukuyomi::future::oneshot(move |input| {
+            this.inner.read(input).map(|inner| CookieSession {
+                inner,
+                backend: this.clone(),
+            })
         }))
     }
 }
@@ -195,7 +199,7 @@ enum Inner {
 }
 
 impl RawSession for CookieSession {
-    type WriteSession = futures::future::FutureResult<(), tsukuyomi::Error>;
+    type WriteSession = Box<dyn TryFuture<Ok = (), Error = tsukuyomi::Error> + Send + 'static>;
 
     fn get(&self, name: &str) -> Option<&str> {
         match self.inner {
@@ -236,7 +240,9 @@ impl RawSession for CookieSession {
         self.inner = Inner::Clear;
     }
 
-    fn write(self, input: &mut Input<'_>) -> Self::WriteSession {
-        futures::future::result(self.backend.inner.write(input, self.inner))
+    fn write(self) -> Self::WriteSession {
+        Box::new(tsukuyomi::future::oneshot(move |input| {
+            self.backend.inner.write(input, self.inner)
+        }))
     }
 }

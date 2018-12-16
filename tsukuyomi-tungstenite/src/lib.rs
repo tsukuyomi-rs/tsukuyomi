@@ -28,6 +28,7 @@ use {
     tsukuyomi::{
         error::{Error, HttpError},
         extractor::Extractor,
+        future::TryFuture,
         input::{
             body::{RequestBody, UpgradedIo},
             Input,
@@ -124,7 +125,7 @@ fn handshake(input: &mut Input<'_>) -> Result<Ws, HandshakeError> {
 pub fn ws() -> impl Extractor<
     Output = (Ws,), //
     Error = HandshakeError,
-    Future = impl Future<Item = (Ws,), Error = HandshakeError> + Send + 'static,
+    Extract = impl TryFuture<Ok = (Ws,), Error = HandshakeError> + Send + 'static,
 > {
     tsukuyomi::extractor::ready(|input| self::handshake(input))
 }
@@ -176,46 +177,44 @@ where
 {
     type Response = Response<()>;
     type Error = Error;
-    type Future = futures::future::FutureResult<Self::Response, Self::Error>;
+    type Respond = Box<dyn TryFuture<Ok = Self::Response, Error = Error> + Send + 'static>;
 
-    fn respond(self, input: &mut Input<'_>) -> Self::Future {
-        let Self {
-            ws: Ws {
-                accept_hash,
-                config,
-            },
-            on_upgrade,
-        } = self;
+    fn respond(self) -> Self::Respond {
+        Box::new(tsukuyomi::future::oneshot(move |input| {
+            let Self {
+                ws:
+                    Ws {
+                        accept_hash,
+                        config,
+                    },
+                on_upgrade,
+            } = self;
 
-        let body = match input.locals.remove(&RequestBody::KEY) {
-            Some(body) => body,
-            None => {
-                return futures::future::err(tsukuyomi::error::internal_server_error(
+            let body = input.locals.remove(&RequestBody::KEY).ok_or_else(|| {
+                tsukuyomi::error::internal_server_error(
                     "the request body has already been stolen by someone",
-                ))
-            }
-        };
+                )
+            })?;
 
-        let task = body
-            .on_upgrade()
-            .map_err(|e| log::error!("failed to upgrade the request: {}", e))
-            .and_then(move |io: UpgradedIo| {
-                let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
-                on_upgrade(transport).into_future()
-            });
+            let task = body
+                .on_upgrade()
+                .map_err(|e| log::error!("failed to upgrade the request: {}", e))
+                .and_then(move |io: UpgradedIo| {
+                    let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
+                    on_upgrade(transport).into_future()
+                });
 
-        if let Err(err) = tsukuyomi::rt::DefaultExecutor::current().spawn(Box::new(task)) {
-            return futures::future::err(tsukuyomi::error::internal_server_error(err));
-        }
+            tsukuyomi::rt::DefaultExecutor::current()
+                .spawn(Box::new(task))
+                .map_err(tsukuyomi::error::internal_server_error)?;
 
-        futures::future::ok(
-            Response::builder()
+            Ok(Response::builder()
                 .status(StatusCode::SWITCHING_PROTOCOLS)
                 .header(UPGRADE, "websocket")
                 .header(CONNECTION, "upgrade")
                 .header(SEC_WEBSOCKET_ACCEPT, &*accept_hash)
                 .body(())
-                .expect("should be a valid response"),
-        )
+                .expect("should be a valid response"))
+        }))
     }
 }

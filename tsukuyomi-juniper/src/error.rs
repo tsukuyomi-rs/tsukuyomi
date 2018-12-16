@@ -1,11 +1,11 @@
 use {
-    futures::Poll,
     http::{Request, Response, StatusCode},
     serde_json::json,
     std::fmt,
     tsukuyomi::{
         error::{Error, HttpError}, //
-        handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+        future::{Poll, TryFuture},
+        handler::{AllowedMethods, Handler, ModifyHandler},
         input::Input,
         output::ResponseBody,
     },
@@ -135,14 +135,14 @@ pub struct GraphQLHandle<H> {
     inner: H,
 }
 
-impl<H> Handle for GraphQLHandle<H>
+impl<H> TryFuture for GraphQLHandle<H>
 where
-    H: Handle,
+    H: TryFuture,
 {
-    type Output = H::Output;
+    type Ok = H::Ok;
     type Error = Error;
 
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
         self.inner.poll_ready(input).map_err(|err| {
             let err = err.into();
             if err.is::<GraphQLParseError>() || err.is::<GraphQLError>() {

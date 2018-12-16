@@ -48,7 +48,8 @@ use {
     mime_guess::get_mime_type_str,
     tsukuyomi::{
         error::{internal_server_error, Error},
-        handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+        future::TryFuture,
+        handler::{AllowedMethods, Handler, ModifyHandler},
         input::Input,
         output::IntoResponse,
     },
@@ -131,16 +132,16 @@ where
 #[derive(Debug)]
 pub struct RenderedHandle<H>(H);
 
-impl<H> Handle for RenderedHandle<H>
+impl<H> TryFuture for RenderedHandle<H>
 where
-    H: Handle,
-    H::Output: Template,
+    H: TryFuture,
+    H::Ok: Template,
 {
-    type Output = Rendered<H::Output>;
+    type Ok = Rendered<H::Ok>;
     type Error = H::Error;
 
     #[inline]
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
         self.0.poll_ready(input).map(|x| x.map(Rendered))
     }
 }

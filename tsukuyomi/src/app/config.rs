@@ -91,13 +91,12 @@ mod thread_safe {
     use {
         crate::{
             error::Error,
-            future::TryFuture,
+            future::{Async, Poll, TryFuture},
             handler::Handler,
             input::Input,
             output::{IntoResponse, ResponseBody},
             responder::Responder,
         },
-        futures01::{Async, Future, Poll},
         http::Response,
         std::fmt,
     };
@@ -137,7 +136,7 @@ mod thread_safe {
     where
         H: Handler + Send + Sync + 'static,
         H::Output: Responder,
-        <H::Output as Responder>::Future: Send + 'static,
+        <H::Output as Responder>::Respond: Send + 'static,
         H::Handle: Send + 'static,
     {
         fn from(handler: H) -> Self {
@@ -147,7 +146,7 @@ mod thread_safe {
                     Second(B),
                 }
 
-                let mut state: State<H::Handle, <H::Output as Responder>::Future> =
+                let mut state: State<H::Handle, <H::Output as Responder>::Respond> =
                     State::First(handler.handle());
 
                 Box::new(move |input| loop {
@@ -155,14 +154,16 @@ mod thread_safe {
                         State::First(ref mut handle) => {
                             let x =
                                 futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-                            State::Second(x.respond(input))
+                            State::Second(x.respond())
                         }
                         State::Second(ref mut respond) => {
                             return Ok(Async::Ready(
-                                futures01::try_ready!(respond.poll().map_err(Into::into))
-                                    .into_response(input.request)
-                                    .map_err(Into::into)?
-                                    .map(Into::into),
+                                futures01::try_ready!(respond
+                                    .poll_ready(input)
+                                    .map_err(Into::into))
+                                .into_response(input.request)
+                                .map_err(Into::into)?
+                                .map(Into::into),
                             ));
                         }
                     };
@@ -180,13 +181,12 @@ mod current_thread {
     use {
         crate::{
             error::Error,
-            future::TryFuture,
+            future::{Async, Poll, TryFuture},
             handler::Handler,
             input::Input,
             output::{IntoResponse, ResponseBody},
             responder::Responder,
         },
-        futures01::{Async, Future, Poll},
         http::Response,
         std::fmt,
     };
@@ -224,7 +224,7 @@ mod current_thread {
     where
         H: Handler + 'static,
         H::Output: Responder,
-        <H::Output as Responder>::Future: 'static,
+        <H::Output as Responder>::Respond: 'static,
         H::Handle: 'static,
     {
         fn from(handler: H) -> Self {
@@ -234,7 +234,7 @@ mod current_thread {
                     Second(B),
                 }
 
-                let mut state: State<H::Handle, <H::Output as Responder>::Future> =
+                let mut state: State<H::Handle, <H::Output as Responder>::Respond> =
                     State::First(handler.handle());
 
                 Box::new(move |input| loop {
@@ -242,14 +242,16 @@ mod current_thread {
                         State::First(ref mut handle) => {
                             let x =
                                 futures01::try_ready!(handle.poll_ready(input).map_err(Into::into));
-                            State::Second(x.respond(input))
+                            State::Second(x.respond())
                         }
                         State::Second(ref mut respond) => {
                             return Ok(Async::Ready(
-                                futures01::try_ready!(respond.poll().map_err(Into::into))
-                                    .into_response(input.request)
-                                    .map_err(Into::into)?
-                                    .map(Into::into),
+                                futures01::try_ready!(respond
+                                    .poll_ready(input)
+                                    .map_err(Into::into))
+                                .into_response(input.request)
+                                .map_err(Into::into)?
+                                .map(Into::into),
                             ));
                         }
                     };

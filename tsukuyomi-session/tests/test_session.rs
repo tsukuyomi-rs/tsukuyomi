@@ -20,19 +20,22 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
 
     let app = App::create(chain![
         path!(/"counter").extract(session.clone()).to(chain![
-            endpoint::get().call_async(|session: Session<_>| {
-                let counter: Option<i64> = session.get("counter")?;
-                Ok::<_, tsukuyomi::Error>(session.finish(format!("{:?}", counter)))
-            }),
-            endpoint::put().call_async(|mut session: Session<_>| {
-                let counter: i64 = session.get("counter")?.unwrap_or_default();
-                session.set("counter", counter + 1)?;
-                Ok::<_, tsukuyomi::Error>(session.finish(format!("{}", counter)))
-            }),
-            endpoint::delete().call(|mut session: Session<_>| {
-                session.remove("counter");
-                session.finish("removed")
-            }),
+            endpoint::get() //
+                .call_async(|session: Session<_>| -> tsukuyomi::Result<_> {
+                    let counter: Option<i64> = session.get("counter")?;
+                    Ok(session.finish(format!("{:?}", counter)))
+                }),
+            endpoint::put() //
+                .call_async(|mut session: Session<_>| -> tsukuyomi::Result<_> {
+                    let counter: i64 = session.get("counter")?.unwrap_or_default();
+                    session.set("counter", counter + 1)?;
+                    Ok(session.finish(format!("{}", counter)))
+                }),
+            endpoint::delete() //
+                .call(|mut session: Session<_>| {
+                    session.remove("counter");
+                    session.finish("removed")
+                }),
         ]),
         path!(/"clear")
             .extract(session)

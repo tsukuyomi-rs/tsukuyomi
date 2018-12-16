@@ -34,13 +34,13 @@ fn main() -> tsukuyomi::server::Result<()> {
 
 mod support_tera {
     use {
-        futures::Poll,
         http::{header::HeaderValue, Response},
         std::sync::Arc,
         tera::Tera,
         tsukuyomi::{
             error::Error,
-            handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+            future::{Poll, TryFuture},
+            handler::{AllowedMethods, Handler, ModifyHandler},
             input::Input,
         },
     };
@@ -110,15 +110,15 @@ mod support_tera {
         engine: Arc<Tera>,
     }
 
-    impl<H> Handle for WithTeraHandle<H>
+    impl<H> TryFuture for WithTeraHandle<H>
     where
-        H: Handle,
-        H::Output: Template,
+        H: TryFuture,
+        H::Ok: Template,
     {
-        type Output = Response<String>;
+        type Ok = Response<String>;
         type Error = Error;
 
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let ctx = futures::try_ready!(self.inner.poll_ready(input).map_err(Into::into));
             let content_type = HeaderValue::from_static(
                 ctx.extension()

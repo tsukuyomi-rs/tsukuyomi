@@ -53,11 +53,11 @@ mod chain {
         super::Extractor,
         crate::{
             error::Error,
+            future::{Async, MaybeDone, Poll, TryFuture},
             generic::{Combine, Tuple},
             input::Input,
-            util::{Chain, MaybeDone},
+            util::Chain,
         },
-        futures01::{Async, Future, Poll},
     };
 
     impl<L, R> Extractor for Chain<L, R>
@@ -68,48 +68,40 @@ mod chain {
     {
         type Output = <L::Output as Combine<R::Output>>::Out;
         type Error = Error;
-        type Future = ChainFuture<L::Future, R::Future>;
+        type Extract = ChainFuture<L::Extract, R::Extract>;
 
-        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-            let left = self.left.extract(input);
-            let right = self.right.extract(input);
+        fn extract(&self) -> Self::Extract {
             ChainFuture {
-                left: MaybeDone::Pending(left),
-                right: MaybeDone::Pending(right),
+                left: MaybeDone::Pending(self.left.extract()),
+                right: MaybeDone::Pending(self.right.extract()),
             }
         }
     }
 
     #[allow(missing_debug_implementations)]
-    pub struct ChainFuture<L: Future, R: Future> {
+    pub struct ChainFuture<L: TryFuture, R: TryFuture> {
         left: MaybeDone<L>,
         right: MaybeDone<R>,
     }
 
-    impl<L: Future, R: Future> ChainFuture<L, R>
-    where
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
-    {
-        fn poll_ready(&mut self) -> Poll<(), Error> {
-            futures01::try_ready!(self.left.poll().map_err(Into::into));
-            futures01::try_ready!(self.right.poll().map_err(Into::into));
+    impl<L: TryFuture, R: TryFuture> ChainFuture<L, R> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<(), Error> {
+            futures01::try_ready!(self.left.poll_ready(input).map_err(Into::into));
+            futures01::try_ready!(self.right.poll_ready(input).map_err(Into::into));
             Ok(Async::Ready(()))
         }
     }
 
-    impl<L: Future, R: Future> Future for ChainFuture<L, R>
+    impl<L: TryFuture, R: TryFuture> TryFuture for ChainFuture<L, R>
     where
-        L::Item: Tuple + Combine<R::Item>,
-        R::Item: Tuple,
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
+        L::Ok: Combine<R::Ok>,
+        R::Ok: Tuple,
     {
-        type Item = <L::Item as Combine<R::Item>>::Out;
+        type Ok = <L::Ok as Combine<R::Ok>>::Out;
         type Error = Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            match self.poll_ready() {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            match self.poll_ready(input) {
                 Ok(Async::Ready(())) => {
                     let left = self.left.take_item().expect("the item should be available");
                     let right = self
@@ -130,9 +122,11 @@ mod chain {
 }
 
 mod optional {
-    use {
-        crate::{extractor::Extractor, input::Input, util::Never},
-        futures01::{Async, Future, Poll},
+    use crate::{
+        extractor::Extractor,
+        future::{Async, Poll, TryFuture},
+        input::Input,
+        util::Never,
     };
 
     #[derive(Debug)]
@@ -147,11 +141,11 @@ mod optional {
     {
         type Output = (Option<T>,);
         type Error = Never;
-        type Future = OptionalFuture<E::Future>;
+        type Extract = OptionalFuture<E::Extract>;
 
-        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+        fn extract(&self) -> Self::Extract {
             OptionalFuture {
-                0: self.extractor.extract(input),
+                0: self.extractor.extract(),
             }
         }
     }
@@ -159,15 +153,15 @@ mod optional {
     #[allow(missing_debug_implementations)]
     pub struct OptionalFuture<Fut>(Fut);
 
-    impl<Fut, T> Future for OptionalFuture<Fut>
+    impl<Fut, T> TryFuture for OptionalFuture<Fut>
     where
-        Fut: Future<Item = (T,)>,
+        Fut: TryFuture<Ok = (T,)>,
     {
-        type Item = (Option<T>,);
+        type Ok = (Option<T>,);
         type Error = Never;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            match self.0.poll() {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            match self.0.poll_ready(input) {
                 Ok(Async::Ready((ok,))) => Ok(Async::Ready((Some(ok),))),
                 Err(..) => Ok(Async::Ready((None,))),
                 Ok(Async::NotReady) => Ok(Async::NotReady),
@@ -177,9 +171,12 @@ mod optional {
 }
 
 mod either_or {
-    use {
-        crate::{error::Error, extractor::Extractor, generic::Tuple, input::Input},
-        futures01::{Async, Future, Poll},
+    use crate::{
+        error::Error,
+        extractor::Extractor,
+        future::{Async, Poll, TryFuture},
+        generic::Tuple,
+        input::Input,
     };
 
     #[derive(Debug)]
@@ -195,12 +192,12 @@ mod either_or {
     {
         type Output = T;
         type Error = Error;
-        type Future = EitherOrFuture<L::Future, R::Future>;
+        type Extract = EitherOrFuture<L::Extract, R::Extract>;
 
-        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+        fn extract(&self) -> Self::Extract {
             EitherOrFuture {
-                left: Some(self.left.extract(input)),
-                right: Some(self.right.extract(input)),
+                left: Some(self.left.extract()),
+                right: Some(self.right.extract()),
             }
         }
     }
@@ -211,21 +208,19 @@ mod either_or {
         right: Option<R>,
     }
 
-    impl<L, R, T> Future for EitherOrFuture<L, R>
+    impl<L, R, T> TryFuture for EitherOrFuture<L, R>
     where
-        L: Future<Item = T>,
-        R: Future<Item = T>,
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
+        L: TryFuture<Ok = T>,
+        R: TryFuture<Ok = T>,
     {
-        type Item = T;
+        type Ok = T;
         type Error = Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
                 match (&mut self.left, &mut self.right) {
-                    (Some(left), Some(right)) => match left.poll() {
-                        Ok(Async::NotReady) => match right.poll() {
+                    (Some(left), Some(right)) => match left.poll_ready(input) {
+                        Ok(Async::NotReady) => match right.poll_ready(input) {
                             Ok(Async::Ready(right)) => return Ok(Async::Ready(right)),
                             Ok(Async::NotReady) => return Ok(Async::NotReady),
                             Err(..) => {
@@ -239,8 +234,8 @@ mod either_or {
                             continue;
                         }
                     },
-                    (Some(left), None) => return left.poll().map_err(Into::into),
-                    (None, Some(right)) => return right.poll().map_err(Into::into),
+                    (Some(left), None) => return left.poll_ready(input).map_err(Into::into),
+                    (None, Some(right)) => return right.poll_ready(input).map_err(Into::into),
                     (None, None) => unreachable!(),
                 }
             }
@@ -249,13 +244,11 @@ mod either_or {
 }
 
 mod map {
-    use {
-        crate::{
-            extractor::Extractor,
-            generic::{Func, Tuple},
-            input::Input,
-        },
-        futures01::{Future, Poll},
+    use crate::{
+        extractor::Extractor,
+        future::{Poll, TryFuture},
+        generic::{Func, Tuple},
+        input::Input,
     };
 
     #[derive(Debug)]
@@ -273,11 +266,11 @@ mod map {
     {
         type Output = (F::Out,);
         type Error = E::Error;
-        type Future = MapFuture<E::Future, F>;
+        type Extract = MapFuture<E::Extract, F>;
 
-        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
+        fn extract(&self) -> Self::Extract {
             MapFuture {
-                future: self.extractor.extract(input),
+                future: self.extractor.extract(),
                 f: self.f.clone(),
             }
         }
@@ -289,17 +282,17 @@ mod map {
         f: F,
     }
 
-    impl<Fut, F> Future for MapFuture<Fut, F>
+    impl<Fut, F> TryFuture for MapFuture<Fut, F>
     where
-        Fut: Future,
-        Fut::Item: Tuple,
-        F: Func<Fut::Item>,
+        Fut: TryFuture,
+        Fut::Ok: Tuple,
+        F: Func<Fut::Ok>,
     {
-        type Item = (F::Out,);
+        type Ok = (F::Out,);
         type Error = Fut::Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            let args = futures01::try_ready!(self.future.poll());
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            let args = futures01::try_ready!(self.future.poll_ready(input));
             Ok((self.f.call(args),).into())
         }
     }

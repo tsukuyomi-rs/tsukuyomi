@@ -6,6 +6,7 @@ use {
     tsukuyomi::{
         chain,
         extractor::{self, ExtractorExt}, //
+        future::TryFuture,
         output::IntoResponse,
         server::io::Peer,
         util::Never,
@@ -107,7 +108,7 @@ pub fn proxy_client(
 ) -> impl Extractor<
     Output = (Client,), //
     Error = tsukuyomi::Error,
-    Future = impl Future<Item = (Client,), Error = tsukuyomi::Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (Client,), Error = tsukuyomi::Error> + Send + 'static,
 > {
     chain![
         extractor::extension::clone(),

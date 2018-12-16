@@ -6,6 +6,7 @@ use {
     crate::{
         endpoint::Endpoint,
         extractor::Extractor,
+        future::{Poll, TryFuture},
         generic::{Combine, Tuple},
         handler::Handler,
         input::{
@@ -116,6 +117,15 @@ pub struct Param<T> {
     _marker: PhantomData<fn() -> T>,
 }
 
+impl<T> Clone for Param<T> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<T> PathConfig for Param<T>
 where
     T: FromPercentEncoded,
@@ -132,11 +142,27 @@ where
     }
 }
 
-impl<T> Param<T>
+impl<T> Extractor for Param<T>
 where
     T: FromPercentEncoded,
 {
-    fn extract_inner(&self, input: &mut Input<'_>) -> Result<(T,), crate::Error> {
+    type Output = (T,);
+    type Error = crate::error::Error;
+    type Extract = Self;
+
+    fn extract(&self) -> Self::Extract {
+        self.clone()
+    }
+}
+
+impl<T> TryFuture for Param<T>
+where
+    T: FromPercentEncoded,
+{
+    type Ok = (T,);
+    type Error = crate::Error;
+
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<(T,), crate::Error> {
         let params = input
             .params
             .as_ref()
@@ -145,21 +171,8 @@ where
             .name(&self.name)
             .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
         T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
-            .map(|x| (x,))
+            .map(|x| (x,).into())
             .map_err(Into::into)
-    }
-}
-
-impl<T> Extractor for Param<T>
-where
-    T: FromPercentEncoded,
-{
-    type Output = (T,);
-    type Error = crate::error::Error;
-    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-        futures01::future::result(self.extract_inner(input))
     }
 }
 
@@ -180,6 +193,15 @@ pub struct CatchAll<T> {
     _marker: PhantomData<fn() -> T>,
 }
 
+impl<T> Clone for CatchAll<T> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<T> PathConfig for CatchAll<T>
 where
     T: FromPercentEncoded,
@@ -196,11 +218,27 @@ where
     }
 }
 
-impl<T> CatchAll<T>
+impl<T> Extractor for CatchAll<T>
 where
     T: FromPercentEncoded,
 {
-    fn extract_inner(&self, input: &mut Input<'_>) -> Result<(T,), crate::Error> {
+    type Output = (T,);
+    type Error = crate::error::Error;
+    type Extract = Self;
+
+    fn extract(&self) -> Self::Extract {
+        self.clone()
+    }
+}
+
+impl<T> TryFuture for CatchAll<T>
+where
+    T: FromPercentEncoded,
+{
+    type Ok = (T,);
+    type Error = crate::Error;
+
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<(T,), crate::Error> {
         let params = input
             .params
             .as_ref()
@@ -209,21 +247,8 @@ where
             .catch_all()
             .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
         T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
-            .map(|x| (x,))
+            .map(|x| (x,).into())
             .map_err(Into::into)
-    }
-}
-
-impl<T> Extractor for CatchAll<T>
-where
-    T: FromPercentEncoded,
-{
-    type Output = (T,);
-    type Error = crate::error::Error;
-    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-        futures01::future::result(self.extract_inner(input))
     }
 }
 
@@ -339,7 +364,7 @@ mod handler {
             future::TryFuture,
             input::Input,
         },
-        futures01::{try_ready, Future, Poll},
+        futures01::{try_ready, Poll},
         http::StatusCode,
         std::sync::Arc,
     };
@@ -362,7 +387,7 @@ mod handler {
         T: Endpoint<E::Output>,
     {
         Init,
-        First(E::Future, Option<T::Action>),
+        First(E::Extract, Option<T::Action>),
         Second(<T::Action as EndpointAction<E::Output>>::Future),
     }
 
@@ -383,16 +408,16 @@ mod handler {
                             .endpoint
                             .apply(input.request.method())
                             .ok_or_else(|| StatusCode::METHOD_NOT_ALLOWED)?;
-                        let extract = self.extractor.extract(input);
+                        let extract = self.extractor.extract();
                         RouteHandleState::First(extract, Some(action))
                     }
                     RouteHandleState::First(ref mut future, ref mut action) => {
-                        let args = try_ready!(future.poll().map_err(Into::into));
-                        let future = action.take().unwrap().call(input, args);
+                        let args = try_ready!(future.poll_ready(input).map_err(Into::into));
+                        let future = action.take().unwrap().call(args);
                         RouteHandleState::Second(future)
                     }
-                    RouteHandleState::Second(ref mut future) => {
-                        return future.poll().map_err(Into::into)
+                    RouteHandleState::Second(ref mut action) => {
+                        return action.poll_ready(input).map_err(Into::into)
                     }
                 }
             }

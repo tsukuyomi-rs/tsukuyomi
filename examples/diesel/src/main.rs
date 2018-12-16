@@ -46,57 +46,57 @@ fn main() -> tsukuyomi::server::Result<()> {
                             }
                             |conn: Conn, param: Option<Param>| {
                                 let param = param.unwrap_or_else(|| Param { count: 20 });
-                                blocking_section(move || {
-                                    use crate::schema::posts::dsl::*;
-                                    use diesel::prelude::*;
-                                    posts
-                                        .limit(param.count)
-                                        .load::<Post>(&*conn)
-                                        .map_err(tsukuyomi::error::internal_server_error)
-                                })
-                                .map(tsukuyomi::output::json)
+                                    blocking_section(move || {
+                                        use crate::schema::posts::dsl::*;
+                                        use diesel::prelude::*;
+                                        posts
+                                            .limit(param.count)
+                                            .load::<Post>(&*conn)
+                                            .map_err(tsukuyomi::error::internal_server_error)
+                                    })
+                                    .map(tsukuyomi::output::json)
                             }
                         }),
-                    endpoint::post()//
+                    endpoint::post() //
                         .extract(extractor::body::json())
                         .call_async({
-                        #[derive(Debug, serde::Deserialize)]
-                        struct Param {
-                            title: String,
-                            body: String,
-                        }
-                        |conn: Conn, param: Param| {
-                            use crate::schema::posts;
-                            use diesel::prelude::*;
-                            blocking_section(move || {
-                                let new_post = NewPost {
-                                    title: &param.title,
-                                    body: &param.body,
-                                };
-                                diesel::insert_into(posts::table)
-                                    .values(&new_post)
-                                    .execute(&*conn)
-                                    .map_err(tsukuyomi::error::internal_server_error)
-                            })
-                            .map(|_| ())
-                        }
-                    }),
+                            #[derive(Debug, serde::Deserialize)]
+                            struct Param {
+                                title: String,
+                                body: String,
+                            }
+                            |conn: Conn, param: Param| {
+                                use crate::schema::posts;
+                                use diesel::prelude::*;
+                                    blocking_section(move || {
+                                        let new_post = NewPost {
+                                            title: &param.title,
+                                            body: &param.body,
+                                        };
+                                        diesel::insert_into(posts::table)
+                                            .values(&new_post)
+                                            .execute(&*conn)
+                                            .map_err(tsukuyomi::error::internal_server_error)
+                                    })
+                                    .map(|_| ())
+                            }
+                        }),
                 ]),
             path!(/{path::param("id")}) //
                 .extract(db_conn)
-                .to(
-                    endpoint::get()//
-                        .call_async(|id: i32, conn: Conn| blocking_section(move || {
-                        use crate::schema::posts::dsl;
-                        use diesel::prelude::*;
-                        dsl::posts
-                            .filter(dsl::id.eq(id))
-                            .get_result::<Post>(&*conn)
-                            .optional()
-                            .map_err(tsukuyomi::error::internal_server_error)
-                    })
-                    .map(|post_opt| post_opt.map(tsukuyomi::output::json))),
-                )
+                .to(endpoint::get() //
+                    .call_async(|id: i32, conn: Conn|
+                        blocking_section(move || {
+                            use crate::schema::posts::dsl;
+                            use diesel::prelude::*;
+                            dsl::posts
+                                .filter(dsl::id.eq(id))
+                                .get_result::<Post>(&*conn)
+                                .optional()
+                                .map_err(tsukuyomi::error::internal_server_error)
+                        })
+                        .map(|post_opt| post_opt.map(tsukuyomi::output::json)
+                    )))
         ])
     })
     .map(Server::new)?;

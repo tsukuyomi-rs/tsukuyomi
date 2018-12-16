@@ -1,9 +1,14 @@
 use {
-    crate::{error::Error, input::Input, output::IntoResponse, util::Never},
-    futures01::future::{self, Future, FutureResult, IntoFuture},
+    crate::{
+        error::Error,
+        future::{Compat01, TryFuture},
+        output::IntoResponse,
+        util::Never,
+    },
+    futures01::future::{self, FutureResult},
 };
 
-/// A trait representing a reply to the client.
+/// A trait that abstracts replies to clients.
 pub trait Responder {
     /// The type of response
     type Response: IntoResponse;
@@ -12,10 +17,10 @@ pub trait Responder {
     type Error: Into<Error>;
 
     /// The type of `Future` which will be returned from `respond_to`.
-    type Future: Future<Item = Self::Response, Error = Self::Error>;
+    type Respond: TryFuture<Ok = Self::Response, Error = Self::Error>;
 
-    /// Converts itself into a `Future` that will be resolved as a `Response`.
-    fn respond(self, input: &mut Input<'_>) -> Self::Future;
+    /// Converts itself into a `TryFuture` that will be resolved as a `Response`.
+    fn respond(self) -> Self::Respond;
 }
 
 /// a branket impl of `Responder` for `IntoResponse`s.
@@ -25,19 +30,23 @@ where
 {
     type Response = T;
     type Error = Never;
-    type Future = FutureResult<Self::Response, Self::Error>;
+    type Respond = Compat01<FutureResult<Self::Response, Self::Error>>;
 
     #[inline]
-    fn respond(self, _: &mut Input<'_>) -> Self::Future {
-        future::ok(self)
+    fn respond(self) -> Self::Respond {
+        future::ok(self).into()
     }
 }
 
 mod impl_responder_for_either {
     use {
         super::{IntoResponse, Responder},
-        crate::{error::Error, input::Input, util::Either},
-        futures01::{Future, Poll},
+        crate::{
+            error::Error,
+            future::{Poll, TryFuture},
+            input::Input,
+            util::Either,
+        },
     };
 
     impl<L, R> Responder for Either<L, R>
@@ -47,42 +56,40 @@ mod impl_responder_for_either {
     {
         type Response = either::Either<L::Response, R::Response>;
         type Error = Error;
-        type Future = EitherFuture<L::Future, R::Future>;
+        type Respond = EitherRespond<L::Respond, R::Respond>;
 
-        fn respond(self, input: &mut Input<'_>) -> Self::Future {
+        fn respond(self) -> Self::Respond {
             match self {
-                Either::Left(l) => EitherFuture::Left(l.respond(input)),
-                Either::Right(r) => EitherFuture::Right(r.respond(input)),
+                Either::Left(l) => EitherRespond::Left(l.respond()),
+                Either::Right(r) => EitherRespond::Right(r.respond()),
             }
         }
     }
 
     #[allow(missing_debug_implementations)]
-    pub enum EitherFuture<L, R> {
+    pub enum EitherRespond<L, R> {
         Left(L),
         Right(R),
     }
 
-    impl<L, R> Future for EitherFuture<L, R>
+    impl<L, R> TryFuture for EitherRespond<L, R>
     where
-        L: Future,
-        R: Future,
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
-        L::Item: IntoResponse,
-        R::Item: IntoResponse,
+        L: TryFuture,
+        R: TryFuture,
+        L::Ok: IntoResponse,
+        R::Ok: IntoResponse,
     {
-        type Item = either::Either<L::Item, R::Item>;
+        type Ok = either::Either<L::Ok, R::Ok>;
         type Error = Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             match self {
-                EitherFuture::Left(l) => l
-                    .poll()
+                EitherRespond::Left(l) => l
+                    .poll_ready(input)
                     .map(|x| x.map(either::Either::Left))
                     .map_err(Into::into),
-                EitherFuture::Right(r) => r
-                    .poll()
+                EitherRespond::Right(r) => r
+                    .poll_ready(input)
                     .map(|x| x.map(either::Either::Right))
                     .map_err(Into::into),
             }
@@ -90,38 +97,35 @@ mod impl_responder_for_either {
     }
 }
 
-/// A function to create a `Responder` using the specified function.
+/// A function to create a `Responder` using the specified `TryFuture`.
 pub fn respond<R>(
-    f: impl FnOnce(&mut Input<'_>) -> R,
+    future: R,
 ) -> impl Responder<
-    Response = R::Item, //
+    Response = R::Ok, //
     Error = R::Error,
-    Future = R::Future,
+    Respond = R,
 >
 where
-    R: IntoFuture,
-    R::Item: IntoResponse,
-    R::Error: Into<Error>,
+    R: TryFuture,
+    R::Ok: IntoResponse,
 {
     #[allow(missing_debug_implementations)]
-    pub struct ResponderFn<F>(F);
+    pub struct ResponderFn<R>(R);
 
-    impl<F, R> Responder for ResponderFn<F>
+    impl<R> Responder for ResponderFn<R>
     where
-        F: FnOnce(&mut Input<'_>) -> R,
-        R: IntoFuture,
-        R::Item: IntoResponse,
-        R::Error: Into<Error>,
+        R: TryFuture,
+        R::Ok: IntoResponse,
     {
-        type Response = R::Item;
+        type Response = R::Ok;
         type Error = R::Error;
-        type Future = R::Future;
+        type Respond = R;
 
         #[inline]
-        fn respond(self, input: &mut Input<'_>) -> Self::Future {
-            (self.0)(input).into_future()
+        fn respond(self) -> Self::Respond {
+            self.0
         }
     }
 
-    ResponderFn(f)
+    ResponderFn(future)
 }

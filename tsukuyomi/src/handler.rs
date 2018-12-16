@@ -4,10 +4,8 @@ use {
     crate::{
         error::Error,
         future::TryFuture,
-        input::Input,
         util::{Chain, Never, TryFrom}, //
     },
-    futures01::Async,
     http::{header::HeaderValue, HttpTryFrom, Method},
     indexmap::{indexset, IndexSet},
     lazy_static::lazy_static,
@@ -234,22 +232,6 @@ where
         handle_fn,
         allowed_methods,
     }
-}
-
-pub fn ready<T: 'static>(
-    f: impl Fn(&mut Input<'_>) -> T + Clone + Send + 'static,
-) -> impl Handler<
-    Output = T,
-    Error = Never,
-    Handle = impl TryFuture<Ok = T, Error = Never> + Send + 'static, // private
-> {
-    handler(
-        move || {
-            let f = f.clone();
-            crate::future::poll_fn(move |input| Ok(Async::Ready(f(input))))
-        },
-        None,
-    )
 }
 
 /// A trait representing a type for modifying the instance of `Handler`.

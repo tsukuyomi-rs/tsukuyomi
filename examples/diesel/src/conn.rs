@@ -4,7 +4,11 @@ use {
         sqlite::SqliteConnection,
     },
     failure::Fallible,
-    tsukuyomi::{extractor::Extractor, rt::Future},
+    tsukuyomi::{
+        extractor::Extractor,
+        future::{Compat01, TryFuture},
+        rt::Future,
+    },
 };
 
 pub type Conn = PooledConnection<ConnectionManager<SqliteConnection>>;
@@ -15,7 +19,7 @@ pub fn extractor<T>(
     impl Extractor<
         Output = (Conn,), //
         Error = tsukuyomi::Error,
-        Future = impl Future<Item = (Conn,), Error = tsukuyomi::Error> + Send + 'static,
+        Extract = impl TryFuture<Ok = (Conn,), Error = tsukuyomi::Error> + Send + 'static,
     >,
 >
 where
@@ -24,17 +28,19 @@ where
     let manager = ConnectionManager::<SqliteConnection>::new(url);
     let pool = Pool::builder().max_size(15).build(manager)?;
 
-    Ok(tsukuyomi::extractor::raw(move |_| {
+    Ok(tsukuyomi::extractor::extract(move || {
         let pool = pool.clone();
-        tsukuyomi::rt::blocking(move || pool.get()) //
-            .then(|result| {
-                result
-                    .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
-                    .and_then(|result| {
-                        result
-                            .map(|conn| (conn,))
-                            .map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
-                    })
-            })
+        Compat01::from(
+            tsukuyomi::rt::blocking(move || pool.get()) //
+                .then(|result| {
+                    result
+                        .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
+                        .and_then(|result| {
+                            result
+                                .map(|conn| (conn,))
+                                .map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
+                        })
+                }),
+        )
     }))
 }

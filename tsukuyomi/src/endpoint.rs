@@ -1,39 +1,36 @@
 use {
-    crate::{error::Error, handler::AllowedMethods, input::Input},
-    futures01::{Future, IntoFuture},
+    crate::{error::Error, future::TryFuture, handler::AllowedMethods},
     http::Method,
 };
 
 pub trait EndpointAction<T> {
     type Output;
     type Error: Into<Error>;
-    type Future: Future<Item = Self::Output, Error = Self::Error>;
+    type Future: TryFuture<Ok = Self::Output, Error = Self::Error>;
 
-    fn call(self, input: &mut Input<'_>, args: T) -> Self::Future;
+    fn call(self, args: T) -> Self::Future;
 }
 
 pub fn action<T, R>(
-    f: impl FnOnce(&mut Input<'_>, T) -> R,
-) -> impl EndpointAction<T, Output = R::Item, Future = R::Future>
+    f: impl FnOnce(T) -> R,
+) -> impl EndpointAction<T, Output = R::Ok, Error = R::Error, Future = R>
 where
-    R: IntoFuture,
-    R::Error: Into<Error>,
+    R: TryFuture,
 {
     #[allow(missing_debug_implementations)]
     struct EndpointActionFn<F>(F);
 
     impl<F, T, R> EndpointAction<T> for EndpointActionFn<F>
     where
-        F: FnOnce(&mut Input<'_>, T) -> R,
-        R: IntoFuture,
-        R::Error: Into<Error>,
+        F: FnOnce(T) -> R,
+        R: TryFuture,
     {
-        type Output = R::Item;
+        type Output = R::Ok;
         type Error = R::Error;
-        type Future = R::Future;
+        type Future = R;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            (self.0)(input, args).into_future()
+        fn call(self, args: T) -> Self::Future {
+            (self.0)(args)
         }
     }
 
@@ -94,13 +91,12 @@ pub fn allow_any<F, T, R>(
     f: F,
 ) -> impl Endpoint<
     T, //
-    Output = R::Item,
+    Output = R::Ok,
     Action = self::allow_any::AllowAnyAction<T, F, R>,
 >
 where
-    F: Fn(&mut Input<'_>, T) -> R + Clone,
-    R: IntoFuture,
-    R::Error: Into<Error>,
+    F: Fn(T) -> R + Clone,
+    R: TryFuture,
 {
     endpoint(
         move |_| {
@@ -114,7 +110,7 @@ where
 }
 
 mod allow_any {
-    use super::{EndpointAction, Error, Input, IntoFuture};
+    use super::{EndpointAction, TryFuture};
     use std::marker::PhantomData;
 
     #[allow(missing_debug_implementations)]
@@ -125,16 +121,15 @@ mod allow_any {
 
     impl<T, F, R> EndpointAction<T> for AllowAnyAction<T, F, R>
     where
-        F: Fn(&mut Input<'_>, T) -> R,
-        R: IntoFuture,
-        R::Error: Into<Error>,
+        F: Fn(T) -> R,
+        R: TryFuture,
     {
-        type Output = R::Item;
+        type Output = R::Ok;
         type Error = R::Error;
-        type Future = R::Future;
+        type Future = R;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            (self.f)(input, args).into_future()
+        fn call(self, args: T) -> Self::Future {
+            (self.f)(args)
         }
     }
 }
@@ -180,11 +175,11 @@ mod impl_chain {
         super::{Endpoint, EndpointAction},
         crate::{
             error::Error,
+            future::{Poll, TryFuture},
             handler::AllowedMethods,
             input::Input,
             util::{Chain, Either},
         },
-        futures01::{Future, Poll},
         http::Method,
     };
 
@@ -227,10 +222,10 @@ mod impl_chain {
         type Error = Error;
         type Future = ChainFuture<L::Future, R::Future>;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+        fn call(self, args: T) -> Self::Future {
             match self {
-                ChainAction::Left(l) => ChainFuture::Left(l.call(input, args)),
-                ChainAction::Right(r) => ChainFuture::Right(r.call(input, args)),
+                ChainAction::Left(l) => ChainFuture::Left(l.call(args)),
+                ChainAction::Right(r) => ChainFuture::Right(r.call(args)),
             }
         }
     }
@@ -241,21 +236,25 @@ mod impl_chain {
         Right(R),
     }
 
-    impl<L, R> Future for ChainFuture<L, R>
+    impl<L, R> TryFuture for ChainFuture<L, R>
     where
-        L: Future,
-        R: Future,
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
+        L: TryFuture,
+        R: TryFuture,
     {
-        type Item = Either<L::Item, R::Item>;
+        type Ok = Either<L::Ok, R::Ok>;
         type Error = Error;
 
         #[inline]
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             match self {
-                ChainFuture::Left(l) => l.poll().map(|x| x.map(Either::Left)).map_err(Into::into),
-                ChainFuture::Right(r) => r.poll().map(|x| x.map(Either::Right)).map_err(Into::into),
+                ChainFuture::Left(l) => l
+                    .poll_ready(input)
+                    .map(|x| x.map(Either::Left))
+                    .map_err(Into::into),
+                ChainFuture::Right(r) => r
+                    .poll_ready(input)
+                    .map(|x| x.map(Either::Right))
+                    .map_err(Into::into),
             }
         }
     }

@@ -1,7 +1,6 @@
 use {
     crate::{
         endpoint::Endpoint,
-        error::Error,
         extractor::Extractor,
         generic::{Combine, Func},
         handler::AllowedMethods,
@@ -133,7 +132,7 @@ where
         T: Combine<E::Output>,
         F: Func<<T as Combine<E::Output>>::Out, Out = R> + Clone,
         R: IntoFuture,
-        R::Error: Into<Error>,
+        R::Error: Into<crate::error::Error>,
     {
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
@@ -180,12 +179,11 @@ mod call {
     use {
         crate::{
             endpoint::EndpointAction,
-            error::Error,
             extractor::Extractor,
+            future::{Async, Poll, TryFuture},
             generic::{Combine, Func, Tuple},
             input::Input,
         },
-        futures01::{Async, Future, Poll},
         std::sync::Arc,
     };
 
@@ -203,11 +201,11 @@ mod call {
     {
         type Output = F::Out;
         type Error = E::Error;
-        type Future = CallFuture<E::Future, F, T>;
+        type Future = CallFuture<E::Extract, F, T>;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+        fn call(self, args: T) -> Self::Future {
             CallFuture {
-                future: self.extractor.extract(input),
+                extract: self.extractor.extract(),
                 f: self.f,
                 args: Some(args),
             }
@@ -215,25 +213,24 @@ mod call {
     }
 
     #[allow(missing_debug_implementations)]
-    pub struct CallFuture<Fut, F, T> {
-        future: Fut,
+    pub struct CallFuture<E, F, T> {
+        extract: E,
         f: F,
         args: Option<T>,
     }
 
-    impl<Fut, F, T> Future for CallFuture<Fut, F, T>
+    impl<E, F, T> TryFuture for CallFuture<E, F, T>
     where
-        Fut: Future,
-        Fut::Item: Tuple,
-        Fut::Error: Into<Error>,
-        F: Func<<T as Combine<Fut::Item>>::Out>,
-        T: Combine<Fut::Item>,
+        E: TryFuture,
+        E::Ok: Tuple,
+        F: Func<<T as Combine<E::Ok>>::Out>,
+        T: Combine<E::Ok>,
     {
-        type Item = F::Out;
-        type Error = Fut::Error;
+        type Ok = F::Out;
+        type Error = E::Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            let args2 = futures01::try_ready!(self.future.poll());
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            let args2 = futures01::try_ready!(self.extract.poll_ready(input));
             let args = self
                 .args
                 .take()
@@ -249,10 +246,11 @@ mod call_async {
             endpoint::EndpointAction,
             error::Error,
             extractor::Extractor,
+            future::{Poll, TryFuture},
             generic::{Combine, Func, Tuple},
             input::Input,
         },
-        futures01::{Future, IntoFuture, Poll},
+        futures01::{Future, IntoFuture},
         std::sync::Arc,
     };
 
@@ -272,11 +270,11 @@ mod call_async {
     {
         type Output = R::Item;
         type Error = Error;
-        type Future = CallAsyncFuture<E::Future, F, R, T>;
+        type Future = CallAsyncFuture<E::Extract, F, R, T>;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
+        fn call(self, args: T) -> Self::Future {
             CallAsyncFuture {
-                state: State::First(self.extractor.extract(input)),
+                state: State::First(self.extractor.extract()),
                 f: self.f,
                 args: Some(args),
             }
@@ -290,37 +288,37 @@ mod call_async {
     }
 
     #[allow(missing_debug_implementations)]
-    pub struct CallAsyncFuture<Fut, F, R: IntoFuture, T> {
-        state: State<Fut, R::Future>,
+    pub struct CallAsyncFuture<E, F, R: IntoFuture, T> {
+        state: State<E, R::Future>,
         f: F,
         args: Option<T>,
     }
 
-    impl<Fut, F, R, T> Future for CallAsyncFuture<Fut, F, R, T>
+    impl<E, F, R, T> TryFuture for CallAsyncFuture<E, F, R, T>
     where
-        Fut: Future,
-        Fut::Item: Tuple,
-        Fut::Error: Into<Error>,
-        F: Func<<T as Combine<Fut::Item>>::Out, Out = R>,
+        E: TryFuture,
+        E::Ok: Tuple,
+        F: Func<<T as Combine<E::Ok>>::Out, Out = R>,
         R: IntoFuture,
         R::Error: Into<Error>,
-        T: Combine<Fut::Item>,
+        T: Combine<E::Ok>,
     {
-        type Item = R::Item;
+        type Ok = R::Item;
         type Error = Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
                 self.state = match self.state {
-                    State::First(ref mut future) => {
-                        let args2 = futures01::try_ready!(future.poll().map_err(Into::into));
+                    State::First(ref mut extract) => {
+                        let args2 =
+                            futures01::try_ready!(extract.poll_ready(input).map_err(Into::into));
                         let args = self
                             .args
                             .take()
                             .expect("the future has already been polled.");
                         State::Second(self.f.call(args.combine(args2)).into_future())
                     }
-                    State::Second(ref mut future) => return future.poll().map_err(Into::into),
+                    State::Second(ref mut action) => return action.poll().map_err(Into::into),
                 };
             }
         }

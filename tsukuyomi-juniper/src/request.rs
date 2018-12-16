@@ -1,16 +1,93 @@
 use {
     crate::{error::GraphQLParseError, Schema},
-    futures::{Async, Future},
+    futures::Future,
     http::{Method, Response, StatusCode},
     juniper::InputValue,
     percent_encoding::percent_decode,
     tsukuyomi::{
         error::Error,
         extractor::Extractor,
-        input::{body::RequestBody, header::ContentType, Input},
+        future::{Async, Compat01, TryFuture},
+        input::{
+            body::{ReadAll, RequestBody},
+            header::ContentType,
+            Input,
+        },
         responder::Responder,
     },
 };
+
+/// Create an `Extractor` that parses the incoming request as GraphQL query.
+pub fn request() -> impl Extractor<
+    Output = (GraphQLRequest,), //
+    Error = Error,
+    Extract = impl TryFuture<Ok = (GraphQLRequest,), Error = Error> + Send + 'static,
+> {
+    #[allow(missing_debug_implementations)]
+    #[derive(Copy, Clone)]
+    enum RequestKind {
+        Json,
+        GraphQL,
+    }
+
+    #[allow(missing_debug_implementations)]
+    enum State {
+        Init,
+        Receive(ReadAll, RequestKind),
+    }
+
+    tsukuyomi::extractor::extract(|| {
+        let mut state = State::Init;
+        tsukuyomi::future::poll_fn(move |input| loop {
+            state = match state {
+                State::Init => {
+                    if input.request.method() == Method::GET {
+                        return parse_query_request(input).map(|request| Async::Ready((request,)));
+                    } else if input.request.method() == Method::POST {
+                        let kind = match tsukuyomi::input::header::parse::<ContentType>(input) {
+                            Ok(Some(mime)) if *mime == mime::APPLICATION_JSON => RequestKind::Json,
+                            Ok(Some(mime)) if *mime == "application/graphql" => {
+                                RequestKind::GraphQL
+                            }
+                            Ok(Some(..)) => return Err(GraphQLParseError::InvalidMime.into()),
+                            Ok(None) => return Err(GraphQLParseError::MissingMime.into()),
+                            Err(err) => return Err(err),
+                        };
+
+                        let read_all = match input.locals.remove(&RequestBody::KEY) {
+                            Some(body) => body.read_all(),
+                            None => {
+                                return Err(tsukuyomi::error::internal_server_error(
+                                    "the payload has already stolen by another extractor",
+                                ))
+                            }
+                        };
+                        State::Receive(read_all, kind)
+                    } else {
+                        return Err(GraphQLParseError::InvalidRequestMethod.into());
+                    }
+                }
+                State::Receive(ref mut read_all, kind) => {
+                    let data = futures::try_ready!(read_all.poll());
+                    match kind {
+                        RequestKind::Json => {
+                            let request = serde_json::from_slice(&*data)
+                                .map_err(GraphQLParseError::ParseJson)?;
+                            return Ok(Async::Ready((request,)));
+                        }
+                        RequestKind::GraphQL => {
+                            return String::from_utf8(data.to_vec())
+                                .map(|query| {
+                                    Async::Ready((GraphQLRequest::single(query, None, None),))
+                                })
+                                .map_err(|e| GraphQLParseError::DecodeUtf8(e.utf8_error()).into())
+                        }
+                    }
+                }
+            };
+        })
+    })
+}
 
 fn parse_query_request(input: &mut Input<'_>) -> tsukuyomi::Result<GraphQLRequest> {
     let query_str = input
@@ -19,76 +96,6 @@ fn parse_query_request(input: &mut Input<'_>) -> tsukuyomi::Result<GraphQLReques
         .query()
         .ok_or_else(|| GraphQLParseError::MissingQuery)?;
     parse_query_str(query_str).map_err(Into::into)
-}
-
-/// Create an `Extractor` that parses the incoming request as GraphQL query.
-pub fn request() -> impl Extractor<
-    Output = (GraphQLRequest,), //
-    Error = Error,
-    Future = impl Future<Item = (GraphQLRequest,), Error = Error> + Send + 'static,
-> {
-    tsukuyomi::extractor::raw(|input| {
-        if input.request.method() == Method::GET {
-            return futures::future::Either::A(futures::future::result(
-                parse_query_request(input).map(|request| (request,)),
-            ));
-        }
-
-        if input.request.method() == Method::POST {
-            #[allow(missing_debug_implementations)]
-            enum RequestKind {
-                Json,
-                GraphQL,
-            }
-
-            let kind = match tsukuyomi::input::header::parse::<ContentType>(input) {
-                Ok(Some(mime)) if *mime == mime::APPLICATION_JSON => RequestKind::Json,
-                Ok(Some(mime)) if *mime == "application/graphql" => RequestKind::GraphQL,
-                Ok(Some(..)) => {
-                    return futures::future::Either::A(futures::future::err(
-                        GraphQLParseError::InvalidMime.into(),
-                    ))
-                }
-                Ok(None) => {
-                    return futures::future::Either::A(futures::future::err(
-                        GraphQLParseError::MissingMime.into(),
-                    ))
-                }
-                Err(err) => return futures::future::Either::A(futures::future::err(err)),
-            };
-
-            let mut read_all = match input.locals.remove(&RequestBody::KEY) {
-                Some(body) => body.read_all(),
-                None => {
-                    return futures::future::Either::A(futures::future::err(
-                        tsukuyomi::error::internal_server_error(
-                            "the payload has already stolen by another extractor",
-                        ),
-                    ))
-                }
-            };
-            let future = futures::future::poll_fn(move || match kind {
-                RequestKind::Json => {
-                    let data = futures::try_ready!(read_all.poll());
-                    let request =
-                        serde_json::from_slice(&*data).map_err(GraphQLParseError::ParseJson)?;
-                    Ok(Async::Ready((request,)))
-                }
-                RequestKind::GraphQL => {
-                    let data = futures::try_ready!(read_all.poll());
-                    String::from_utf8(data.to_vec())
-                        .map(|query| Async::Ready((GraphQLRequest::single(query, None, None),)))
-                        .map_err(|e| GraphQLParseError::DecodeUtf8(e.utf8_error()).into())
-                }
-            });
-
-            return futures::future::Either::B(future);
-        }
-
-        futures::future::Either::A(futures::future::err(
-            GraphQLParseError::InvalidRequestMethod.into(),
-        ))
-    })
 }
 
 fn parse_query_str(s: &str) -> Result<GraphQLRequest, GraphQLParseError> {
@@ -180,15 +187,16 @@ where
 {
     type Response = Response<Vec<u8>>;
     type Error = Error;
-    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>;
+    type Respond =
+        Compat01<Box<dyn Future<Item = Self::Response, Error = Self::Error> + Send + 'static>>;
 
-    fn respond(self, _: &mut Input<'_>) -> Self::Future {
+    fn respond(self) -> Self::Respond {
         let Self {
             request,
             schema,
             context,
         } = self;
-        Box::new(
+        Compat01::from(Box::new(
             tsukuyomi::rt::spawn_fn(move || -> tsukuyomi::Result<_> {
                 use self::GraphQLRequestKind::*;
                 match request.0 {
@@ -233,5 +241,6 @@ where
                     .and_then(|result| result)
             }),
         )
+            as Box<dyn Future<Item = _, Error = _> + Send + 'static>)
     }
 }

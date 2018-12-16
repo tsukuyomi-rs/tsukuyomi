@@ -2,8 +2,7 @@
 
 use {
     super::Extractor, //
-    crate::{error::Error, util::Never},
-    futures01::Future,
+    crate::{error::Error, future::TryFuture, util::Never},
     serde::de::DeserializeOwned,
 };
 
@@ -20,10 +19,10 @@ pub enum ExtractQueryError {
 pub fn query<T>() -> impl Extractor<
     Output = (T,), //
     Error = Error,
-    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned,
 {
     super::ready(|input| {
         if let Some(query_str) = input.request.uri().query() {
@@ -41,10 +40,10 @@ where
 pub fn optional<T>() -> impl Extractor<
     Output = (Option<T>,), //
     Error = Error,
-    Future = impl Future<Item = (Option<T>,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (Option<T>,), Error = Error> + Send + 'static,
 >
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned,
 {
     super::ready(|input| {
         if let Some(query_str) = input.request.uri().query() {
@@ -64,7 +63,7 @@ where
 pub fn raw() -> impl Extractor<
     Output = (Option<String>,), //
     Error = Never,
-    Future = impl Future<Item = (Option<String>,), Error = Never> + Send + 'static,
+    Extract = impl TryFuture<Ok = (Option<String>,), Error = Never> + Send + 'static,
 > {
     super::ready(|input| Ok(input.request.uri().query().map(ToOwned::to_owned)))
 }

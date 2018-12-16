@@ -1,9 +1,6 @@
 //! Miscellaneous components used within the framework.
 
-use {
-    futures01::{Async, Future, Poll},
-    std::{error::Error as StdError, fmt, marker::PhantomData},
-};
+use std::{error::Error as StdError, fmt};
 
 /// A helper type which emulates the standard `never_type` (`!`).
 #[allow(clippy::empty_enum)]
@@ -83,66 +80,6 @@ macro_rules! chain {
         $crate::util::Chain::new($e1, chain!($e2, $($t),*))
     };
     ($e1:expr, $e2:expr, $($t:expr,)+) => ( chain!{ $e1, $e2, $($t),+ } );
-}
-
-/// A helper struct representing a `Future` that will be *never* constructed.
-#[must_use = "futures do nothing unless polled."]
-pub struct NeverFuture<T, E> {
-    never: Never,
-    _marker: PhantomData<fn() -> (T, E)>,
-}
-
-impl<T, E> fmt::Debug for NeverFuture<T, E> {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.never {}
-    }
-}
-
-impl<T, E> Future for NeverFuture<T, E> {
-    type Item = T;
-    type Error = E;
-
-    #[inline]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match self.never {}
-    }
-}
-
-#[derive(Debug)]
-#[must_use = "futures do nothing unless polled."]
-pub enum MaybeDone<F: Future> {
-    Ready(F::Item),
-    Pending(F),
-    Gone,
-}
-
-impl<F: Future> MaybeDone<F> {
-    pub fn take_item(&mut self) -> Option<F::Item> {
-        match std::mem::replace(self, MaybeDone::Gone) {
-            MaybeDone::Ready(output) => Some(output),
-            _ => None,
-        }
-    }
-}
-
-impl<F: Future> Future for MaybeDone<F> {
-    type Item = ();
-    type Error = F::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let polled = match self {
-            MaybeDone::Ready(..) => return Ok(Async::Ready(())),
-            MaybeDone::Pending(ref mut future) => future.poll()?,
-            MaybeDone::Gone => panic!("This future has already polled"),
-        };
-        match polled {
-            Async::Ready(output) => {
-                *self = MaybeDone::Ready(output);
-                Ok(Async::Ready(()))
-            }
-            Async::NotReady => Ok(Async::NotReady),
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]

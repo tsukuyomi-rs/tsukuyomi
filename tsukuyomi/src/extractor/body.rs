@@ -2,7 +2,7 @@
 
 use {
     super::Extractor,
-    crate::{error::Error, input::body::RequestBody},
+    crate::{error::Error, future::TryFuture, input::body::RequestBody},
     bytes::Bytes,
     futures01::Future,
     mime::Mime,
@@ -32,7 +32,7 @@ enum ExtractBodyError {
 }
 
 trait Decoder<T> {
-    fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError>;
+    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError>;
     fn decode(data: &Bytes) -> Result<T, ExtractBodyError>;
 }
 
@@ -43,7 +43,7 @@ impl<T> Decoder<T> for PlainTextDecoder
 where
     T: DeserializeOwned,
 {
-    fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
         if let Some(mime) = mime {
             if mime.type_() != mime::TEXT || mime.subtype() != mime::PLAIN {
                 return Err(ExtractBodyError::UnexpectedContentType {
@@ -76,7 +76,7 @@ impl<T> Decoder<T> for JsonDecoder
 where
     T: DeserializeOwned,
 {
-    fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
         let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
         if *mime != mime::APPLICATION_JSON {
             return Err(ExtractBodyError::UnexpectedContentType {
@@ -100,7 +100,7 @@ impl<T> Decoder<T> for UrlencodedDecoder
 where
     T: DeserializeOwned,
 {
-    fn validate_mime(&self, mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
         let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
         if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
             return Err(ExtractBodyError::UnexpectedContentType {
@@ -117,12 +117,11 @@ where
     }
 }
 
-fn decoded<T, D>(decoder: D) -> self::decoded::Decoded<T, D>
+fn decoded<T, D>() -> self::decoded::Decoded<T, D>
 where
     D: Decoder<T>,
 {
     self::decoded::Decoded {
-        decoder,
         _marker: PhantomData,
     }
 }
@@ -132,19 +131,16 @@ mod decoded {
         crate::{
             error::Error,
             extractor::Extractor,
+            future::{Poll, TryFuture},
             input::{body::RequestBody, header::ContentType, Input},
         },
-        futures01::{
-            future::{err, Either, FutureResult},
-            Future,
-        },
+        futures01::Future,
         std::marker::PhantomData,
     };
 
     #[derive(Debug)]
     pub(super) struct Decoded<T, D> {
-        pub(super) decoder: D,
-        pub(super) _marker: PhantomData<fn() -> T>,
+        pub(super) _marker: PhantomData<fn(D) -> T>,
     }
 
     impl<T, D> Extractor for Decoded<T, D>
@@ -153,50 +149,56 @@ mod decoded {
     {
         type Output = (T,);
         type Error = Error;
-        type Future = Either<FutureResult<(T,), Error>, DecodedFuture<T, D>>;
+        type Extract = DecodedFuture<T, D>;
 
-        fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-            if let Err(e) = {
-                crate::input::header::parse::<ContentType>(input) //
-                    .and_then(|mime_opt| {
-                        self.decoder
-                            .validate_mime(mime_opt)
-                            .map_err(crate::error::bad_request)
-                    })
-            } {
-                return Either::A(err(e));
-            }
-
-            let read_all = match input.locals.remove(&RequestBody::KEY) {
-                Some(body) => body.read_all(),
-                None => return Either::A(err(super::stolen_payload())),
-            };
-
-            Either::B(DecodedFuture {
-                read_all,
+        fn extract(&self) -> Self::Extract {
+            DecodedFuture {
+                state: State::Init,
                 _marker: PhantomData,
-            })
+            }
         }
     }
 
     #[allow(missing_debug_implementations)]
+    enum State {
+        Init,
+        ReadAll(crate::input::body::ReadAll),
+    }
+
+    #[allow(missing_debug_implementations)]
     pub(super) struct DecodedFuture<T, D> {
-        read_all: crate::input::body::ReadAll,
+        state: State,
         _marker: PhantomData<fn(D) -> T>,
     }
 
-    impl<T, D> Future for DecodedFuture<T, D>
+    impl<T, D> TryFuture for DecodedFuture<T, D>
     where
         D: super::Decoder<T>,
     {
-        type Item = (T,);
+        type Ok = (T,);
         type Error = Error;
 
-        fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {
-            let data = futures01::try_ready!(self.read_all.poll());
-            D::decode(&data)
-                .map(|out| (out,).into())
-                .map_err(crate::error::bad_request)
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            loop {
+                self.state = match self.state {
+                    State::Init => {
+                        let mime_opt = crate::input::header::parse::<ContentType>(input)?;
+                        D::validate_mime(mime_opt).map_err(crate::error::bad_request)?;
+
+                        let read_all = match input.locals.remove(&RequestBody::KEY) {
+                            Some(body) => body.read_all(),
+                            None => return Err(super::stolen_payload()),
+                        };
+                        State::ReadAll(read_all)
+                    }
+                    State::ReadAll(ref mut read_all) => {
+                        let data = futures01::try_ready!(read_all.poll());
+                        return D::decode(&data)
+                            .map(|out| (out,).into())
+                            .map_err(crate::error::bad_request);
+                    }
+                };
+            }
         }
     }
 }
@@ -205,59 +207,76 @@ mod decoded {
 pub fn plain<T>() -> impl Extractor<
     Output = (T,),
     Error = Error,
-    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
     T: DeserializeOwned + Send + 'static,
 {
-    self::decoded(PlainTextDecoder::default())
+    self::decoded::<T, PlainTextDecoder>()
 }
 
 #[inline]
 pub fn json<T>() -> impl Extractor<
     Output = (T,),
     Error = Error,
-    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
     T: DeserializeOwned + Send + 'static,
 {
-    self::decoded(JsonDecoder::default())
+    self::decoded::<T, JsonDecoder>()
 }
 
 #[inline]
 pub fn urlencoded<T>() -> impl Extractor<
     Output = (T,),
     Error = Error,
-    Future = impl Future<Item = (T,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
     T: DeserializeOwned + Send + 'static,
 {
-    self::decoded(UrlencodedDecoder::default())
+    self::decoded::<T, UrlencodedDecoder>()
 }
 
 pub fn read_all() -> impl Extractor<
     Output = (Bytes,),
     Error = Error,
-    Future = impl Future<Item = (Bytes,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (Bytes,), Error = Error> + Send + 'static,
 > {
-    super::raw(|input| match input.locals.remove(&RequestBody::KEY) {
-        Some(body) => {
-            futures01::future::Either::B(body.read_all().map(|x| (x,)).map_err(Into::into))
-        }
-        None => futures01::future::Either::A(futures01::future::err(stolen_payload())),
+    super::extract(|| {
+        let mut read_all: Option<crate::input::body::ReadAll> = None;
+        crate::future::poll_fn(move |input| loop {
+            if let Some(ref mut read_all) = read_all {
+                return read_all
+                    .poll()
+                    .map(|x| x.map(|bytes| (bytes,)))
+                    .map_err(Into::into);
+            }
+            read_all = Some(
+                input
+                    .locals
+                    .remove(&RequestBody::KEY)
+                    .ok_or_else(stolen_payload)?
+                    .read_all(),
+            );
+        })
     })
 }
 
 pub fn stream() -> impl Extractor<
     Output = (RequestBody,), //
     Error = Error,
-    Future = impl Future<Item = (RequestBody,), Error = Error> + Send + 'static,
+    Extract = impl TryFuture<Ok = (RequestBody,), Error = Error> + Send + 'static,
 > {
-    super::raw(|input| match input.locals.remove(&RequestBody::KEY) {
-        Some(body) => futures01::future::ok((body,)),
-        None => futures01::future::err(stolen_payload()),
+    super::extract(|| {
+        crate::future::poll_fn(|input| {
+            input
+                .locals
+                .remove(&RequestBody::KEY)
+                .map(|body| (body,).into())
+                .ok_or_else(stolen_payload)
+        })
     })
 }
 
