@@ -91,7 +91,8 @@ mod thread_safe {
     use {
         crate::{
             error::Error,
-            handler::{Handle, Handler},
+            future::TryFuture,
+            handler::Handler,
             input::Input,
             output::{IntoResponse, ResponseBody},
             responder::Responder,
@@ -179,7 +180,8 @@ mod current_thread {
     use {
         crate::{
             error::Error,
-            handler::{Handle, Handler},
+            future::TryFuture,
+            handler::Handler,
             input::Input,
             output::{IntoResponse, ResponseBody},
             responder::Responder,

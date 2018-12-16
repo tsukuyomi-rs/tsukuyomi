@@ -336,7 +336,7 @@ mod handler {
             endpoint::{Endpoint, EndpointAction},
             error::Error,
             extractor::Extractor,
-            handler::Handle,
+            future::TryFuture,
             input::Input,
         },
         futures01::{try_ready, Future, Poll},
@@ -366,16 +366,16 @@ mod handler {
         Second(<T::Action as EndpointAction<E::Output>>::Future),
     }
 
-    impl<E, T> Handle for RouteHandle<E, T>
+    impl<E, T> TryFuture for RouteHandle<E, T>
     where
         E: Extractor,
         T: Endpoint<E::Output>,
     {
-        type Output = T::Output;
+        type Ok = T::Output;
         type Error = Error;
 
         #[inline]
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
                 self.state = match self.state {
                     RouteHandleState::Init => {

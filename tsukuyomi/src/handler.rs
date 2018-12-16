@@ -3,11 +3,11 @@
 use {
     crate::{
         error::Error,
+        future::TryFuture,
         input::Input,
         util::{Chain, Never, TryFrom}, //
     },
-    either::Either,
-    futures01::{Async, Poll},
+    futures01::Async,
     http::{header::HeaderValue, HttpTryFrom, Method},
     indexmap::{indexset, IndexSet},
     lazy_static::lazy_static,
@@ -140,67 +140,11 @@ impl<'a> IntoIterator for &'a AllowedMethods {
     }
 }
 
-pub trait Handle {
-    type Output;
-    type Error: Into<Error>;
-
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error>;
-}
-
-impl<L, R> Handle for Either<L, R>
-where
-    L: Handle,
-    R: Handle,
-{
-    type Output = Either<L::Output, R::Output>;
-    type Error = Error;
-
-    #[inline]
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
-        match self {
-            Either::Left(l) => l
-                .poll_ready(input)
-                .map(|x| x.map(Either::Left))
-                .map_err(Into::into),
-            Either::Right(r) => r
-                .poll_ready(input)
-                .map(|x| x.map(Either::Right))
-                .map_err(Into::into),
-        }
-    }
-}
-
-pub fn handle<T, E>(
-    op: impl FnMut(&mut Input<'_>) -> Poll<T, E>,
-) -> impl Handle<Output = T, Error = E>
-where
-    E: Into<Error>,
-{
-    #[allow(missing_debug_implementations)]
-    struct HandleFn<F>(F);
-
-    impl<F, T, E> Handle for HandleFn<F>
-    where
-        F: FnMut(&mut Input<'_>) -> Poll<T, E>,
-        E: Into<Error>,
-    {
-        type Output = T;
-        type Error = E;
-
-        #[inline]
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
-            (self.0)(input)
-        }
-    }
-
-    HandleFn(op)
-}
-
 /// A trait representing the handler associated with the specified endpoint.
 pub trait Handler {
     type Output;
     type Error: Into<Error>;
-    type Handle: Handle<Output = Self::Output, Error = Self::Error>;
+    type Handle: TryFuture<Ok = Self::Output, Error = Self::Error>;
 
     /// Returns a list of HTTP methods that this handler accepts.
     ///
@@ -249,15 +193,16 @@ where
     }
 }
 
-pub fn handler<H>(
-    handle_fn: impl Fn() -> H,
+pub fn handler<T>(
+    handle_fn: impl Fn() -> T,
     allowed_methods: Option<AllowedMethods>,
 ) -> impl Handler<
-    Output = H::Output, //
-    Handle = H,
+    Output = T::Ok, //
+    Error = T::Error,
+    Handle = T,
 >
 where
-    H: Handle,
+    T: TryFuture,
 {
     #[allow(missing_debug_implementations)]
     struct HandlerFn<F> {
@@ -265,14 +210,14 @@ where
         allowed_methods: Option<AllowedMethods>,
     }
 
-    impl<F, H> Handler for HandlerFn<F>
+    impl<F, T> Handler for HandlerFn<F>
     where
-        F: Fn() -> H,
-        H: Handle,
+        F: Fn() -> T,
+        T: TryFuture,
     {
-        type Output = H::Output;
-        type Error = H::Error;
-        type Handle = H;
+        type Output = T::Ok;
+        type Error = T::Error;
+        type Handle = T;
 
         #[inline]
         fn allowed_methods(&self) -> Option<&AllowedMethods> {
@@ -293,11 +238,15 @@ where
 
 pub fn ready<T: 'static>(
     f: impl Fn(&mut Input<'_>) -> T + Clone + Send + 'static,
-) -> impl Handler<Output = T> {
+) -> impl Handler<
+    Output = T,
+    Error = Never,
+    Handle = impl TryFuture<Ok = T, Error = Never> + Send + 'static, // private
+> {
     handler(
         move || {
             let f = f.clone();
-            self::handle(move |input| Ok::<_, Never>(Async::Ready(f(input))))
+            crate::future::poll_fn(move |input| Ok(Async::Ready(f(input))))
         },
         None,
     )

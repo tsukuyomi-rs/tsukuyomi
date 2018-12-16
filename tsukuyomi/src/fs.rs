@@ -440,7 +440,8 @@ mod impl_handler_for_serve_file {
         super::{ArcPath, NamedFile, ServeFile},
         crate::{
             error::Error,
-            handler::{AllowedMethods, Handle, Handler},
+            future::TryFuture,
+            handler::{AllowedMethods, Handler},
             input::Input,
         },
         futures01::{Async, Poll},
@@ -460,11 +461,11 @@ mod impl_handler_for_serve_file {
         }
     }
 
-    impl Handle for ServeFile {
-        type Output = NamedFile<ArcPath>;
+    impl TryFuture for ServeFile {
+        type Ok = NamedFile<ArcPath>;
         type Error = Error;
 
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let path = if self.inner.extract_path {
                 let path = input
                     .params

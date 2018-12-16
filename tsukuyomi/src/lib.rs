@@ -22,6 +22,7 @@ pub mod endpoint;
 pub mod error;
 pub mod extractor;
 pub mod fs;
+pub mod future;
 pub mod handler;
 pub mod input;
 pub mod output;
