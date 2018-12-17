@@ -1,6 +1,6 @@
 use {
     crate::{
-        endpoint::Endpoint,
+        endpoint::{ApplyContext, ApplyError, Endpoint},
         extractor::Extractor,
         generic::{Combine, Func},
         handler::AllowedMethods,
@@ -103,14 +103,14 @@ where
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
             let extractor = std::sync::Arc::new(self.extractor);
-            move |method: &http::Method| {
+            move |cx: &mut ApplyContext<'_, '_>| {
                 if allowed_methods
                     .as_ref()
-                    .map_or(false, |methods| !methods.contains(method))
+                    .map_or(false, |methods| !methods.contains(cx.method()))
                 {
-                    return None;
+                    return Err(ApplyError::method_not_allowed());
                 }
-                Some(self::call::CallAction {
+                Ok(self::call::CallAction {
                     extractor: extractor.clone(),
                     f: f.clone(),
                 })
@@ -137,15 +137,15 @@ where
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
             let extractor = std::sync::Arc::new(self.extractor);
-            move |method: &http::Method| {
+            move |cx: &mut ApplyContext<'_, '_>| {
                 if allowed_methods
                     .as_ref()
-                    .map_or(false, |methods| !methods.contains(method))
+                    .map_or(false, |methods| !methods.contains(cx.method()))
                 {
-                    return None;
+                    return Err(ApplyError::method_not_allowed());
                 }
 
-                Some(self::call_async::CallAsyncAction {
+                Ok(self::call_async::CallAsyncAction {
                     extractor: extractor.clone(),
                     f: f.clone(),
                 })
@@ -203,7 +203,7 @@ mod call {
         type Error = E::Error;
         type Future = CallFuture<E::Extract, F, T>;
 
-        fn call(self, args: T) -> Self::Future {
+        fn invoke(self, args: T) -> Self::Future {
             CallFuture {
                 extract: self.extractor.extract(),
                 f: self.f,
@@ -272,7 +272,7 @@ mod call_async {
         type Error = Error;
         type Future = CallAsyncFuture<E::Extract, F, R, T>;
 
-        fn call(self, args: T) -> Self::Future {
+        fn invoke(self, args: T) -> Self::Future {
             CallAsyncFuture {
                 state: State::First(self.extractor.extract()),
                 f: self.f,

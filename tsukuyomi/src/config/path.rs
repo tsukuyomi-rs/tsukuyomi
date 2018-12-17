@@ -358,14 +358,13 @@ where
 mod handler {
     use {
         crate::{
-            endpoint::{Endpoint, EndpointAction},
+            endpoint::{ApplyContext, Endpoint, EndpointAction},
             error::Error,
             extractor::Extractor,
             future::TryFuture,
             input::Input,
         },
         futures01::{try_ready, Poll},
-        http::StatusCode,
         std::sync::Arc,
     };
 
@@ -404,16 +403,13 @@ mod handler {
             loop {
                 self.state = match self.state {
                     RouteHandleState::Init => {
-                        let action = self
-                            .endpoint
-                            .apply(input.request.method())
-                            .ok_or_else(|| StatusCode::METHOD_NOT_ALLOWED)?;
+                        let action = self.endpoint.apply(&mut ApplyContext::new(input))?;
                         let extract = self.extractor.extract();
                         RouteHandleState::First(extract, Some(action))
                     }
                     RouteHandleState::First(ref mut future, ref mut action) => {
                         let args = try_ready!(future.poll_ready(input).map_err(Into::into));
-                        let future = action.take().unwrap().call(args);
+                        let future = action.take().unwrap().invoke(args);
                         RouteHandleState::Second(future)
                     }
                     RouteHandleState::Second(ref mut action) => {

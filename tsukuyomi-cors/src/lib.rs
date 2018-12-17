@@ -231,7 +231,7 @@ mod impl_endpoint_for_cors {
         super::CORS,
         http::{Method, Response, StatusCode},
         tsukuyomi::{
-            endpoint::{Endpoint, EndpointAction},
+            endpoint::{ApplyContext, ApplyError, Endpoint, EndpointAction},
             error::Error,
             future::{Poll, TryFuture},
             handler::AllowedMethods,
@@ -267,7 +267,7 @@ mod impl_endpoint_for_cors {
         type Error = Error;
         type Future = CORSActionFuture;
 
-        fn call(self, _: ()) -> Self::Future {
+        fn invoke(self, _: ()) -> Self::Future {
             CORSActionFuture { cors: self }
         }
     }
@@ -280,11 +280,11 @@ mod impl_endpoint_for_cors {
             Some(AllowedMethods::from(Method::OPTIONS))
         }
 
-        fn apply(&self, method: &Method) -> Option<Self::Action> {
-            if method == Method::OPTIONS {
-                Some(self.clone())
+        fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError> {
+            if cx.method() == Method::OPTIONS {
+                Ok(self.clone())
             } else {
-                None
+                Err(ApplyError::method_not_allowed())
             }
         }
     }

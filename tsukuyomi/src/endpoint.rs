@@ -1,56 +1,63 @@
 use {
-    crate::{error::Error, future::TryFuture, handler::AllowedMethods},
-    http::Method,
+    crate::{error::Error, future::TryFuture, handler::AllowedMethods, input::Input},
+    http::{Method, StatusCode},
 };
 
-pub trait EndpointAction<T> {
-    type Output;
-    type Error: Into<Error>;
-    type Future: TryFuture<Ok = Self::Output, Error = Self::Error>;
-
-    fn call(self, args: T) -> Self::Future;
-}
-
-pub fn action<T, R>(
-    f: impl FnOnce(T) -> R,
-) -> impl EndpointAction<T, Output = R::Ok, Error = R::Error, Future = R>
-where
-    R: TryFuture,
-{
-    #[allow(missing_debug_implementations)]
-    struct EndpointActionFn<F>(F);
-
-    impl<F, T, R> EndpointAction<T> for EndpointActionFn<F>
-    where
-        F: FnOnce(T) -> R,
-        R: TryFuture,
-    {
-        type Output = R::Ok;
-        type Error = R::Error;
-        type Future = R;
-
-        fn call(self, args: T) -> Self::Future {
-            (self.0)(args)
-        }
-    }
-
-    EndpointActionFn(f)
-}
-
+/// A trait representing the process to be performed when a route matches.
 pub trait Endpoint<T> {
     type Output;
     type Action: EndpointAction<T, Output = Self::Output>;
 
-    /// Returns a list of HTTP methods that the returned endpoint accepts.
+    /// Determines the `Action` that this endpoint performs based on the request method.
+    ///
+    /// If the endpoint does not accept the incoming request method, it returns an `Err`.
+    fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError>;
+
+    /// Returns a list of HTTP methods that this endpoint accepts.
     ///
     /// If it returns a `None`, it means that the endpoint accepts *all* methods.
+    ///
+    /// This method is called when constructing a `Handler` and used for implementation of
+    /// `Handler::allowed_methods`.
     fn allowed_methods(&self) -> Option<AllowedMethods>;
-
-    fn apply(&self, method: &Method) -> Option<Self::Action>;
 }
 
+#[derive(Debug)]
+pub struct ApplyContext<'a, 'task: 'a> {
+    input: &'a mut Input<'task>,
+}
+
+impl<'a, 'task> ApplyContext<'a, 'task> {
+    pub(crate) fn new(input: &'a mut Input<'task>) -> Self {
+        Self { input }
+    }
+
+    /// Returns HTTP method of the request.
+    #[inline]
+    pub fn method(&self) -> &Method {
+        self.input.request.method()
+    }
+}
+
+#[derive(Debug)]
+pub struct ApplyError(());
+
+impl ApplyError {
+    #[inline]
+    pub fn method_not_allowed() -> ApplyError {
+        ApplyError(())
+    }
+}
+
+impl From<ApplyError> for Error {
+    fn from(_err: ApplyError) -> Self {
+        StatusCode::METHOD_NOT_ALLOWED.into()
+    }
+}
+
+/// A function to create an `Endpoint` from the specified components.
 pub fn endpoint<T, A>(
-    apply: impl Fn(&Method) -> Option<A>,
+    apply: impl Fn(&mut ApplyContext<'_, '_>) -> Result<A, ApplyError>,
     allowed_methods: Option<AllowedMethods>,
 ) -> impl Endpoint<T, Output = A::Output, Action = A>
 where
@@ -64,7 +71,7 @@ where
 
     impl<F, T, A> Endpoint<T> for ApplyFn<F>
     where
-        F: Fn(&Method) -> Option<A>,
+        F: Fn(&mut ApplyContext<'_, '_>) -> Result<A, ApplyError>,
         A: EndpointAction<T>,
     {
         type Output = A::Output;
@@ -76,8 +83,8 @@ where
         }
 
         #[inline]
-        fn apply(&self, method: &Method) -> Option<Self::Action> {
-            (self.apply)(method)
+        fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError> {
+            (self.apply)(cx)
         }
     }
 
@@ -100,8 +107,8 @@ where
     }
 
     #[inline]
-    fn apply(&self, method: &Method) -> Option<Self::Action> {
-        (**self).apply(method)
+    fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError> {
+        (**self).apply(cx)
     }
 }
 
@@ -118,14 +125,51 @@ where
     }
 
     #[inline]
-    fn apply(&self, method: &Method) -> Option<Self::Action> {
-        (**self).apply(method)
+    fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError> {
+        (**self).apply(cx)
     }
+}
+
+/// A trait that represents the `Action` created by `Endpoint`.
+pub trait EndpointAction<T> {
+    type Output;
+    type Error: Into<Error>;
+    type Future: TryFuture<Ok = Self::Output, Error = Self::Error>;
+
+    /// Promotes this action into a `TryFuture` using the specified value.
+    fn invoke(self, args: T) -> Self::Future;
+}
+
+/// A function to create an instance of `EndpointAction` from the specified function.
+pub fn action<T, R>(
+    f: impl FnOnce(T) -> R,
+) -> impl EndpointAction<T, Output = R::Ok, Error = R::Error, Future = R>
+where
+    R: TryFuture,
+{
+    #[allow(missing_debug_implementations)]
+    struct EndpointActionFn<F>(F);
+
+    impl<F, T, R> EndpointAction<T> for EndpointActionFn<F>
+    where
+        F: FnOnce(T) -> R,
+        R: TryFuture,
+    {
+        type Output = R::Ok;
+        type Error = R::Error;
+        type Future = R;
+
+        fn invoke(self, args: T) -> Self::Future {
+            (self.0)(args)
+        }
+    }
+
+    EndpointActionFn(f)
 }
 
 mod impl_chain {
     use {
-        super::{Endpoint, EndpointAction},
+        super::{ApplyContext, ApplyError, Endpoint, EndpointAction},
         crate::{
             error::Error,
             future::{Poll, TryFuture},
@@ -133,7 +177,6 @@ mod impl_chain {
             input::Input,
             util::{Chain, Either},
         },
-        http::Method,
     };
 
     impl<L, R, T> Endpoint<T> for Chain<L, R>
@@ -152,11 +195,9 @@ mod impl_chain {
         }
 
         #[inline]
-        fn apply(&self, method: &Method) -> Option<Self::Action> {
-            self.left
-                .apply(method)
-                .map(ChainAction::Left)
-                .or_else(|| self.right.apply(method).map(ChainAction::Right))
+        fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError> {
+            (self.left.apply(cx).map(ChainAction::Left))
+                .or_else(|_| self.right.apply(cx).map(ChainAction::Right))
         }
     }
 
@@ -175,10 +216,10 @@ mod impl_chain {
         type Error = Error;
         type Future = ChainFuture<L::Future, R::Future>;
 
-        fn call(self, args: T) -> Self::Future {
+        fn invoke(self, args: T) -> Self::Future {
             match self {
-                ChainAction::Left(l) => ChainFuture::Left(l.call(args)),
-                ChainAction::Right(r) => ChainFuture::Right(r.call(args)),
+                ChainAction::Left(l) => ChainFuture::Left(l.invoke(args)),
+                ChainAction::Right(r) => ChainFuture::Right(r.invoke(args)),
             }
         }
     }
