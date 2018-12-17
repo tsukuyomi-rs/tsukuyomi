@@ -122,26 +122,41 @@ fn cookies() -> tsukuyomi::test::Result<()> {
     Ok(())
 }
 
-// #[test]
-// fn default_options() -> tsukuyomi::test::Result<()> {
-//     let mut server = App::create(with_modifier(
-//         tsukuyomi::handler::modifiers::DefaultOptions::default(),
-//         route()
-//             .segment("path")?
-//             .allowed_methods("GET, POST")?
-//             .call(|| "post"),
-//     ))
-//     .map(Server::new)?
-//     .into_test_server()?;
+#[test]
+fn default_options() -> tsukuyomi::test::Result<()> {
+    let app = App::create(
+        path!(/"path")
+            .to(endpoint::allow_only("GET, POST")?.call(|| "reply"))
+            .modify(tsukuyomi::modifiers::default_options()),
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
 
-//     let response = server.perform(Request::options("/path"))?;
+    let response = server.perform("/path")?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.body().to_utf8()?, "reply");
 
-//     assert_eq!(response.status(), StatusCode::NO_CONTENT);
-//     assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
-//     assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
+    let response = server.perform(Request::options("/path"))?;
+    assert_eq!(response.status(), 204);
+    assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
+    assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
 
-//     Ok(())
-// }
+    Ok(())
+}
+
+#[test]
+fn map_output() -> tsukuyomi::test::Result<()> {
+    let app = App::create(
+        path!(/)
+            .to(endpoint::any().reply(42))
+            .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
+    )?;
+    let mut server = tsukuyomi::test::server(app)?;
+
+    let response = server.perform("/")?;
+    assert_eq!(response.body().to_utf8()?, "42");
+
+    Ok(())
+}
 
 #[test]
 fn scoped_fallback() -> tsukuyomi::test::Result<()> {

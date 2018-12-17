@@ -32,7 +32,7 @@ impl AllowedMethods {
         self.0.iter()
     }
 
-    pub fn render_with_options(&self) -> HeaderValue {
+    pub fn to_header_value(&self) -> HeaderValue {
         let mut bytes = bytes::BytesMut::new();
         for (i, method) in self.iter().enumerate() {
             if i > 0 {
@@ -40,13 +40,6 @@ impl AllowedMethods {
             }
             bytes.extend_from_slice(method.as_str().as_bytes());
         }
-        if !self.0.contains(&Method::OPTIONS) {
-            if !self.0.is_empty() {
-                bytes.extend_from_slice(b", ");
-            }
-            bytes.extend_from_slice(b"OPTIONS");
-        }
-
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
     }
 }
@@ -242,7 +235,13 @@ pub trait ModifyHandler<H: Handler> {
     fn modify(&self, input: H) -> Self::Handler;
 }
 
-pub fn modify_handler<In, Out>(modify: impl Fn(In) -> Out) -> impl ModifyHandler<In, Handler = Out>
+pub fn modify_handler<In, Out>(
+    modify: impl Fn(In) -> Out,
+) -> impl ModifyHandler<
+    In, //
+    Output = Out::Output,
+    Handler = Out,
+>
 where
     In: Handler,
     Out: Handler,

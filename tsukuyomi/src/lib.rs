@@ -25,6 +25,7 @@ pub mod fs;
 pub mod future;
 pub mod handler;
 pub mod input;
+pub mod modifiers;
 pub mod output;
 pub mod responder;
 pub mod rt;
