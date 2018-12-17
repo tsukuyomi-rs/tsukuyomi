@@ -310,18 +310,6 @@ impl<E> Path<E>
 where
     E: Extractor,
 {
-    /// Appends a supplemental `Extractor` to this path.
-    pub fn extract<E2>(self, other: E2) -> Path<Chain<E, E2>>
-    where
-        E2: Extractor,
-        E::Output: Combine<E2::Output>,
-    {
-        Path {
-            uri: self.uri,
-            extractor: Chain::new(self.extractor, other),
-        }
-    }
-
     /// Finalize the configuration in this route and creates the instance of `Route`.
     pub fn to<T>(
         self,
