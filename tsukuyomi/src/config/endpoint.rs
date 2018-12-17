@@ -49,6 +49,7 @@ pub fn get_or_head() -> Builder {
     Builder::allow_only(vec![Method::GET, Method::HEAD]).expect("should be valid methods")
 }
 
+/// A builder of `Endpoint`.
 #[derive(Debug)]
 pub struct Builder<E: Extractor = ()> {
     extractor: E,
@@ -56,6 +57,7 @@ pub struct Builder<E: Extractor = ()> {
 }
 
 impl Builder {
+    /// Creates a `Builder` that accepts the all of HTTP methods.
     pub fn allow_any() -> Self {
         Self {
             extractor: (),
@@ -63,6 +65,7 @@ impl Builder {
         }
     }
 
+    /// Creates a `Builder` that accepts only the specified HTTP methods.
     pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Self> {
         Ok(Self {
             extractor: (),
@@ -75,7 +78,7 @@ impl<E> Builder<E>
 where
     E: Extractor,
 {
-    /// Appends a supplemental `Extractor` to this route.
+    /// Appends a supplemental `Extractor` to this endpoint.
     pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>>
     where
         E2: Extractor,
@@ -102,7 +105,7 @@ where
     {
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
-            let extractor = std::sync::Arc::new(self.extractor);
+            let extractor = self.extractor;
             move |cx: &mut ApplyContext<'_, '_>| {
                 if allowed_methods
                     .as_ref()
@@ -111,7 +114,7 @@ where
                     return Err(ApplyError::method_not_allowed());
                 }
                 Ok(self::call::CallAction {
-                    extractor: extractor.clone(),
+                    extract: extractor.extract(),
                     f: f.clone(),
                 })
             }
@@ -136,7 +139,7 @@ where
     {
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
-            let extractor = std::sync::Arc::new(self.extractor);
+            let extractor = self.extractor;
             move |cx: &mut ApplyContext<'_, '_>| {
                 if allowed_methods
                     .as_ref()
@@ -146,7 +149,7 @@ where
                 }
 
                 Ok(self::call_async::CallAsyncAction {
-                    extractor: extractor.clone(),
+                    extract: extractor.extract(),
                     f: f.clone(),
                 })
             }
@@ -176,20 +179,17 @@ where
 }
 
 mod call {
-    use {
-        crate::{
-            endpoint::EndpointAction,
-            extractor::Extractor,
-            future::{Async, Poll, TryFuture},
-            generic::{Combine, Func, Tuple},
-            input::Input,
-        },
-        std::sync::Arc,
+    use crate::{
+        endpoint::EndpointAction,
+        extractor::Extractor,
+        future::{Async, Poll, TryFuture},
+        generic::{Combine, Func, Tuple},
+        input::Input,
     };
 
-    #[derive(Debug)]
-    pub struct CallAction<E, F> {
-        pub(super) extractor: Arc<E>,
+    #[allow(missing_debug_implementations)]
+    pub struct CallAction<E: Extractor, F> {
+        pub(super) extract: E::Extract,
         pub(super) f: F,
     }
 
@@ -205,7 +205,7 @@ mod call {
 
         fn invoke(self, args: T) -> Self::Future {
             CallFuture {
-                extract: self.extractor.extract(),
+                extract: self.extract,
                 f: self.f,
                 args: Some(args),
             }
@@ -251,12 +251,11 @@ mod call_async {
             input::Input,
         },
         futures01::{Future, IntoFuture},
-        std::sync::Arc,
     };
 
     #[allow(missing_debug_implementations)]
-    pub struct CallAsyncAction<E, F> {
-        pub(super) extractor: Arc<E>,
+    pub struct CallAsyncAction<E: Extractor, F> {
+        pub(super) extract: E::Extract,
         pub(super) f: F,
     }
 
@@ -274,7 +273,7 @@ mod call_async {
 
         fn invoke(self, args: T) -> Self::Future {
             CallAsyncFuture {
-                state: State::First(self.extractor.extract()),
+                state: State::First(self.extract),
                 f: self.f,
                 args: Some(args),
             }
