@@ -74,12 +74,9 @@ impl<L, R> Chain<L, R> {
 #[macro_export]
 macro_rules! chain {
     ($e:expr) => ( $e );
-    ($e:expr, ) => ( $e );
-    ($e1:expr, $e2:expr) => ( $crate::util::Chain::new($e1, $e2) );
-    ($e1:expr, $e2:expr, $($t:expr),*) => {
-        $crate::util::Chain::new($e1, chain!($e2, $($t),*))
-    };
-    ($e1:expr, $e2:expr, $($t:expr,)+) => ( chain!{ $e1, $e2, $($t),+ } );
+    ($e:expr,) => ( $e );
+    ($h:expr, $($t:expr),+) => ( $crate::util::Chain::new($h, chain!($($t),+)) );
+    ($h:expr, $($t:expr,)+) => ( chain!($h, $($t),+) );
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
