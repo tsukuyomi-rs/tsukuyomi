@@ -1,3 +1,5 @@
+//! Definition of `Endpoint`.
+
 use {
     crate::{error::Error, future::TryFuture, handler::AllowedMethods, input::Input},
     http::{Method, StatusCode},

@@ -1,10 +1,11 @@
+//! A collection of traits that abstracts HTTP services.
+
 #[doc(no_inline)]
 pub use tower_service::Service;
 
 use {
     futures01::{Future, Poll},
     http::{Request, Response},
-    std::marker::PhantomData,
 };
 
 /// A trait representing a factory of `Service`s.
@@ -30,33 +31,6 @@ pub trait HttpService<RequestBody> {
     fn poll_ready_http(&mut self) -> Poll<(), Self::Error>;
 
     fn call_http(&mut self, request: Request<RequestBody>) -> Self::Future;
-
-    fn ready_http(self) -> ReadyHttp<Self, RequestBody>
-    where
-        Self: Sized,
-    {
-        ReadyHttp(Some(self), PhantomData)
-    }
-}
-
-#[derive(Debug)]
-pub struct ReadyHttp<S, Bd>(Option<S>, PhantomData<fn(Bd)>);
-
-impl<S, Bd> Future for ReadyHttp<S, Bd>
-where
-    S: HttpService<Bd>,
-{
-    type Item = S;
-    type Error = S::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures01::try_ready!(self
-            .0
-            .as_mut()
-            .expect("the future has already polled")
-            .poll_ready_http());
-        Ok(futures01::Async::Ready(self.0.take().unwrap()))
-    }
 }
 
 impl<S, RequestBody, ResponseBody> HttpService<RequestBody> for S

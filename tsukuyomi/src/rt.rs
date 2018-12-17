@@ -2,10 +2,12 @@
 
 #[doc(no_inline)]
 pub use {
-    futures01::{sync::oneshot::SpawnHandle, Async, Future, Poll},
+    futures01::sync::oneshot::SpawnHandle,
     tokio::executor::{spawn, DefaultExecutor, Executor, Spawn, SpawnError},
     tokio_threadpool::{blocking as poll_blocking, BlockingError},
 };
+
+use futures01::Future;
 
 /// Spawns the specified `Future` onto the default task executor, and returns its handle.
 #[inline]

@@ -1,3 +1,5 @@
+//! A collection of components for configuring `App`.
+
 pub mod endpoint;
 pub mod path;
 

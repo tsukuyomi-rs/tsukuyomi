@@ -13,12 +13,12 @@ use {
         model::{NewPost, Post},
     },
     dotenv::dotenv,
+    futures::Future,
     std::{env, sync::Arc},
     tsukuyomi::{
         config::prelude::*, //
         error::Error,
         extractor::{self, ExtractorExt},
-        rt::Future,
         App,
         Server,
     },

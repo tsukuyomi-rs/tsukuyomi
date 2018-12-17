@@ -9,7 +9,7 @@ use {
         util::{Chain, Never},
     },
     failure::Fail,
-    std::{fmt, sync::Arc},
+    std::{fmt, marker::PhantomData, rc::Rc, sync::Arc},
 };
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
@@ -278,6 +278,7 @@ where
                 scopes: &mut scopes,
                 scope_id: ScopeId::root(),
                 modifier: &(),
+                _marker: PhantomData,
             })
             .map_err(Into::into)?;
 
@@ -294,6 +295,7 @@ pub struct Scope<'a, M, T: Concurrency> {
     scopes: &'a mut Scopes<ScopeData<T>>,
     modifier: &'a M,
     scope_id: ScopeId,
+    _marker: PhantomData<Rc<()>>,
 }
 
 impl<'a, M, T> Scope<'a, M, T>
@@ -357,6 +359,7 @@ where
                 scopes: &mut *self.scopes,
                 scope_id,
                 modifier: &*self.modifier,
+                _marker: PhantomData,
             })
             .map_err(Into::into)?;
 
@@ -375,6 +378,7 @@ where
                 scopes: &mut *self.scopes,
                 scope_id: self.scope_id,
                 modifier: &Chain::new(self.modifier, modifier),
+                _marker: PhantomData,
             })
             .map_err(Into::into)
     }

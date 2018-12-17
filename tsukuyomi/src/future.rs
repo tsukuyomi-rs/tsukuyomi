@@ -1,14 +1,9 @@
-use {
-    crate::{
-        error::Error,
-        input::Input,
-        util::{Either, Never},
-    },
-    std::{fmt, marker::PhantomData},
-};
+//! Compatible layer of asynchronous tasks used within the framework.
+
+use crate::{error::Error, input::Input, util::Either};
 
 #[doc(no_inline)]
-pub use futures01::{Async, Poll};
+pub use futures01::{try_ready, Async, Poll};
 
 /// A trait that abstracts the general asynchronous tasks within the framework.
 pub trait TryFuture {
@@ -93,7 +88,10 @@ where
     self::poll_fn(move |input| (f.take().unwrap())(input).map(Into::into))
 }
 
+/// A wrapper struct that provides the implementation of `TryFuture` for
+/// implementors of futures 0.1 `Future`.
 #[derive(Debug)]
+#[must_use = "futures do nothing unless polled."]
 pub struct Compat01<F>(F);
 
 impl<F> From<F> for Compat01<F>
@@ -114,6 +112,7 @@ where
     type Ok = F::Item;
     type Error = F::Error;
 
+    #[inline]
     fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
         futures01::Future::poll(&mut self.0)
     }
@@ -133,32 +132,6 @@ where
     F: futures01::Future,
     F::Error: Into<Error>,
 {
-}
-
-/// A helper struct representing a `Future` that will be *never* constructed.
-#[must_use = "futures do nothing unless polled."]
-pub struct NeverFuture<T, E> {
-    never: Never,
-    _marker: PhantomData<fn() -> (T, E)>,
-}
-
-impl<T, E> fmt::Debug for NeverFuture<T, E> {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.never {}
-    }
-}
-
-impl<T, E> TryFuture for NeverFuture<T, E>
-where
-    E: Into<Error>,
-{
-    type Ok = T;
-    type Error = E;
-
-    #[inline]
-    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-        match self.never {}
-    }
 }
 
 #[derive(Debug)]

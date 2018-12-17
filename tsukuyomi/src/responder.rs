@@ -1,3 +1,5 @@
+//! Definition of `Responder`.
+
 use crate::{error::Error, future::TryFuture, input::Input, output::IntoResponse, util::Never};
 
 pub use self::oneshot::Oneshot;

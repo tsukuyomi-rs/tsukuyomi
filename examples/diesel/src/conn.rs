@@ -4,10 +4,10 @@ use {
         sqlite::SqliteConnection,
     },
     failure::Fallible,
+    futures::Future,
     tsukuyomi::{
         extractor::Extractor,
-        future::{Compat01, TryFuture},
-        rt::Future,
+        future::{Futures01CompatExt, TryFuture},
     },
 };
 
@@ -30,17 +30,16 @@ where
 
     Ok(tsukuyomi::extractor::extract(move || {
         let pool = pool.clone();
-        Compat01::from(
-            tsukuyomi::rt::blocking(move || pool.get()) //
-                .then(|result| {
-                    result
-                        .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
-                        .and_then(|result| {
-                            result
-                                .map(|conn| (conn,))
-                                .map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
-                        })
-                }),
-        )
+        tsukuyomi::rt::blocking(move || pool.get()) //
+            .then(|result| {
+                result
+                    .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
+                    .and_then(|result| {
+                        result
+                            .map(|conn| (conn,))
+                            .map_err(tsukuyomi::error::internal_server_error) // <-- r2d2::Error
+                    })
+            })
+            .compat01()
     }))
 }

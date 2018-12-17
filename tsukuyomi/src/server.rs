@@ -15,13 +15,13 @@ use {
         runtime::Runtime,
     },
     crate::service::{HttpService, MakeHttpService},
-    futures01::{Future, Stream},
+    futures01::{Future, Poll, Stream},
     http::Request,
     hyper::{
         body::{Body, Payload},
         server::conn::Http,
     },
-    std::{net::SocketAddr, rc::Rc, sync::Arc},
+    std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
 };
 
 // ==== Server ====
@@ -138,41 +138,44 @@ macro_rules! serve {
             .listen()
             .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
 
-        incoming
-            .map_err(|e| log::error!("transport error: {}", e.into()))
-            .for_each(move |io| {
-                let accept = acceptor
-                    .accept(io)
-                    .map_err(|e| log::error!("acceptor error: {}", e.into()));
+        ReadyMakeHttp(Some(make_service), PhantomData)
+            .map_err(|e| log::error!("make_service init error: {}", e.into()))
+            .and_then(move |make_service| {
+                incoming
+                    .map_err(|e| log::error!("transport error: {}", e.into()))
+                    .for_each(move |io| {
+                        let accept = acceptor
+                            .accept(io)
+                            .map_err(|e| log::error!("acceptor error: {}", e.into()));
 
-                let protocol = protocol.clone();
-                let service = make_service
-                    .make_http_service(())
-                    .map_err(|e| log::error!("make_service error: {}", e.into()));
+                        let protocol = protocol.clone();
+                        let service = make_service
+                            .make_http_service(())
+                            .map_err(|e| log::error!("make_service error: {}", e.into()));
 
-                let task = accept.and_then(move |io| {
-                    let info = io.connection_info();
-                    if let Err(..) = info {
-                        log::error!("failed to fetch the connection information");
-                    }
-                    let info = info.ok();
+                        let task = accept.and_then(move |io| {
+                            let info = io.connection_info();
+                            if let Err(..) = info {
+                                log::error!("failed to fetch the connection information");
+                            }
+                            let info = info.ok();
 
-                    service
-                        .and_then(|service| {
                             service
-                                .ready_http()
-                                .map_err(|e| log::error!("service error: {}", e.into()))
-                        })
-                        .map(move |service| LiftedHttpService { service, info })
-                        .and_then(move |service| {
-                            protocol
-                                .serve_connection(io, service)
-                                .with_upgrades()
-                                .map_err(|e| log::error!("HTTP protocol error: {}", e))
-                        })
-                });
-                spawn(task);
-                Ok(())
+                                .and_then(|service| {
+                                    ReadyHttp(Some(service), PhantomData)
+                                        .map_err(|e| log::error!("service error: {}", e.into()))
+                                })
+                                .map(move |service| LiftedHttpService { service, info })
+                                .and_then(move |service| {
+                                    protocol
+                                        .serve_connection(io, service)
+                                        .with_upgrades()
+                                        .map_err(|e| log::error!("HTTP protocol error: {}", e))
+                                })
+                        });
+                        spawn(task);
+                        Ok(())
+                    })
             })
     }};
 }
@@ -277,5 +280,45 @@ where
             info.insert_into(request.extensions_mut());
         }
         self.service.call_http(request)
+    }
+}
+
+#[derive(Debug)]
+pub struct ReadyMakeHttp<S, T, Bd>(Option<S>, PhantomData<fn(T, Bd)>);
+
+impl<S, T, Bd> Future for ReadyMakeHttp<S, T, Bd>
+where
+    S: MakeHttpService<T, Bd>,
+{
+    type Item = S;
+    type Error = S::MakeError;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        futures01::try_ready!(self
+            .0
+            .as_mut()
+            .expect("the future has already been polled")
+            .poll_ready_http());
+        Ok(futures01::Async::Ready(self.0.take().unwrap()))
+    }
+}
+
+#[derive(Debug)]
+pub struct ReadyHttp<S, Bd>(Option<S>, PhantomData<fn(Bd)>);
+
+impl<S, Bd> Future for ReadyHttp<S, Bd>
+where
+    S: HttpService<Bd>,
+{
+    type Item = S;
+    type Error = S::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        futures01::try_ready!(self
+            .0
+            .as_mut()
+            .expect("the future has already been polled")
+            .poll_ready_http());
+        Ok(futures01::Async::Ready(self.0.take().unwrap()))
     }
 }

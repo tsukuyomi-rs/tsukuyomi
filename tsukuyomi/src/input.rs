@@ -27,6 +27,7 @@ pub struct Input<'task> {
     /// A typemap that holds arbitrary request-local inner.
     pub locals: &'task mut LocalMap,
 
+    /// A map of header fields that will be inserted at reply to the client.
     pub response_headers: &'task mut Option<HeaderMap>,
 
     pub(crate) _marker: PhantomData<Rc<()>>,

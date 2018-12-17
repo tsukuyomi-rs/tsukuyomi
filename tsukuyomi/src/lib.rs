@@ -42,9 +42,15 @@ pub use crate::{
         Result,
     },
     extractor::Extractor,
-    handler::Handler,
+    handler::{Handler, ModifyHandler},
     input::Input,
     output::IntoResponse,
     responder::Responder,
     server::Server,
 };
+
+/// Re-export of crates used within the framework and frequently used on the user side.
+pub mod vendor {
+    pub use futures01 as futures;
+    pub use http;
+}
