@@ -1,20 +1,15 @@
 use {
-    super::{
-        super::uri::{Uri, UriComponent},
-        Route,
-    },
+    super::Route,
     crate::{
-        core::Chain,
         endpoint::Endpoint,
-        extractor::Extractor,
+        error::Error,
         generic::{Combine, Tuple},
         handler::Handler,
-        input::{
-            param::{FromPercentEncoded, PercentEncoded},
-            Input,
-        },
+        input::param::{FromPercentEncoded, Params, PercentEncoded},
+        util::Chain,
     },
-    std::{marker::PhantomData, sync::Arc},
+    failure::format_err,
+    std::{borrow::Cow, collections::HashSet, marker::PhantomData, sync::Arc},
 };
 
 mod tags {
@@ -25,15 +20,46 @@ mod tags {
     pub struct Incomplete(());
 }
 
+pub trait PathExtractor: Clone {
+    type Output: Tuple;
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error>;
+}
+
+impl PathExtractor for () {
+    type Output = ();
+
+    #[inline]
+    fn extract(&self, _: Option<&Params<'_>>) -> Result<Self::Output, Error> {
+        Ok(())
+    }
+}
+
+impl<L, R> PathExtractor for Chain<L, R>
+where
+    L: PathExtractor,
+    R: PathExtractor,
+    L::Output: Combine<R::Output>,
+{
+    type Output = <L::Output as Combine<R::Output>>::Out;
+
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error> {
+        let left = self.left.extract(params)?;
+        let right = self.right.extract(params)?;
+        Ok(left.combine(right))
+    }
+}
+
+// ==== PathConfig ====
+
 #[derive(Debug)]
 pub struct Context<'a> {
-    components: Vec<UriComponent>,
-    _marker: PhantomData<&'a mut ()>,
+    path: &'a mut String,
+    names: &'a mut HashSet<&'static str>,
 }
 
 pub trait PathConfig {
     type Output: Tuple;
-    type Extractor: Extractor<Output = Self::Output>;
+    type Extractor: PathExtractor<Output = Self::Output>;
     type Tag;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor>;
@@ -56,26 +82,27 @@ where
     }
 }
 
-impl PathConfig for String {
+impl PathConfig for &'static str {
     type Output = ();
     type Extractor = ();
     type Tag = self::tags::Incomplete;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components.push(UriComponent::Static(self));
-        Ok(())
-    }
-}
+        if self.is_empty() {
+            return Err(format_err!("path segment cannot be empty").into());
+        }
 
-impl<'a> PathConfig for &'a str {
-    type Output = ();
-    type Extractor = ();
-    type Tag = self::tags::Incomplete;
+        if !self.is_ascii() {
+            return Err(format_err!("path segment must be an ASCII sequence").into());
+        }
 
-    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components.push(UriComponent::Static(self.to_owned()));
+        if self.contains('/') {
+            return Err(format_err!("path segment cannot contain slash").into());
+        }
+
+        cx.path.push('/');
+        cx.path.push_str(self); // FIXME: percent-encode
+
         Ok(())
     }
 }
@@ -94,26 +121,36 @@ impl PathConfig for Slash {
     type Tag = self::tags::Completed;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        cx.components.push(UriComponent::Slash);
+        if !cx.path.ends_with('/') {
+            cx.path.push('/');
+        }
         Ok(())
     }
 }
 
 /// Creates a `PathConfig` that appends a parameter with the specified name to the path.
-pub fn param<T>(name: impl Into<String>) -> Param<T>
+pub fn param<T>(name: &'static str) -> Param<T>
 where
     T: FromPercentEncoded,
 {
     Param {
-        name: name.into(),
+        name,
         _marker: PhantomData,
     }
 }
 
 #[derive(Debug)]
 pub struct Param<T> {
-    name: String,
+    name: &'static str,
     _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Copy for Param<T> {}
+
+impl<T> Clone for Param<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<T> PathConfig for Param<T>
@@ -125,23 +162,35 @@ where
     type Tag = self::tags::Incomplete;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components
-            .push(UriComponent::Param(self.name.clone(), ':'));
+        if self.name.is_empty() {
+            return Err(format_err!("parameter name cannot be empty").into());
+        }
+
+        if !self.name.is_ascii() {
+            return Err(format_err!("parameter name must be an ASCII sequence").into());
+        }
+
+        if !cx.names.insert(self.name) {
+            return Err(format_err!("duplicated parameter name: '{}'", self.name).into());
+        }
+
+        cx.path.push('/');
+        cx.path.push(':');
+        cx.path.push_str(self.name);
+
         Ok(self)
     }
 }
 
-impl<T> Param<T>
+impl<T> PathExtractor for Param<T>
 where
     T: FromPercentEncoded,
 {
-    fn extract_inner(&self, input: &mut Input<'_>) -> Result<(T,), crate::Error> {
-        let params = input
-            .params
-            .as_ref()
-            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?;
+    type Output = (T,);
+
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error> {
         let s = params
+            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?
             .name(&self.name)
             .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
         T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
@@ -150,34 +199,29 @@ where
     }
 }
 
-impl<T> Extractor for Param<T>
-where
-    T: FromPercentEncoded,
-{
-    type Output = (T,);
-    type Error = crate::error::Error;
-    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-        futures01::future::result(self.extract_inner(input))
-    }
-}
-
 /// Creates a `PathConfig` that appends a *catch-all* parameter with the specified name to the path.
-pub fn catch_all<T>(name: impl Into<String>) -> CatchAll<T>
+pub fn catch_all<T>(name: &'static str) -> CatchAll<T>
 where
     T: FromPercentEncoded,
 {
     CatchAll {
-        name: name.into(),
+        name,
         _marker: PhantomData,
     }
 }
 
 #[derive(Debug)]
 pub struct CatchAll<T> {
-    name: String,
+    name: &'static str,
     _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Copy for CatchAll<T> {}
+
+impl<T> Clone for CatchAll<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<T> PathConfig for CatchAll<T>
@@ -189,41 +233,40 @@ where
     type Tag = self::tags::Completed;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components
-            .push(UriComponent::Param(self.name.clone(), '*'));
+        if self.name.is_empty() {
+            return Err(format_err!("parameter name cannot be empty").into());
+        }
+
+        if !self.name.is_ascii() {
+            return Err(format_err!("parameter name must be an ASCII sequence").into());
+        }
+
+        if !cx.names.insert(self.name) {
+            return Err(format_err!("duplicated parameter name: '{}'", self.name).into());
+        }
+
+        cx.path.push('/');
+        cx.path.push('*');
+        cx.path.push_str(self.name);
+
         Ok(self)
     }
 }
 
-impl<T> CatchAll<T>
+impl<T> PathExtractor for CatchAll<T>
 where
     T: FromPercentEncoded,
 {
-    fn extract_inner(&self, input: &mut Input<'_>) -> Result<(T,), crate::Error> {
-        let params = input
-            .params
-            .as_ref()
-            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?;
+    type Output = (T,);
+
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error> {
         let s = params
+            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?
             .catch_all()
             .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
         T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
             .map(|x| (x,))
             .map_err(Into::into)
-    }
-}
-
-impl<T> Extractor for CatchAll<T>
-where
-    T: FromPercentEncoded,
-{
-    type Output = (T,);
-    type Error = crate::error::Error;
-    type Future = futures01::future::FutureResult<Self::Output, Self::Error>;
-
-    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-        futures01::future::result(self.extract_inner(input))
     }
 }
 
@@ -236,25 +279,26 @@ macro_rules! path {
     (*) => ( $crate::config::path::Path::asterisk() );
     ($(/ $s:tt)+) => ( $crate::config::path::Path::create($crate::chain!($($s),*)).unwrap() );
     ($(/ $s:tt)+ /) => ( $crate::config::route::Path::create($crate::chain!($($s),*, $crate::app::config::route::slash())).unwrap() );
+    ($path:expr) => ( compile_error!("the procedural macro has not been implemented yet.") );
 }
 
 #[derive(Debug)]
-pub struct Path<E: Extractor = ()> {
-    uri: Option<Uri>,
+pub struct Path<E: PathExtractor = ()> {
+    path: Cow<'static, str>,
     extractor: E,
 }
 
 impl Path<()> {
     pub fn root() -> Self {
         Self {
-            uri: Some(Uri::root()),
+            path: "/".into(),
             extractor: (),
         }
     }
 
     pub fn asterisk() -> Self {
         Self {
-            uri: None,
+            path: "*".into(),
             extractor: (),
         }
     }
@@ -263,19 +307,19 @@ impl Path<()> {
     where
         T: PathConfig,
     {
-        let mut cx = Context {
-            components: vec![],
-            _marker: PhantomData,
-        };
-        let extractor = config.configure(&mut cx)?;
-
-        let mut uri = Uri::root();
-        for component in cx.components {
-            uri.push(component)?;
-        }
+        let mut path = String::new();
+        let mut names = HashSet::new();
+        let extractor = config.configure(&mut Context {
+            path: &mut path,
+            names: &mut names,
+        })?;
 
         Ok(Path {
-            uri: Some(uri),
+            path: if path.is_empty() {
+                "/".into()
+            } else {
+                path.into()
+            },
             extractor,
         })
     }
@@ -283,17 +327,13 @@ impl Path<()> {
 
 impl<E> Path<E>
 where
-    E: Extractor,
+    E: PathExtractor,
 {
-    /// Appends a supplemental `Extractor` to this path.
-    pub fn extract<E2>(self, other: E2) -> Path<Chain<E, E2>>
-    where
-        E2: Extractor,
-        E::Output: Combine<E2::Output>,
-    {
-        Path {
-            uri: self.uri,
-            extractor: Chain::new(self.extractor, other),
+    #[doc(hidden)]
+    pub fn new(path: impl Into<Cow<'static, str>>, extractor: E) -> Self {
+        Self {
+            path: path.into(),
+            extractor,
         }
     }
 
@@ -304,25 +344,26 @@ where
     ) -> Route<
         impl Handler<
             Output = T::Output,
+            Error = Error,
             Handle = self::handler::RouteHandle<E, T>, // private
         >,
     >
     where
         T: Endpoint<E::Output>,
     {
-        let Self { uri, extractor, .. } = self;
-
-        let allowed_methods = endpoint.allowed_methods();
-        let extractor = Arc::new(extractor);
+        let Self {
+            path, extractor, ..
+        } = self;
         let endpoint = Arc::new(endpoint);
+        let allowed_methods = endpoint.allowed_methods();
 
         Route {
-            uri,
+            path,
             handler: crate::handler::handler(
                 move || self::handler::RouteHandle {
                     extractor: extractor.clone(),
                     endpoint: endpoint.clone(),
-                    state: self::handler::RouteHandleState::Init,
+                    in_flight: None,
                 },
                 allowed_methods,
             ),
@@ -332,69 +373,48 @@ where
 
 mod handler {
     use {
+        super::PathExtractor,
         crate::{
-            endpoint::{Endpoint, EndpointAction},
+            endpoint::{ApplyContext, Endpoint},
             error::Error,
-            extractor::Extractor,
-            handler::Handle,
+            future::{Poll, TryFuture},
             input::Input,
         },
-        futures01::{try_ready, Future, Poll},
-        http::StatusCode,
         std::sync::Arc,
     };
 
     #[allow(missing_debug_implementations)]
     pub struct RouteHandle<E, T>
     where
-        E: Extractor,
+        E: PathExtractor,
         T: Endpoint<E::Output>,
     {
-        pub(super) extractor: Arc<E>,
+        pub(super) extractor: E,
         pub(super) endpoint: Arc<T>,
-        pub(super) state: RouteHandleState<E, T>,
+        pub(super) in_flight: Option<T::Future>,
     }
 
-    #[allow(missing_debug_implementations)]
-    pub(super) enum RouteHandleState<E, T>
+    impl<E, T> TryFuture for RouteHandle<E, T>
     where
-        E: Extractor,
+        E: PathExtractor,
         T: Endpoint<E::Output>,
     {
-        Init,
-        First(E::Future, Option<T::Action>),
-        Second(<T::Action as EndpointAction<E::Output>>::Future),
-    }
-
-    impl<E, T> Handle for RouteHandle<E, T>
-    where
-        E: Extractor,
-        T: Endpoint<E::Output>,
-    {
-        type Output = T::Output;
+        type Ok = T::Output;
         type Error = Error;
 
         #[inline]
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
-                self.state = match self.state {
-                    RouteHandleState::Init => {
-                        let action = self
-                            .endpoint
-                            .apply(input.request.method())
-                            .ok_or_else(|| StatusCode::METHOD_NOT_ALLOWED)?;
-                        let extract = self.extractor.extract(input);
-                        RouteHandleState::First(extract, Some(action))
-                    }
-                    RouteHandleState::First(ref mut future, ref mut action) => {
-                        let args = try_ready!(future.poll().map_err(Into::into));
-                        let future = action.take().unwrap().call(input, args);
-                        RouteHandleState::Second(future)
-                    }
-                    RouteHandleState::Second(ref mut future) => {
-                        return future.poll().map_err(Into::into)
-                    }
+                if let Some(ref mut action) = self.in_flight {
+                    return action.poll_ready(input).map_err(Into::into);
                 }
+
+                let args = self.extractor.extract(input.params.as_ref())?;
+                self.in_flight = Some(
+                    self.endpoint
+                        .apply(args, &mut ApplyContext::new(input))
+                        .map_err(|(_args, err)| err)?,
+                );
             }
         }
     }

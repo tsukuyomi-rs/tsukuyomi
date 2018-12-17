@@ -18,7 +18,7 @@ struct GraphiQLSource {
 
 impl IntoResponse for GraphiQLSource {
     type Body = Bytes;
-    type Error = tsukuyomi::core::Never;
+    type Error = tsukuyomi::util::Never;
 
     #[inline]
     fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {

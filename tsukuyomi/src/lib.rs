@@ -11,7 +11,7 @@
 #![forbid(clippy::unimplemented)]
 
 #[macro_use]
-pub mod core;
+pub mod util;
 
 mod generic;
 mod uri;
@@ -22,9 +22,11 @@ pub mod endpoint;
 pub mod error;
 pub mod extractor;
 pub mod fs;
+pub mod future;
 pub mod handler;
 pub mod input;
 pub mod output;
+pub mod responder;
 pub mod rt;
 pub mod server;
 pub mod service;
@@ -33,6 +35,7 @@ pub mod test;
 #[doc(inline)]
 pub use crate::{
     app::App,
+    endpoint::Endpoint,
     error::{
         Error, //
         HttpError,
@@ -41,9 +44,7 @@ pub use crate::{
     extractor::Extractor,
     handler::Handler,
     input::Input,
-    output::{
-        IntoResponse, //
-        Responder,
-    },
+    output::IntoResponse,
+    responder::Responder,
     server::Server,
 };

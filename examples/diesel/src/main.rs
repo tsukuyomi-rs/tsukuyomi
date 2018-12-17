@@ -34,9 +34,9 @@ fn main() -> tsukuyomi::server::Result<()> {
     let server = App::create({
         mount("/api/v1/posts").with(chain![
             path!(/) //
-                .extract(db_conn.clone())
                 .to(chain![
                     endpoint::get()
+                        .extract(db_conn.clone())
                         .extract(extractor::query::query().optional())
                         .call_async({
                             #[derive(Debug, serde::Deserialize)]
@@ -57,36 +57,36 @@ fn main() -> tsukuyomi::server::Result<()> {
                                 .map(tsukuyomi::output::json)
                             }
                         }),
-                    endpoint::post()//
+                    endpoint::post() //
+                        .extract(db_conn.clone())
                         .extract(extractor::body::json())
                         .call_async({
-                        #[derive(Debug, serde::Deserialize)]
-                        struct Param {
-                            title: String,
-                            body: String,
-                        }
-                        |conn: Conn, param: Param| {
-                            use crate::schema::posts;
-                            use diesel::prelude::*;
-                            blocking_section(move || {
-                                let new_post = NewPost {
-                                    title: &param.title,
-                                    body: &param.body,
-                                };
-                                diesel::insert_into(posts::table)
-                                    .values(&new_post)
-                                    .execute(&*conn)
-                                    .map_err(tsukuyomi::error::internal_server_error)
-                            })
-                            .map(|_| ())
-                        }
-                    }),
+                            #[derive(Debug, serde::Deserialize)]
+                            struct Param {
+                                title: String,
+                                body: String,
+                            }
+                            |conn: Conn, param: Param| {
+                                use crate::schema::posts;
+                                use diesel::prelude::*;
+                                blocking_section(move || {
+                                    let new_post = NewPost {
+                                        title: &param.title,
+                                        body: &param.body,
+                                    };
+                                    diesel::insert_into(posts::table)
+                                        .values(&new_post)
+                                        .execute(&*conn)
+                                        .map_err(tsukuyomi::error::internal_server_error)
+                                })
+                                .map(|_| ())
+                            }
+                        }),
                 ]),
             path!(/{path::param("id")}) //
-                .extract(db_conn)
-                .to(
-                    endpoint::get()//
-                        .call_async(|id: i32, conn: Conn| blocking_section(move || {
+                .to(endpoint::get() //
+                    .extract(db_conn)
+                    .call_async(|id: i32, conn: Conn| blocking_section(move || {
                         use crate::schema::posts::dsl;
                         use diesel::prelude::*;
                         dsl::posts
@@ -95,8 +95,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                             .optional()
                             .map_err(tsukuyomi::error::internal_server_error)
                     })
-                    .map(|post_opt| post_opt.map(tsukuyomi::output::json))),
-                )
+                    .map(|post_opt| post_opt.map(tsukuyomi::output::json))))
         ])
     })
     .map(Server::new)?;

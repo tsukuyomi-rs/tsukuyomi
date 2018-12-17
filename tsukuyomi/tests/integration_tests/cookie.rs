@@ -6,14 +6,16 @@ use {
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
-        path!(/"first").to(tsukuyomi::endpoint::allow_any(|input, ()| {
-            input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
-            Ok::<_, tsukuyomi::Error>("")
-        })),
-        path!(/"second").to(tsukuyomi::endpoint::allow_any(|input, ()| {
-            assert!(input.cookies.jar()?.get("session").is_some());
-            Ok::<_, tsukuyomi::Error>("")
-        })),
+        path!(/"first").to(endpoint::any() //
+            .reply(tsukuyomi::responder::oneshot(|input| {
+                input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
+                Ok::<_, tsukuyomi::Error>("")
+            }))),
+        path!(/"second").to(endpoint::any() //
+            .reply(tsukuyomi::responder::oneshot(|input| {
+                assert!(input.cookies.jar()?.get("session").is_some());
+                Ok::<_, tsukuyomi::Error>("")
+            }))),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -28,15 +30,17 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
         path!(/"first") //
-            .to(tsukuyomi::endpoint::allow_any(|input, ()| {
-                input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
-                Ok::<_, tsukuyomi::Error>("")
-            })),
+            .to(endpoint::any() //
+                .reply(tsukuyomi::responder::oneshot(|input| {
+                    input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
+                    Ok::<_, tsukuyomi::Error>("")
+                }))),
         path!(/"second") //
-            .to(tsukuyomi::endpoint::allow_any(|input, ()| {
-                assert!(input.cookies.jar()?.get("session").is_none());
-                Ok::<_, tsukuyomi::Error>("")
-            })),
+            .to(endpoint::any() //
+                .reply(tsukuyomi::responder::oneshot(|input| {
+                    assert!(input.cookies.jar()?.get("session").is_none());
+                    Ok::<_, tsukuyomi::Error>("")
+                }))),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 

@@ -15,13 +15,13 @@ pub mod backend;
 mod util;
 
 use {
-    futures::Future,
     serde::{de::DeserializeOwned, ser::Serialize},
     tsukuyomi::{
         error::Error, //
         extractor::Extractor,
+        future::{MaybeDone, Poll, TryFuture},
         input::Input,
-        output::Responder,
+        responder::Responder,
     },
 };
 
@@ -29,9 +29,9 @@ use {
 #[allow(missing_docs)]
 pub trait Backend {
     type Session: RawSession;
-    type ReadSession: Future<Item = Self::Session, Error = Error> + Send + 'static;
+    type ReadSession: TryFuture<Ok = Self::Session, Error = Error> + Send + 'static;
 
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadSession;
+    fn read(&self) -> Self::ReadSession;
 }
 
 impl<B> Backend for std::sync::Arc<B>
@@ -41,21 +41,21 @@ where
     type Session = B::Session;
     type ReadSession = B::ReadSession;
 
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadSession {
-        (**self).read(input)
+    fn read(&self) -> Self::ReadSession {
+        (**self).read()
     }
 }
 
 #[allow(missing_docs)]
 pub trait RawSession {
-    type WriteSession: Future<Item = (), Error = Error> + Send + 'static;
+    type WriteSession: TryFuture<Ok = (), Error = Error> + Send + 'static;
 
     fn get(&self, name: &str) -> Option<&str>;
     fn set(&mut self, name: &str, value: String);
     fn remove(&mut self, name: &str);
     fn clear(&mut self);
 
-    fn write(self, input: &mut Input<'_>) -> Self::WriteSession;
+    fn write(self) -> Self::WriteSession;
 }
 
 /// An interface of session values.
@@ -114,22 +114,27 @@ where
     ) -> impl Responder<
         Response = T::Response,
         Error = Error,
-        Future = impl Future<Item = T::Response, Error = Error> + Send + 'static,
+        Respond = impl TryFuture<Ok = T::Response, Error = Error> + Send + 'static,
     >
     where
         T: Responder,
-        T::Future: Send + 'static,
+        T::Respond: Send + 'static,
         T::Response: Send + 'static,
     {
-        tsukuyomi::output::respond(move |input| {
-            let write_session = self.raw.write(input);
-            let mut output = output.respond(input);
+        let mut write_session = MaybeDone::Pending(self.raw.write());
+        let mut respond = MaybeDone::Pending(output.respond());
+
+        tsukuyomi::responder::respond(tsukuyomi::future::poll_fn(move |input| {
+            futures::try_ready!(write_session.poll_ready(input));
+            futures::try_ready!(respond.poll_ready(input).map_err(Into::into));
             write_session
-                .join(futures::future::poll_fn(move || {
-                    output.poll().map_err(Into::into)
-                }))
-                .map(move |((), output)| output)
-        })
+                .take_item()
+                .expect("the future has already been polled.");
+            let output = respond
+                .take_item()
+                .expect("the future has already been polled.");
+            Ok(output.into())
+        }))
     }
 }
 
@@ -154,11 +159,33 @@ where
 {
     type Output = (Session<B::Session>,);
     type Error = Error;
-    type Future = futures::future::Map<B::ReadSession, fn(B::Session) -> Self::Output>;
+    type Extract = SessionExtract<B::ReadSession>;
 
-    fn extract(&self, input: &mut Input<'_>) -> Self::Future {
-        self.backend
-            .read(input)
-            .map((|raw| (Session { raw },)) as fn(_) -> _)
+    fn extract(&self) -> Self::Extract {
+        SessionExtract {
+            read_session: self.backend.read(),
+        }
+    }
+}
+
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct SessionExtract<Fut> {
+    read_session: Fut,
+}
+
+impl<Fut> TryFuture for SessionExtract<Fut>
+where
+    Fut: TryFuture,
+    Fut::Ok: RawSession,
+{
+    type Ok = (Session<Fut::Ok>,);
+    type Error = Fut::Error;
+
+    #[inline]
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+        self.read_session
+            .poll_ready(input)
+            .map(|x| x.map(|raw| (Session { raw },)))
     }
 }

@@ -210,7 +210,8 @@ fn local_data() -> tsukuyomi::test::Result<()> {
     use {
         futures01::Poll,
         tsukuyomi::{
-            handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+            future::TryFuture,
+            handler::{AllowedMethods, Handler, ModifyHandler},
             input::{localmap::local_key, Input},
         },
     };
@@ -259,11 +260,11 @@ fn local_data() -> tsukuyomi::test::Result<()> {
         handle: H,
     }
 
-    impl<H: Handle> Handle for InsertMyDataHandle<H> {
-        type Output = H::Output;
+    impl<H: TryFuture> TryFuture for InsertMyDataHandle<H> {
+        type Ok = H::Ok;
         type Error = H::Error;
 
-        fn poll_ready(&mut self, input: &mut Input) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input) -> Poll<Self::Ok, Self::Error> {
             input
                 .locals
                 .entry(&MyData::KEY)

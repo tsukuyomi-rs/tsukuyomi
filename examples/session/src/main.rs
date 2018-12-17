@@ -20,10 +20,10 @@ fn main() -> tsukuyomi::server::Result<()> {
     let session = Arc::new(session(backend));
 
     App::create(chain![
-        path!(/)
-            .extract(session.clone())
-            .to(
-                endpoint::get().call_async(|session: Session<_>| -> tsukuyomi::Result<_> {
+        path!(/) //
+            .to(endpoint::get() //
+                .extract(session.clone())
+                .call_async(|session: Session<_>| -> tsukuyomi::Result<_> {
                     let username = session.get::<String>("username")?;
                     let output = if let Some(username) = username {
                         Either::Right(html(format!(
@@ -38,26 +38,27 @@ fn main() -> tsukuyomi::server::Result<()> {
                         Either::Left(redirect::to("/login"))
                     };
                     Ok(session.finish(output))
-                }),
-            ),
+                })),
         path!(/"login") //
-            .extract(session.clone())
             .to(chain![
-                endpoint::get().call(|session: Session<_>| {
-                    let output = if session.contains("username") {
-                        Either::Left(redirect::to("/"))
-                    } else {
-                        Either::Right(html(
-                            "login form\n\
-                             <form method=\"post\">\n\
-                             <input type=\"text\" name=\"username\">\n\
-                             <input type=\"submit\">\n\
-                             </form>",
-                        ))
-                    };
-                    session.finish(output)
-                }),
+                endpoint::get() //
+                    .extract(session.clone())
+                    .call(|session: Session<_>| {
+                        let output = if session.contains("username") {
+                            Either::Left(redirect::to("/"))
+                        } else {
+                            Either::Right(html(
+                                "login form\n\
+                                 <form method=\"post\">\n\
+                                 <input type=\"text\" name=\"username\">\n\
+                                 <input type=\"submit\">\n\
+                                 </form>",
+                            ))
+                        };
+                        session.finish(output)
+                    }),
                 endpoint::post()
+                    .extract(session.clone())
                     .extract(extractor::body::urlencoded())
                     .call_async({
                         #[derive(Debug, serde::Deserialize)]
@@ -71,11 +72,12 @@ fn main() -> tsukuyomi::server::Result<()> {
                     }),
             ]),
         path!(/"logout") //
-            .extract(session)
-            .to(endpoint::get().call(|mut session: Session<_>| {
-                session.remove("username");
-                session.finish(redirect::to("/"))
-            }))
+            .to(endpoint::get()
+                .extract(session)
+                .call(|mut session: Session<_>| {
+                    session.remove("username");
+                    session.finish(redirect::to("/"))
+                }))
     ])
     .map(Server::new)?
     .run()

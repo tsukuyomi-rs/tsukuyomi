@@ -1,18 +1,13 @@
 //! Components for constructing HTTP responses.
 
+pub mod redirect;
+
 pub use tsukuyomi_macros::IntoResponse;
 
 use {
-    crate::{
-        core::Never,
-        error::Error,
-        input::{body::RequestBody, Input},
-    },
+    crate::{error::Error, input::body::RequestBody, util::Never},
     bytes::{Buf, Bytes, IntoBuf},
-    futures01::{
-        future::{self, FutureResult},
-        Future, IntoFuture, Poll, Stream,
-    },
+    futures01::{Poll, Stream},
     http::{header::HeaderMap, Request, Response, StatusCode},
     hyper::body::{Body, Payload},
     serde::Serialize,
@@ -310,7 +305,7 @@ where
 pub mod into_response {
     use {
         super::ResponseBody,
-        crate::{core::Never, error::Error},
+        crate::{error::Error, util::Never},
         http::{Request, Response},
         serde::Serialize,
     };
@@ -359,191 +354,4 @@ pub mod into_response {
         );
         response
     }
-}
-
-#[allow(missing_docs)]
-pub mod redirect {
-    use {
-        super::*,
-        http::{Response, StatusCode},
-        std::borrow::Cow,
-    };
-
-    #[derive(Debug, Clone)]
-    pub struct Redirect {
-        status: StatusCode,
-        location: Cow<'static, str>,
-    }
-
-    impl Redirect {
-        pub fn new<T>(status: StatusCode, location: T) -> Self
-        where
-            T: Into<Cow<'static, str>>,
-        {
-            Self {
-                status,
-                location: location.into(),
-            }
-        }
-    }
-
-    impl IntoResponse for Redirect {
-        type Body = ();
-        type Error = Never;
-
-        #[inline]
-        fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(Response::builder()
-                .status(self.status)
-                .header("location", &*self.location)
-                .body(())
-                .expect("should be a valid response"))
-        }
-    }
-
-    macro_rules! define_funcs {
-        ($( $name:ident => $STATUS:ident, )*) => {$(
-            #[inline]
-            pub fn $name<T>(location: T) -> Redirect
-            where
-                T: Into<Cow<'static, str>>,
-            {
-                Redirect::new(StatusCode::$STATUS, location)
-            }
-        )*};
-    }
-
-    define_funcs! {
-        moved_permanently => MOVED_PERMANENTLY,
-        found => FOUND,
-        see_other => SEE_OTHER,
-        temporary_redirect => TEMPORARY_REDIRECT,
-        permanent_redirect => PERMANENT_REDIRECT,
-        to => MOVED_PERMANENTLY,
-    }
-}
-
-// ==== Responder ====
-
-/// A trait representing a reply to the client.
-pub trait Responder {
-    /// The type of response
-    type Response: IntoResponse;
-
-    /// The error type which will be returned from `respond_to`.
-    type Error: Into<Error>;
-
-    /// The type of `Future` which will be returned from `respond_to`.
-    type Future: Future<Item = Self::Response, Error = Self::Error>;
-
-    /// Converts itself into a `Future` that will be resolved as a `Response`.
-    fn respond(self, input: &mut Input<'_>) -> Self::Future;
-}
-
-/// a branket impl of `Responder` for `IntoResponse`s.
-impl<T> Responder for T
-where
-    T: IntoResponse,
-{
-    type Response = T;
-    type Error = Never;
-    type Future = FutureResult<Self::Response, Self::Error>;
-
-    #[inline]
-    fn respond(self, _: &mut Input<'_>) -> Self::Future {
-        future::ok(self)
-    }
-}
-
-mod impl_responder_for_either {
-    use {
-        super::{IntoResponse, Responder},
-        crate::{core::Either, error::Error, input::Input},
-        futures01::{Future, Poll},
-    };
-
-    impl<L, R> Responder for Either<L, R>
-    where
-        L: Responder,
-        R: Responder,
-    {
-        type Response = either::Either<L::Response, R::Response>;
-        type Error = Error;
-        type Future = EitherFuture<L::Future, R::Future>;
-
-        fn respond(self, input: &mut Input<'_>) -> Self::Future {
-            match self {
-                Either::Left(l) => EitherFuture::Left(l.respond(input)),
-                Either::Right(r) => EitherFuture::Right(r.respond(input)),
-            }
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub enum EitherFuture<L, R> {
-        Left(L),
-        Right(R),
-    }
-
-    impl<L, R> Future for EitherFuture<L, R>
-    where
-        L: Future,
-        R: Future,
-        L::Error: Into<Error>,
-        R::Error: Into<Error>,
-        L::Item: IntoResponse,
-        R::Item: IntoResponse,
-    {
-        type Item = either::Either<L::Item, R::Item>;
-        type Error = Error;
-
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            match self {
-                EitherFuture::Left(l) => l
-                    .poll()
-                    .map(|x| x.map(either::Either::Left))
-                    .map_err(Into::into),
-                EitherFuture::Right(r) => r
-                    .poll()
-                    .map(|x| x.map(either::Either::Right))
-                    .map_err(Into::into),
-            }
-        }
-    }
-}
-
-/// A function to create a `Responder` using the specified function.
-pub fn respond<R>(
-    f: impl FnOnce(&mut Input<'_>) -> R,
-) -> impl Responder<
-    Response = R::Item, //
-    Error = R::Error,
-    Future = R::Future,
->
-where
-    R: IntoFuture,
-    R::Item: IntoResponse,
-    R::Error: Into<Error>,
-{
-    #[allow(missing_debug_implementations)]
-    pub struct ResponderFn<F>(F);
-
-    impl<F, R> Responder for ResponderFn<F>
-    where
-        F: FnOnce(&mut Input<'_>) -> R,
-        R: IntoFuture,
-        R::Item: IntoResponse,
-        R::Error: Into<Error>,
-    {
-        type Response = R::Item;
-        type Error = R::Error;
-        type Future = R::Future;
-
-        #[inline]
-        fn respond(self, input: &mut Input<'_>) -> Self::Future {
-            (self.0)(input).into_future()
-        }
-    }
-
-    ResponderFn(f)
 }

@@ -3,7 +3,11 @@ use {
     cookie::{Cookie, CookieBuilder},
     serde_json,
     std::{borrow::Cow, collections::HashMap, fmt, sync::Arc},
-    tsukuyomi::{error::Result, input::Cookies, Input},
+    tsukuyomi::{
+        error::{Error, Result},
+        future::{Poll, TryFuture},
+        input::{Cookies, Input},
+    },
 };
 
 #[cfg(feature = "secure")]
@@ -171,13 +175,28 @@ impl CookieBackendInner {
 
 impl Backend for CookieBackend {
     type Session = CookieSession;
-    type ReadSession = futures::future::FutureResult<Self::Session, tsukuyomi::Error>;
+    type ReadSession = ReadSession;
 
-    fn read(&self, input: &mut Input<'_>) -> Self::ReadSession {
-        futures::future::result(self.inner.read(input).map(|inner| CookieSession {
-            inner,
-            backend: self.clone(),
-        }))
+    fn read(&self) -> Self::ReadSession {
+        ReadSession(Some(self.clone()))
+    }
+}
+
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct ReadSession(Option<CookieBackend>);
+
+impl TryFuture for ReadSession {
+    type Ok = CookieSession;
+    type Error = Error;
+
+    #[inline]
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+        let backend = self.0.take().expect("the future has already been polled");
+        backend
+            .inner
+            .read(input)
+            .map(|inner| CookieSession { inner, backend }.into())
     }
 }
 
@@ -195,7 +214,7 @@ enum Inner {
 }
 
 impl RawSession for CookieSession {
-    type WriteSession = futures::future::FutureResult<(), tsukuyomi::Error>;
+    type WriteSession = WriteSession;
 
     fn get(&self, name: &str) -> Option<&str> {
         match self.inner {
@@ -236,7 +255,26 @@ impl RawSession for CookieSession {
         self.inner = Inner::Clear;
     }
 
-    fn write(self, input: &mut Input<'_>) -> Self::WriteSession {
-        futures::future::result(self.backend.inner.write(input, self.inner))
+    fn write(self) -> Self::WriteSession {
+        WriteSession(Some(self))
+    }
+}
+
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct WriteSession(Option<CookieSession>);
+
+impl TryFuture for WriteSession {
+    type Ok = ();
+    type Error = Error;
+
+    #[inline]
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+        let session = self.0.take().expect("the future has already been polled");
+        session
+            .backend
+            .inner
+            .write(input, session.inner)
+            .map(Into::into)
     }
 }

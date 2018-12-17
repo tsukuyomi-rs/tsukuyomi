@@ -231,44 +231,51 @@ mod impl_endpoint_for_cors {
         super::CORS,
         http::{Method, Response, StatusCode},
         tsukuyomi::{
-            endpoint::{Endpoint, EndpointAction},
+            endpoint::{ApplyContext, ApplyError, ApplyResult, Endpoint},
             error::Error,
+            future::{Poll, TryFuture},
             handler::AllowedMethods,
             input::Input,
         },
     };
 
-    impl EndpointAction<()> for CORS {
-        type Output = Response<()>;
-        type Error = Error;
-        type Future = futures::future::FutureResult<Self::Output, Self::Error>;
-
-        fn call(self, input: &mut Input<'_>, _: ()) -> Self::Future {
-            match self.inner.validate_origin(input.request) {
-                Ok(Some(origin)) => futures::future::result(
-                    self.inner
-                        .process_preflight_request(input.request, origin)
-                        .map_err(Into::into),
-                ),
-                Ok(None) => futures::future::err(StatusCode::NOT_FOUND.into()),
-                Err(err) => futures::future::err(err.into()),
-            }
-        }
-    }
-
     impl Endpoint<()> for CORS {
         type Output = Response<()>;
-        type Action = Self;
+        type Error = Error;
+        type Future = CORSEndpointFuture;
+
+        fn apply(&self, _: (), cx: &mut ApplyContext<'_, '_>) -> ApplyResult<(), Self> {
+            if cx.method() == Method::OPTIONS {
+                Ok(CORSEndpointFuture { cors: self.clone() })
+            } else {
+                Err(((), ApplyError::method_not_allowed()))
+            }
+        }
 
         fn allowed_methods(&self) -> Option<AllowedMethods> {
             Some(AllowedMethods::from(Method::OPTIONS))
         }
+    }
 
-        fn apply(&self, method: &Method) -> Option<Self::Action> {
-            if method == Method::OPTIONS {
-                Some(self.clone())
-            } else {
-                None
+    #[derive(Debug)]
+    pub struct CORSEndpointFuture {
+        cors: CORS,
+    }
+
+    impl TryFuture for CORSEndpointFuture {
+        type Ok = Response<()>;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            match self.cors.inner.validate_origin(input.request) {
+                Ok(Some(origin)) => self
+                    .cors
+                    .inner
+                    .process_preflight_request(input.request, origin)
+                    .map(Into::into)
+                    .map_err(Into::into),
+                Ok(None) => Err(StatusCode::NOT_FOUND.into()),
+                Err(err) => Err(err.into()),
             }
         }
     }
@@ -278,11 +285,11 @@ mod impl_modify_handler_for_cors {
     use {
         super::CORS,
         either::Either,
-        futures::{Async, Poll},
         http::{Method, Response},
         tsukuyomi::{
             error::Error,
-            handler::{AllowedMethods, Handle, Handler, ModifyHandler},
+            future::{Async, Poll, TryFuture},
+            handler::{AllowedMethods, Handler, ModifyHandler},
             input::Input,
         },
     };
@@ -341,17 +348,17 @@ mod impl_modify_handler_for_cors {
     }
 
     #[derive(Debug)]
-    pub struct CORSHandle<H: Handle> {
+    pub struct CORSHandle<H: TryFuture> {
         applied: bool,
         cors: CORS,
         handle: H,
     }
 
-    impl<H: Handle> Handle for CORSHandle<H> {
-        type Output = Either<Response<()>, H::Output>;
+    impl<H: TryFuture> TryFuture for CORSHandle<H> {
+        type Ok = Either<Response<()>, H::Ok>;
         type Error = Error;
 
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             if !self.applied {
                 self.applied = true;
                 if let Some(output) = self.cors.inner.process_request(input)? {

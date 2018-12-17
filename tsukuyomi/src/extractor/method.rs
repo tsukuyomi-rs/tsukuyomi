@@ -4,7 +4,7 @@
 
 use {
     super::Extractor,
-    futures01::Future,
+    crate::future::TryFuture,
     http::{Method, StatusCode},
 };
 
@@ -13,7 +13,7 @@ pub fn method(
 ) -> impl Extractor<
     Output = (), //
     Error = StatusCode,
-    Future = impl Future<Item = (), Error = StatusCode> + Send + 'static,
+    Extract = impl TryFuture<Ok = (), Error = StatusCode> + Send + 'static,
 > {
     super::guard(move |input| {
         if input.request.method() == method {
@@ -29,7 +29,7 @@ macro_rules! define_http_method_extractors {
         pub fn $name() -> impl Extractor<
             Output = (),
             Error = StatusCode,
-            Future = impl Future<Item = (), Error = StatusCode> + Send + 'static,
+            Extract = impl TryFuture<Ok = (), Error = StatusCode> + Send + 'static,
         > {
             self::method(Method::$METHOD)
         }
@@ -51,7 +51,7 @@ define_http_method_extractors! {
 pub fn get_or_head() -> impl Extractor<
     Output = (),
     Error = StatusCode,
-    Future = impl Future<Item = (), Error = StatusCode> + Send + 'static,
+    Extract = impl TryFuture<Ok = (), Error = StatusCode> + Send + 'static,
 > {
     super::guard(move |input| {
         if input.request.method() == Method::GET || input.request.method() == Method::HEAD {

@@ -3,14 +3,16 @@
 use {
     crate::{
         error::Error,
+        future::TryFuture,
         handler::ModifyHandler,
         input::Input,
-        output::{IntoResponse, Responder, ResponseBody},
+        output::{IntoResponse, ResponseBody},
+        responder::Responder,
         rt::poll_blocking,
     },
     bytes::{BufMut, Bytes, BytesMut},
     filetime::FileTime,
-    futures01::{Async, Future, Poll, Stream},
+    futures01::{Async, Poll, Stream},
     http::{
         header::{self, HeaderMap},
         Request, Response, StatusCode,
@@ -154,12 +156,12 @@ impl<P> Responder for NamedFile<P>
 where
     P: AsRef<Path> + Send + 'static,
 {
-    type Response = NamedFileResponse;
+    type Response = Response<ResponseBody>;
     type Error = crate::Error;
-    type Future = OpenNamedFile<P>;
+    type Respond = OpenNamedFile<P>;
 
     #[inline]
-    fn respond(self, _: &mut Input<'_>) -> Self::Future {
+    fn respond(self) -> Self::Respond {
         OpenNamedFile {
             path: self.path,
             config: self.config,
@@ -173,14 +175,14 @@ pub struct OpenNamedFile<P> {
     config: Option<OpenConfig>,
 }
 
-impl<P> Future for OpenNamedFile<P>
+impl<P> TryFuture for OpenNamedFile<P>
 where
     P: AsRef<Path>,
 {
-    type Item = NamedFileResponse;
+    type Ok = Response<ResponseBody>;
     type Error = crate::Error;
 
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
         let (file, meta) = futures01::try_ready!(blocking_io(|| {
             let file = File::open(&self.path)?;
             let meta = file.metadata()?;
@@ -192,18 +194,21 @@ where
         let last_modified = FileTime::from_last_modification_time(&meta);
         let etag = ETag::from_metadata(&meta);
 
-        Ok(Async::Ready(NamedFileResponse {
+        let response = NamedFileResponse {
             file,
             meta,
             last_modified,
             etag,
             config,
-        }))
+        }
+        .into_response(input.request)?;
+
+        Ok(Async::Ready(response))
     }
 }
 
 #[derive(Debug)]
-pub struct NamedFileResponse {
+struct NamedFileResponse {
     file: File,
     meta: Metadata,
     etag: ETag,
@@ -439,7 +444,8 @@ mod impl_handler_for_serve_file {
         super::{ArcPath, NamedFile, ServeFile},
         crate::{
             error::Error,
-            handler::{AllowedMethods, Handle, Handler},
+            future::TryFuture,
+            handler::{AllowedMethods, Handler},
             input::Input,
         },
         futures01::{Async, Poll},
@@ -459,11 +465,11 @@ mod impl_handler_for_serve_file {
         }
     }
 
-    impl Handle for ServeFile {
-        type Output = NamedFile<ArcPath>;
+    impl TryFuture for ServeFile {
+        type Ok = NamedFile<ArcPath>;
         type Error = Error;
 
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Output, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let path = if self.inner.extract_path {
                 let path = input
                     .params
@@ -539,7 +545,7 @@ where
             let file_type = entry.file_type()?;
             if file_type.is_file() {
                 scope.route(
-                    Some(format!("/{}", name)),
+                    format!("/{}", name),
                     ServeFile {
                         inner: Arc::new(ServeFileInner {
                             path,
@@ -550,7 +556,7 @@ where
                 )?;
             } else if file_type.is_dir() {
                 scope.route(
-                    Some(format!("/{}/*path", name)),
+                    format!("/{}/*path", name),
                     ServeFile {
                         inner: Arc::new(ServeFileInner {
                             path,

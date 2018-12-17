@@ -1,11 +1,11 @@
 use {
     crate::{
-        core::{Chain, TryInto},
-        endpoint::Endpoint,
+        endpoint::{ApplyContext, ApplyError, Endpoint},
         error::Error,
         extractor::Extractor,
         generic::{Combine, Func},
         handler::AllowedMethods,
+        util::{Chain, TryInto},
     },
     futures01::IntoFuture,
     http::Method,
@@ -50,6 +50,7 @@ pub fn get_or_head() -> Builder {
     Builder::allow_only(vec![Method::GET, Method::HEAD]).expect("should be valid methods")
 }
 
+/// A builder of `Endpoint`.
 #[derive(Debug)]
 pub struct Builder<E: Extractor = ()> {
     extractor: E,
@@ -57,6 +58,7 @@ pub struct Builder<E: Extractor = ()> {
 }
 
 impl Builder {
+    /// Creates a `Builder` that accepts the all of HTTP methods.
     pub fn allow_any() -> Self {
         Self {
             extractor: (),
@@ -64,6 +66,7 @@ impl Builder {
         }
     }
 
+    /// Creates a `Builder` that accepts only the specified HTTP methods.
     pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Self> {
         Ok(Self {
             extractor: (),
@@ -76,7 +79,7 @@ impl<E> Builder<E>
 where
     E: Extractor,
 {
-    /// Appends a supplemental `Extractor` to this route.
+    /// Appends a supplemental `Extractor` to this endpoint.
     pub fn extract<E2>(self, other: E2) -> Builder<Chain<E, E2>>
     where
         E2: Extractor,
@@ -95,7 +98,8 @@ where
     ) -> impl Endpoint<
         T,
         Output = F::Out,
-        Action = self::call::CallAction<E, F>, // private
+        Error = E::Error,
+        Future = self::call::CallFuture<E, F, T>, // private
     >
     where
         T: Combine<E::Output>,
@@ -103,17 +107,18 @@ where
     {
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
-            let extractor = std::sync::Arc::new(self.extractor);
-            move |method: &http::Method| {
+            let extractor = self.extractor;
+            move |args: T, cx: &mut ApplyContext<'_, '_>| {
                 if allowed_methods
                     .as_ref()
-                    .map_or(false, |methods| !methods.contains(method))
+                    .map_or(false, |methods| !methods.contains(cx.method()))
                 {
-                    return None;
+                    return Err((args, ApplyError::method_not_allowed()));
                 }
-                Some(self::call::CallAction {
-                    extractor: extractor.clone(),
+                Ok(self::call::CallFuture {
+                    extract: extractor.extract(),
                     f: f.clone(),
+                    args: Some(args),
                 })
             }
         };
@@ -127,7 +132,8 @@ where
     ) -> impl Endpoint<
         T,
         Output = R::Item,
-        Action = self::call_async::CallAsyncAction<E, F>, // private
+        Error = Error,
+        Future = self::call_async::CallAsyncFuture<E, F, R, T>, // private
     >
     where
         T: Combine<E::Output>,
@@ -137,18 +143,19 @@ where
     {
         let apply_fn = {
             let allowed_methods = self.allowed_methods.clone();
-            let extractor = std::sync::Arc::new(self.extractor);
-            move |method: &http::Method| {
+            let extractor = self.extractor;
+            move |args: T, cx: &mut ApplyContext<'_, '_>| {
                 if allowed_methods
                     .as_ref()
-                    .map_or(false, |methods| !methods.contains(method))
+                    .map_or(false, |methods| !methods.contains(cx.method()))
                 {
-                    return None;
+                    return Err((args, ApplyError::method_not_allowed()));
                 }
 
-                Some(self::call_async::CallAsyncAction {
-                    extractor: extractor.clone(),
+                Ok(self::call_async::CallAsyncFuture {
+                    state: self::call_async::State::First(extractor.extract()),
                     f: f.clone(),
+                    args: Some(args),
                 })
             }
         };
@@ -167,7 +174,8 @@ where
     ) -> impl Endpoint<
         (), //
         Output = R,
-        Action = self::call::CallAction<E, impl Func<(), Out = R> + Clone>, // private
+        Error = E::Error,
+        Future = self::call::CallFuture<E, impl Func<(), Out = R>, ()>, // private
     >
     where
         R: Clone,
@@ -177,63 +185,31 @@ where
 }
 
 mod call {
-    use {
-        crate::{
-            endpoint::EndpointAction,
-            error::Error,
-            extractor::Extractor,
-            generic::{Combine, Func, Tuple},
-            input::Input,
-        },
-        futures01::{Async, Future, Poll},
-        std::sync::Arc,
+    use crate::{
+        extractor::Extractor,
+        future::{Async, Poll, TryFuture},
+        generic::{Combine, Func},
+        input::Input,
     };
 
-    #[derive(Debug)]
-    pub struct CallAction<E, F> {
-        pub(super) extractor: Arc<E>,
+    #[allow(missing_debug_implementations)]
+    pub struct CallFuture<E: Extractor, F, T> {
+        pub(super) extract: E::Extract,
         pub(super) f: F,
+        pub(super) args: Option<T>,
     }
 
-    impl<E, F, T> EndpointAction<T> for CallAction<E, F>
+    impl<E, F, T> TryFuture for CallFuture<E, F, T>
     where
         E: Extractor,
         F: Func<<T as Combine<E::Output>>::Out>,
         T: Combine<E::Output>,
     {
-        type Output = F::Out;
+        type Ok = F::Out;
         type Error = E::Error;
-        type Future = CallFuture<E::Future, F, T>;
 
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            CallFuture {
-                future: self.extractor.extract(input),
-                f: self.f,
-                args: Some(args),
-            }
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub struct CallFuture<Fut, F, T> {
-        future: Fut,
-        f: F,
-        args: Option<T>,
-    }
-
-    impl<Fut, F, T> Future for CallFuture<Fut, F, T>
-    where
-        Fut: Future,
-        Fut::Item: Tuple,
-        Fut::Error: Into<Error>,
-        F: Func<<T as Combine<Fut::Item>>::Out>,
-        T: Combine<Fut::Item>,
-    {
-        type Item = F::Out;
-        type Error = Fut::Error;
-
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            let args2 = futures01::try_ready!(self.future.poll());
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            let args2 = futures01::try_ready!(self.extract.poll_ready(input));
             let args = self
                 .args
                 .take()
@@ -246,81 +222,52 @@ mod call {
 mod call_async {
     use {
         crate::{
-            endpoint::EndpointAction,
             error::Error,
             extractor::Extractor,
-            generic::{Combine, Func, Tuple},
+            future::{Poll, TryFuture},
+            generic::{Combine, Func},
             input::Input,
         },
-        futures01::{Future, IntoFuture, Poll},
-        std::sync::Arc,
+        futures01::{Future, IntoFuture},
     };
 
     #[allow(missing_debug_implementations)]
-    pub struct CallAsyncAction<E, F> {
-        pub(super) extractor: Arc<E>,
-        pub(super) f: F,
-    }
-
-    impl<E, F, T, R> EndpointAction<T> for CallAsyncAction<E, F>
-    where
-        E: Extractor,
-        F: Func<<T as Combine<E::Output>>::Out, Out = R>,
-        T: Combine<E::Output>,
-        R: IntoFuture,
-        R::Error: Into<Error>,
-    {
-        type Output = R::Item;
-        type Error = Error;
-        type Future = CallAsyncFuture<E::Future, F, R, T>;
-
-        fn call(self, input: &mut Input<'_>, args: T) -> Self::Future {
-            CallAsyncFuture {
-                state: State::First(self.extractor.extract(input)),
-                f: self.f,
-                args: Some(args),
-            }
-        }
-    }
-
-    #[allow(missing_debug_implementations)]
-    enum State<Fut1, Fut2> {
+    pub(super) enum State<Fut1, Fut2> {
         First(Fut1),
         Second(Fut2),
     }
 
     #[allow(missing_debug_implementations)]
-    pub struct CallAsyncFuture<Fut, F, R: IntoFuture, T> {
-        state: State<Fut, R::Future>,
-        f: F,
-        args: Option<T>,
+    pub struct CallAsyncFuture<E: Extractor, F, R: IntoFuture, T> {
+        pub(super) state: State<E::Extract, R::Future>,
+        pub(super) f: F,
+        pub(super) args: Option<T>,
     }
 
-    impl<Fut, F, R, T> Future for CallAsyncFuture<Fut, F, R, T>
+    impl<E, F, R, T> TryFuture for CallAsyncFuture<E, F, R, T>
     where
-        Fut: Future,
-        Fut::Item: Tuple,
-        Fut::Error: Into<Error>,
-        F: Func<<T as Combine<Fut::Item>>::Out, Out = R>,
+        E: Extractor,
+        F: Func<<T as Combine<E::Output>>::Out, Out = R>,
         R: IntoFuture,
         R::Error: Into<Error>,
-        T: Combine<Fut::Item>,
+        T: Combine<E::Output>,
     {
-        type Item = R::Item;
+        type Ok = R::Item;
         type Error = Error;
 
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
                 self.state = match self.state {
-                    State::First(ref mut future) => {
-                        let args2 = futures01::try_ready!(future.poll().map_err(Into::into));
+                    State::First(ref mut extract) => {
+                        let args2 =
+                            futures01::try_ready!(extract.poll_ready(input).map_err(Into::into));
                         let args = self
                             .args
                             .take()
                             .expect("the future has already been polled.");
                         State::Second(self.f.call(args.combine(args2)).into_future())
                     }
-                    State::Second(ref mut future) => return future.poll().map_err(Into::into),
+                    State::Second(ref mut action) => return action.poll().map_err(Into::into),
                 };
             }
         }
