@@ -1,8 +1,5 @@
 use {
-    super::{
-        super::uri::{Uri, UriComponent},
-        Route,
-    },
+    super::Route,
     crate::{
         endpoint::Endpoint,
         error::Error,
@@ -11,7 +8,8 @@ use {
         input::param::{FromPercentEncoded, Params, PercentEncoded},
         util::Chain,
     },
-    std::{marker::PhantomData, sync::Arc},
+    failure::format_err,
+    std::{borrow::Cow, collections::HashSet, marker::PhantomData, sync::Arc},
 };
 
 mod tags {
@@ -20,12 +18,6 @@ mod tags {
 
     #[derive(Debug)]
     pub struct Incomplete(());
-}
-
-#[derive(Debug)]
-pub struct Context<'a> {
-    components: Vec<UriComponent>,
-    _marker: PhantomData<&'a mut ()>,
 }
 
 pub trait PathExtractor: Clone {
@@ -57,6 +49,14 @@ where
     }
 }
 
+// ==== PathConfig ====
+
+#[derive(Debug)]
+pub struct Context<'a> {
+    path: &'a mut String,
+    names: &'a mut HashSet<&'static str>,
+}
+
 pub trait PathConfig {
     type Output: Tuple;
     type Extractor: PathExtractor<Output = Self::Output>;
@@ -82,26 +82,27 @@ where
     }
 }
 
-impl PathConfig for String {
+impl PathConfig for &'static str {
     type Output = ();
     type Extractor = ();
     type Tag = self::tags::Incomplete;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components.push(UriComponent::Static(self));
-        Ok(())
-    }
-}
+        if self.is_empty() {
+            return Err(format_err!("path segment cannot be empty").into());
+        }
 
-impl<'a> PathConfig for &'a str {
-    type Output = ();
-    type Extractor = ();
-    type Tag = self::tags::Incomplete;
+        if !self.is_ascii() {
+            return Err(format_err!("path segment must be an ASCII sequence").into());
+        }
 
-    fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components.push(UriComponent::Static(self.to_owned()));
+        if self.contains('/') {
+            return Err(format_err!("path segment cannot contain slash").into());
+        }
+
+        cx.path.push('/');
+        cx.path.push_str(self); // FIXME: percent-encode
+
         Ok(())
     }
 }
@@ -120,7 +121,9 @@ impl PathConfig for Slash {
     type Tag = self::tags::Completed;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        cx.components.push(UriComponent::Slash);
+        if !cx.path.ends_with('/') {
+            cx.path.push('/');
+        }
         Ok(())
     }
 }
@@ -142,12 +145,11 @@ pub struct Param<T> {
     _marker: PhantomData<fn() -> T>,
 }
 
+impl<T> Copy for Param<T> {}
+
 impl<T> Clone for Param<T> {
     fn clone(&self) -> Self {
-        Self {
-            name: self.name,
-            _marker: PhantomData,
-        }
+        *self
     }
 }
 
@@ -160,9 +162,22 @@ where
     type Tag = self::tags::Incomplete;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components
-            .push(UriComponent::Param(self.name.into(), ':'));
+        if self.name.is_empty() {
+            return Err(format_err!("parameter name cannot be empty").into());
+        }
+
+        if !self.name.is_ascii() {
+            return Err(format_err!("parameter name must be an ASCII sequence").into());
+        }
+
+        if !cx.names.insert(self.name) {
+            return Err(format_err!("duplicated parameter name: '{}'", self.name).into());
+        }
+
+        cx.path.push('/');
+        cx.path.push(':');
+        cx.path.push_str(self.name);
+
         Ok(self)
     }
 }
@@ -201,12 +216,11 @@ pub struct CatchAll<T> {
     _marker: PhantomData<fn() -> T>,
 }
 
+impl<T> Copy for CatchAll<T> {}
+
 impl<T> Clone for CatchAll<T> {
     fn clone(&self) -> Self {
-        Self {
-            name: self.name,
-            _marker: PhantomData,
-        }
+        *self
     }
 }
 
@@ -219,9 +233,22 @@ where
     type Tag = self::tags::Completed;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
-        // TODO: validatation
-        cx.components
-            .push(UriComponent::Param(self.name.into(), '*'));
+        if self.name.is_empty() {
+            return Err(format_err!("parameter name cannot be empty").into());
+        }
+
+        if !self.name.is_ascii() {
+            return Err(format_err!("parameter name must be an ASCII sequence").into());
+        }
+
+        if !cx.names.insert(self.name) {
+            return Err(format_err!("duplicated parameter name: '{}'", self.name).into());
+        }
+
+        cx.path.push('/');
+        cx.path.push('*');
+        cx.path.push_str(self.name);
+
         Ok(self)
     }
 }
@@ -252,25 +279,26 @@ macro_rules! path {
     (*) => ( $crate::config::path::Path::asterisk() );
     ($(/ $s:tt)+) => ( $crate::config::path::Path::create($crate::chain!($($s),*)).unwrap() );
     ($(/ $s:tt)+ /) => ( $crate::config::route::Path::create($crate::chain!($($s),*, $crate::app::config::route::slash())).unwrap() );
+    ($path:expr) => ( compile_error!("the procedural macro has not been implemented yet.") );
 }
 
 #[derive(Debug)]
 pub struct Path<E: PathExtractor = ()> {
-    uri: Option<Uri>,
+    path: Cow<'static, str>,
     extractor: E,
 }
 
 impl Path<()> {
     pub fn root() -> Self {
         Self {
-            uri: Some(Uri::root()),
+            path: "/".into(),
             extractor: (),
         }
     }
 
     pub fn asterisk() -> Self {
         Self {
-            uri: None,
+            path: "*".into(),
             extractor: (),
         }
     }
@@ -279,19 +307,19 @@ impl Path<()> {
     where
         T: PathConfig,
     {
-        let mut cx = Context {
-            components: vec![],
-            _marker: PhantomData,
-        };
-        let extractor = config.configure(&mut cx)?;
-
-        let mut uri = Uri::root();
-        for component in cx.components {
-            uri.push(component)?;
-        }
+        let mut path = String::new();
+        let mut names = HashSet::new();
+        let extractor = config.configure(&mut Context {
+            path: &mut path,
+            names: &mut names,
+        })?;
 
         Ok(Path {
-            uri: Some(uri),
+            path: if path.is_empty() {
+                "/".into()
+            } else {
+                path.into()
+            },
             extractor,
         })
     }
@@ -301,6 +329,14 @@ impl<E> Path<E>
 where
     E: PathExtractor,
 {
+    #[doc(hidden)]
+    pub fn new(path: impl Into<Cow<'static, str>>, extractor: E) -> Self {
+        Self {
+            path: path.into(),
+            extractor,
+        }
+    }
+
     /// Finalize the configuration in this route and creates the instance of `Route`.
     pub fn to<T>(
         self,
@@ -315,12 +351,14 @@ where
     where
         T: Endpoint<E::Output>,
     {
-        let Self { uri, extractor, .. } = self;
+        let Self {
+            path, extractor, ..
+        } = self;
         let endpoint = Arc::new(endpoint);
         let allowed_methods = endpoint.allowed_methods();
 
         Route {
-            uri,
+            path,
             handler: crate::handler::handler(
                 move || self::handler::RouteHandle {
                     extractor: extractor.clone(),

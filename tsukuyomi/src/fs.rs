@@ -545,7 +545,7 @@ where
             let file_type = entry.file_type()?;
             if file_type.is_file() {
                 scope.route(
-                    Some(format!("/{}", name)),
+                    format!("/{}", name),
                     ServeFile {
                         inner: Arc::new(ServeFileInner {
                             path,
@@ -556,7 +556,7 @@ where
                 )?;
             } else if file_type.is_dir() {
                 scope.route(
-                    Some(format!("/{}/*path", name)),
+                    format!("/{}/*path", name),
                     ServeFile {
                         inner: Arc::new(ServeFileInner {
                             path,

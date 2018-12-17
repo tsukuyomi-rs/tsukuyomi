@@ -23,11 +23,13 @@ pub mod prelude {
 #[doc(no_inline)]
 pub use crate::app::config::{Config, Error, Result, Scope};
 
-use crate::{
-    app::config::Concurrency,
-    handler::{Handler, ModifyHandler},
-    uri::Uri,
-    util::{Chain, TryInto},
+use {
+    crate::{
+        app::config::Concurrency,
+        handler::{Handler, ModifyHandler},
+        util::Chain,
+    },
+    std::borrow::Cow,
 };
 
 /// Creates a `Config` that creates a sub-scope with the provided prefix.
@@ -106,7 +108,7 @@ impl<T> ConfigExt for T {}
 /// A `Config` that registers a route into a scope.
 #[derive(Debug)]
 pub struct Route<H> {
-    uri: Option<Uri>,
+    path: Cow<'static, str>,
     handler: H,
 }
 
@@ -115,17 +117,11 @@ where
     H: Handler,
 {
     /// Creates a `Route` with the speicified path and handler.
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(uri: impl TryInto<Uri>, handler: H) -> Result<Self> {
-        Ok(Self {
-            uri: Some(uri.try_into()?),
+    pub fn new(path: impl Into<Cow<'static, str>>, handler: H) -> Self {
+        Self {
+            path: path.into(),
             handler,
-        })
-    }
-
-    /// Creates a `Route` with the specified handler.
-    pub fn asterisk(handler: H) -> Self {
-        Self { uri: None, handler }
+        }
     }
 }
 
@@ -139,6 +135,6 @@ where
     type Error = Error;
 
     fn configure(self, scope: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        scope.route(self.uri, self.handler)
+        scope.route(self.path, self.handler)
     }
 }

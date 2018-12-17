@@ -301,14 +301,18 @@ where
     T: Concurrency,
 {
     /// Adds a route onto the current scope.
-    pub fn route<H>(&mut self, uri: Option<impl AsRef<str>>, handler: H) -> Result<()>
+    pub fn route<H>(&mut self, path: impl AsRef<str>, handler: H) -> Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
         M::Handler: Into<T::Handler>,
     {
+        let uri: Option<Uri> = match path.as_ref() {
+            "*" => None,
+            path => path.parse().map(Some)?,
+        };
+
         if let Some(uri) = uri {
-            let uri: Uri = uri.as_ref().parse()?;
             let uri = self.scopes[self.scope_id].data.prefix.join(&uri)?;
 
             let id = EndpointId(self.recognizer.len());
