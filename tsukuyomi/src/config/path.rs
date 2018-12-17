@@ -5,14 +5,10 @@ use {
     },
     crate::{
         endpoint::Endpoint,
-        extractor::Extractor,
-        future::{Poll, TryFuture},
+        error::Error,
         generic::{Combine, Tuple},
         handler::Handler,
-        input::{
-            param::{FromPercentEncoded, PercentEncoded},
-            Input,
-        },
+        input::param::{FromPercentEncoded, Params, PercentEncoded},
         util::Chain,
     },
     std::{marker::PhantomData, sync::Arc},
@@ -32,9 +28,38 @@ pub struct Context<'a> {
     _marker: PhantomData<&'a mut ()>,
 }
 
+pub trait PathExtractor: Clone {
+    type Output: Tuple;
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error>;
+}
+
+impl PathExtractor for () {
+    type Output = ();
+
+    #[inline]
+    fn extract(&self, _: Option<&Params<'_>>) -> Result<Self::Output, Error> {
+        Ok(())
+    }
+}
+
+impl<L, R> PathExtractor for Chain<L, R>
+where
+    L: PathExtractor,
+    R: PathExtractor,
+    L::Output: Combine<R::Output>,
+{
+    type Output = <L::Output as Combine<R::Output>>::Out;
+
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error> {
+        let left = self.left.extract(params)?;
+        let right = self.right.extract(params)?;
+        Ok(left.combine(right))
+    }
+}
+
 pub trait PathConfig {
     type Output: Tuple;
-    type Extractor: Extractor<Output = Self::Output>;
+    type Extractor: PathExtractor<Output = Self::Output>;
     type Tag;
 
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor>;
@@ -101,26 +126,26 @@ impl PathConfig for Slash {
 }
 
 /// Creates a `PathConfig` that appends a parameter with the specified name to the path.
-pub fn param<T>(name: impl Into<String>) -> Param<T>
+pub fn param<T>(name: &'static str) -> Param<T>
 where
     T: FromPercentEncoded,
 {
     Param {
-        name: name.into(),
+        name,
         _marker: PhantomData,
     }
 }
 
 #[derive(Debug)]
 pub struct Param<T> {
-    name: String,
+    name: &'static str,
     _marker: PhantomData<fn() -> T>,
 }
 
 impl<T> Clone for Param<T> {
     fn clone(&self) -> Self {
         Self {
-            name: self.name.clone(),
+            name: self.name,
             _marker: PhantomData,
         }
     }
@@ -137,66 +162,49 @@ where
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         // TODO: validatation
         cx.components
-            .push(UriComponent::Param(self.name.clone(), ':'));
+            .push(UriComponent::Param(self.name.into(), ':'));
         Ok(self)
     }
 }
 
-impl<T> Extractor for Param<T>
+impl<T> PathExtractor for Param<T>
 where
     T: FromPercentEncoded,
 {
     type Output = (T,);
-    type Error = crate::error::Error;
-    type Extract = Self;
 
-    fn extract(&self) -> Self::Extract {
-        self.clone()
-    }
-}
-
-impl<T> TryFuture for Param<T>
-where
-    T: FromPercentEncoded,
-{
-    type Ok = (T,);
-    type Error = crate::Error;
-
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<(T,), crate::Error> {
-        let params = input
-            .params
-            .as_ref()
-            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?;
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error> {
         let s = params
+            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?
             .name(&self.name)
             .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
         T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
-            .map(|x| (x,).into())
+            .map(|x| (x,))
             .map_err(Into::into)
     }
 }
 
 /// Creates a `PathConfig` that appends a *catch-all* parameter with the specified name to the path.
-pub fn catch_all<T>(name: impl Into<String>) -> CatchAll<T>
+pub fn catch_all<T>(name: &'static str) -> CatchAll<T>
 where
     T: FromPercentEncoded,
 {
     CatchAll {
-        name: name.into(),
+        name,
         _marker: PhantomData,
     }
 }
 
 #[derive(Debug)]
 pub struct CatchAll<T> {
-    name: String,
+    name: &'static str,
     _marker: PhantomData<fn() -> T>,
 }
 
 impl<T> Clone for CatchAll<T> {
     fn clone(&self) -> Self {
         Self {
-            name: self.name.clone(),
+            name: self.name,
             _marker: PhantomData,
         }
     }
@@ -213,41 +221,24 @@ where
     fn configure(self, cx: &mut Context<'_>) -> super::Result<Self::Extractor> {
         // TODO: validatation
         cx.components
-            .push(UriComponent::Param(self.name.clone(), '*'));
+            .push(UriComponent::Param(self.name.into(), '*'));
         Ok(self)
     }
 }
 
-impl<T> Extractor for CatchAll<T>
+impl<T> PathExtractor for CatchAll<T>
 where
     T: FromPercentEncoded,
 {
     type Output = (T,);
-    type Error = crate::error::Error;
-    type Extract = Self;
 
-    fn extract(&self) -> Self::Extract {
-        self.clone()
-    }
-}
-
-impl<T> TryFuture for CatchAll<T>
-where
-    T: FromPercentEncoded,
-{
-    type Ok = (T,);
-    type Error = crate::Error;
-
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<(T,), crate::Error> {
-        let params = input
-            .params
-            .as_ref()
-            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?;
+    fn extract(&self, params: Option<&Params<'_>>) -> Result<Self::Output, Error> {
         let s = params
+            .ok_or_else(|| crate::error::internal_server_error("missing Params"))?
             .catch_all()
             .ok_or_else(|| crate::error::internal_server_error("invalid paramter name"))?;
         T::from_percent_encoded(unsafe { PercentEncoded::new_unchecked(s) })
-            .map(|x| (x,).into())
+            .map(|x| (x,))
             .map_err(Into::into)
     }
 }
@@ -264,7 +255,7 @@ macro_rules! path {
 }
 
 #[derive(Debug)]
-pub struct Path<E: Extractor = ()> {
+pub struct Path<E: PathExtractor = ()> {
     uri: Option<Uri>,
     extractor: E,
 }
@@ -308,7 +299,7 @@ impl Path<()> {
 
 impl<E> Path<E>
 where
-    E: Extractor,
+    E: PathExtractor,
 {
     /// Finalize the configuration in this route and creates the instance of `Route`.
     pub fn to<T>(
@@ -317,6 +308,7 @@ where
     ) -> Route<
         impl Handler<
             Output = T::Output,
+            Error = Error,
             Handle = self::handler::RouteHandle<E, T>, // private
         >,
     >
@@ -324,10 +316,8 @@ where
         T: Endpoint<E::Output>,
     {
         let Self { uri, extractor, .. } = self;
-
-        let allowed_methods = endpoint.allowed_methods();
-        let extractor = Arc::new(extractor);
         let endpoint = Arc::new(endpoint);
+        let allowed_methods = endpoint.allowed_methods();
 
         Route {
             uri,
@@ -335,7 +325,7 @@ where
                 move || self::handler::RouteHandle {
                     extractor: extractor.clone(),
                     endpoint: endpoint.clone(),
-                    state: self::handler::RouteHandleState::Init,
+                    in_flight: None,
                 },
                 allowed_methods,
             ),
@@ -345,42 +335,30 @@ where
 
 mod handler {
     use {
+        super::PathExtractor,
         crate::{
-            endpoint::{ApplyContext, Endpoint, EndpointAction},
+            endpoint::{ApplyContext, Endpoint},
             error::Error,
-            extractor::Extractor,
-            future::TryFuture,
+            future::{Poll, TryFuture},
             input::Input,
         },
-        futures01::{try_ready, Poll},
         std::sync::Arc,
     };
 
     #[allow(missing_debug_implementations)]
     pub struct RouteHandle<E, T>
     where
-        E: Extractor,
+        E: PathExtractor,
         T: Endpoint<E::Output>,
     {
-        pub(super) extractor: Arc<E>,
+        pub(super) extractor: E,
         pub(super) endpoint: Arc<T>,
-        pub(super) state: RouteHandleState<E, T>,
-    }
-
-    #[allow(missing_debug_implementations)]
-    pub(super) enum RouteHandleState<E, T>
-    where
-        E: Extractor,
-        T: Endpoint<E::Output>,
-    {
-        Init,
-        First(E::Extract, Option<T::Action>),
-        Second(<T::Action as EndpointAction<E::Output>>::Future),
+        pub(super) in_flight: Option<T::Future>,
     }
 
     impl<E, T> TryFuture for RouteHandle<E, T>
     where
-        E: Extractor,
+        E: PathExtractor,
         T: Endpoint<E::Output>,
     {
         type Ok = T::Output;
@@ -389,21 +367,16 @@ mod handler {
         #[inline]
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
-                self.state = match self.state {
-                    RouteHandleState::Init => {
-                        let action = self.endpoint.apply(&mut ApplyContext::new(input))?;
-                        let extract = self.extractor.extract();
-                        RouteHandleState::First(extract, Some(action))
-                    }
-                    RouteHandleState::First(ref mut future, ref mut action) => {
-                        let args = try_ready!(future.poll_ready(input).map_err(Into::into));
-                        let future = action.take().unwrap().invoke(args);
-                        RouteHandleState::Second(future)
-                    }
-                    RouteHandleState::Second(ref mut action) => {
-                        return action.poll_ready(input).map_err(Into::into)
-                    }
+                if let Some(ref mut action) = self.in_flight {
+                    return action.poll_ready(input).map_err(Into::into);
                 }
+
+                let args = self.extractor.extract(input.params.as_ref())?;
+                self.in_flight = Some(
+                    self.endpoint
+                        .apply(args, &mut ApplyContext::new(input))
+                        .map_err(|(_args, err)| err)?,
+                );
             }
         }
     }

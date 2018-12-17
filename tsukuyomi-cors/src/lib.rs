@@ -231,7 +231,7 @@ mod impl_endpoint_for_cors {
         super::CORS,
         http::{Method, Response, StatusCode},
         tsukuyomi::{
-            endpoint::{ApplyContext, ApplyError, Endpoint, EndpointAction},
+            endpoint::{ApplyContext, ApplyError, ApplyResult, Endpoint},
             error::Error,
             future::{Poll, TryFuture},
             handler::AllowedMethods,
@@ -239,12 +239,30 @@ mod impl_endpoint_for_cors {
         },
     };
 
+    impl Endpoint<()> for CORS {
+        type Output = Response<()>;
+        type Error = Error;
+        type Future = CORSEndpointFuture;
+
+        fn apply(&self, _: (), cx: &mut ApplyContext<'_, '_>) -> ApplyResult<(), Self> {
+            if cx.method() == Method::OPTIONS {
+                Ok(CORSEndpointFuture { cors: self.clone() })
+            } else {
+                Err(((), ApplyError::method_not_allowed()))
+            }
+        }
+
+        fn allowed_methods(&self) -> Option<AllowedMethods> {
+            Some(AllowedMethods::from(Method::OPTIONS))
+        }
+    }
+
     #[derive(Debug)]
-    pub struct CORSActionFuture {
+    pub struct CORSEndpointFuture {
         cors: CORS,
     }
 
-    impl TryFuture for CORSActionFuture {
+    impl TryFuture for CORSEndpointFuture {
         type Ok = Response<()>;
         type Error = Error;
 
@@ -258,33 +276,6 @@ mod impl_endpoint_for_cors {
                     .map_err(Into::into),
                 Ok(None) => Err(StatusCode::NOT_FOUND.into()),
                 Err(err) => Err(err.into()),
-            }
-        }
-    }
-
-    impl EndpointAction<()> for CORS {
-        type Output = Response<()>;
-        type Error = Error;
-        type Future = CORSActionFuture;
-
-        fn invoke(self, _: ()) -> Self::Future {
-            CORSActionFuture { cors: self }
-        }
-    }
-
-    impl Endpoint<()> for CORS {
-        type Output = Response<()>;
-        type Action = Self;
-
-        fn allowed_methods(&self) -> Option<AllowedMethods> {
-            Some(AllowedMethods::from(Method::OPTIONS))
-        }
-
-        fn apply(&self, cx: &mut ApplyContext<'_, '_>) -> Result<Self::Action, ApplyError> {
-            if cx.method() == Method::OPTIONS {
-                Ok(self.clone())
-            } else {
-                Err(ApplyError::method_not_allowed())
             }
         }
     }
