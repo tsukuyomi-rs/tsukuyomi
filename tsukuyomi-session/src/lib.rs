@@ -127,7 +127,7 @@ where
         tsukuyomi::responder::respond(tsukuyomi::future::poll_fn(move |input| {
             futures::try_ready!(write_session.poll_ready(input));
             futures::try_ready!(respond.poll_ready(input).map_err(Into::into));
-            let _ = write_session
+            write_session
                 .take_item()
                 .expect("the future has already been polled.");
             let output = respond
