@@ -83,12 +83,28 @@ where
 impl Extractor for () {
     type Output = ();
     type Error = Never;
-    type Extract =
-        crate::future::Compat01<futures01::future::FutureResult<Self::Output, Self::Error>>;
+    type Extract = self::unit::Unit;
 
     #[inline]
     fn extract(&self) -> Self::Extract {
-        futures01::future::ok(()).into()
+        self::unit::Unit(())
+    }
+}
+
+mod unit {
+    use super::*;
+
+    #[allow(missing_debug_implementations)]
+    pub struct Unit(pub(super) ());
+
+    impl TryFuture for Unit {
+        type Ok = ();
+        type Error = crate::util::Never;
+
+        #[inline]
+        fn poll_ready(&mut self, _: &mut Input<'_>) -> crate::future::Poll<Self::Ok, Self::Error> {
+            Ok(().into())
+        }
     }
 }
 
@@ -211,24 +227,26 @@ pub fn value<T>(
 ) -> impl Extractor<
     Output = (T,),
     Error = Never,
-    Extract = crate::future::Compat01<self::value::Value<T>>, // private
+    Extract = self::value::Value<T>, // private
 >
 where
     T: Clone,
 {
-    self::extract(move || self::value::Value(Some(value.clone())).into())
+    self::extract(move || self::value::Value(Some(value.clone())))
 }
 
 mod value {
+    use super::*;
+
     #[allow(missing_debug_implementations)]
     pub struct Value<T>(pub(super) Option<T>);
 
-    impl<T> futures01::Future for Value<T> {
-        type Item = (T,);
+    impl<T> TryFuture for Value<T> {
+        type Ok = (T,);
         type Error = crate::util::Never;
 
         #[inline]
-        fn poll(&mut self) -> futures01::Poll<Self::Item, Self::Error> {
+        fn poll_ready(&mut self, _: &mut Input<'_>) -> crate::future::Poll<Self::Ok, Self::Error> {
             Ok((self.0.take().expect("the future has already been polled"),).into())
         }
     }

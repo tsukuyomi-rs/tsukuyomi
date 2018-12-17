@@ -1,13 +1,4 @@
-use {
-    crate::{
-        error::Error,
-        future::{Compat01, TryFuture},
-        input::Input,
-        output::IntoResponse,
-        util::Never,
-    },
-    futures01::future::{self, FutureResult},
-};
+use crate::{error::Error, future::TryFuture, input::Input, output::IntoResponse, util::Never};
 
 pub use self::oneshot::Oneshot;
 
@@ -33,11 +24,30 @@ where
 {
     type Response = T;
     type Error = Never;
-    type Respond = Compat01<FutureResult<Self::Response, Self::Error>>;
+    type Respond = self::impl_responder_for_T::IntoResponseRespond<T>;
 
     #[inline]
     fn respond(self) -> Self::Respond {
-        future::ok(self).into()
+        self::impl_responder_for_T::IntoResponseRespond(Some(self))
+    }
+}
+
+#[allow(nonstandard_style)]
+mod impl_responder_for_T {
+    use super::*;
+
+    #[allow(missing_debug_implementations)]
+    pub struct IntoResponseRespond<T>(pub(super) Option<T>);
+
+    impl<T> TryFuture for IntoResponseRespond<T> {
+        type Ok = T;
+        type Error = Never;
+
+        #[inline]
+        fn poll_ready(&mut self, _: &mut Input<'_>) -> crate::future::Poll<Self::Ok, Self::Error> {
+            let output = self.0.take().expect("the future has already been polled.");
+            Ok(output.into())
+        }
     }
 }
 
