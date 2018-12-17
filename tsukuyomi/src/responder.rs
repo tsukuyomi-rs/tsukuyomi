@@ -2,11 +2,14 @@ use {
     crate::{
         error::Error,
         future::{Compat01, TryFuture},
+        input::Input,
         output::IntoResponse,
         util::Never,
     },
     futures01::future::{self, FutureResult},
 };
+
+pub use self::oneshot::Oneshot;
 
 /// A trait that abstracts replies to clients.
 pub trait Responder {
@@ -98,34 +101,83 @@ mod impl_responder_for_either {
 }
 
 /// A function to create a `Responder` using the specified `TryFuture`.
-pub fn respond<R>(
-    future: R,
-) -> impl Responder<
-    Response = R::Ok, //
-    Error = R::Error,
-    Respond = R,
->
+pub fn respond<R>(future: R) -> ResponderFn<R>
 where
     R: TryFuture,
     R::Ok: IntoResponse,
 {
-    #[allow(missing_debug_implementations)]
-    pub struct ResponderFn<R>(R);
+    ResponderFn(future)
+}
 
-    impl<R> Responder for ResponderFn<R>
+#[derive(Debug, Copy, Clone)]
+pub struct ResponderFn<R>(R);
+
+impl<R> Responder for ResponderFn<R>
+where
+    R: TryFuture,
+    R::Ok: IntoResponse,
+{
+    type Response = R::Ok;
+    type Error = R::Error;
+    type Respond = R;
+
+    #[inline]
+    fn respond(self) -> Self::Respond {
+        self.0
+    }
+}
+
+/// Creates a `Responder` from a function that returns its result immediately.
+///
+/// The passed function can access the request context once when called.
+pub fn oneshot<F, T, E>(f: F) -> Oneshot<F>
+where
+    F: FnOnce(&mut Input<'_>) -> Result<T, E>,
+    T: IntoResponse,
+    E: Into<Error>,
+{
+    Oneshot(f)
+}
+
+mod oneshot {
+    use {
+        super::{Error, Input, IntoResponse, Responder},
+        crate::future::{Poll, TryFuture},
+    };
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct Oneshot<F>(pub(super) F);
+
+    impl<F, T, E> Responder for Oneshot<F>
     where
-        R: TryFuture,
-        R::Ok: IntoResponse,
+        F: FnOnce(&mut Input<'_>) -> Result<T, E>,
+        T: IntoResponse,
+        E: Into<Error>,
     {
-        type Response = R::Ok;
-        type Error = R::Error;
-        type Respond = R;
+        type Response = T;
+        type Error = E;
+        type Respond = OneshotRespond<F>;
 
         #[inline]
         fn respond(self) -> Self::Respond {
-            self.0
+            OneshotRespond(Some(self.0))
         }
     }
 
-    ResponderFn(future)
+    #[allow(missing_debug_implementations)]
+    pub struct OneshotRespond<F>(Option<F>);
+
+    impl<F, T, E> TryFuture for OneshotRespond<F>
+    where
+        F: FnOnce(&mut Input<'_>) -> Result<T, E>,
+        E: Into<Error>,
+    {
+        type Ok = T;
+        type Error = E;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            let f = self.0.take().expect("the future has already polled");
+            f(input).map(Into::into)
+        }
+    }
 }

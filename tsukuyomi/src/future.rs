@@ -119,6 +119,22 @@ where
     }
 }
 
+pub trait Futures01CompatExt: futures01::Future + Sized
+where
+    Self::Error: Into<Error>,
+{
+    fn compat01(self) -> Compat01<Self> {
+        Compat01::from(self)
+    }
+}
+
+impl<F> Futures01CompatExt for F
+where
+    F: futures01::Future,
+    F::Error: Into<Error>,
+{
+}
+
 /// A helper struct representing a `Future` that will be *never* constructed.
 #[must_use = "futures do nothing unless polled."]
 pub struct NeverFuture<T, E> {

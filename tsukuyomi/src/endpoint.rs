@@ -87,53 +87,6 @@ where
     }
 }
 
-pub fn allow_any<F, T, R>(
-    f: F,
-) -> impl Endpoint<
-    T, //
-    Output = R::Ok,
-    Action = self::allow_any::AllowAnyAction<T, F, R>,
->
-where
-    F: Fn(T) -> R + Clone,
-    R: TryFuture,
-{
-    endpoint(
-        move |_| {
-            Some(self::allow_any::AllowAnyAction {
-                f: f.clone(),
-                _marker: std::marker::PhantomData,
-            })
-        },
-        None,
-    )
-}
-
-mod allow_any {
-    use super::{EndpointAction, TryFuture};
-    use std::marker::PhantomData;
-
-    #[allow(missing_debug_implementations)]
-    pub struct AllowAnyAction<T, F, R> {
-        pub(super) f: F,
-        pub(super) _marker: PhantomData<fn(T) -> R>,
-    }
-
-    impl<T, F, R> EndpointAction<T> for AllowAnyAction<T, F, R>
-    where
-        F: Fn(T) -> R,
-        R: TryFuture,
-    {
-        type Output = R::Ok;
-        type Error = R::Error;
-        type Future = R;
-
-        fn call(self, args: T) -> Self::Future {
-            (self.f)(args)
-        }
-    }
-}
-
 impl<E, T> Endpoint<T> for std::rc::Rc<E>
 where
     E: Endpoint<T>,
