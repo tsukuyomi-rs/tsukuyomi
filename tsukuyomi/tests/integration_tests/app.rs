@@ -76,7 +76,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
         path!("/login") //
             .to(endpoint::any()
-                .extract(extractor::guard(move |input| {
+                .extract(extractor::ready(move |input| {
                     input.cookies.jar()?.add(
                         Cookie::build("session", "dummy_session_id")
                             .domain("www.example.com")
@@ -88,7 +88,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 .call(|| "Logged in")),
         path!("/logout") //
             .to(endpoint::any()
-                .extract(extractor::guard(|input| {
+                .extract(extractor::ready(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))

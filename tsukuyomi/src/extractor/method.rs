@@ -1,6 +1,4 @@
-//! Components for adding validation of HTTP method.
-
-#![allow(missing_docs)]
+//! Extractors for validation of HTTP method.
 
 use {
     super::Extractor,
@@ -8,14 +6,17 @@ use {
     http::{Method, StatusCode},
 };
 
-pub fn method(
+/// Creates an `Extractor` that checks if the request method is equal to `method`.
+///
+/// If the method is incorrect, it returns `Err(StatusCode::METHOD_NOT_ALLOWED)`.
+pub fn equals(
     method: Method,
 ) -> impl Extractor<
     Output = (), //
     Error = StatusCode,
     Extract = impl TryFuture<Ok = (), Error = StatusCode> + Send + 'static,
 > {
-    super::guard(move |input| {
+    super::ready(move |input| {
         if input.request.method() == method {
             Ok(())
         } else {
@@ -31,7 +32,7 @@ macro_rules! define_http_method_extractors {
             Error = StatusCode,
             Extract = impl TryFuture<Ok = (), Error = StatusCode> + Send + 'static,
         > {
-            self::method(Method::$METHOD)
+            self::equals(Method::$METHOD)
         }
     )*};
 }
@@ -53,7 +54,7 @@ pub fn get_or_head() -> impl Extractor<
     Error = StatusCode,
     Extract = impl TryFuture<Ok = (), Error = StatusCode> + Send + 'static,
 > {
-    super::guard(move |input| {
+    super::ready(move |input| {
         if input.request.method() == Method::GET || input.request.method() == Method::HEAD {
             Ok(())
         } else {

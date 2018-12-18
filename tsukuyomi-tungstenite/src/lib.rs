@@ -127,7 +127,7 @@ pub fn ws() -> impl Extractor<
     Error = HandshakeError,
     Extract = impl TryFuture<Ok = (Ws,), Error = HandshakeError> + Send + 'static,
 > {
-    tsukuyomi::extractor::ready(|input| self::handshake(input))
+    tsukuyomi::extractor::ready(|input| self::handshake(input).map(|ws| (ws,)))
 }
 
 /// The builder for constructing WebSocket response.

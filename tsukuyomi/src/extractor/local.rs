@@ -15,7 +15,13 @@ pub fn remove<T>(
 where
     T: Send + 'static,
 {
-    super::ready(move |input| input.locals.remove(key).ok_or_else(missing_local_value))
+    super::ready(move |input| {
+        input
+            .locals
+            .remove(key)
+            .map(|x| (x,))
+            .ok_or_else(missing_local_value)
+    })
 }
 
 pub fn clone<T>(
@@ -33,6 +39,7 @@ where
             .locals
             .get(key)
             .cloned()
+            .map(|x| (x,))
             .ok_or_else(missing_local_value)
     })
 }

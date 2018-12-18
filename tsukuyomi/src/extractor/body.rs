@@ -2,7 +2,11 @@
 
 use {
     super::Extractor,
-    crate::{error::Error, future::TryFuture, input::body::RequestBody},
+    crate::{
+        error::Error,
+        future::{Poll, TryFuture},
+        input::{body::RequestBody, header::ContentType, Input},
+    },
     bytes::Bytes,
     futures01::Future,
     mime::Mime,
@@ -36,123 +40,30 @@ trait Decoder<T> {
     fn decode(data: &Bytes) -> Result<T, ExtractBodyError>;
 }
 
-#[derive(Debug, Default)]
-struct PlainTextDecoder(());
-
-impl<T> Decoder<T> for PlainTextDecoder
+fn decode<T, D>() -> impl Extractor<
+    Output = (T,),
+    Error = Error,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
+>
 where
-    T: DeserializeOwned,
+    T: 'static,
+    D: Decoder<T> + 'static,
 {
-    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
-        if let Some(mime) = mime {
-            if mime.type_() != mime::TEXT || mime.subtype() != mime::PLAIN {
-                return Err(ExtractBodyError::UnexpectedContentType {
-                    expected: "text/plain",
-                });
-            }
-            if let Some(charset) = mime.get_param("charset") {
-                if charset != "utf-8" {
-                    return Err(ExtractBodyError::NotUtf8Charset);
-                }
-            }
-        }
-        Ok(())
+    #[allow(missing_debug_implementations)]
+    struct Decode<T, D> {
+        _marker: PhantomData<fn(D) -> T>,
     }
 
-    fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
-        let s = str::from_utf8(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
-            cause: cause.into(),
-        })?;
-        serde_plain::from_str(s).map_err(|cause| ExtractBodyError::InvalidContent {
-            cause: cause.into(),
-        })
-    }
-}
-
-#[derive(Debug, Default)]
-struct JsonDecoder(());
-
-impl<T> Decoder<T> for JsonDecoder
-where
-    T: DeserializeOwned,
-{
-    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
-        let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
-        if *mime != mime::APPLICATION_JSON {
-            return Err(ExtractBodyError::UnexpectedContentType {
-                expected: "application/json",
-            });
-        }
-        Ok(())
-    }
-
-    fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
-        serde_json::from_slice(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
-            cause: cause.into(),
-        })
-    }
-}
-
-#[derive(Debug, Default)]
-struct UrlencodedDecoder(());
-
-impl<T> Decoder<T> for UrlencodedDecoder
-where
-    T: DeserializeOwned,
-{
-    fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
-        let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
-        if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
-            return Err(ExtractBodyError::UnexpectedContentType {
-                expected: "application/x-www-form-urlencoded",
-            });
-        }
-        Ok(())
-    }
-
-    fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
-        serde_urlencoded::from_bytes(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
-            cause: cause.into(),
-        })
-    }
-}
-
-fn decoded<T, D>() -> self::decoded::Decoded<T, D>
-where
-    D: Decoder<T>,
-{
-    self::decoded::Decoded {
-        _marker: PhantomData,
-    }
-}
-
-mod decoded {
-    use {
-        crate::{
-            error::Error,
-            extractor::Extractor,
-            future::{Poll, TryFuture},
-            input::{body::RequestBody, header::ContentType, Input},
-        },
-        futures01::Future,
-        std::marker::PhantomData,
-    };
-
-    #[derive(Debug)]
-    pub(super) struct Decoded<T, D> {
-        pub(super) _marker: PhantomData<fn(D) -> T>,
-    }
-
-    impl<T, D> Extractor for Decoded<T, D>
+    impl<T, D> Extractor for Decode<T, D>
     where
-        D: super::Decoder<T>,
+        D: Decoder<T>,
     {
         type Output = (T,);
         type Error = Error;
-        type Extract = DecodedFuture<T, D>;
+        type Extract = DecodeFuture<T, D>;
 
         fn extract(&self) -> Self::Extract {
-            DecodedFuture {
+            DecodeFuture {
                 state: State::Init,
                 _marker: PhantomData,
             }
@@ -166,14 +77,14 @@ mod decoded {
     }
 
     #[allow(missing_debug_implementations)]
-    pub(super) struct DecodedFuture<T, D> {
+    struct DecodeFuture<T, D> {
         state: State,
         _marker: PhantomData<fn(D) -> T>,
     }
 
-    impl<T, D> TryFuture for DecodedFuture<T, D>
+    impl<T, D> TryFuture for DecodeFuture<T, D>
     where
-        D: super::Decoder<T>,
+        D: Decoder<T>,
     {
         type Ok = (T,);
         type Error = Error;
@@ -187,7 +98,7 @@ mod decoded {
 
                         let read_all = match input.locals.remove(&RequestBody::KEY) {
                             Some(body) => body.read_all(),
-                            None => return Err(super::stolen_payload()),
+                            None => return Err(stolen_payload()),
                         };
                         State::ReadAll(read_all)
                     }
@@ -201,44 +112,132 @@ mod decoded {
             }
         }
     }
+
+    Decode::<T, D> {
+        _marker: PhantomData,
+    }
 }
 
-#[inline]
+/// Creates an `Extractor` that parses the entire of request body into `T` as a plain text.
 pub fn plain<T>() -> impl Extractor<
     Output = (T,),
     Error = Error,
     Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned + 'static,
 {
-    self::decoded::<T, PlainTextDecoder>()
+    #[allow(missing_debug_implementations)]
+    struct PlainTextDecoder(());
+
+    impl<T> Decoder<T> for PlainTextDecoder
+    where
+        T: DeserializeOwned,
+    {
+        fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+            if let Some(mime) = mime {
+                if mime.type_() != mime::TEXT || mime.subtype() != mime::PLAIN {
+                    return Err(ExtractBodyError::UnexpectedContentType {
+                        expected: "text/plain",
+                    });
+                }
+                if let Some(charset) = mime.get_param("charset") {
+                    if charset != "utf-8" {
+                        return Err(ExtractBodyError::NotUtf8Charset);
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+            let s = str::from_utf8(&*data) //
+                .map_err(|cause| ExtractBodyError::InvalidContent {
+                    cause: cause.into(),
+                })?;
+            serde_plain::from_str(s) //
+                .map_err(|cause| ExtractBodyError::InvalidContent {
+                    cause: cause.into(),
+                })
+        }
+    }
+
+    decode::<T, PlainTextDecoder>()
 }
 
-#[inline]
+/// Creates an `Extractor` that parses the entire of request body into `T` as JSON data.
 pub fn json<T>() -> impl Extractor<
     Output = (T,),
     Error = Error,
     Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned + 'static,
 {
-    self::decoded::<T, JsonDecoder>()
+    #[allow(missing_debug_implementations)]
+    struct JsonDecoder(());
+
+    impl<T> Decoder<T> for JsonDecoder
+    where
+        T: DeserializeOwned,
+    {
+        fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+            let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
+            if *mime != mime::APPLICATION_JSON {
+                return Err(ExtractBodyError::UnexpectedContentType {
+                    expected: "application/json",
+                });
+            }
+            Ok(())
+        }
+
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+            serde_json::from_slice(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
+                cause: cause.into(),
+            })
+        }
+    }
+
+    decode::<T, JsonDecoder>()
 }
 
-#[inline]
+/// Creates an `Extractor` that parses the entire of request body into `T` as url-encoded data.
 pub fn urlencoded<T>() -> impl Extractor<
     Output = (T,),
     Error = Error,
     Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
 >
 where
-    T: DeserializeOwned + Send + 'static,
+    T: DeserializeOwned + 'static,
 {
-    self::decoded::<T, UrlencodedDecoder>()
+    #[allow(missing_debug_implementations)]
+    struct UrlencodedDecoder(());
+
+    impl<T> Decoder<T> for UrlencodedDecoder
+    where
+        T: DeserializeOwned,
+    {
+        fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError> {
+            let mime = mime.ok_or_else(|| ExtractBodyError::MissingContentType)?;
+            if *mime != mime::APPLICATION_WWW_FORM_URLENCODED {
+                return Err(ExtractBodyError::UnexpectedContentType {
+                    expected: "application/x-www-form-urlencoded",
+                });
+            }
+            Ok(())
+        }
+
+        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+            serde_urlencoded::from_bytes(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
+                cause: cause.into(),
+            })
+        }
+    }
+
+    decode::<T, UrlencodedDecoder>()
 }
 
+/// Creates an extractor that reads the entire of request body as a single byte sequence.
 pub fn read_all() -> impl Extractor<
     Output = (Bytes,),
     Error = Error,
@@ -264,6 +263,7 @@ pub fn read_all() -> impl Extractor<
     })
 }
 
+/// Creates an `Extractor` that takes the raw instance of request body.
 pub fn stream() -> impl Extractor<
     Output = (RequestBody,), //
     Error = Error,

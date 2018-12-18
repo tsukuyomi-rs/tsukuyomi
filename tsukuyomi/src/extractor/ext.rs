@@ -1,15 +1,45 @@
+//! A set of extensions for `Extractor`s.
+
 use {
     super::Extractor,
     crate::{
+        error::Error,
         generic::{Combine, Func},
         util::Chain, //
     },
 };
 
-pub use self::{either_or::EitherOr, map::Map, optional::Optional};
+pub use self::{
+    fallible::Fallible, //
+    map::Map,
+    map_err::MapErr,
+    optional::Optional,
+    or::Or,
+};
 
+/// A set of extension methods for composing/formatting `Extractor`s.
 pub trait ExtractorExt: Extractor + Sized {
-    fn chain<E>(self, other: E) -> Chain<Self, E>
+    fn optional<T>(self) -> Optional<Self, T>
+    where
+        Self: Extractor<Output = (T,)>,
+    {
+        Optional {
+            extractor: self,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    fn fallible<T>(self) -> Fallible<Self, T>
+    where
+        Self: Extractor<Output = (T,)>,
+    {
+        Fallible {
+            extractor: self,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    fn and<E>(self, other: E) -> Chain<Self, E>
     where
         Self: Sized,
         E: Extractor,
@@ -18,31 +48,29 @@ pub trait ExtractorExt: Extractor + Sized {
         Chain::new(self, other)
     }
 
-    fn optional<T>(self) -> self::optional::Optional<Self, T>
-    where
-        Self: Extractor<Output = (T,)>,
-    {
-        self::optional::Optional {
-            extractor: self,
-            _marker: std::marker::PhantomData,
-        }
-    }
-
-    fn either_or<E>(self, other: E) -> self::either_or::EitherOr<Self, E>
+    fn or<E>(self, other: E) -> Or<Self, E>
     where
         E: Extractor<Output = Self::Output>,
     {
-        self::either_or::EitherOr {
+        Or {
             left: self,
             right: other,
         }
     }
 
-    fn map<F>(self, f: F) -> self::map::Map<Self, F>
+    fn map<F>(self, f: F) -> Map<Self, F>
     where
         F: Func<Self::Output> + Clone,
     {
-        self::map::Map { extractor: self, f }
+        Map { extractor: self, f }
+    }
+
+    fn map_err<F, U>(self, f: F) -> MapErr<Self, F>
+    where
+        F: Fn(Self::Error) -> U + Clone,
+        U: Into<Error>,
+    {
+        MapErr { extractor: self, f }
     }
 }
 
@@ -145,23 +173,25 @@ mod optional {
 
         fn extract(&self) -> Self::Extract {
             OptionalFuture {
-                0: self.extractor.extract(),
+                extract: self.extractor.extract(),
             }
         }
     }
 
     #[allow(missing_debug_implementations)]
-    pub struct OptionalFuture<Fut>(Fut);
+    pub struct OptionalFuture<E> {
+        extract: E,
+    }
 
-    impl<Fut, T> TryFuture for OptionalFuture<Fut>
+    impl<E, T> TryFuture for OptionalFuture<E>
     where
-        Fut: TryFuture<Ok = (T,)>,
+        E: TryFuture<Ok = (T,)>,
     {
         type Ok = (Option<T>,);
         type Error = Never;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            match self.0.poll_ready(input) {
+            match self.extract.poll_ready(input) {
                 Ok(Async::Ready((ok,))) => Ok(Async::Ready((Some(ok),))),
                 Err(..) => Ok(Async::Ready((None,))),
                 Ok(Async::NotReady) => Ok(Async::NotReady),
@@ -170,7 +200,58 @@ mod optional {
     }
 }
 
-mod either_or {
+mod fallible {
+    use crate::{
+        extractor::Extractor,
+        future::{Async, Poll, TryFuture},
+        input::Input,
+        util::Never,
+    };
+
+    #[derive(Debug)]
+    pub struct Fallible<E, T> {
+        pub(super) extractor: E,
+        pub(super) _marker: std::marker::PhantomData<fn() -> T>,
+    }
+
+    impl<E, T> Extractor for Fallible<E, T>
+    where
+        E: Extractor<Output = (T,)>,
+    {
+        type Output = (Result<T, E::Error>,);
+        type Error = Never;
+        type Extract = FallibleFuture<E::Extract>;
+
+        fn extract(&self) -> Self::Extract {
+            FallibleFuture {
+                extract: self.extractor.extract(),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct FallibleFuture<E> {
+        extract: E,
+    }
+
+    impl<E, T> TryFuture for FallibleFuture<E>
+    where
+        E: TryFuture<Ok = (T,)>,
+    {
+        type Ok = (Result<T, E::Error>,);
+        type Error = Never;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            match self.extract.poll_ready(input) {
+                Ok(Async::Ready((ok,))) => Ok(Async::Ready((Ok(ok),))),
+                Err(err) => Ok(Async::Ready((Err(err),))),
+                Ok(Async::NotReady) => Ok(Async::NotReady),
+            }
+        }
+    }
+}
+
+mod or {
     use crate::{
         error::Error,
         extractor::Extractor,
@@ -180,22 +261,22 @@ mod either_or {
     };
 
     #[derive(Debug)]
-    pub struct EitherOr<L, R> {
+    pub struct Or<L, R> {
         pub(super) left: L,
         pub(super) right: R,
     }
 
-    impl<L, R, T: Tuple> Extractor for EitherOr<L, R>
+    impl<L, R, T: Tuple> Extractor for Or<L, R>
     where
         L: Extractor<Output = T>,
         R: Extractor<Output = T>,
     {
         type Output = T;
         type Error = Error;
-        type Extract = EitherOrFuture<L::Extract, R::Extract>;
+        type Extract = OrFuture<L::Extract, R::Extract>;
 
         fn extract(&self) -> Self::Extract {
-            EitherOrFuture {
+            OrFuture {
                 left: Some(self.left.extract()),
                 right: Some(self.right.extract()),
             }
@@ -203,12 +284,12 @@ mod either_or {
     }
 
     #[derive(Debug)]
-    pub struct EitherOrFuture<L, R> {
+    pub struct OrFuture<L, R> {
         left: Option<L>,
         right: Option<R>,
     }
 
-    impl<L, R, T> TryFuture for EitherOrFuture<L, R>
+    impl<L, R, T> TryFuture for OrFuture<L, R>
     where
         L: TryFuture<Ok = T>,
         R: TryFuture<Ok = T>,
@@ -294,6 +375,63 @@ mod map {
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let args = futures01::try_ready!(self.future.poll_ready(input));
             Ok((self.f.call(args),).into())
+        }
+    }
+}
+
+mod map_err {
+    use crate::{
+        error::Error,
+        extractor::Extractor,
+        future::{Poll, TryFuture},
+        generic::Tuple,
+        input::Input,
+    };
+
+    #[derive(Debug)]
+    pub struct MapErr<E, F> {
+        pub(super) extractor: E,
+        pub(super) f: F,
+    }
+
+    impl<E, F, U> Extractor for MapErr<E, F>
+    where
+        E: Extractor,
+        E::Error: 'static,
+        F: Fn(E::Error) -> U + Clone + Send + 'static,
+        U: Into<Error>,
+    {
+        type Output = E::Output;
+        type Error = U;
+        type Extract = MapErrFuture<E::Extract, F>;
+
+        fn extract(&self) -> Self::Extract {
+            MapErrFuture {
+                future: self.extractor.extract(),
+                f: self.f.clone(),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct MapErrFuture<Fut, F> {
+        future: Fut,
+        f: F,
+    }
+
+    impl<Fut, F, U> TryFuture for MapErrFuture<Fut, F>
+    where
+        Fut: TryFuture,
+        Fut::Ok: Tuple,
+        F: Fn(Fut::Error) -> U,
+        U: Into<Error>,
+    {
+        type Ok = Fut::Ok;
+        type Error = U;
+
+        #[inline]
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            self.future.poll_ready(input).map_err(|err| (self.f)(err))
         }
     }
 }

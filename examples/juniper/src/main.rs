@@ -17,10 +17,10 @@ fn main() -> tsukuyomi::server::Result<()> {
     // Extractor which creates a GraphQL context from the request.
     let fetch_graphql_context = {
         let database = Arc::new(RwLock::new(Database::default()));
-        tsukuyomi::extractor::ready(move |_| -> tsukuyomi::Result<Context> {
-            Ok(Context {
+        tsukuyomi::extractor::ready(move |_| -> tsukuyomi::Result<_> {
+            Ok((Context {
                 database: database.clone(),
-            })
+            },))
         })
     };
 

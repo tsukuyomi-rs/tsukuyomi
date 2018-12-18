@@ -6,6 +6,7 @@ use {
     http::header::{HeaderMap, HeaderName, HeaderValue},
 };
 
+/// Creates an `Extractor` that parses a header field and returns its result.
 pub fn parse<H>() -> impl Extractor<
     Output = (H::Value,), //
     Error = Error,
@@ -18,11 +19,13 @@ where
     super::ready(move |input| {
         crate::input::header::parse::<H>(input)?
             .cloned()
+            .map(|h| (h,))
             .ok_or_else(|| crate::error::bad_request(format!("missing header field: {}", H::NAME)))
     })
 }
 
-pub fn exact<T>(
+/// Creates an `Extractor` that checks if a header field equals to the specified value.
+pub fn equals<T>(
     name: HeaderName,
     value: T,
 ) -> impl Extractor<
@@ -33,7 +36,7 @@ pub fn exact<T>(
 where
     T: PartialEq<HeaderValue> + Clone + Send + 'static,
 {
-    super::guard(move |input| match input.request.headers().get(&name) {
+    super::ready(move |input| match input.request.headers().get(&name) {
         Some(h) if value.eq(h) => Ok(()),
         Some(..) => Err(crate::error::bad_request(format!(
             "mismatched header field: {}",
@@ -46,10 +49,11 @@ where
     })
 }
 
-pub fn clone_headers() -> impl Extractor<
+/// Creates an `Extractor` that clones the entire of header map and returns it.
+pub fn headers() -> impl Extractor<
     Output = (HeaderMap,), //
     Error = Never,
     Extract = impl TryFuture<Ok = (HeaderMap,), Error = Never> + Send + 'static,
 > {
-    super::ready(|input| Ok(input.request.headers().clone()))
+    super::ready(|input| Ok((input.request.headers().clone(),)))
 }

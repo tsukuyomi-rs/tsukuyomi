@@ -379,10 +379,9 @@ fn either_or() -> tsukuyomi::test::Result<()> {
         name: String,
     }
 
-    let params_extractor = extractor::method::get()
-        .chain(extractor::query::query())
-        .either_or(extractor::method::post().chain(extractor::body::json()))
-        .either_or(extractor::method::post().chain(extractor::body::urlencoded()));
+    let params_extractor = (extractor::method::get().and(extractor::query()))
+        .or(extractor::method::post().and(extractor::body::json()))
+        .or(extractor::method::post().and(extractor::body::urlencoded()));
 
     let app = App::create(
         path!("/") //

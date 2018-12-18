@@ -111,8 +111,8 @@ pub fn proxy_client(
     Extract = impl TryFuture<Ok = (Client,), Error = tsukuyomi::Error> + Send + 'static,
 > {
     chain![
-        extractor::extension::clone(),
-        extractor::header::clone_headers(),
+        extractor::extension(),
+        extractor::header::headers(),
         extractor::value(client),
     ]
     .map(|peer_addr, headers, client| Client {

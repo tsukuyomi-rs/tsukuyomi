@@ -1,23 +1,22 @@
-//! API for extracting the incoming request information from the request context.
-
-#![allow(missing_docs)]
+//! Definition of `Extractor` and its implementors.
 
 pub mod body;
 pub mod ext;
-pub mod extension;
 pub mod header;
 pub mod local;
 pub mod method;
-pub mod query;
 
 pub use self::ext::ExtractorExt;
 
-use crate::{
-    error::Error,
-    future::TryFuture,
-    generic::Tuple,
-    input::Input,
-    util::Never, //
+use {
+    crate::{
+        error::Error,
+        future::TryFuture,
+        generic::Tuple,
+        input::Input,
+        util::Never, //
+    },
+    serde::de::DeserializeOwned,
 };
 
 /// A trait abstracting the extraction of values from the incoming request.
@@ -110,6 +109,7 @@ mod unit {
 
 // ==== primitives ====
 
+/// Creates an `Extractor` from the provided function that returns a `TryFuture`.
 pub fn extract<R>(
     f: impl Fn() -> R,
 ) -> impl Extractor<
@@ -121,10 +121,9 @@ where
     R: TryFuture,
     R::Ok: Tuple,
 {
-    #[derive(Debug, Copy, Clone)]
+    #[allow(missing_debug_implementations)]
     struct Raw<F>(F);
 
-    #[allow(clippy::type_complexity)]
     impl<F, R> Extractor for Raw<F>
     where
         F: Fn() -> R,
@@ -144,54 +143,17 @@ where
     Raw(f)
 }
 
-pub fn guard<F, E>(
-    f: F,
-) -> impl Extractor<
-    Output = (),
-    Error = E,
-    Extract = self::guard::Guard<F>, // private
->
-where
-    F: Fn(&mut Input<'_>) -> Result<(), E> + Clone,
-    E: Into<Error>,
-{
-    self::extract(move || self::guard::Guard(f.clone()))
-}
-
-mod guard {
-    use crate::{
-        error::Error,
-        future::{Poll, TryFuture},
-        input::Input,
-    };
-
-    #[allow(missing_debug_implementations)]
-    pub struct Guard<F>(pub(super) F);
-
-    impl<F, E> TryFuture for Guard<F>
-    where
-        F: Fn(&mut Input<'_>) -> Result<(), E>,
-        E: Into<Error>,
-    {
-        type Ok = ();
-        type Error = E;
-
-        #[inline]
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            (self.0)(input).map(Into::into)
-        }
-    }
-}
-
+/// Creates an `Extractor` from a *synchronous* function.
 pub fn ready<F, T, E>(
     f: F,
 ) -> impl Extractor<
-    Output = (T,), //
+    Output = T, //
     Error = E,
     Extract = self::ready::Ready<F>, // private
 >
 where
     F: Fn(&mut Input<'_>) -> Result<T, E> + Clone,
+    T: Tuple,
     E: Into<Error>,
 {
     self::extract(move || self::ready::Ready(f.clone()))
@@ -201,6 +163,7 @@ mod ready {
     use crate::{
         error::Error,
         future::{Poll, TryFuture},
+        generic::Tuple,
         input::Input,
     };
 
@@ -210,18 +173,20 @@ mod ready {
     impl<F, T, E> TryFuture for Ready<F>
     where
         F: Fn(&mut Input<'_>) -> Result<T, E>,
+        T: Tuple,
         E: Into<Error>,
     {
-        type Ok = (T,);
+        type Ok = T;
         type Error = E;
 
         #[inline]
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            (self.0)(input).map(|x| (x,).into())
+            (self.0)(input).map(Into::into)
         }
     }
 }
 
+/// Creates an `Extractor` that just clones and returns the provided value.
 pub fn value<T>(
     value: T,
 ) -> impl Extractor<
@@ -252,26 +217,69 @@ mod value {
     }
 }
 
+/// Creates an `Extractor` that returns the value of request method.
 pub fn method() -> impl Extractor<
     Output = (http::Method,), //
     Error = Never,
     Extract = impl TryFuture<Ok = (http::Method,), Error = Never> + Send + 'static,
 > {
-    self::ready(|input| Ok(input.request.method().clone()))
+    self::ready(|input| Ok((input.request.method().clone(),)))
 }
 
+/// Creates an `Extractor` that returns the value of request URI.
 pub fn uri() -> impl Extractor<
     Output = (http::Uri,), //
     Error = Never,
     Extract = impl TryFuture<Ok = (http::Uri,), Error = Never> + Send + 'static,
 > {
-    self::ready(|input| Ok(input.request.uri().clone()))
+    self::ready(|input| Ok((input.request.uri().clone(),)))
 }
 
+/// Creates an `Extractor` that returns the value of the request version.
 pub fn version() -> impl Extractor<
     Output = (http::Version,), //
     Error = Never,
     Extract = impl TryFuture<Ok = (http::Version,), Error = Never> + Send + 'static,
 > {
-    self::ready(|input| Ok(input.request.version()))
+    self::ready(|input| Ok((input.request.version(),)))
+}
+
+/// Creates an `Extractor` that parses the value of query string to `T`.
+pub fn query<T>() -> impl Extractor<
+    Output = (T,), //
+    Error = Error,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
+>
+where
+    T: DeserializeOwned,
+{
+    self::ready(move |input| {
+        let query_str = input
+            .request
+            .uri()
+            .query()
+            .ok_or_else(|| crate::error::bad_request("missing query"))?;
+        serde_urlencoded::from_str(query_str) //
+            .map(|x| (x,))
+            .map_err(crate::error::bad_request)
+    })
+}
+
+/// Creates an `Extractor` that returns the value of extension of the specified type.
+pub fn extension<T>() -> impl Extractor<
+    Output = (T,), //
+    Error = Error,
+    Extract = impl TryFuture<Ok = (T,), Error = Error> + Send + 'static,
+>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    self::ready(|input| {
+        input
+            .request
+            .extensions()
+            .get()
+            .cloned()
+            .ok_or_else(|| crate::error::internal_server_error("missing extension"))
+    })
 }

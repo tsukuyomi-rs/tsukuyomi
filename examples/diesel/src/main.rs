@@ -37,7 +37,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                 .to(chain![
                     endpoint::get()
                         .extract(db_conn.clone())
-                        .extract(extractor::query::query().optional())
+                        .extract(extractor::query().optional())
                         .call_async({
                             #[derive(Debug, serde::Deserialize)]
                             struct Param {
