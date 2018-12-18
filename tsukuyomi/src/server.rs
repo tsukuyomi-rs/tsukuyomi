@@ -11,7 +11,7 @@ pub use self::error::{Error, Result};
 
 use {
     self::{
-        io::{Acceptor, Connection, ConnectionInfo, Listener},
+        io::{Acceptor, Listener},
         runtime::Runtime,
     },
     crate::service::{HttpService, MakeHttpService},
@@ -154,21 +154,14 @@ macro_rules! serve {
                             .map_err(|e| log::error!("make_service error: {}", e.into()));
 
                         let task = accept.and_then(move |io| {
-                            let info = io.connection_info();
-                            if let Err(..) = info {
-                                log::error!("failed to fetch the connection information");
-                            }
-                            let info = info.ok();
-
                             service
                                 .and_then(|service| {
                                     ReadyHttp(Some(service), PhantomData)
                                         .map_err(|e| log::error!("service error: {}", e.into()))
                                 })
-                                .map(move |service| LiftedHttpService { service, info })
                                 .and_then(move |service| {
                                     protocol
-                                        .serve_connection(io, service)
+                                        .serve_connection(io, LiftedHttpService { service })
                                         .with_upgrades()
                                         .map_err(|e| log::error!("HTTP protocol error: {}", e))
                                 })
@@ -194,8 +187,6 @@ where
     A: Acceptor<T::Conn> + Send + 'static,
     A::Conn: Send + 'static,
     A::Error: Into<CritError>,
-    <A::Conn as Connection>::Info: Send + 'static,
-    <A::Conn as Connection>::Error: Into<CritError>,
     A::Accept: Send + 'static,
 {
     pub fn run(self) -> Result<()> {
@@ -232,8 +223,6 @@ where
     A: Acceptor<T::Conn> + 'static,
     A::Conn: Send + 'static,
     A::Error: Into<CritError>,
-    <A::Conn as Connection>::Info: 'static,
-    <A::Conn as Connection>::Error: Into<CritError>,
     A::Accept: 'static,
 {
     pub fn run(self) -> Result<()> {
@@ -257,17 +246,15 @@ where
 }
 
 #[allow(missing_debug_implementations)]
-struct LiftedHttpService<S, T> {
+struct LiftedHttpService<S> {
     service: S,
-    info: Option<T>,
 }
 
-impl<S, T> hyper::service::Service for LiftedHttpService<S, T>
+impl<S> hyper::service::Service for LiftedHttpService<S>
 where
     S: HttpService<hyper::Body>,
     S::ResponseBody: Payload,
     S::Error: Into<CritError>,
-    T: ConnectionInfo,
 {
     type ReqBody = Body;
     type ResBody = S::ResponseBody;
@@ -275,10 +262,7 @@ where
     type Future = S::Future;
 
     #[inline]
-    fn call(&mut self, mut request: Request<Body>) -> Self::Future {
-        if let Some(ref info) = self.info {
-            info.insert_into(request.extensions_mut());
-        }
+    fn call(&mut self, request: Request<Body>) -> Self::Future {
         self.service.call_http(request)
     }
 }
