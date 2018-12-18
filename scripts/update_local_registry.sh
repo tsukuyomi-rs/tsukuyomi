@@ -9,6 +9,5 @@ cd
 (set -x; cargo generate-lockfile --manifest-path=$MANIFEST_DIR/Cargo.toml)
 
 echo "[fetch local registry...]"
-cd $MANIFEST_DIR
-(set -x; cargo local-registry -s Cargo.lock .registry-index)
-(set -x; cp Cargo.lock .registry-index/Cargo.lock)
+(set -x; cargo local-registry --verbose -s $MANIFEST_DIR/Cargo.lock $MANIFEST_DIR/.registry-index)
+(set -x; cp $MANIFEST_DIR/Cargo.lock $MANIFEST_DIR/.registry-index/Cargo.lock)
