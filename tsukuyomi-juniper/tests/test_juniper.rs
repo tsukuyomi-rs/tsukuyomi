@@ -26,7 +26,7 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
 
     let app = App::create({
         let database = database.clone();
-        path!(/)
+        path!("/")
             .to(endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request())
                 .extract(tsukuyomi::extractor::value(schema))

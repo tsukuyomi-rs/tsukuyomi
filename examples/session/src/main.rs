@@ -20,7 +20,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let session = Arc::new(session(backend));
 
     App::create(chain![
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .extract(session.clone())
                 .call_async(|session: Session<_>| -> tsukuyomi::Result<_> {
@@ -39,7 +39,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     };
                     Ok(session.finish(output))
                 })),
-        path!(/"login") //
+        path!("/login") //
             .to(chain![
                 endpoint::get() //
                     .extract(session.clone())
@@ -71,7 +71,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                         }
                     }),
             ]),
-        path!(/"logout") //
+        path!("/logout") //
             .to(endpoint::get()
                 .extract(session)
                 .call(|mut session: Session<_>| {

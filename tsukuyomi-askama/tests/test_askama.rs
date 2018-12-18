@@ -23,7 +23,7 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
     }
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| Index { name: "Alice" })),
     )?;
@@ -46,7 +46,7 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
     }
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| Index { name: "Alice" }))
             .modify(tsukuyomi_askama::Renderer::default()),

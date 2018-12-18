@@ -55,7 +55,7 @@ fn global_modifier() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::any().reply(""))
             .modify(MockModifier {
                 marker: marker.clone(),
@@ -80,7 +80,7 @@ fn global_modifiers() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::any().reply(""))
             .modify(chain![
                 MockModifier {
@@ -108,14 +108,14 @@ fn scoped_modifier() -> tsukuyomi::test::Result<()> {
     let app = App::create(
         chain![
             mount("/path1").with({
-                path!(/) //
+                path!("/") //
                     .to(endpoint::any().reply(""))
                     .modify(MockModifier {
                         marker: marker.clone(),
                         name: "M2",
                     })
             }), //
-            path!(/"path2").to(endpoint::any().reply("")),
+            path!("/path2").to(endpoint::any().reply("")),
         ]
         .modify(MockModifier {
             marker: marker.clone(),
@@ -143,9 +143,9 @@ fn nested_modifiers() -> tsukuyomi::test::Result<()> {
             mount("/to")
                 .with(
                     chain![
-                        path!(/).to(endpoint::any().reply("")),
+                        path!("/").to(endpoint::any().reply("")),
                         mount("/a").with({
-                            path!(/) //
+                            path!("/") //
                                 .to(endpoint::any().reply(""))
                                 .modify(MockModifier {
                                     marker: marker.clone(),

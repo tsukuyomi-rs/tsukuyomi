@@ -10,7 +10,7 @@ use {
 fn main() -> tsukuyomi::server::Result<()> {
     App::create(chain![
         // a route that matches the root path.
-        path!(/) //
+        path!("/") //
             .to({
                 // an endpoint that matches *all* methods with the root path.
                 endpoint::any() //
@@ -21,7 +21,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             // scopes can be nested.
             mount("/posts").with(chain![
                 // a route with the path `/api/v1/posts`.
-                path!(/) //
+                path!("/") //
                     .to(chain![
                         // A route can take multiple endpoints by using the `chain!()`.
                         //
@@ -31,7 +31,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                         endpoint::any().reply("other methods"), // <-- {PUT, DELETE, ...} /api/v1/posts
                     ]),
                 // A route that captures a parameter from the path.
-                path!(/{path::param("id")}) //
+                path!("/:id") //
                     .to({
                         endpoint::any() //
                             .call(|id: i32| {
@@ -41,12 +41,12 @@ fn main() -> tsukuyomi::server::Result<()> {
                     }),
             ]),
             mount("/user").with({
-                path!(/"auth") //
+                path!("/auth") //
                     .to(endpoint::any().reply("Authentication"))
             }),
         ]),
         // a route that captures a *catch-all* parameter.
-        path!(/"static"/{path::catch_all("path")}) //
+        path!("/static/*path") //
             .to({
                 endpoint::get() //
                     .call(|path: PathBuf| {
@@ -55,7 +55,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                     })
             }),
         // A route that matches any path.
-        path!(*) //
+        path!("*") //
             .to(endpoint::any().reply("default route"))
     ])
     .map(Server::new)?

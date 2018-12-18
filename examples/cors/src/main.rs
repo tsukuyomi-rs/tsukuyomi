@@ -28,8 +28,8 @@ fn main() -> tsukuyomi::server::Result<()> {
         .build();
 
     App::create(chain![
-        path!(*).to(cors.clone()), // handle OPTIONS *
-        path!(/"user"/"info") //
+        path!("*").to(cors.clone()), // handle OPTIONS *
+        path!("/user/info") //
             .to(endpoint::post() //
                 .extract(extractor::body::json())
                 .call(|info: UserInfo| -> tsukuyomi::Result<_> {

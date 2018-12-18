@@ -8,7 +8,7 @@ use tsukuyomi::{
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
     App::create({
-        path!(/"index.html") //
+        path!("/index.html") //
             .to(endpoint::get() //
                 .reply(NamedFile::open("/path/to/index.html")))
     })

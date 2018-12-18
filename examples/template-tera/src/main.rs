@@ -23,7 +23,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
     App::create(
-        path!(/{path::param("name")})
+        path!("/:name")
             .to(endpoint::any() //
                 .call(|name| Index { name }))
             .modify(WithTera::from(engine)),

@@ -19,7 +19,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
     let session = std::sync::Arc::new(session(backend));
 
     let app = App::create(chain![
-        path!(/"counter").to(chain![
+        path!("/counter").to(chain![
             endpoint::get() //
                 .extract(session.clone())
                 .call_async(|session: Session<_>| -> tsukuyomi::Result<_> {
@@ -40,7 +40,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
                     session.finish("removed")
                 }),
         ]),
-        path!(/"clear").to(endpoint::put()
+        path!("/clear").to(endpoint::put()
             .extract(session)
             .call(|mut session: Session<_>| {
                 session.clear();

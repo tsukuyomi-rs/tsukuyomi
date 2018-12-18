@@ -7,6 +7,7 @@
 extern crate proc_macro;
 
 mod derive_into_response;
+mod path_impl;
 
 use proc_macro::TokenStream;
 
@@ -16,6 +17,13 @@ use proc_macro::TokenStream;
 #[cfg_attr(tarpaulin, skip)]
 pub fn IntoResponse(input: TokenStream) -> TokenStream {
     crate::derive_into_response::derive_into_response(input.into())
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+}
+
+#[proc_macro]
+pub fn path_impl(input: TokenStream) -> TokenStream {
+    crate::path_impl::path_impl(input.into())
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

@@ -6,12 +6,12 @@ use {
 #[test]
 fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
-        path!(/"first").to(endpoint::any() //
+        path!("/first").to(endpoint::any() //
             .reply(tsukuyomi::responder::oneshot(|input| {
                 input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
                 Ok::<_, tsukuyomi::Error>("")
             }))),
-        path!(/"second").to(endpoint::any() //
+        path!("/second").to(endpoint::any() //
             .reply(tsukuyomi::responder::oneshot(|input| {
                 assert!(input.cookies.jar()?.get("session").is_some());
                 Ok::<_, tsukuyomi::Error>("")
@@ -29,13 +29,13 @@ fn enable_manage_cookies() -> tsukuyomi::test::Result<()> {
 #[test]
 fn disable_manage_cookies() -> tsukuyomi::test::Result<()> {
     let app = App::create(chain![
-        path!(/"first") //
+        path!("/first") //
             .to(endpoint::any() //
                 .reply(tsukuyomi::responder::oneshot(|input| {
                     input.cookies.jar()?.add(Cookie::new("session", "xxxx"));
                     Ok::<_, tsukuyomi::Error>("")
                 }))),
-        path!(/"second") //
+        path!("/second") //
             .to(endpoint::any() //
                 .reply(tsukuyomi::responder::oneshot(|input| {
                     assert!(input.cookies.jar()?.get("session").is_none());

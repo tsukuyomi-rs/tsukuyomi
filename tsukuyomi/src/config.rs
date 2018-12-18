@@ -10,10 +10,6 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use super::{mount, Config, ConfigExt};
 
-    pub mod path {
-        pub use super::super::path::{catch_all, param, slash};
-    }
-
     pub mod endpoint {
         #[doc(no_inline)]
         pub use super::super::endpoint::{
