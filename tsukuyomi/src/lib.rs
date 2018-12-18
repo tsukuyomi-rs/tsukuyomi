@@ -30,7 +30,6 @@ pub mod output;
 pub mod responder;
 pub mod rt;
 pub mod server;
-pub mod service;
 pub mod test;
 
 #[doc(inline)]

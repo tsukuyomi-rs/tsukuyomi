@@ -1,28 +1,44 @@
 //! The implementation of low level HTTP server.
 
-pub mod io;
-pub mod runtime;
-
 mod error;
+mod io;
+mod runtime;
 
 pub(crate) type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-pub use self::error::{Error, Result};
+pub use self::{
+    error::{Error, Result},
+    io::{Acceptor, Listener},
+    runtime::Runtime,
+};
+
+#[doc(no_inline)]
+pub use tower_service::Service;
 
 use {
-    self::{
-        io::{Acceptor, Listener},
-        runtime::Runtime,
-    },
-    crate::service::{HttpService, MakeHttpService},
     futures01::{Future, Poll, Stream},
-    http::Request,
+    http::{Request, Response},
     hyper::{
         body::{Body, Payload},
         server::conn::Http,
     },
     std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
 };
+
+/// A trait representing a factory of `Service`s.
+///
+/// The signature of this trait imitates `tower_util::MakeService` and will be replaced to it.
+pub trait MakeService<Target, Request> {
+    type Response;
+    type Error;
+    type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
+    type MakeError;
+    type Future: Future<Item = Self::Service, Error = Self::MakeError>;
+
+    fn poll_ready(&mut self) -> Poll<(), Self::MakeError>;
+
+    fn make_service(&self, target: Target) -> Self::Future;
+}
 
 // ==== Server ====
 
@@ -38,7 +54,7 @@ pub struct Server<S, L = SocketAddr, A = (), R = tokio::runtime::Runtime> {
 
 impl<S> Server<S>
 where
-    S: MakeHttpService<(), hyper::Body>,
+    S: MakeService<(), hyper::Body>,
 {
     /// Create a new `Server` with the specified `NewService` and default configuration.
     pub fn new(make_service: S) -> Self {
@@ -138,7 +154,7 @@ macro_rules! serve {
             .listen()
             .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
 
-        ReadyMakeHttp(Some(make_service), PhantomData)
+        ReadyMakeService(Some(make_service), PhantomData)
             .map_err(|e| log::error!("make_service init error: {}", e.into()))
             .and_then(move |make_service| {
                 incoming
@@ -150,13 +166,13 @@ macro_rules! serve {
 
                         let protocol = protocol.clone();
                         let service = make_service
-                            .make_http_service(())
+                            .make_service(())
                             .map_err(|e| log::error!("make_service error: {}", e.into()));
 
                         let task = accept.and_then(move |io| {
                             service
                                 .and_then(|service| {
-                                    ReadyHttp(Some(service), PhantomData)
+                                    ReadyService(Some(service), PhantomData)
                                         .map_err(|e| log::error!("service error: {}", e.into()))
                                 })
                                 .and_then(move |service| {
@@ -173,15 +189,15 @@ macro_rules! serve {
     }};
 }
 
-impl<S, T, A> Server<S, T, A, tokio::runtime::Runtime>
+impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::Runtime>
 where
-    S: MakeHttpService<(), hyper::Body> + Send + 'static,
-    S::ResponseBody: Payload,
+    S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>> + Send + 'static,
+    Bd: Payload,
     S::Error: Into<CritError>,
     S::MakeError: Into<CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
-    <S::Service as HttpService<hyper::Body>>::Future: Send + 'static,
+    <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
     T: Listener,
     T::Incoming: Send + 'static,
     A: Acceptor<T::Conn> + Send + 'static,
@@ -209,15 +225,15 @@ where
     }
 }
 
-impl<S, T, A> Server<S, T, A, tokio::runtime::current_thread::Runtime>
+impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
-    S: MakeHttpService<(), hyper::Body>,
-    S::ResponseBody: Payload,
+    S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
+    Bd: Payload,
     S::Error: Into<CritError>,
     S::MakeError: Into<CritError>,
     S::Future: 'static,
     S::Service: 'static,
-    <S::Service as HttpService<hyper::Body>>::Future: 'static,
+    <S::Service as Service<Request<hyper::Body>>>::Future: 'static,
     T: Listener,
     T::Incoming: 'static,
     A: Acceptor<T::Conn> + 'static,
@@ -250,29 +266,29 @@ struct LiftedHttpService<S> {
     service: S,
 }
 
-impl<S> hyper::service::Service for LiftedHttpService<S>
+impl<S, Bd> hyper::service::Service for LiftedHttpService<S>
 where
-    S: HttpService<hyper::Body>,
-    S::ResponseBody: Payload,
+    S: Service<Request<hyper::Body>, Response = Response<Bd>>,
+    Bd: Payload,
     S::Error: Into<CritError>,
 {
     type ReqBody = Body;
-    type ResBody = S::ResponseBody;
+    type ResBody = Bd;
     type Error = S::Error;
     type Future = S::Future;
 
     #[inline]
     fn call(&mut self, request: Request<Body>) -> Self::Future {
-        self.service.call_http(request)
+        self.service.call(request)
     }
 }
 
-#[derive(Debug)]
-pub struct ReadyMakeHttp<S, T, Bd>(Option<S>, PhantomData<fn(T, Bd)>);
+#[allow(missing_debug_implementations)]
+struct ReadyMakeService<S, T, Req>(Option<S>, PhantomData<fn(T, Req)>);
 
-impl<S, T, Bd> Future for ReadyMakeHttp<S, T, Bd>
+impl<S, T, Req> Future for ReadyMakeService<S, T, Req>
 where
-    S: MakeHttpService<T, Bd>,
+    S: MakeService<T, Req>,
 {
     type Item = S;
     type Error = S::MakeError;
@@ -282,17 +298,17 @@ where
             .0
             .as_mut()
             .expect("the future has already been polled")
-            .poll_ready_http());
+            .poll_ready());
         Ok(futures01::Async::Ready(self.0.take().unwrap()))
     }
 }
 
-#[derive(Debug)]
-pub struct ReadyHttp<S, Bd>(Option<S>, PhantomData<fn(Bd)>);
+#[allow(missing_debug_implementations)]
+struct ReadyService<S, Req>(Option<S>, PhantomData<fn(Req)>);
 
-impl<S, Bd> Future for ReadyHttp<S, Bd>
+impl<S, Req> Future for ReadyService<S, Req>
 where
-    S: HttpService<Bd>,
+    S: Service<Req>,
 {
     type Item = S;
     type Error = S::Error;
@@ -302,7 +318,7 @@ where
             .0
             .as_mut()
             .expect("the future has already been polled")
-            .poll_ready_http());
+            .poll_ready());
         Ok(futures01::Async::Ready(self.0.take().unwrap()))
     }
 }

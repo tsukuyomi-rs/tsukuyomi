@@ -5,10 +5,7 @@ use {
         input::Input,
         output::{Output, Receive},
     },
-    crate::{
-        server::CritError,
-        service::{HttpService, MakeHttpService},
-    },
+    crate::server::{CritError, MakeService, Service},
     cookie::Cookie,
     futures01::{Future, Poll},
     http::{
@@ -28,7 +25,7 @@ pub struct Server<S, Rt = tokio::runtime::Runtime> {
 
 impl<S, Rt> Server<S, Rt>
 where
-    S: MakeHttpService<(), hyper::Body>,
+    S: MakeService<(), Request<hyper::Body>>,
 {
     /// Creates an instance of `TestServer` from the specified components.
     pub fn new(make_service: S, runtime: Rt) -> Self {
@@ -50,7 +47,7 @@ pub struct Session<'a, S, Rt: 'a> {
 
 impl<'a, S, Rt> Session<'a, S, Rt>
 where
-    S: HttpService<hyper::Body>,
+    S: Service<Request<hyper::Body>>,
 {
     fn new(service: S, runtime: &'a mut Rt) -> Self {
         Session {
@@ -133,10 +130,10 @@ mod threadpool {
         }
     }
 
-    impl<S> Server<S, Runtime>
+    impl<S, Bd> Server<S, Runtime>
     where
-        S: MakeHttpService<(), hyper::Body>,
-        S::ResponseBody: Payload,
+        S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
+        Bd: Payload,
         S::Error: Into<CritError>,
         S::Future: Send + 'static,
         S::MakeError: Into<CritError> + Send + 'static,
@@ -146,7 +143,7 @@ mod threadpool {
         pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
             let service = block_on(
                 &mut self.runtime,
-                self.make_service.make_http_service(()).map_err(Into::into),
+                self.make_service.make_service(()).map_err(Into::into),
             )
             .map_err(failure::Error::from_boxed_compat)?;
 
@@ -156,17 +153,17 @@ mod threadpool {
         pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
         where
             T: Input,
-            <S::Service as HttpService<hyper::Body>>::Future: Send + 'static,
+            <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
         {
             let mut session = self.new_session()?;
             session.perform(input)
         }
     }
 
-    impl<'a, S> Session<'a, S, Runtime>
+    impl<'a, S, Bd> Session<'a, S, Runtime>
     where
-        S: HttpService<hyper::Body>,
-        S::ResponseBody: Payload,
+        S: Service<Request<hyper::Body>, Response = Response<Bd>>,
+        Bd: Payload,
         S::Error: Into<CritError>,
         S::Future: Send + 'static,
     {
@@ -177,7 +174,7 @@ mod threadpool {
         {
             let request = self.build_request(input)?;
 
-            let future = TestResponseFuture::Initial(self.service.call_http(request));
+            let future = TestResponseFuture::Initial(self.service.call(request));
             let response =
                 block_on(&mut self.runtime, future).map_err(failure::Error::from_boxed_compat)?;
             self.handle_set_cookies(&response)?;
@@ -190,10 +187,10 @@ mod threadpool {
 mod current_thread {
     use {super::*, tokio::runtime::current_thread::Runtime};
 
-    impl<S> Server<S, Runtime>
+    impl<S, Bd> Server<S, Runtime>
     where
-        S: MakeHttpService<(), hyper::Body>,
-        S::ResponseBody: Payload,
+        S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
+        Bd: Payload,
         S::Error: Into<CritError>,
         S::MakeError: Into<CritError>,
     {
@@ -201,7 +198,7 @@ mod current_thread {
         pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
             let service = self
                 .runtime
-                .block_on(self.make_service.make_http_service(()))
+                .block_on(self.make_service.make_service(()))
                 .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
             Ok(Session::new(service, &mut self.runtime))
         }
@@ -215,10 +212,10 @@ mod current_thread {
         }
     }
 
-    impl<'a, S> Session<'a, S, Runtime>
+    impl<'a, S, Bd> Session<'a, S, Runtime>
     where
-        S: HttpService<hyper::Body>,
-        S::ResponseBody: Payload,
+        S: Service<Request<hyper::Body>, Response = Response<Bd>>,
+        Bd: Payload,
         S::Error: Into<CritError>,
     {
         /// Applies an HTTP request to this client and await its response.
@@ -228,7 +225,7 @@ mod current_thread {
         {
             let request = self.build_request(input)?;
 
-            let future = TestResponseFuture::Initial(self.service.call_http(request));
+            let future = TestResponseFuture::Initial(self.service.call(request));
             let response = self
                 .runtime
                 .block_on(future)

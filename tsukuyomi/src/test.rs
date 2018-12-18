@@ -14,7 +14,7 @@ pub use self::{
     server::{Server, Session},
 };
 
-use crate::service::MakeHttpService;
+use {crate::server::MakeService, http::Request};
 
 pub trait ResponseExt {
     fn header<H>(&self, name: H) -> Result<&http::header::HeaderValue>
@@ -34,7 +34,7 @@ impl<T> ResponseExt for http::Response<T> {
 
 pub fn server<S>(make_service: S) -> self::Result<Server<S, tokio::runtime::Runtime>>
 where
-    S: MakeHttpService<(), hyper::Body>,
+    S: MakeService<(), Request<hyper::Body>>,
 {
     let mut builder = tokio::runtime::Builder::new();
     builder.core_threads(1);
@@ -48,7 +48,7 @@ pub fn current_thread_server<S>(
     make_service: S,
 ) -> self::Result<Server<S, tokio::runtime::current_thread::Runtime>>
 where
-    S: MakeHttpService<(), hyper::Body>,
+    S: MakeService<(), Request<hyper::Body>>,
 {
     let runtime = tokio::runtime::current_thread::Runtime::new()?;
     Ok(Server::new(make_service, runtime))

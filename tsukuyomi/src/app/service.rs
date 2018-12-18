@@ -3,7 +3,7 @@ use {
     crate::{
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
-        service::{MakeService, Service},
+        server::{MakeService, Service},
         util::Never,
     },
     cookie::CookieJar,
