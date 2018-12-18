@@ -15,7 +15,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let acceptor = TlsAcceptor::from(acceptor);
 
     App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::any() //
                 .reply("Hello, Tsukuyomi.\n")),
     ) //

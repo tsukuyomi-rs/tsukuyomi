@@ -31,7 +31,7 @@ fn test_version_sync() {
 #[test]
 fn test_handshake() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        path!(/"ws") //
+        path!("/ws") //
             .to(endpoint::get()
                 .extract(ws())
                 .call(|ws: Ws| ws.finish(|_| Ok(())))),

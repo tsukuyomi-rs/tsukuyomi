@@ -17,7 +17,7 @@ struct Index {
 
 fn main() -> tsukuyomi::server::Result<()> {
     App::create({
-        path!(/{path::param("name")}) //
+        path!("/:name") //
             .to({
                 endpoint::get() //
                     .call(|name| Index { name })

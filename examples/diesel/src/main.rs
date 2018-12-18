@@ -33,7 +33,7 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     let server = App::create({
         mount("/api/v1/posts").with(chain![
-            path!(/) //
+            path!("/") //
                 .to(chain![
                     endpoint::get()
                         .extract(db_conn.clone())
@@ -83,7 +83,7 @@ fn main() -> tsukuyomi::server::Result<()> {
                             }
                         }),
                 ]),
-            path!(/{path::param("id")}) //
+            path!("/:id") //
                 .to(endpoint::get() //
                     .extract(db_conn)
                     .call_async(|id: i32, conn: Conn| blocking_section(move || {

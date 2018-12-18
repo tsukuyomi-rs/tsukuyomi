@@ -32,7 +32,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors),
@@ -65,7 +65,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors),
@@ -102,7 +102,7 @@ fn simple_request_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::allow_only("GET, DELETE")? //
                 .call(|| "hello"))
             .modify(cors),
@@ -136,7 +136,7 @@ fn simple_request_with_allow_credentials() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors),
@@ -189,8 +189,8 @@ fn preflight_with_default_configuration() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(chain![
-        path!(*).to(cors.clone()), // OPTIONS *
-        path!(/) //
+        path!("*").to(cors.clone()), // OPTIONS *
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors)  // OPTIONS /
@@ -218,8 +218,8 @@ fn preflight_with_allow_origin() -> tsukuyomi::test::Result<()> {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let app = App::create(chain![
-        path!(*).to(cors.clone()), // OPTIONS *
-        path!(/) //
+        path!("*").to(cors.clone()), // OPTIONS *
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors)
@@ -252,8 +252,8 @@ fn preflight_with_allow_method() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(chain![
-        path!(*).to(cors.clone()), // OPTIONS *
-        path!(/)
+        path!("*").to(cors.clone()), // OPTIONS *
+        path!("/")
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors)  // OPTIONS /
@@ -288,8 +288,8 @@ fn preflight_with_allow_headers() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(chain![
-        path!(*).to(cors.clone()), // OPTIONS *
-        path!(/) //
+        path!("*").to(cors.clone()), // OPTIONS *
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors)
@@ -330,8 +330,8 @@ fn preflight_max_age() -> tsukuyomi::test::Result<()> {
         .build();
 
     let app = App::create(chain![
-        path!(*).to(cors.clone()),
-        path!(/) //
+        path!("*").to(cors.clone()),
+        path!("/") //
             .to(endpoint::get() //
                 .call(|| "hello"))
             .modify(cors)
@@ -358,13 +358,13 @@ fn as_route_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(chain![
-        path!(/"cors") //
+        path!("/cors") //
             .to(endpoint::get() //
                 .call(|| "cors"))
             .modify(cors.clone()),
-        path!(/"nocors") //
+        path!("/nocors") //
             .to(endpoint::get().call(|| "nocors")),
-        path!(*).to(cors),
+        path!("*").to(cors),
     ])?;
     let mut server = tsukuyomi::test::server(app)?;
 
@@ -405,10 +405,10 @@ fn as_scope_modifier() -> tsukuyomi::test::Result<()> {
     let cors = CORS::new();
 
     let app = App::create(chain![
-        path!(/"cors") //
+        path!("/cors") //
             .to(endpoint::get().call(|| "cors"))
             .modify(cors),
-        path!(/"nocors") //
+        path!("/nocors") //
             .to(endpoint::get() //
                 .call(|| "nocors")),
     ])?;

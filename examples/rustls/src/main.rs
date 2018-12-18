@@ -11,7 +11,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
     App::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::any() //
                 .reply("Hello, Tsukuyomi.\n")),
     ) //

@@ -100,7 +100,7 @@ mod responder {
         }
 
         let app = App::create({
-            path!(/) //
+            path!("/") //
                 .to(endpoint::any() //
                     .call(|| Foo("Foo".into())))
         })?;

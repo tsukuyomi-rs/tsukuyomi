@@ -32,7 +32,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let app = App::create({
         use tsukuyomi::config::prelude::*;
 
-        path!(/)
+        path!("/")
             .to(endpoint::any()
                 .reply("Hello, world.\n"))
     })?;

@@ -10,7 +10,7 @@ use {
 
 fn main() -> tsukuyomi::server::Result<()> {
     App::create(
-        path!(/"ws") //
+        path!("/ws") //
             .to(endpoint::get() //
                 .extract(ws())
                 .call(|ws: Ws| {

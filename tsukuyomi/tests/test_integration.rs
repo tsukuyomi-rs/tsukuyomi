@@ -12,7 +12,7 @@ fn test_catch_unwind() {
         use tsukuyomi::{config::prelude::*, App};
 
         let app = App::create(
-            path!(/) //
+            path!("/") //
                 .to(endpoint::any() //
                     .call(|| -> &'static str { panic!("explicit panic") })),
         )?;
@@ -35,7 +35,7 @@ fn test_current_thread() -> tsukuyomi::test::Result<()> {
     let ptr = std::rc::Rc::new(());
 
     let app = LocalApp::create(
-        path!(/) //
+        path!("/") //
             .to(endpoint::any().call(move || {
                 let _ptr = ptr.clone();
                 "dummy"

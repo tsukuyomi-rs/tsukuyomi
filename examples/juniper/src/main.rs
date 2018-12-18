@@ -26,11 +26,11 @@ fn main() -> tsukuyomi::server::Result<()> {
 
     App::create(chain![
         // renders the source of GraphiQL.
-        path!(/) //
+        path!("/") //
             .to(endpoint::get() //
                 .reply(tsukuyomi_juniper::graphiql_source("/graphql"))),
         // a route which handles GraphQL requests over HTTP.
-        path!(/"graphql")
+        path!("/graphql")
             .to(endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request()) // <-- parses the incoming GraphQL request.
                 .extract(fetch_graphql_context) // <-- fetches a GraphQL context.

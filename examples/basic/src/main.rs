@@ -4,7 +4,7 @@ fn main() -> tsukuyomi::server::Result<()> {
     let server = App::create({
         use tsukuyomi::config::prelude::*;
 
-        path!(/) //
+        path!("/") //
             .to(endpoint::any() //
                 .reply("Hello, world!\n"))
     }) //

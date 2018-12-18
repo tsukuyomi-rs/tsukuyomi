@@ -22,7 +22,7 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 #[test]
 fn single_route() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        path!(/"hello") //
+        path!("/hello") //
             .to(endpoint::any().call(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi::test::server(app)?;
@@ -43,7 +43,7 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 #[test]
 fn post_body() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        path!(/"hello") //
+        path!("/hello") //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
                 .call(|body: String| body)),
@@ -74,7 +74,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
     let expires_in = time::now() + Duration::days(7);
 
     let app = App::create(chain![
-        path!(/"login") //
+        path!("/login") //
             .to(endpoint::any()
                 .extract(extractor::guard(move |input| {
                     input.cookies.jar()?.add(
@@ -86,7 +86,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                     Ok::<_, tsukuyomi::error::Error>(())
                 }))
                 .call(|| "Logged in")),
-        path!(/"logout") //
+        path!("/logout") //
             .to(endpoint::any()
                 .extract(extractor::guard(|input| {
                     input.cookies.jar()?.remove(Cookie::named("session"));
@@ -125,7 +125,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 #[test]
 fn default_options() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        path!(/"path")
+        path!("/path")
             .to(endpoint::allow_only("GET, POST")?.call(|| "reply"))
             .modify(tsukuyomi::modifiers::default_options()),
     )?;
@@ -146,7 +146,7 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 #[test]
 fn map_output() -> tsukuyomi::test::Result<()> {
     let app = App::create(
-        path!(/)
+        path!("/")
             .to(endpoint::any().reply(42))
             .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
     )?;
@@ -165,7 +165,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(chain![
-        path!(*) //
+        path!("*") //
             .to(endpoint::any() //
                 .call({
                     let marker = marker.clone();
@@ -175,7 +175,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                     }
                 })),
         mount("/api/v1/").with(chain![
-            path!(*) //
+            path!("*") //
                 .to(endpoint::any() //
                     .call({
                         let marker = marker.clone();
@@ -184,10 +184,10 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
                             "f2"
                         }
                     })),
-            path!(/"posts") //
+            path!("/posts") //
                 .to(endpoint::post().reply("posts")),
             mount("/events").with(
-                path!(/"new") //
+                path!("/new") //
                     .to(endpoint::post().reply("new_event")),
             ),
         ]),
