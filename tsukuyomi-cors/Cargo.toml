@@ -16,3 +16,4 @@ http = "0.1"
 
 [dev-dependencies]
 version-sync = "0.6"
+tsukuyomi-server = { version = "0.2.0-dev", path = "../tsukuyomi-server" }

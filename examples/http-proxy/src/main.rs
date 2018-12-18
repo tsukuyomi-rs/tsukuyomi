@@ -9,11 +9,11 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 

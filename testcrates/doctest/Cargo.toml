@@ -14,3 +14,4 @@ doubter = { version = "0.1.0", default-features = false }
 
 [dev-dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
+tsukuyomi-server = { path = "../../tsukuyomi-server" }

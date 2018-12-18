@@ -28,9 +28,6 @@ pub mod input;
 pub mod modifiers;
 pub mod output;
 pub mod responder;
-pub mod rt;
-pub mod server;
-pub mod test;
 
 #[doc(inline)]
 pub use crate::{
@@ -46,7 +43,6 @@ pub use crate::{
     input::Input,
     output::IntoResponse,
     responder::Responder,
-    server::Server,
 };
 
 /// Re-export of crates used within the framework and frequently used on the user side.

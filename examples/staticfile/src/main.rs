@@ -1,11 +1,13 @@
-use tsukuyomi::{
-    config::prelude::*, //
-    fs::{NamedFile, Staticfiles},
-    App,
-    Server,
+use {
+    tsukuyomi::{
+        config::prelude::*, //
+        fs::{NamedFile, Staticfiles},
+        App,
+    },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
 
     App::create(chain![

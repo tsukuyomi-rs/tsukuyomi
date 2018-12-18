@@ -1,0 +1,12 @@
+[package]
+name = "tsukuyomi-service"
+version = "0.1.0-dev"
+edition = "2018"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+
+[dependencies]
+futures = "0.1"
+tower-service = "0.2"
+
+[dev-dependencies]
+version-sync = "0.6"

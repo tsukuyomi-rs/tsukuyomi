@@ -4,8 +4,8 @@ use {
         config::prelude::*, //
         App,
         IntoResponse,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
 #[derive(Template, IntoResponse)]
@@ -15,7 +15,7 @@ struct Index {
     name: String,
 }
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     App::create({
         path!("/:name") //
             .to({

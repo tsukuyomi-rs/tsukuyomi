@@ -3,11 +3,11 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
     App::create(

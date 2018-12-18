@@ -5,9 +5,9 @@ use {
         extractor,
         output::IntoResponse,
         App,
-        Server,
     },
     tsukuyomi_cors::CORS,
+    tsukuyomi_server::Server,
 };
 
 #[derive(Debug, Deserialize, Serialize, IntoResponse)]
@@ -19,7 +19,7 @@ struct UserInfo {
     confirm_password: String,
 }
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let cors = CORS::builder()
         .allow_origin("http://127.0.0.1:5000")?
         .allow_methods(vec!["GET", "POST"])?

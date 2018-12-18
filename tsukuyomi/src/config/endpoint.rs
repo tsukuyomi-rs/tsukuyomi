@@ -70,7 +70,7 @@ impl Builder {
     pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Self> {
         Ok(Self {
             extractor: (),
-            allowed_methods: Some(methods.try_into()?),
+            allowed_methods: methods.try_into().map(Some).map_err(super::Error::custom)?,
         })
     }
 }

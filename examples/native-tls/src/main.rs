@@ -4,11 +4,11 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let der = std::fs::read("./private/identity.p12")?;
     let cert = Identity::from_pkcs12(&der, "mypass")?;
     let acceptor = NativeTlsAcceptor::builder(cert).build()?;

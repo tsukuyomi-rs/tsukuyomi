@@ -6,11 +6,12 @@ mod schema;
 use {
     crate::context::{Context, Database},
     std::sync::{Arc, RwLock},
-    tsukuyomi::{config::prelude::*, App, Server},
+    tsukuyomi::{config::prelude::*, App},
     tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     // A GraphQL schema.
     let schema = Arc::new(crate::schema::create_schema());
 

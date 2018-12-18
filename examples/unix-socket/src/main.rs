@@ -1,7 +1,9 @@
-use tsukuyomi::{
-    config::prelude::*, //
-    App,
-    Server,
+use {
+    tsukuyomi::{
+        config::prelude::*, //
+        App,
+    },
+    tsukuyomi_server::Server,
 };
 
 #[cfg(not(unix))]
@@ -10,7 +12,7 @@ fn main() {
 }
 
 #[cfg(unix)]
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let sock_path: std::path::PathBuf = std::env::args()
         .nth(1)
         .map(Into::into)

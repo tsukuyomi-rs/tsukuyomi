@@ -3,7 +3,6 @@ use {
     crate::{
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
-        server::{MakeService, Service},
         util::Never,
     },
     cookie::CookieJar,
@@ -14,6 +13,7 @@ use {
     },
     hyper::body::Payload,
     std::{fmt, marker::PhantomData, sync::Arc},
+    tsukuyomi_service::{MakeService, Service},
 };
 
 macro_rules! ready {

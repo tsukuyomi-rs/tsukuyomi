@@ -22,20 +22,28 @@
 
 ## Usage
 
+```toml
+[dependencies]
+tsukuyomi = "0.5.0-dev"
+tsukuyomi-server = "0.2.0-dev"
+```
+
 ```rust,no_run
 use {
     std::net::SocketAddr,
-    tsukuyomi::{App, Server},
+    tsukuyomi::{
+        App,
+        config::prelude::*,
+    },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
-    let app = App::create({
-        use tsukuyomi::config::prelude::*;
-
+fn main() -> tsukuyomi_server::Result<()> {
+    let app = App::create(
         path!("/")
             .to(endpoint::any()
                 .reply("Hello, world.\n"))
-    })?;
+    )?;
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
     println!("Listening on http://{}", addr);

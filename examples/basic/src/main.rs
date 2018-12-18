@@ -1,6 +1,7 @@
-use tsukuyomi::{App, Server};
+use tsukuyomi::App;
+use tsukuyomi_server::Server;
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let server = App::create({
         use tsukuyomi::config::prelude::*;
 

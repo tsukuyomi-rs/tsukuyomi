@@ -8,7 +8,6 @@ use {
         input::Input,
         output::{IntoResponse, ResponseBody},
         responder::Responder,
-        rt::poll_blocking,
     },
     bytes::{BufMut, Bytes, BytesMut},
     filetime::FileTime,
@@ -31,6 +30,7 @@ use {
         time::Duration,
     },
     time::Timespec,
+    tokio_threadpool::blocking as poll_blocking,
 };
 
 // ==== headers ====
@@ -517,32 +517,35 @@ where
     }
 }
 
-impl<P, M, C> crate::app::config::Config<M, C> for Staticfiles<P>
+impl<P, M, C> crate::config::Config<M, C> for Staticfiles<P>
 where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
     M::Handler: Into<C::Handler>,
     C: crate::app::config::Concurrency,
 {
-    type Error = crate::app::Error;
+    type Error = crate::config::Error;
 
     fn configure(self, scope: &mut crate::app::config::Scope<'_, M, C>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
-        for entry in std::fs::read_dir(root_dir)? {
-            let entry = entry?;
+        for entry in std::fs::read_dir(root_dir).map_err(crate::config::Error::custom)? {
+            let entry = entry.map_err(crate::config::Error::custom)?;
 
             let name = entry.file_name();
             let name = name
                 .to_str() //
-                .ok_or_else(|| failure::format_err!("the filename must be UTF-8"))?;
+                .ok_or_else(|| {
+                    crate::config::Error::custom(failure::format_err!("the filename must be UTF-8"))
+                })?;
 
             let path = entry
                 .path()
                 .canonicalize()
-                .map(|path| ArcPath(Arc::new(path)))?;
+                .map(|path| ArcPath(Arc::new(path)))
+                .map_err(crate::config::Error::custom)?;
 
-            let file_type = entry.file_type()?;
+            let file_type = entry.file_type().map_err(crate::config::Error::custom)?;
             if file_type.is_file() {
                 scope.route(
                     format!("/{}", name),
@@ -566,7 +569,9 @@ where
                     },
                 )?;
             } else {
-                return Err(failure::format_err!("unexpected file type").into());
+                return Err(crate::config::Error::custom(failure::format_err!(
+                    "unexpected file type"
+                )));
             }
         }
 

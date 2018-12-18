@@ -1,14 +1,11 @@
-extern crate futures;
-extern crate tsukuyomi;
-extern crate tsukuyomi_tungstenite;
-
 use {
     futures::prelude::*,
-    tsukuyomi::{config::prelude::*, App, Server},
+    tsukuyomi::{config::prelude::*, App},
+    tsukuyomi_server::Server,
     tsukuyomi_tungstenite::{ws, Message, Ws},
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     App::create(
         path!("/ws") //
             .to(endpoint::get() //

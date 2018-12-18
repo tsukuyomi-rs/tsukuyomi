@@ -8,7 +8,6 @@ use {
         extractor::{self, ExtractorExt}, //
         future::TryFuture,
         output::IntoResponse,
-        server::io::Peer,
         util::Never,
         Error,
         Extractor,

@@ -4,8 +4,8 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::server::Server,
 };
 
 #[derive(Debug, Serialize)]
@@ -19,7 +19,7 @@ impl Template for Index {
     }
 }
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
     App::create(

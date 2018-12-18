@@ -9,31 +9,22 @@ use {
         util::{Chain, Never},
     },
     failure::Fail,
-    std::{fmt, marker::PhantomData, rc::Rc, sync::Arc},
+    std::{marker::PhantomData, rc::Rc, sync::Arc},
 };
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An error type which will be thrown from `AppBuilder`.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
+#[fail(display = "{}", cause)]
 pub struct Error {
-    compat: Compat,
+    cause: failure::Error,
 }
 
-impl fmt::Display for Error {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.compat.fmt(f)
-    }
-}
-
-impl<E> From<E> for Error
-where
-    E: Into<failure::Error>,
-{
-    fn from(cause: E) -> Self {
-        Self::custom(cause)
+impl From<crate::util::Never> for Error {
+    fn from(never: crate::util::Never) -> Self {
+        match never {}
     }
 }
 
@@ -43,22 +34,9 @@ impl Error {
         E: Into<failure::Error>,
     {
         Self {
-            compat: Compat::Custom {
-                cause: cause.into(),
-            },
+            cause: cause.into(),
         }
     }
-
-    pub fn compat(self) -> Compat {
-        self.compat
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Fail)]
-pub enum Compat {
-    #[fail(display = "{}", cause)]
-    Custom { cause: failure::Error },
 }
 
 /// A trait to specify the concurrency of trait objects inside of `AppBase`.
@@ -311,29 +289,35 @@ where
     {
         let uri: Option<Uri> = match path.as_ref() {
             "*" => None,
-            path => path.parse().map(Some)?,
+            path => path.parse().map(Some).map_err(Error::custom)?,
         };
 
         if let Some(uri) = uri {
-            let uri = self.scopes[self.scope_id].data.prefix.join(&uri)?;
+            let uri = self.scopes[self.scope_id]
+                .data
+                .prefix
+                .join(&uri)
+                .map_err(Error::custom)?;
 
             let id = EndpointId(self.recognizer.len());
             let scope = &self.scopes[self.scope_id];
-            self.recognizer.insert(
-                uri.as_str(),
-                Endpoint {
-                    id,
-                    scope: scope.id(),
-                    ancestors: scope
-                        .ancestors()
-                        .into_iter()
-                        .cloned()
-                        .chain(Some(scope.id()))
-                        .collect(),
-                    uri: uri.clone(),
-                    handler: self.modifier.modify(handler).into(),
-                },
-            )?;
+            self.recognizer
+                .insert(
+                    uri.as_str(),
+                    Endpoint {
+                        id,
+                        scope: scope.id(),
+                        ancestors: scope
+                            .ancestors()
+                            .into_iter()
+                            .cloned()
+                            .chain(Some(scope.id()))
+                            .collect(),
+                        uri: uri.clone(),
+                        handler: self.modifier.modify(handler).into(),
+                    },
+                )
+                .map_err(Error::custom)?;
         } else {
             self.scopes[self.scope_id].data.default_handler =
                 Some(self.modifier.modify(handler).into());
@@ -343,15 +327,18 @@ where
 
     /// Creates a sub-scope with the provided prefix onto the current scope.
     pub fn mount(&mut self, prefix: impl AsRef<str>, config: impl Config<M, T>) -> Result<()> {
-        let prefix: Uri = prefix.as_ref().parse()?;
+        let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
 
-        let scope_id = self.scopes.add_node(self.scope_id, {
-            let parent = &self.scopes[self.scope_id].data;
-            ScopeData {
-                prefix: parent.prefix.join(&prefix)?,
-                default_handler: None,
-            }
-        })?;
+        let scope_id = self
+            .scopes
+            .add_node(self.scope_id, {
+                let parent = &self.scopes[self.scope_id].data;
+                ScopeData {
+                    prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
+                    default_handler: None,
+                }
+            })
+            .map_err(Error::custom)?;
 
         config
             .configure(&mut Scope {

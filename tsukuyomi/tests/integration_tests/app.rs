@@ -3,15 +3,15 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         extractor,
-        test::ResponseExt,
         App,
     },
+    tsukuyomi_server::test::ResponseExt,
 };
 
 #[test]
-fn empty_routes() -> tsukuyomi::test::Result<()> {
+fn empty_routes() -> tsukuyomi_server::Result<()> {
     let app = App::create(())?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -20,12 +20,12 @@ fn empty_routes() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn single_route() -> tsukuyomi::test::Result<()> {
+fn single_route() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/hello") //
             .to(endpoint::any().call(|| "Tsukuyomi")),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/hello")?;
 
@@ -41,14 +41,14 @@ fn single_route() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn post_body() -> tsukuyomi::test::Result<()> {
+fn post_body() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/hello") //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
                 .call(|body: String| body)),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::post("/hello") //
@@ -67,7 +67,7 @@ fn post_body() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn cookies() -> tsukuyomi::test::Result<()> {
+fn cookies() -> tsukuyomi_server::Result<()> {
     use cookie::Cookie;
     use time::Duration;
 
@@ -94,7 +94,7 @@ fn cookies() -> tsukuyomi::test::Result<()> {
                 }))
                 .call(|| "Logged out")),
     ])?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/login")?;
 
@@ -123,13 +123,13 @@ fn cookies() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn default_options() -> tsukuyomi::test::Result<()> {
+fn default_options() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/path")
             .to(endpoint::allow_only("GET, POST")?.call(|| "reply"))
             .modify(tsukuyomi::modifiers::default_options()),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/path")?;
     assert_eq!(response.status(), 200);
@@ -144,13 +144,13 @@ fn default_options() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn map_output() -> tsukuyomi::test::Result<()> {
+fn map_output() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/")
             .to(endpoint::any().reply(42))
             .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.body().to_utf8()?, "42");
@@ -159,7 +159,7 @@ fn map_output() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn scoped_fallback() -> tsukuyomi::test::Result<()> {
+fn scoped_fallback() -> tsukuyomi_server::Result<()> {
     use std::sync::{Arc, Mutex};
 
     let marker = Arc::new(Mutex::new(vec![]));
@@ -193,7 +193,7 @@ fn scoped_fallback() -> tsukuyomi::test::Result<()> {
         ]),
     ])?;
 
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);

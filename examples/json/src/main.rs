@@ -5,8 +5,8 @@ use {
         extractor,
         App,
         IntoResponse,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, IntoResponse)]
@@ -16,7 +16,7 @@ struct User {
     age: u32,
 }
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     App::create(
         path!("/") //
             .to(chain![

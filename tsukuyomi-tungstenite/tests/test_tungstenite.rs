@@ -17,9 +17,9 @@ use {
     },
     tsukuyomi::{
         config::prelude::*, //
-        test::ResponseExt,
         App,
     },
+    tsukuyomi_server::test::ResponseExt,
     tsukuyomi_tungstenite::{ws, Ws},
 };
 
@@ -29,14 +29,14 @@ fn test_version_sync() {
 }
 
 #[test]
-fn test_handshake() -> tsukuyomi::test::Result<()> {
+fn test_handshake() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/ws") //
             .to(endpoint::get()
                 .extract(ws())
                 .call(|ws: Ws| ws.finish(|_| Ok(())))),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/ws")

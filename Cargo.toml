@@ -24,6 +24,9 @@ members = [
   "tsukuyomi",
   "tsukuyomi/macros",
 
+  "tsukuyomi-server",
+  "tsukuyomi-service",
+
   "tsukuyomi-askama",
   "tsukuyomi-cors",
   "tsukuyomi-juniper",
@@ -35,7 +38,7 @@ members = [
   "examples/basic",
   "examples/cors",
   "examples/diesel",
-  "examples/http-proxy",
+  #"examples/http-proxy",
   "examples/juniper",
   "examples/json",
   "examples/native-tls",
@@ -52,6 +55,8 @@ members = [
 
 [patch.crates-io]
 tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
+tsukuyomi-server = { version = "0.2.0-dev", path = "tsukuyomi-server" }
+tsukuyomi-service = { version = "0.1.0-dev", path = "tsukuyomi-service" }
 tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }
 tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
 tsukuyomi-juniper = { version = "0.3.0-dev", path = "tsukuyomi-juniper" }

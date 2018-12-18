@@ -20,11 +20,11 @@ use {
         error::Error,
         extractor::{self, ExtractorExt},
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     pretty_env_logger::init();
     dotenv()?;
 
@@ -108,7 +108,7 @@ where
     F: FnOnce() -> Result<T, E>,
     E: Into<Error>,
 {
-    tsukuyomi::rt::blocking(op).then(|result| {
+    tsukuyomi_server::rt::blocking(op).then(|result| {
         result
             .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
             .and_then(|result| {

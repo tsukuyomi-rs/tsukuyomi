@@ -6,8 +6,8 @@ use {
         extractor,
         output::{html, redirect},
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
     tsukuyomi_session::{
         backend::CookieBackend, //
         session,
@@ -15,7 +15,7 @@ use {
     },
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let backend = CookieBackend::plain();
     let session = Arc::new(session(backend));
 

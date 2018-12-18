@@ -5,15 +5,16 @@ use {
         input::Input,
         output::{Output, Receive},
     },
-    crate::server::{CritError, MakeService, Service},
+    crate::CritError,
     cookie::Cookie,
-    futures01::{Future, Poll},
+    futures::{Future, Poll},
     http::{
         header::{COOKIE, SET_COOKIE},
         Request, Response,
     },
     hyper::body::Payload,
     std::{collections::HashMap, mem},
+    tsukuyomi_service::{MakeService, Service},
 };
 
 /// A test server which emulates an HTTP service without using the low-level I/O.
@@ -78,7 +79,7 @@ where
         &mut *self.runtime
     }
 
-    fn build_request<T>(&self, input: T) -> super::Result<Request<hyper::Body>>
+    fn build_request<T>(&self, input: T) -> crate::Result<Request<hyper::Body>>
     where
         T: Input,
     {
@@ -96,7 +97,7 @@ where
         Ok(request)
     }
 
-    fn handle_set_cookies(&mut self, response: &Response<Output>) -> super::Result<()> {
+    fn handle_set_cookies(&mut self, response: &Response<Output>) -> crate::Result<()> {
         if let Some(ref mut cookies) = &mut self.cookies {
             for set_cookie in response.headers().get_all(SET_COOKIE) {
                 let cookie = Cookie::parse_encoded(set_cookie.to_str()?)?;
@@ -140,7 +141,7 @@ mod threadpool {
         S::Service: Send + 'static,
     {
         /// Create a `Session` associated with this server.
-        pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
+        pub fn new_session(&mut self) -> crate::Result<Session<'_, S::Service, Runtime>> {
             let service = block_on(
                 &mut self.runtime,
                 self.make_service.make_service(()).map_err(Into::into),
@@ -150,7 +151,7 @@ mod threadpool {
             Ok(Session::new(service, &mut self.runtime))
         }
 
-        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        pub fn perform<T>(&mut self, input: T) -> crate::Result<Response<Output>>
         where
             T: Input,
             <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
@@ -168,7 +169,7 @@ mod threadpool {
         S::Future: Send + 'static,
     {
         /// Applies an HTTP request to this client and await its response.
-        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        pub fn perform<T>(&mut self, input: T) -> crate::Result<Response<Output>>
         where
             T: Input,
         {
@@ -195,7 +196,7 @@ mod current_thread {
         S::MakeError: Into<CritError>,
     {
         /// Create a `Session` associated with this server.
-        pub fn new_session(&mut self) -> super::super::Result<Session<'_, S::Service, Runtime>> {
+        pub fn new_session(&mut self) -> crate::Result<Session<'_, S::Service, Runtime>> {
             let service = self
                 .runtime
                 .block_on(self.make_service.make_service(()))
@@ -203,7 +204,7 @@ mod current_thread {
             Ok(Session::new(service, &mut self.runtime))
         }
 
-        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        pub fn perform<T>(&mut self, input: T) -> crate::Result<Response<Output>>
         where
             T: Input,
         {
@@ -219,7 +220,7 @@ mod current_thread {
         S::Error: Into<CritError>,
     {
         /// Applies an HTTP request to this client and await its response.
-        pub fn perform<T>(&mut self, input: T) -> super::super::Result<Response<Output>>
+        pub fn perform<T>(&mut self, input: T) -> crate::Result<Response<Output>>
         where
             T: Input,
         {
@@ -259,11 +260,11 @@ where
         loop {
             let response = match *self {
                 Initial(ref mut f) => {
-                    let response = futures01::try_ready!(f.poll().map_err(Into::into));
+                    let response = futures::try_ready!(f.poll().map_err(Into::into));
                     Some(response)
                 }
                 Receive(_, ref mut receive) => {
-                    futures01::try_ready!(receive.poll_ready().map_err(Into::into));
+                    futures::try_ready!(receive.poll_ready().map_err(Into::into));
                     None
                 }
                 _ => unreachable!("unexpected state"),

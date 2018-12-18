@@ -1,38 +1,36 @@
-#![allow(missing_docs)]
-
 //! Utilities for testing HTTP services.
 
-mod error;
 mod input;
 mod output;
 mod server;
 
 pub use self::{
-    error::{Error, Result},
     input::{Input, IntoRequestBody},
     output::Output,
     server::{Server, Session},
 };
 
-use {crate::server::MakeService, http::Request};
+use {http::Request, tsukuyomi_service::MakeService};
 
 pub trait ResponseExt {
-    fn header<H>(&self, name: H) -> Result<&http::header::HeaderValue>
+    fn header<H>(&self, name: H) -> super::Result<&http::header::HeaderValue>
     where
         H: http::header::AsHeaderName + std::fmt::Display;
 }
 
 impl<T> ResponseExt for http::Response<T> {
-    fn header<H>(&self, name: H) -> Result<&http::header::HeaderValue>
+    fn header<H>(&self, name: H) -> super::Result<&http::header::HeaderValue>
     where
         H: http::header::AsHeaderName + std::fmt::Display,
     {
         let err = failure::format_err!("missing header field: `{}'", name);
-        self.headers().get(name).ok_or_else(|| Error::from(err))
+        self.headers()
+            .get(name)
+            .ok_or_else(|| super::Error::from(err))
     }
 }
 
-pub fn server<S>(make_service: S) -> self::Result<Server<S, tokio::runtime::Runtime>>
+pub fn server<S>(make_service: S) -> super::Result<Server<S, tokio::runtime::Runtime>>
 where
     S: MakeService<(), Request<hyper::Body>>,
 {
@@ -46,7 +44,7 @@ where
 
 pub fn current_thread_server<S>(
     make_service: S,
-) -> self::Result<Server<S, tokio::runtime::current_thread::Runtime>>
+) -> super::Result<Server<S, tokio::runtime::current_thread::Runtime>>
 where
     S: MakeService<(), Request<hyper::Body>>,
 {

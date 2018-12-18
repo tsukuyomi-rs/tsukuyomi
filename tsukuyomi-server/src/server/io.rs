@@ -1,6 +1,6 @@
 use {
-    super::CritError,
-    futures01::{Future, IntoFuture, Stream},
+    crate::CritError,
+    futures::{Future, IntoFuture, Stream},
     tokio::io::{AsyncRead, AsyncWrite},
 };
 
@@ -44,11 +44,11 @@ where
 {
     type Conn = T;
     type Error = std::io::Error;
-    type Accept = futures01::future::FutureResult<Self::Conn, Self::Error>;
+    type Accept = futures::future::FutureResult<Self::Conn, Self::Error>;
 
     #[inline]
     fn accept(&self, io: T) -> Self::Accept {
-        futures01::future::ok(io)
+        futures::future::ok(io)
     }
 }
 

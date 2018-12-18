@@ -1,23 +1,20 @@
-#[test]
-fn test_version_sync() {
-    version_sync::assert_html_root_url_updated!("src/lib.rs");
-}
-
 use {
     http::{Request, Response},
     juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
-    tsukuyomi::{
-        config::prelude::*,
-        test::{Output as TestOutput, Server as TestServer},
-        App,
-    },
+    tsukuyomi::{config::prelude::*, App},
     tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
+    tsukuyomi_server::test::{Output as TestOutput, Server as TestServer},
 };
 
 #[test]
-fn integration_test() -> tsukuyomi::test::Result<()> {
+fn test_version_sync() {
+    version_sync::assert_html_root_url_updated!("src/lib.rs");
+}
+
+#[test]
+fn integration_test() -> tsukuyomi_server::Result<()> {
     let database = Arc::new(Database::new());
     let schema = Arc::new(RootNode::new(
         Database::new(),
@@ -37,7 +34,7 @@ fn integration_test() -> tsukuyomi::test::Result<()> {
             .modify(GraphQLModifier::default())
     })?;
 
-    let test_server = tsukuyomi::test::server(app)?;
+    let test_server = tsukuyomi_server::test::server(app)?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),

@@ -1,4 +1,4 @@
-use {super::CritError, futures01::Future, std::io};
+use {crate::CritError, futures::Future, std::io};
 
 pub trait Runtime<F> {
     type Error: Into<CritError>;

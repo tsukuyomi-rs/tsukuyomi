@@ -8,7 +8,7 @@ fn test_version_sync() {
 #[test]
 #[should_panic]
 fn test_catch_unwind() {
-    fn inner() -> tsukuyomi::test::Result<()> {
+    fn inner() -> tsukuyomi_server::Result<()> {
         use tsukuyomi::{config::prelude::*, App};
 
         let app = App::create(
@@ -17,7 +17,7 @@ fn test_catch_unwind() {
                     .call(|| -> &'static str { panic!("explicit panic") })),
         )?;
 
-        let mut server = tsukuyomi::test::server(app)?;
+        let mut server = tsukuyomi_server::test::server(app)?;
         server.perform("/")?;
 
         Ok(())
@@ -29,7 +29,7 @@ fn test_catch_unwind() {
 }
 
 #[test]
-fn test_current_thread() -> tsukuyomi::test::Result<()> {
+fn test_current_thread() -> tsukuyomi_server::Result<()> {
     use tsukuyomi::{app::LocalApp, config::prelude::*};
 
     let ptr = std::rc::Rc::new(());
@@ -42,7 +42,7 @@ fn test_current_thread() -> tsukuyomi::test::Result<()> {
             })),
     )?;
 
-    let mut server = tsukuyomi::test::current_thread_server(app)?;
+    let mut server = tsukuyomi_server::test::current_thread_server(app)?;
     let _ = server.perform("/")?;
 
     Ok(())

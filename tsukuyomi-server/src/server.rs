@@ -1,44 +1,23 @@
 //! The implementation of low level HTTP server.
 
-mod error;
 mod io;
 mod runtime;
 
-pub(crate) type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
 pub use self::{
-    error::{Error, Result},
     io::{Acceptor, Listener},
     runtime::Runtime,
 };
 
-#[doc(no_inline)]
-pub use tower_service::Service;
-
 use {
-    futures01::{Future, Poll, Stream},
+    futures::{Future, Poll, Stream},
     http::{Request, Response},
     hyper::{
         body::{Body, Payload},
         server::conn::Http,
     },
     std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
+    tsukuyomi_service::{MakeService, Service},
 };
-
-/// A trait representing a factory of `Service`s.
-///
-/// The signature of this trait imitates `tower_util::MakeService` and will be replaced to it.
-pub trait MakeService<Target, Request> {
-    type Response;
-    type Error;
-    type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
-    type MakeError;
-    type Future: Future<Item = Self::Service, Error = Self::MakeError>;
-
-    fn poll_ready(&mut self) -> Poll<(), Self::MakeError>;
-
-    fn make_service(&self, target: Target) -> Self::Future;
-}
 
 // ==== Server ====
 
@@ -54,7 +33,7 @@ pub struct Server<S, L = SocketAddr, A = (), R = tokio::runtime::Runtime> {
 
 impl<S> Server<S>
 where
-    S: MakeService<(), hyper::Body>,
+    S: MakeService<(), Request<hyper::Body>>,
 {
     /// Create a new `Server` with the specified `NewService` and default configuration.
     pub fn new(make_service: S) -> Self {
@@ -193,8 +172,8 @@ impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::Runtime>
 where
     S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>> + Send + 'static,
     Bd: Payload,
-    S::Error: Into<CritError>,
-    S::MakeError: Into<CritError>,
+    S::Error: Into<crate::CritError>,
+    S::MakeError: Into<crate::CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
     <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
@@ -202,10 +181,10 @@ where
     T::Incoming: Send + 'static,
     A: Acceptor<T::Conn> + Send + 'static,
     A::Conn: Send + 'static,
-    A::Error: Into<CritError>,
+    A::Error: Into<crate::CritError>,
     A::Accept: Send + 'static,
 {
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> super::Result<()> {
         let runtime = match self.runtime {
             Some(rt) => rt,
             None => tokio::runtime::Runtime::new()?,
@@ -229,8 +208,8 @@ impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
     S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
     Bd: Payload,
-    S::Error: Into<CritError>,
-    S::MakeError: Into<CritError>,
+    S::Error: Into<crate::CritError>,
+    S::MakeError: Into<crate::CritError>,
     S::Future: 'static,
     S::Service: 'static,
     <S::Service as Service<Request<hyper::Body>>>::Future: 'static,
@@ -238,10 +217,10 @@ where
     T::Incoming: 'static,
     A: Acceptor<T::Conn> + 'static,
     A::Conn: Send + 'static,
-    A::Error: Into<CritError>,
+    A::Error: Into<crate::CritError>,
     A::Accept: 'static,
 {
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> super::Result<()> {
         let runtime = match self.runtime {
             Some(rt) => rt,
             None => tokio::runtime::current_thread::Runtime::new()?,
@@ -270,7 +249,7 @@ impl<S, Bd> hyper::service::Service for LiftedHttpService<S>
 where
     S: Service<Request<hyper::Body>, Response = Response<Bd>>,
     Bd: Payload,
-    S::Error: Into<CritError>,
+    S::Error: Into<crate::CritError>,
 {
     type ReqBody = Body;
     type ResBody = Bd;
@@ -294,12 +273,12 @@ where
     type Error = S::MakeError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures01::try_ready!(self
+        futures::try_ready!(self
             .0
             .as_mut()
             .expect("the future has already been polled")
             .poll_ready());
-        Ok(futures01::Async::Ready(self.0.take().unwrap()))
+        Ok(futures::Async::Ready(self.0.take().unwrap()))
     }
 }
 
@@ -314,11 +293,11 @@ where
     type Error = S::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures01::try_ready!(self
+        futures::try_ready!(self
             .0
             .as_mut()
             .expect("the future has already been polled")
             .poll_ready());
-        Ok(futures01::Async::Ready(self.0.take().unwrap()))
+        Ok(futures::Async::Ready(self.0.take().unwrap()))
     }
 }

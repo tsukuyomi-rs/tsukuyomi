@@ -3,11 +3,11 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let mut builder = SslAcceptor::mozilla_modern(SslMethod::tls())?;
     builder.set_certificate_file("./private/cert.pem", SslFiletype::PEM)?;
     builder.set_private_key_file("./private/key.pem", SslFiletype::PEM)?;
