@@ -16,7 +16,7 @@ def extract_filenames(obj):
     return obj.get("filenames", [])
 
 def run_command(cmd, **kwargs):
-    print('[dbg] running:', ' '.join(map(lambda s: '"{}"'.format(s), cmd)), file=sys.stderr)
+    print('[dbg] running:', ' '.join(map(lambda s: '"{}"'.format(s), cmd)), file=sys.stderr, flush=True)
     return subprocess.run(cmd, **kwargs)
 
 def collect_artifacts(*args):
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     os.environ['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH', '') + ':' + os.path.join(get_sysroot(), 'lib')
 
     kcov_out = os.path.join(get_target_directory(), 'cov')
-    print("[dbg] kcov_out =", kcov_out, file = sys.stderr)
+    print("[dbg] kcov_out =", kcov_out, file = sys.stderr, flush=True)
 
     for artifact in collect_artifacts(sys.argv[1:]):
         kcov_cmd = ["kcov", "--exclude-pattern=/.cargo", kcov_out, artifact, "--skip", "version_sync"]
