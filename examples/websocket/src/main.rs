@@ -26,7 +26,6 @@ fn main() -> tsukuyomi_server::Result<()> {
                     })
                 })),
     ) //
-    .map(App::into_service)
     .map(Server::new)?
     .run()
 }

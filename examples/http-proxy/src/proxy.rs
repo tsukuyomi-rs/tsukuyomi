@@ -1,8 +1,9 @@
 use {
+    crate::peer::PeerAddr,
     futures::prelude::*,
     http::header::{Entry, HeaderMap},
     reqwest::IntoUrl,
-    std::{mem, net::SocketAddr},
+    std::mem,
     tsukuyomi::{
         chain,
         extractor::{self, ExtractorExt}, //
@@ -13,9 +14,6 @@ use {
         Extractor,
     },
 };
-
-#[derive(Debug, Clone)]
-pub struct PeerAddr(pub SocketAddr);
 
 #[derive(Debug)]
 pub struct Client {
@@ -42,11 +40,11 @@ impl Client {
             .expect("should be a valid header name")
         {
             Entry::Occupied(mut entry) => {
-                let addrs = format!("{}, {}", entry.get().to_str().unwrap(), peer_addr.0);
+                let addrs = format!("{}, {}", entry.get().to_str().unwrap(), peer_addr);
                 entry.insert(addrs.parse().unwrap());
             }
             Entry::Vacant(entry) => {
-                entry.insert(peer_addr.0.to_string().parse().unwrap());
+                entry.insert(peer_addr.to_string().parse().unwrap());
             }
         }
 

@@ -16,7 +16,7 @@ use {
         server::conn::Http,
     },
     std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
-    tsukuyomi_service::{MakeServiceRef, Service},
+    tsukuyomi_service::{IntoMakeServiceRef, MakeServiceRef, Service},
 };
 
 // ==== Server ====
@@ -162,16 +162,14 @@ macro_rules! serve {
 
 impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::Runtime>
 where
-    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>
-        + Send
-        + Sync
-        + 'static,
-    Bd: Payload,
+    S: IntoMakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>,
+    S::MakeServiceRef: Send + Sync + 'static,
     S::Error: Into<crate::CritError>,
     S::MakeError: Into<crate::CritError>,
-    S::Future: Send + 'static,
+    S::MakeFuture: Send + 'static,
     S::Service: Send + 'static,
     <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
+    Bd: Payload,
     T: Listener,
     T::Incoming: Send + 'static,
     A: Acceptor<T::Conn> + Send + 'static,
@@ -186,7 +184,7 @@ where
         };
 
         let serve = serve! {
-            make_service: Arc::new(self.make_service),
+            make_service: Arc::new(self.make_service.into_make_service_ref()),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Arc::new(
@@ -201,13 +199,14 @@ where
 
 impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
-    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>> + 'static,
-    Bd: Payload,
+    S: IntoMakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>,
+    S::MakeServiceRef: 'static,
     S::Error: Into<crate::CritError>,
     S::MakeError: Into<crate::CritError>,
-    S::Future: 'static,
+    S::MakeFuture: 'static,
     S::Service: 'static,
     <S::Service as Service<Request<hyper::Body>>>::Future: 'static,
+    Bd: Payload,
     T: Listener,
     T::Incoming: 'static,
     A: Acceptor<T::Conn> + 'static,
@@ -222,7 +221,7 @@ where
         };
 
         let serve = serve! {
-            make_service: Rc::new(self.make_service),
+            make_service: Rc::new(self.make_service.into_make_service_ref()),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Rc::new(

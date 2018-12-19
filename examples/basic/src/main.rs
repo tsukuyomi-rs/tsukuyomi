@@ -16,7 +16,7 @@ fn main() -> tsukuyomi_server::Result<()> {
 
     let addr: SocketAddr = "127.0.0.1:4000".parse()?;
     println!("Listening on http://{}", addr);
-    Server::new(app.into_service()) //
+    Server::new(app) //
         .bind(addr) //
         .run()
 }

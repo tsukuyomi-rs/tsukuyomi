@@ -34,7 +34,7 @@ fn integration_test() -> tsukuyomi_server::Result<()> {
             .modify(GraphQLModifier::default())
     })?;
 
-    let test_server = tsukuyomi_server::test::server(app.into_service())?;
+    let test_server = tsukuyomi_server::test::server(app)?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),

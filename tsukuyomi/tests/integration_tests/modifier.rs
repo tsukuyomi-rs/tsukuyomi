@@ -63,7 +63,7 @@ fn global_modifier() -> tsukuyomi_server::Result<()> {
             }),
     )?;
 
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M"]);
@@ -93,7 +93,7 @@ fn global_modifiers() -> tsukuyomi_server::Result<()> {
                 }
             ]),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -122,7 +122,7 @@ fn scoped_modifier() -> tsukuyomi_server::Result<()> {
             name: "M1",
         }),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let _ = server.perform("/path1")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -164,7 +164,7 @@ fn nested_modifiers() -> tsukuyomi_server::Result<()> {
                 })
         })
     })?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let _ = server.perform("/path/to")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);

@@ -48,7 +48,7 @@ fn smoketest() -> tsukuyomi_server::Result<()> {
             }))
     ])?;
 
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
     let mut session = server.new_session()?.save_cookies(true);
 
     let response = session.perform(Request::get("/counter"))?;

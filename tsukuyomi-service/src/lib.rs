@@ -204,3 +204,78 @@ where
 
     ModifyServiceRefFn(f)
 }
+
+pub trait IntoMakeService<Ctx, Request> {
+    type Response;
+    type Error;
+    type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
+    type MakeError;
+    type MakeFuture: Future<Item = Self::Service, Error = Self::MakeError>;
+    type MakeService: MakeService<
+        Ctx, //
+        Request,
+        Response = Self::Response,
+        Error = Self::Error,
+        Service = Self::Service,
+        MakeError = Self::MakeError,
+        Future = Self::MakeFuture,
+    >;
+
+    fn into_make_service(self) -> Self::MakeService;
+}
+
+pub trait IntoMakeServiceRef<Ctx, Request> {
+    type Response;
+    type Error;
+    type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
+    type MakeError;
+    type MakeFuture: Future<Item = Self::Service, Error = Self::MakeError>;
+    type MakeServiceRef: MakeServiceRef<
+        Ctx, //
+        Request,
+        Response = Self::Response,
+        Error = Self::Error,
+        Service = Self::Service,
+        MakeError = Self::MakeError,
+        Future = Self::MakeFuture,
+    >;
+
+    fn into_make_service_ref(self) -> Self::MakeServiceRef;
+}
+
+impl<F, Ctx, Req, Res, E, Svc, MkErr, MkFut, MkSvc> IntoMakeServiceRef<Ctx, Req> for F
+where
+    for<'a> F: IntoMakeService<
+        &'a Ctx,
+        Req,
+        Response = Res,
+        Error = E,
+        Service = Svc,
+        MakeError = MkErr,
+        MakeFuture = MkFut,
+        MakeService = MkSvc,
+    >,
+    for<'a> MkSvc: MakeService<
+        &'a Ctx,
+        Req,
+        Response = Res,
+        Error = E,
+        Service = Svc,
+        MakeError = MkErr,
+        Future = MkFut,
+    >,
+    Svc: Service<Req, Response = Res, Error = E>,
+    MkFut: Future<Item = Svc, Error = MkErr>,
+{
+    type Response = Res;
+    type Error = E;
+    type Service = Svc;
+    type MakeError = MkErr;
+    type MakeFuture = MkFut;
+    type MakeServiceRef = MkSvc;
+
+    #[inline]
+    fn into_make_service_ref(self) -> Self::MakeServiceRef {
+        IntoMakeService::into_make_service(self)
+    }
+}

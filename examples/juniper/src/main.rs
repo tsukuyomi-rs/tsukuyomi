@@ -42,5 +42,5 @@ fn main() -> tsukuyomi_server::Result<()> {
             .modify(GraphQLModifier::default()) // <-- modifies all errors thrown from this route into GraphQL error.
     ])?;
 
-    Server::new(app.into_service()).run()
+    Server::new(app).run()
 }

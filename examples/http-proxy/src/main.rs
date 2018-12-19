@@ -1,18 +1,17 @@
 #![allow(clippy::needless_pass_by_value)]
 #![recursion_limit = "128"]
 
+mod peer;
 mod proxy;
 
 use {
-    crate::proxy::{Client, PeerAddr}, //
-    futures::{prelude::*, Poll},
-    http::Request,
+    crate::proxy::Client, //
+    futures::prelude::*,
     tsukuyomi::{
         config::prelude::*, //
         App,
     },
     tsukuyomi_server::Server,
-    tsukuyomi_service::{modify_service_ref, Service},
 };
 
 fn main() -> tsukuyomi_server::Result<()> {
@@ -33,40 +32,7 @@ fn main() -> tsukuyomi_server::Result<()> {
                     .send_forwarded_request("https://www.rust-lang.org/en-US/"))),
     ])?;
 
-    let service = app.into_service_with(modify_service_ref(
-        |service, io: &tokio::net::TcpStream| -> std::io::Result<_> {
-            #[allow(missing_debug_implementations)]
-            struct WithPeerAddr<S> {
-                service: S,
-                peer_addr: PeerAddr,
-            }
+    let app = app.with_modify_service(crate::peer::with_peer_addr());
 
-            impl<S, Bd> Service<Request<Bd>> for WithPeerAddr<S>
-            where
-                S: Service<Request<Bd>>,
-            {
-                type Response = S::Response;
-                type Error = S::Error;
-                type Future = S::Future;
-
-                #[inline]
-                fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-                    self.service.poll_ready()
-                }
-
-                #[inline]
-                fn call(&mut self, mut request: Request<Bd>) -> Self::Future {
-                    request.extensions_mut().insert(self.peer_addr.clone());
-                    self.service.call(request)
-                }
-            }
-
-            Ok(WithPeerAddr {
-                service,
-                peer_addr: io.peer_addr().map(PeerAddr)?,
-            })
-        },
-    ));
-
-    Server::new(service).run()
+    Server::new(app).run()
 }

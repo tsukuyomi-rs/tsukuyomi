@@ -43,7 +43,7 @@ fn main() -> tsukuyomi_server::Result<()> {
             .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
     ])?;
 
-    Server::new(app.into_service())
+    Server::new(app)
         .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
         .run()
 }

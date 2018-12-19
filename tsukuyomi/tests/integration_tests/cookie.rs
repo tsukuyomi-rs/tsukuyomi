@@ -17,7 +17,7 @@ fn enable_manage_cookies() -> tsukuyomi_server::Result<()> {
                 Ok::<_, tsukuyomi::Error>("")
             }))),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let mut session = server.new_session()?.save_cookies(true);
     let _ = session.perform("/first")?;
@@ -42,7 +42,7 @@ fn disable_manage_cookies() -> tsukuyomi_server::Result<()> {
                     Ok::<_, tsukuyomi::Error>("")
                 }))),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let mut session = server.new_session()?;
     let _ = session.perform("/first")?;
