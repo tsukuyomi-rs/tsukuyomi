@@ -14,11 +14,14 @@ use {
     },
 };
 
+#[derive(Debug, Clone)]
+pub struct PeerAddr(pub SocketAddr);
+
 #[derive(Debug)]
 pub struct Client {
     client: reqwest::r#async::Client,
     headers: HeaderMap,
-    peer_addr: Peer<SocketAddr>,
+    peer_addr: PeerAddr,
 }
 
 impl Client {
@@ -39,11 +42,11 @@ impl Client {
             .expect("should be a valid header name")
         {
             Entry::Occupied(mut entry) => {
-                let addrs = format!("{}, {}", entry.get().to_str().unwrap(), peer_addr);
+                let addrs = format!("{}, {}", entry.get().to_str().unwrap(), peer_addr.0);
                 entry.insert(addrs.parse().unwrap());
             }
             Entry::Vacant(entry) => {
-                entry.insert(peer_addr.to_string().parse().unwrap());
+                entry.insert(peer_addr.0.to_string().parse().unwrap());
             }
         }
 

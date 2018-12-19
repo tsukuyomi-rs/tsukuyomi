@@ -21,7 +21,7 @@ use {
         scope::{Scope, ScopeId, Scopes},
     },
     crate::uri::Uri,
-    std::{fmt, marker::PhantomData, sync::Arc},
+    std::{fmt, sync::Arc},
 };
 
 /// The main type representing an HTTP application.
@@ -35,10 +35,15 @@ where
     C: Concurrency,
 {
     /// Converts itself into a `MakeService`.
-    pub fn into_service<Target>(self) -> MakeAppService<C, Target> {
+    pub fn into_service(self) -> MakeAppService<C, ()> {
+        self.into_service_with(())
+    }
+
+    /// Converts itself into a `MakeService` with the specified `ModifyService`.
+    pub fn into_service_with<M>(self, modify_service: M) -> MakeAppService<C, M> {
         MakeAppService {
             inner: self.inner,
-            _marker: PhantomData,
+            modify_service,
         }
     }
 }

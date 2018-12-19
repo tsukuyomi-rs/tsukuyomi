@@ -13,7 +13,7 @@ use {
     },
     hyper::body::Payload,
     std::{fmt, marker::PhantomData, sync::Arc},
-    tsukuyomi_service::{MakeService, Service},
+    tsukuyomi_service::{MakeService, ModifyService, Service},
 };
 
 macro_rules! ready {
@@ -27,26 +27,28 @@ macro_rules! ready {
 }
 
 #[derive(Debug)]
-pub struct MakeAppService<C: Concurrency, Target> {
+pub struct MakeAppService<C: Concurrency, M> {
     pub(super) inner: Arc<AppInner<C>>,
-    pub(super) _marker: PhantomData<fn(&Target)>,
+    pub(super) modify_service: M,
 }
 
-impl<'a, C, Target, Bd> MakeService<&'a Target, Request<Bd>> for MakeAppService<C, Target>
+impl<'a, C, M, Ctx, Bd> MakeService<&'a Ctx, Request<Bd>> for MakeAppService<C, M>
 where
     C: Concurrency,
     RequestBody: From<Bd>,
+    M: ModifyService<&'a Ctx, Request<Bd>, AppService<C>>,
 {
-    type Response = Response<ResponseBody>;
-    type Error = Never;
-    type Service = AppService<C>;
+    type Response = M::Response;
+    type Error = M::Error;
+    type Service = M::Service;
     type MakeError = Never;
     type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
 
-    fn make_service(&self, _: &'a Target) -> Self::Future {
-        futures01::future::ok(AppService {
+    fn make_service(&self, ctx: &'a Ctx) -> Self::Future {
+        let service = AppService {
             inner: self.inner.clone(),
-        })
+        };
+        futures01::future::ok(self.modify_service.modify(service, ctx))
     }
 }
 

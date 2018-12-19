@@ -4,20 +4,22 @@
 mod proxy;
 
 use {
-    crate::proxy::Client, //
-    futures::prelude::*,
+    crate::proxy::{Client, PeerAddr}, //
+    futures::{prelude::*, Poll},
+    http::Request,
     tsukuyomi::{
         config::prelude::*, //
         App,
     },
     tsukuyomi_server::Server,
+    tsukuyomi_service::{modify_service_ref, Service},
 };
 
 fn main() -> tsukuyomi_server::Result<()> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 
-    App::create(chain![
+    let app = App::create(chain![
         path!("/") //
             .to(endpoint::any()
                 .extract(proxy_client.clone())
@@ -29,7 +31,43 @@ fn main() -> tsukuyomi_server::Result<()> {
                 .extract(proxy_client)
                 .call_async(|client: Client| client
                     .send_forwarded_request("https://www.rust-lang.org/en-US/"))),
-    ]) //
-    .map(Server::new)?
-    .run()
+    ])?;
+
+    let service =
+        app.into_service_with(modify_service_ref(|service, io: &tokio::net::TcpStream| {
+            #[allow(missing_debug_implementations)]
+            struct WithPeerAddr<S> {
+                service: S,
+                peer_addr: Option<PeerAddr>,
+            }
+
+            impl<S, Bd> Service<Request<Bd>> for WithPeerAddr<S>
+            where
+                S: Service<Request<Bd>>,
+            {
+                type Response = S::Response;
+                type Error = S::Error;
+                type Future = S::Future;
+
+                #[inline]
+                fn poll_ready(&mut self) -> Poll<(), Self::Error> {
+                    self.service.poll_ready()
+                }
+
+                #[inline]
+                fn call(&mut self, mut request: Request<Bd>) -> Self::Future {
+                    if let Some(peer_addr) = self.peer_addr.clone() {
+                        request.extensions_mut().insert(peer_addr);
+                    }
+                    self.service.call(request)
+                }
+            }
+
+            WithPeerAddr {
+                service,
+                peer_addr: io.peer_addr().map(PeerAddr).ok(),
+            }
+        }));
+
+    Server::new(service).run()
 }

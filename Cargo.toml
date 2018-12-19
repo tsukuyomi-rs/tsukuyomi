@@ -38,7 +38,7 @@ members = [
   "examples/basic",
   "examples/cors",
   "examples/diesel",
-  #"examples/http-proxy",
+  "examples/http-proxy",
   "examples/juniper",
   "examples/json",
   "examples/native-tls",
