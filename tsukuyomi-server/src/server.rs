@@ -16,7 +16,7 @@ use {
         server::conn::Http,
     },
     std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
-    tsukuyomi_service::{MakeService, Service},
+    tsukuyomi_service::{MakeServiceRef, Service},
 };
 
 // ==== Server ====
@@ -31,10 +31,7 @@ pub struct Server<S, L = SocketAddr, A = (), R = tokio::runtime::Runtime> {
     runtime: Option<R>,
 }
 
-impl<S> Server<S>
-where
-    S: MakeService<(), Request<hyper::Body>>,
-{
+impl<S> Server<S> {
     /// Create a new `Server` with the specified `NewService` and default configuration.
     pub fn new(make_service: S) -> Self {
         Self {
@@ -132,45 +129,43 @@ macro_rules! serve {
         let incoming = listener
             .listen()
             .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
+        incoming
+            .map_err(|e| log::error!("transport error: {}", e.into()))
+            .for_each(move |io| {
+                let accept = acceptor
+                    .accept(io)
+                    .map_err(|e| log::error!("acceptor error: {}", e.into()));
 
-        ReadyMakeService(Some(make_service), PhantomData)
-            .map_err(|e| log::error!("make_service init error: {}", e.into()))
-            .and_then(move |make_service| {
-                incoming
-                    .map_err(|e| log::error!("transport error: {}", e.into()))
-                    .for_each(move |io| {
-                        let accept = acceptor
-                            .accept(io)
-                            .map_err(|e| log::error!("acceptor error: {}", e.into()));
-
-                        let protocol = protocol.clone();
-                        let service = make_service
-                            .make_service(())
-                            .map_err(|e| log::error!("make_service error: {}", e.into()));
-
-                        let task = accept.and_then(move |io| {
-                            service
-                                .and_then(|service| {
-                                    ReadyService(Some(service), PhantomData)
-                                        .map_err(|e| log::error!("service error: {}", e.into()))
-                                })
-                                .and_then(move |service| {
-                                    protocol
-                                        .serve_connection(io, LiftedHttpService { service })
-                                        .with_upgrades()
-                                        .map_err(|e| log::error!("HTTP protocol error: {}", e))
-                                })
-                        });
-                        spawn(task);
-                        Ok(())
-                    })
+                let protocol = protocol.clone();
+                let make_service = make_service.clone();
+                let task = accept.and_then(move |io| {
+                    let service = make_service
+                        .make_service(&io)
+                        .map_err(|e| log::error!("make_service error: {}", e.into()));
+                    service
+                        .and_then(|service| {
+                            ReadyService(Some(service), PhantomData)
+                                .map_err(|e| log::error!("service error: {}", e.into()))
+                        })
+                        .and_then(move |service| {
+                            protocol
+                                .serve_connection(io, LiftedHttpService { service })
+                                .with_upgrades()
+                                .map_err(|e| log::error!("HTTP protocol error: {}", e))
+                        })
+                });
+                spawn(task);
+                Ok(())
             })
     }};
 }
 
 impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::Runtime>
 where
-    S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>> + Send + 'static,
+    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>
+        + Send
+        + Sync
+        + 'static,
     Bd: Payload,
     S::Error: Into<crate::CritError>,
     S::MakeError: Into<crate::CritError>,
@@ -191,7 +186,7 @@ where
         };
 
         let serve = serve! {
-            make_service: self.make_service,
+            make_service: Arc::new(self.make_service),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Arc::new(
@@ -206,7 +201,7 @@ where
 
 impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
-    S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
+    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>> + 'static,
     Bd: Payload,
     S::Error: Into<crate::CritError>,
     S::MakeError: Into<crate::CritError>,
@@ -227,7 +222,7 @@ where
         };
 
         let serve = serve! {
-            make_service: self.make_service,
+            make_service: Rc::new(self.make_service),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Rc::new(
@@ -259,26 +254,6 @@ where
     #[inline]
     fn call(&mut self, request: Request<Body>) -> Self::Future {
         self.service.call(request)
-    }
-}
-
-#[allow(missing_debug_implementations)]
-struct ReadyMakeService<S, T, Req>(Option<S>, PhantomData<fn(T, Req)>);
-
-impl<S, T, Req> Future for ReadyMakeService<S, T, Req>
-where
-    S: MakeService<T, Req>,
-{
-    type Item = S;
-    type Error = S::MakeError;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures::try_ready!(self
-            .0
-            .as_mut()
-            .expect("the future has already been polled")
-            .poll_ready());
-        Ok(futures::Async::Ready(self.0.take().unwrap()))
     }
 }
 

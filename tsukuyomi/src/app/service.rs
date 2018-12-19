@@ -37,10 +37,6 @@ where
     type MakeError = Never;
     type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::MakeError> {
-        Ok(Async::Ready(()))
-    }
-
     fn make_service(&self, _: T) -> Self::Future {
         futures01::future::ok(AppService {
             inner: self.inner.clone(),
