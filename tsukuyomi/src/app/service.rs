@@ -41,14 +41,14 @@ where
     type Response = M::Response;
     type Error = M::Error;
     type Service = M::Service;
-    type MakeError = Never;
-    type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
+    type MakeError = M::ModifyError;
+    type Future = M::Future;
 
     fn make_service(&self, ctx: &'a Ctx) -> Self::Future {
         let service = AppService {
             inner: self.inner.clone(),
         };
-        futures01::future::ok(self.modify_service.modify(service, ctx))
+        self.modify_service.modify(service, ctx)
     }
 }
 

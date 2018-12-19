@@ -8,7 +8,7 @@
 )]
 #![forbid(clippy::unimplemented)]
 
-use futures::Future;
+use futures::{Future, IntoFuture};
 
 #[doc(no_inline)]
 pub use tower_service::Service;
@@ -62,12 +62,15 @@ where
     }
 }
 
+/// A trait representing the modification of `Service` to another one.
 pub trait ModifyService<Ctx, Request, S> {
     type Response;
     type Error;
     type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
+    type ModifyError;
+    type Future: Future<Item = Self::Service, Error = Self::ModifyError>;
 
-    fn modify(&self, input: S, ctx: Ctx) -> Self::Service;
+    fn modify(&self, input: S, ctx: Ctx) -> Self::Future;
 }
 
 impl<Ctx, Request, S> ModifyService<Ctx, Request, S> for ()
@@ -77,10 +80,12 @@ where
     type Response = S::Response;
     type Error = S::Error;
     type Service = S;
+    type ModifyError = std::io::Error;
+    type Future = futures::future::FutureResult<Self::Service, Self::ModifyError>;
 
     #[inline]
-    fn modify(&self, input: S, _: Ctx) -> Self::Service {
-        input
+    fn modify(&self, input: S, _: Ctx) -> Self::Future {
+        futures::future::ok(input)
     }
 }
 
@@ -88,87 +93,112 @@ pub trait ModifyServiceRef<Ctx, Request, S> {
     type Response;
     type Error;
     type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
+    type ModifyError;
+    type Future: Future<Item = Self::Service, Error = Self::ModifyError>;
 
-    fn modify_ref(&self, input: S, ctx: &Ctx) -> Self::Service;
+    fn modify_ref(&self, input: S, ctx: &Ctx) -> Self::Future;
 }
 
-impl<M, SvcIn, SvcOut, Ctx, Req, Res, Err> ModifyServiceRef<Ctx, Req, SvcIn> for M
+impl<M, SvcIn, SvcOut, Ctx, Req, Res, Err, ModErr, Fut> ModifyServiceRef<Ctx, Req, SvcIn> for M
 where
-    for<'a> M: ModifyService<&'a Ctx, Req, SvcIn, Response = Res, Error = Err, Service = SvcOut>,
+    for<'a> M: ModifyService<
+        &'a Ctx,
+        Req,
+        SvcIn,
+        Response = Res,
+        Error = Err,
+        Service = SvcOut,
+        ModifyError = ModErr,
+        Future = Fut,
+    >,
     SvcOut: Service<Req, Response = Res, Error = Err>,
+    Fut: Future<Item = SvcOut, Error = ModErr>,
 {
     type Response = Res;
     type Error = Err;
     type Service = SvcOut;
+    type ModifyError = ModErr;
+    type Future = Fut;
 
-    fn modify_ref(&self, input: SvcIn, ctx: &Ctx) -> Self::Service {
+    fn modify_ref(&self, input: SvcIn, ctx: &Ctx) -> Self::Future {
         ModifyService::modify(self, input, ctx)
     }
 }
 
-pub fn modify_service<SvcIn, SvcOut, Request, Ctx>(
-    f: impl Fn(SvcIn, Ctx) -> SvcOut,
+pub fn modify_service<Request, S, Ctx, R>(
+    f: impl Fn(S, Ctx) -> R,
 ) -> impl ModifyService<
     Ctx, //
     Request,
-    SvcIn,
-    Response = SvcOut::Response,
-    Error = SvcOut::Error,
-    Service = SvcOut,
+    S,
+    Response = <R::Item as Service<Request>>::Response,
+    Error = <R::Item as Service<Request>>::Error,
+    Service = R::Item,
+    ModifyError = R::Error,
+    Future = R::Future,
 >
 where
-    SvcOut: Service<Request>,
+    R: IntoFuture,
+    R::Item: Service<Request>,
 {
     #[allow(missing_debug_implementations)]
     struct ModifyServiceFn<F>(F);
 
-    impl<F, SvcIn, SvcOut, Request, Ctx> ModifyService<Ctx, Request, SvcIn> for ModifyServiceFn<F>
+    impl<F, Request, S, Ctx, R> ModifyService<Ctx, Request, S> for ModifyServiceFn<F>
     where
-        F: Fn(SvcIn, Ctx) -> SvcOut,
-        SvcOut: Service<Request>,
+        F: Fn(S, Ctx) -> R,
+        R: IntoFuture,
+        R::Item: Service<Request>,
     {
-        type Response = SvcOut::Response;
-        type Error = SvcOut::Error;
-        type Service = SvcOut;
+        type Response = <R::Item as Service<Request>>::Response;
+        type Error = <R::Item as Service<Request>>::Error;
+        type Service = R::Item;
+        type ModifyError = R::Error;
+        type Future = R::Future;
 
         #[inline]
-        fn modify(&self, input: SvcIn, ctx: Ctx) -> Self::Service {
-            (self.0)(input, ctx)
+        fn modify(&self, input: S, ctx: Ctx) -> Self::Future {
+            (self.0)(input, ctx).into_future()
         }
     }
 
     ModifyServiceFn(f)
 }
 
-pub fn modify_service_ref<SvcIn, SvcOut, Request, Ctx>(
-    f: impl Fn(SvcIn, &Ctx) -> SvcOut,
+pub fn modify_service_ref<Request, S, Ctx, R>(
+    f: impl Fn(S, &Ctx) -> R,
 ) -> impl for<'a> ModifyService<
     &'a Ctx, //
     Request,
-    SvcIn,
-    Response = SvcOut::Response,
-    Error = SvcOut::Error,
-    Service = SvcOut,
+    S,
+    Response = <R::Item as Service<Request>>::Response,
+    Error = <R::Item as Service<Request>>::Error,
+    Service = R::Item,
+    ModifyError = R::Error,
+    Future = R::Future,
 >
 where
-    SvcOut: Service<Request>,
+    R: IntoFuture,
+    R::Item: Service<Request>,
 {
     #[allow(missing_debug_implementations)]
     struct ModifyServiceRefFn<F>(F);
 
-    impl<'a, F, SvcIn, SvcOut, Request, Ctx> ModifyService<&'a Ctx, Request, SvcIn>
-        for ModifyServiceRefFn<F>
+    impl<'a, F, Request, S, Ctx, R> ModifyService<&'a Ctx, Request, S> for ModifyServiceRefFn<F>
     where
-        F: Fn(SvcIn, &Ctx) -> SvcOut,
-        SvcOut: Service<Request>,
+        F: Fn(S, &Ctx) -> R,
+        R: IntoFuture,
+        R::Item: Service<Request>,
     {
-        type Response = SvcOut::Response;
-        type Error = SvcOut::Error;
-        type Service = SvcOut;
+        type Response = <R::Item as Service<Request>>::Response;
+        type Error = <R::Item as Service<Request>>::Error;
+        type Service = R::Item;
+        type ModifyError = R::Error;
+        type Future = R::Future;
 
         #[inline]
-        fn modify(&self, input: SvcIn, ctx: &'a Ctx) -> Self::Service {
-            (self.0)(input, ctx)
+        fn modify(&self, input: S, ctx: &'a Ctx) -> Self::Future {
+            (self.0)(input, ctx).into_future()
         }
     }
 

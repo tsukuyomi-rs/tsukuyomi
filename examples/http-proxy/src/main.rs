@@ -33,12 +33,12 @@ fn main() -> tsukuyomi_server::Result<()> {
                     .send_forwarded_request("https://www.rust-lang.org/en-US/"))),
     ])?;
 
-    let service =
-        app.into_service_with(modify_service_ref(|service, io: &tokio::net::TcpStream| {
+    let service = app.into_service_with(modify_service_ref(
+        |service, io: &tokio::net::TcpStream| -> std::io::Result<_> {
             #[allow(missing_debug_implementations)]
             struct WithPeerAddr<S> {
                 service: S,
-                peer_addr: Option<PeerAddr>,
+                peer_addr: PeerAddr,
             }
 
             impl<S, Bd> Service<Request<Bd>> for WithPeerAddr<S>
@@ -56,18 +56,17 @@ fn main() -> tsukuyomi_server::Result<()> {
 
                 #[inline]
                 fn call(&mut self, mut request: Request<Bd>) -> Self::Future {
-                    if let Some(peer_addr) = self.peer_addr.clone() {
-                        request.extensions_mut().insert(peer_addr);
-                    }
+                    request.extensions_mut().insert(self.peer_addr.clone());
                     self.service.call(request)
                 }
             }
 
-            WithPeerAddr {
+            Ok(WithPeerAddr {
                 service,
-                peer_addr: io.peer_addr().map(PeerAddr).ok(),
-            }
-        }));
+                peer_addr: io.peer_addr().map(PeerAddr)?,
+            })
+        },
+    ));
 
     Server::new(service).run()
 }
