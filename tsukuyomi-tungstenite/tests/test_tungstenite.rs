@@ -36,7 +36,7 @@ fn test_handshake() -> tsukuyomi_server::Result<()> {
                 .extract(ws())
                 .call(|ws: Ws| ws.finish(|_| Ok(())))),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/ws")

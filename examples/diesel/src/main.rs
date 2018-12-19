@@ -99,7 +99,7 @@ fn main() -> tsukuyomi_server::Result<()> {
         ])
     })?;
 
-    Server::new(app.into_service()).run()
+    Server::new(app).run()
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>

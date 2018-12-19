@@ -32,11 +32,11 @@ pub struct MakeAppService<C: Concurrency, M> {
     pub(super) modify_service: M,
 }
 
-impl<'a, C, M, Ctx, Bd> MakeService<&'a Ctx, Request<Bd>> for MakeAppService<C, M>
+impl<C, M, Ctx, Bd> MakeService<Ctx, Request<Bd>> for MakeAppService<C, M>
 where
     C: Concurrency,
     RequestBody: From<Bd>,
-    M: ModifyService<&'a Ctx, Request<Bd>, AppService<C>>,
+    M: ModifyService<Ctx, Request<Bd>, AppService<C>>,
 {
     type Response = M::Response;
     type Error = M::Error;
@@ -44,7 +44,7 @@ where
     type MakeError = M::ModifyError;
     type Future = M::Future;
 
-    fn make_service(&self, ctx: &'a Ctx) -> Self::Future {
+    fn make_service(&self, ctx: Ctx) -> Self::Future {
         let service = AppService {
             inner: self.inner.clone(),
         };

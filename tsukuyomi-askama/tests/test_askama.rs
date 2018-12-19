@@ -27,7 +27,7 @@ fn test_template_with_derivation_responder() -> tsukuyomi_server::Result<()> {
             .to(endpoint::get() //
                 .call(|| Index { name: "Alice" })),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -51,7 +51,7 @@ fn test_template_with_modifier() -> tsukuyomi_server::Result<()> {
                 .call(|| Index { name: "Alice" }))
             .modify(tsukuyomi_askama::Renderer::default()),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);

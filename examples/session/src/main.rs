@@ -79,7 +79,6 @@ fn main() -> tsukuyomi_server::Result<()> {
                     session.finish(redirect::to("/"))
                 }))
     ])
-    .map(App::into_service)
     .map(Server::new)?
     .run()
 }

@@ -11,7 +11,7 @@ use {
 #[test]
 fn empty_routes() -> tsukuyomi_server::Result<()> {
     let app = App::create(())?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -25,7 +25,7 @@ fn single_route() -> tsukuyomi_server::Result<()> {
         path!("/hello") //
             .to(endpoint::any().call(|| "Tsukuyomi")),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/hello")?;
 
@@ -48,7 +48,7 @@ fn post_body() -> tsukuyomi_server::Result<()> {
                 .extract(tsukuyomi::extractor::body::plain())
                 .call(|body: String| body)),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::post("/hello") //
@@ -94,7 +94,7 @@ fn cookies() -> tsukuyomi_server::Result<()> {
                 }))
                 .call(|| "Logged out")),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/login")?;
 
@@ -129,7 +129,7 @@ fn default_options() -> tsukuyomi_server::Result<()> {
             .to(endpoint::allow_only("GET, POST")?.call(|| "reply"))
             .modify(tsukuyomi::modifiers::default_options()),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/path")?;
     assert_eq!(response.status(), 200);
@@ -150,7 +150,7 @@ fn map_output() -> tsukuyomi_server::Result<()> {
             .to(endpoint::any().reply(42))
             .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.body().to_utf8()?, "42");
@@ -193,7 +193,7 @@ fn scoped_fallback() -> tsukuyomi_server::Result<()> {
         ]),
     ])?;
 
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);

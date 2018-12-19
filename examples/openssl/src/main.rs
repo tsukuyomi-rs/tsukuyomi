@@ -26,7 +26,6 @@ fn main() -> tsukuyomi_server::Result<()> {
         path!("/").to(endpoint::any() //
             .reply("Hello, Tsukuyomi.\n")),
     ) //
-    .map(App::into_service)
     .map(Server::new)?
     .acceptor(acceptor)
     .run()

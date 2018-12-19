@@ -30,5 +30,5 @@ fn main() -> tsukuyomi_server::Result<()> {
             ]),
     )?;
 
-    Server::new(app.into_service()).run()
+    Server::new(app).run()
 }

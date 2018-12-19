@@ -37,7 +37,7 @@ fn simple_request_with_default_configuration() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/")
@@ -70,7 +70,7 @@ fn simple_request_with_allow_origin() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/")
@@ -107,7 +107,7 @@ fn simple_request_with_allow_method() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/")
@@ -141,7 +141,7 @@ fn simple_request_with_allow_credentials() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/")
@@ -195,7 +195,7 @@ fn preflight_with_default_configuration() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors)  // OPTIONS /
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::options("*")
@@ -224,7 +224,7 @@ fn preflight_with_allow_origin() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors)
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::options("*")
@@ -258,7 +258,7 @@ fn preflight_with_allow_method() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors)  // OPTIONS /
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::options("*")
@@ -294,7 +294,7 @@ fn preflight_with_allow_headers() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors)
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::options("*")
@@ -336,7 +336,7 @@ fn preflight_max_age() -> tsukuyomi_server::Result<()> {
                 .call(|| "hello"))
             .modify(cors)
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::options("*")
@@ -366,7 +366,7 @@ fn as_route_modifier() -> tsukuyomi_server::Result<()> {
             .to(endpoint::get().call(|| "nocors")),
         path!("*").to(cors),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/cors") //
@@ -412,7 +412,7 @@ fn as_scope_modifier() -> tsukuyomi_server::Result<()> {
             .to(endpoint::get() //
                 .call(|| "nocors")),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::server(app)?;
 
     let response = server.perform(
         Request::get("/cors") //

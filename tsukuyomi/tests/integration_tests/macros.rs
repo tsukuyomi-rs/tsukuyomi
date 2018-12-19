@@ -105,7 +105,7 @@ mod responder {
                     .call(|| Foo("Foo".into())))
         })?;
 
-        let mut server = tsukuyomi_server::test::server(app.into_service())?;
+        let mut server = tsukuyomi_server::test::server(app)?;
 
         let response = server.perform("/")?;
         assert_eq!(response.status(), 200);

@@ -20,8 +20,10 @@ use {
         recognizer::{RecognizeError, Recognizer},
         scope::{Scope, ScopeId, Scopes},
     },
-    crate::uri::Uri,
+    crate::{input::body::RequestBody, uri::Uri},
+    http::Request,
     std::{fmt, sync::Arc},
+    tsukuyomi_service::{IntoMakeService, MakeService, Service},
 };
 
 /// The main type representing an HTTP application.
@@ -34,16 +36,65 @@ impl<C> AppBase<C>
 where
     C: Concurrency,
 {
-    /// Converts itself into a `MakeService`.
-    pub fn into_service(self) -> MakeAppService<C, ()> {
-        self.into_service_with(())
-    }
-
     /// Converts itself into a `MakeService` with the specified `ModifyService`.
-    pub fn into_service_with<M>(self, modify_service: M) -> MakeAppService<C, M> {
-        MakeAppService {
+    pub fn with_modify_service<M>(
+        self,
+        modify_service: M,
+    ) -> self::with_modify_service::WithModifyService<C, M> {
+        self::with_modify_service::WithModifyService {
             inner: self.inner,
             modify_service,
+        }
+    }
+}
+
+impl<C, Ctx, Bd> IntoMakeService<Ctx, Request<Bd>> for AppBase<C>
+where
+    C: Concurrency,
+    RequestBody: From<Bd>,
+{
+    type Response = <AppService<C> as Service<Request<Bd>>>::Response;
+    type Error = <AppService<C> as Service<Request<Bd>>>::Error;
+    type Service = AppService<C>;
+    type MakeError = <Self::MakeService as MakeService<Ctx, Request<Bd>>>::MakeError;
+    type MakeFuture = <Self::MakeService as MakeService<Ctx, Request<Bd>>>::Future;
+    type MakeService = MakeAppService<C, ()>;
+
+    fn into_make_service(self) -> Self::MakeService {
+        MakeAppService {
+            inner: self.inner,
+            modify_service: (),
+        }
+    }
+}
+
+mod with_modify_service {
+    use {super::*, tsukuyomi_service::ModifyService};
+
+    #[derive(Debug)]
+    pub struct WithModifyService<C: Concurrency, M> {
+        pub(super) inner: Arc<AppInner<C>>,
+        pub(super) modify_service: M,
+    }
+
+    impl<C, M, Ctx, Bd> IntoMakeService<Ctx, Request<Bd>> for WithModifyService<C, M>
+    where
+        C: Concurrency,
+        RequestBody: From<Bd>,
+        M: ModifyService<Ctx, Request<Bd>, AppService<C>>,
+    {
+        type Response = M::Response;
+        type Error = M::Error;
+        type Service = M::Service;
+        type MakeError = M::ModifyError;
+        type MakeFuture = M::Future;
+        type MakeService = MakeAppService<C, M>;
+
+        fn into_make_service(self) -> Self::MakeService {
+            MakeAppService {
+                inner: self.inner,
+                modify_service: self.modify_service,
+            }
         }
     }
 }

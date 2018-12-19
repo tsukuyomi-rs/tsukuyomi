@@ -17,7 +17,7 @@ fn test_catch_unwind() {
                     .call(|| -> &'static str { panic!("explicit panic") })),
         )?;
 
-        let mut server = tsukuyomi_server::test::server(app.into_service())?;
+        let mut server = tsukuyomi_server::test::server(app)?;
         server.perform("/")?;
 
         Ok(())
@@ -42,7 +42,7 @@ fn test_current_thread() -> tsukuyomi_server::Result<()> {
             })),
     )?;
 
-    let mut server = tsukuyomi_server::test::current_thread_server(app.into_service())?;
+    let mut server = tsukuyomi_server::test::current_thread_server(app)?;
     let _ = server.perform("/")?;
 
     Ok(())

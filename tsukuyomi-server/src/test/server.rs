@@ -14,7 +14,7 @@ use {
     },
     hyper::body::Payload,
     std::{collections::HashMap, mem},
-    tsukuyomi_service::{MakeServiceRef, Service},
+    tsukuyomi_service::{MakeService, Service},
 };
 
 /// A test server which emulates an HTTP service without using the low-level I/O.
@@ -26,7 +26,7 @@ pub struct Server<S, Rt = tokio::runtime::Runtime> {
 
 impl<S, Rt> Server<S, Rt>
 where
-    S: MakeServiceRef<(), Request<hyper::Body>>,
+    S: MakeService<(), Request<hyper::Body>>,
 {
     /// Creates an instance of `TestServer` from the specified components.
     pub fn new(make_service: S, runtime: Rt) -> Self {
@@ -133,7 +133,7 @@ mod threadpool {
 
     impl<S, Bd> Server<S, Runtime>
     where
-        S: MakeServiceRef<(), Request<hyper::Body>, Response = Response<Bd>>,
+        S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
         Bd: Payload,
         S::Error: Into<CritError>,
         S::Future: Send + 'static,
@@ -144,7 +144,7 @@ mod threadpool {
         pub fn new_session(&mut self) -> crate::Result<Session<'_, S::Service, Runtime>> {
             let service = block_on(
                 &mut self.runtime,
-                self.make_service.make_service_ref(&()).map_err(Into::into),
+                self.make_service.make_service(()).map_err(Into::into),
             )
             .map_err(failure::Error::from_boxed_compat)?;
 
@@ -190,7 +190,7 @@ mod current_thread {
 
     impl<S, Bd> Server<S, Runtime>
     where
-        S: MakeServiceRef<(), Request<hyper::Body>, Response = Response<Bd>>,
+        S: MakeService<(), Request<hyper::Body>, Response = Response<Bd>>,
         Bd: Payload,
         S::Error: Into<CritError>,
         S::MakeError: Into<CritError>,
@@ -199,7 +199,7 @@ mod current_thread {
         pub fn new_session(&mut self) -> crate::Result<Session<'_, S::Service, Runtime>> {
             let service = self
                 .runtime
-                .block_on(self.make_service.make_service_ref(&()))
+                .block_on(self.make_service.make_service(()))
                 .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
             Ok(Session::new(service, &mut self.runtime))
         }
