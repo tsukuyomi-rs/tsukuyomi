@@ -3,9 +3,9 @@ mod responder {
         std::fmt,
         tsukuyomi::{
             config::prelude::*, //
-            test::ResponseExt,
             App,
         },
+        tsukuyomi_server::test::ResponseExt,
     };
 
     fn assert_impl_into_response<T: tsukuyomi::output::IntoResponse>() {}
@@ -88,7 +88,7 @@ mod responder {
     }
 
     #[test]
-    fn test_responder() -> tsukuyomi::test::Result<()> {
+    fn test_responder() -> tsukuyomi_server::Result<()> {
         #[derive(tsukuyomi::output::IntoResponse)]
         #[response(with = "self::sub::display")]
         struct Foo(String);
@@ -105,7 +105,7 @@ mod responder {
                     .call(|| Foo("Foo".into())))
         })?;
 
-        let mut server = tsukuyomi::test::server(app)?;
+        let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
         let response = server.perform("/")?;
         assert_eq!(response.status(), 200);

@@ -3,11 +3,11 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     App::create(chain![
         // a route that matches the root path.
         path!("/") //
@@ -58,6 +58,7 @@ fn main() -> tsukuyomi::server::Result<()> {
         path!("*") //
             .to(endpoint::any().reply("default route"))
     ])
+    .map(App::into_service)
     .map(Server::new)?
     .run()
 }

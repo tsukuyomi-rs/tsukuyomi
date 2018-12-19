@@ -11,7 +11,7 @@ mod tests;
 pub(crate) use self::recognizer::Captures;
 pub use self::{
     config::{Error, Result},
-    service::AppService,
+    service::{AppService, MakeAppService},
 };
 
 use {
@@ -28,6 +28,24 @@ use {
 #[derive(Debug, Clone)]
 pub struct AppBase<C: Concurrency = self::config::ThreadSafe> {
     inner: Arc<AppInner<C>>,
+}
+
+impl<C> AppBase<C>
+where
+    C: Concurrency,
+{
+    /// Converts itself into a `MakeService`.
+    pub fn into_service(self) -> MakeAppService<C, ()> {
+        self.into_service_with(())
+    }
+
+    /// Converts itself into a `MakeService` with the specified `ModifyService`.
+    pub fn into_service_with<M>(self, modify_service: M) -> MakeAppService<C, M> {
+        MakeAppService {
+            inner: self.inner,
+            modify_service,
+        }
+    }
 }
 
 pub type App = AppBase<self::config::ThreadSafe>;

@@ -48,42 +48,30 @@ serde_json = "1"
 serde_plain = "0.3"
 serde_urlencoded = "0.5"
 time = "0.1"
-tokio = "0.1"
+tokio-io = "0.1"
 tokio-threadpool = "0.1"
-tower-service = "0.2"
 url = "1.7.1"
 uuid = "0.7.1"
-
-native-tls = { version = "0.2", optional = true }
-tokio-tls = { version = "0.2", optional = true }
-
-rustls = { version = "0.14", optional = true }
-tokio-rustls = { version = "0.8", optional = true }
-
-openssl = { version = "0.10", optional = true }
-tokio-openssl = { version = "0.3", optional = true }
 
 [dependencies.tsukuyomi-macros]
 version = "0.5.0-dev"
 path = "./macros"
 
+[dependencies.tsukuyomi-service]
+version = "0.1.0-dev"
+path = "../tsukuyomi-service"
+
 [dev-dependencies]
 matches = "0.1"
 version-sync = "0.6"
 
+[dev-dependencies.tsukuyomi-server]
+version = "0.2.0-dev"
+path = "../tsukuyomi-server"
+
 [features]
 default = []
-full = [
-  "secure",
-  "use-native-tls",
-  "use-rustls",
-  "use-openssl",
-]
+full = ["secure"]
 
 # Enables the features around signing/encryption, depending on 'ring'.
 secure = ["cookie/secure"]
-
-# Enables the support for TLS acceptors.
-use-native-tls = ["native-tls", "tokio-tls"]
-use-rustls = ["rustls", "tokio-rustls"]
-use-openssl = ["openssl", "tokio-openssl"]

@@ -121,27 +121,27 @@ impl io::Write for UpgradedIo {
     }
 }
 
-impl tokio::io::AsyncRead for UpgradedIo {
+impl tokio_io::AsyncRead for UpgradedIo {
     #[inline]
     unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [u8]) -> bool {
-        tokio::io::AsyncRead::prepare_uninitialized_buffer(&self.0, buf)
+        tokio_io::AsyncRead::prepare_uninitialized_buffer(&self.0, buf)
     }
 
     #[inline]
     fn read_buf<B: BufMut>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
-        tokio::io::AsyncRead::read_buf(&mut self.0, buf)
+        tokio_io::AsyncRead::read_buf(&mut self.0, buf)
     }
 }
 
-impl tokio::io::AsyncWrite for UpgradedIo {
+impl tokio_io::AsyncWrite for UpgradedIo {
     #[inline]
     fn shutdown(&mut self) -> Poll<(), io::Error> {
-        tokio::io::AsyncWrite::shutdown(&mut self.0)
+        tokio_io::AsyncWrite::shutdown(&mut self.0)
     }
 
     #[inline]
     fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
-        tokio::io::AsyncWrite::write_buf(&mut self.0, buf)
+        tokio_io::AsyncWrite::write_buf(&mut self.0, buf)
     }
 }
 

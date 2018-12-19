@@ -11,6 +11,7 @@ repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
 [dependencies]
 tsukuyomi = { version = "0.5.0-dev", path = "../tsukuyomi" }
+tsukuyomi-server = { version = "0.2.0-dev", path = "../tsukuyomi-server" }
 juniper = "0.10"
 
 bytes = "0.4"

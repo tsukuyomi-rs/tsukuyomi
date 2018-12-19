@@ -12,6 +12,7 @@ impl Error {
 }
 
 impl fmt::Display for Error {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.compat.fmt(f)
     }
@@ -19,27 +20,17 @@ impl fmt::Display for Error {
 
 #[derive(Debug, failure::Fail)]
 pub enum Compat {
-    #[fail(display = "app configuration error: {}", _0)]
-    App(crate::app::Error),
     #[fail(display = "custom error: {}", _0)]
     Custom(failure::Error),
 }
 
-impl<T> From<T> for Error
+impl<E> From<E> for Error
 where
-    T: Into<failure::Error>,
+    E: Into<failure::Error>,
 {
-    fn from(err: T) -> Self {
+    fn from(err: E) -> Self {
         Self {
             compat: Compat::Custom(err.into()),
-        }
-    }
-}
-
-impl From<crate::app::Error> for Error {
-    fn from(err: crate::app::Error) -> Self {
-        Self {
-            compat: Compat::App(err),
         }
     }
 }

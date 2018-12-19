@@ -1,9 +1,8 @@
 use {
-    super::{config::Concurrency, recognizer::Captures, AppBase, AppInner, EndpointId},
+    super::{config::Concurrency, recognizer::Captures, AppInner, EndpointId},
     crate::{
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
-        service::{MakeService, Service},
         util::Never,
     },
     cookie::CookieJar,
@@ -14,6 +13,7 @@ use {
     },
     hyper::body::Payload,
     std::{fmt, marker::PhantomData, sync::Arc},
+    tsukuyomi_service::{MakeService, ModifyService, Service},
 };
 
 macro_rules! ready {
@@ -26,25 +26,29 @@ macro_rules! ready {
     };
 }
 
-impl<C, T, Bd> MakeService<T, Request<Bd>> for AppBase<C>
+#[derive(Debug)]
+pub struct MakeAppService<C: Concurrency, M> {
+    pub(super) inner: Arc<AppInner<C>>,
+    pub(super) modify_service: M,
+}
+
+impl<'a, C, M, Ctx, Bd> MakeService<&'a Ctx, Request<Bd>> for MakeAppService<C, M>
 where
     C: Concurrency,
     RequestBody: From<Bd>,
+    M: ModifyService<&'a Ctx, Request<Bd>, AppService<C>>,
 {
-    type Response = Response<ResponseBody>;
-    type Error = Never;
-    type Service = AppService<C>;
-    type MakeError = Never;
-    type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
+    type Response = M::Response;
+    type Error = M::Error;
+    type Service = M::Service;
+    type MakeError = M::ModifyError;
+    type Future = M::Future;
 
-    fn poll_ready(&mut self) -> Poll<(), Self::MakeError> {
-        Ok(Async::Ready(()))
-    }
-
-    fn make_service(&self, _: T) -> Self::Future {
-        futures01::future::ok(AppService {
+    fn make_service(&self, ctx: &'a Ctx) -> Self::Future {
+        let service = AppService {
             inner: self.inner.clone(),
-        })
+        };
+        self.modify_service.modify(service, ctx)
     }
 }
 

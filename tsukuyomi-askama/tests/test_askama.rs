@@ -2,10 +2,10 @@ use {
     askama::Template,
     tsukuyomi::{
         config::prelude::*, //
-        test::ResponseExt,
         App,
         IntoResponse,
     },
+    tsukuyomi_server::test::ResponseExt,
 };
 
 #[test]
@@ -14,7 +14,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
+fn test_template_with_derivation_responder() -> tsukuyomi_server::Result<()> {
     #[derive(Template, IntoResponse)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     #[response(with = "tsukuyomi_askama::into_response")]
@@ -27,7 +27,7 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
             .to(endpoint::get() //
                 .call(|| Index { name: "Alice" })),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -38,7 +38,7 @@ fn test_template_with_derivation_responder() -> tsukuyomi::test::Result<()> {
 }
 
 #[test]
-fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
+fn test_template_with_modifier() -> tsukuyomi_server::Result<()> {
     #[derive(Template)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     struct Index {
@@ -51,7 +51,7 @@ fn test_template_with_modifier() -> tsukuyomi::test::Result<()> {
                 .call(|| Index { name: "Alice" }))
             .modify(tsukuyomi_askama::Renderer::default()),
     )?;
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);

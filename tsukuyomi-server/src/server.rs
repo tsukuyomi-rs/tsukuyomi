@@ -1,27 +1,22 @@
 //! The implementation of low level HTTP server.
 
-pub mod io;
-pub mod runtime;
+mod io;
+mod runtime;
 
-mod error;
-
-pub(crate) type CritError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-pub use self::error::{Error, Result};
+pub use self::{
+    io::{Acceptor, Listener},
+    runtime::Runtime,
+};
 
 use {
-    self::{
-        io::{Acceptor, Connection, ConnectionInfo, Listener},
-        runtime::Runtime,
-    },
-    crate::service::{HttpService, MakeHttpService},
-    futures01::{Future, Poll, Stream},
-    http::Request,
+    futures::{Future, Poll, Stream},
+    http::{Request, Response},
     hyper::{
         body::{Body, Payload},
         server::conn::Http,
     },
     std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
+    tsukuyomi_service::{MakeServiceRef, Service},
 };
 
 // ==== Server ====
@@ -36,10 +31,7 @@ pub struct Server<S, L = SocketAddr, A = (), R = tokio::runtime::Runtime> {
     runtime: Option<R>,
 }
 
-impl<S> Server<S>
-where
-    S: MakeHttpService<(), hyper::Body>,
-{
+impl<S> Server<S> {
     /// Create a new `Server` with the specified `NewService` and default configuration.
     pub fn new(make_service: S) -> Self {
         Self {
@@ -137,75 +129,64 @@ macro_rules! serve {
         let incoming = listener
             .listen()
             .map_err(|err| failure::Error::from_boxed_compat(err.into()))?;
+        incoming
+            .map_err(|e| log::error!("transport error: {}", e.into()))
+            .for_each(move |io| {
+                let accept = acceptor
+                    .accept(io)
+                    .map_err(|e| log::error!("acceptor error: {}", e.into()));
 
-        ReadyMakeHttp(Some(make_service), PhantomData)
-            .map_err(|e| log::error!("make_service init error: {}", e.into()))
-            .and_then(move |make_service| {
-                incoming
-                    .map_err(|e| log::error!("transport error: {}", e.into()))
-                    .for_each(move |io| {
-                        let accept = acceptor
-                            .accept(io)
-                            .map_err(|e| log::error!("acceptor error: {}", e.into()));
-
-                        let protocol = protocol.clone();
-                        let service = make_service
-                            .make_http_service(())
-                            .map_err(|e| log::error!("make_service error: {}", e.into()));
-
-                        let task = accept.and_then(move |io| {
-                            let info = io.connection_info();
-                            if let Err(..) = info {
-                                log::error!("failed to fetch the connection information");
-                            }
-                            let info = info.ok();
-
-                            service
-                                .and_then(|service| {
-                                    ReadyHttp(Some(service), PhantomData)
-                                        .map_err(|e| log::error!("service error: {}", e.into()))
-                                })
-                                .map(move |service| LiftedHttpService { service, info })
-                                .and_then(move |service| {
-                                    protocol
-                                        .serve_connection(io, service)
-                                        .with_upgrades()
-                                        .map_err(|e| log::error!("HTTP protocol error: {}", e))
-                                })
-                        });
-                        spawn(task);
-                        Ok(())
-                    })
+                let protocol = protocol.clone();
+                let make_service = make_service.clone();
+                let task = accept.and_then(move |io| {
+                    let service = make_service
+                        .make_service_ref(&io)
+                        .map_err(|e| log::error!("make_service error: {}", e.into()));
+                    service
+                        .and_then(|service| {
+                            ReadyService(Some(service), PhantomData)
+                                .map_err(|e| log::error!("service error: {}", e.into()))
+                        })
+                        .and_then(move |service| {
+                            protocol
+                                .serve_connection(io, LiftedHttpService { service })
+                                .with_upgrades()
+                                .map_err(|e| log::error!("HTTP protocol error: {}", e))
+                        })
+                });
+                spawn(task);
+                Ok(())
             })
     }};
 }
 
-impl<S, T, A> Server<S, T, A, tokio::runtime::Runtime>
+impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::Runtime>
 where
-    S: MakeHttpService<(), hyper::Body> + Send + 'static,
-    S::ResponseBody: Payload,
-    S::Error: Into<CritError>,
-    S::MakeError: Into<CritError>,
+    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>
+        + Send
+        + Sync
+        + 'static,
+    Bd: Payload,
+    S::Error: Into<crate::CritError>,
+    S::MakeError: Into<crate::CritError>,
     S::Future: Send + 'static,
     S::Service: Send + 'static,
-    <S::Service as HttpService<hyper::Body>>::Future: Send + 'static,
+    <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
     T: Listener,
     T::Incoming: Send + 'static,
     A: Acceptor<T::Conn> + Send + 'static,
     A::Conn: Send + 'static,
-    A::Error: Into<CritError>,
-    <A::Conn as Connection>::Info: Send + 'static,
-    <A::Conn as Connection>::Error: Into<CritError>,
+    A::Error: Into<crate::CritError>,
     A::Accept: Send + 'static,
 {
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> super::Result<()> {
         let runtime = match self.runtime {
             Some(rt) => rt,
             None => tokio::runtime::Runtime::new()?,
         };
 
         let serve = serve! {
-            make_service: self.make_service,
+            make_service: Arc::new(self.make_service),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Arc::new(
@@ -218,32 +199,30 @@ where
     }
 }
 
-impl<S, T, A> Server<S, T, A, tokio::runtime::current_thread::Runtime>
+impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
-    S: MakeHttpService<(), hyper::Body>,
-    S::ResponseBody: Payload,
-    S::Error: Into<CritError>,
-    S::MakeError: Into<CritError>,
+    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>> + 'static,
+    Bd: Payload,
+    S::Error: Into<crate::CritError>,
+    S::MakeError: Into<crate::CritError>,
     S::Future: 'static,
     S::Service: 'static,
-    <S::Service as HttpService<hyper::Body>>::Future: 'static,
+    <S::Service as Service<Request<hyper::Body>>>::Future: 'static,
     T: Listener,
     T::Incoming: 'static,
     A: Acceptor<T::Conn> + 'static,
     A::Conn: Send + 'static,
-    A::Error: Into<CritError>,
-    <A::Conn as Connection>::Info: 'static,
-    <A::Conn as Connection>::Error: Into<CritError>,
+    A::Error: Into<crate::CritError>,
     A::Accept: 'static,
 {
-    pub fn run(self) -> Result<()> {
+    pub fn run(self) -> super::Result<()> {
         let runtime = match self.runtime {
             Some(rt) => rt,
             None => tokio::runtime::current_thread::Runtime::new()?,
         };
 
         let serve = serve! {
-            make_service: self.make_service,
+            make_service: Rc::new(self.make_service),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Rc::new(
@@ -257,68 +236,43 @@ where
 }
 
 #[allow(missing_debug_implementations)]
-struct LiftedHttpService<S, T> {
+struct LiftedHttpService<S> {
     service: S,
-    info: Option<T>,
 }
 
-impl<S, T> hyper::service::Service for LiftedHttpService<S, T>
+impl<S, Bd> hyper::service::Service for LiftedHttpService<S>
 where
-    S: HttpService<hyper::Body>,
-    S::ResponseBody: Payload,
-    S::Error: Into<CritError>,
-    T: ConnectionInfo,
+    S: Service<Request<hyper::Body>, Response = Response<Bd>>,
+    Bd: Payload,
+    S::Error: Into<crate::CritError>,
 {
     type ReqBody = Body;
-    type ResBody = S::ResponseBody;
+    type ResBody = Bd;
     type Error = S::Error;
     type Future = S::Future;
 
     #[inline]
-    fn call(&mut self, mut request: Request<Body>) -> Self::Future {
-        if let Some(ref info) = self.info {
-            info.insert_into(request.extensions_mut());
-        }
-        self.service.call_http(request)
+    fn call(&mut self, request: Request<Body>) -> Self::Future {
+        self.service.call(request)
     }
 }
 
-#[derive(Debug)]
-pub struct ReadyMakeHttp<S, T, Bd>(Option<S>, PhantomData<fn(T, Bd)>);
+#[allow(missing_debug_implementations)]
+struct ReadyService<S, Req>(Option<S>, PhantomData<fn(Req)>);
 
-impl<S, T, Bd> Future for ReadyMakeHttp<S, T, Bd>
+impl<S, Req> Future for ReadyService<S, Req>
 where
-    S: MakeHttpService<T, Bd>,
-{
-    type Item = S;
-    type Error = S::MakeError;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures01::try_ready!(self
-            .0
-            .as_mut()
-            .expect("the future has already been polled")
-            .poll_ready_http());
-        Ok(futures01::Async::Ready(self.0.take().unwrap()))
-    }
-}
-
-#[derive(Debug)]
-pub struct ReadyHttp<S, Bd>(Option<S>, PhantomData<fn(Bd)>);
-
-impl<S, Bd> Future for ReadyHttp<S, Bd>
-where
-    S: HttpService<Bd>,
+    S: Service<Req>,
 {
     type Item = S;
     type Error = S::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        futures01::try_ready!(self
+        futures::try_ready!(self
             .0
             .as_mut()
             .expect("the future has already been polled")
-            .poll_ready_http());
-        Ok(futures01::Async::Ready(self.0.take().unwrap()))
+            .poll_ready());
+        Ok(futures::Async::Ready(self.0.take().unwrap()))
     }
 }

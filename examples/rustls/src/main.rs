@@ -3,11 +3,11 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         App,
-        Server,
     },
+    tsukuyomi_server::server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     let tls_acceptor = build_tls_acceptor()?;
 
     App::create(
@@ -15,6 +15,7 @@ fn main() -> tsukuyomi::server::Result<()> {
             .to(endpoint::any() //
                 .reply("Hello, Tsukuyomi.\n")),
     ) //
+    .map(App::into_service)
     .map(Server::new)?
     .acceptor(tls_acceptor)
     .run()

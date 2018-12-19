@@ -14,7 +14,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn smoketest() -> tsukuyomi::test::Result<()> {
+fn smoketest() -> tsukuyomi_server::Result<()> {
     let backend = CookieBackend::plain().cookie_name("session");
     let session = std::sync::Arc::new(session(backend));
 
@@ -48,7 +48,7 @@ fn smoketest() -> tsukuyomi::test::Result<()> {
             }))
     ])?;
 
-    let mut server = tsukuyomi::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
     let mut session = server.new_session()?.save_cookies(true);
 
     let response = session.perform(Request::get("/counter"))?;

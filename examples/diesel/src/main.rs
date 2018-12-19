@@ -20,18 +20,18 @@ use {
         error::Error,
         extractor::{self, ExtractorExt},
         App,
-        Server,
     },
+    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi::server::Result<()> {
+fn main() -> tsukuyomi_server::Result<()> {
     pretty_env_logger::init();
     dotenv()?;
 
     let database_url = env::var("DATABASE_URL")?;
     let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
-    let server = App::create({
+    let app = App::create({
         mount("/api/v1/posts").with(chain![
             path!("/") //
                 .to(chain![
@@ -97,10 +97,9 @@ fn main() -> tsukuyomi::server::Result<()> {
                     })
                     .map(|post_opt| post_opt.map(tsukuyomi::output::json))))
         ])
-    })
-    .map(Server::new)?;
+    })?;
 
-    server.run()
+    Server::new(app.into_service()).run()
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>
@@ -108,7 +107,7 @@ where
     F: FnOnce() -> Result<T, E>,
     E: Into<Error>,
 {
-    tsukuyomi::rt::blocking(op).then(|result| {
+    tsukuyomi_server::rt::blocking(op).then(|result| {
         result
             .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
             .and_then(|result| {
