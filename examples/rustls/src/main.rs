@@ -15,6 +15,7 @@ fn main() -> tsukuyomi_server::Result<()> {
             .to(endpoint::any() //
                 .reply("Hello, Tsukuyomi.\n")),
     ) //
+    .map(App::into_service)
     .map(Server::new)?
     .acceptor(tls_acceptor)
     .run()

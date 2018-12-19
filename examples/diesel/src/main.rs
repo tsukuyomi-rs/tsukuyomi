@@ -31,7 +31,7 @@ fn main() -> tsukuyomi_server::Result<()> {
     let database_url = env::var("DATABASE_URL")?;
     let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
-    let server = App::create({
+    let app = App::create({
         mount("/api/v1/posts").with(chain![
             path!("/") //
                 .to(chain![
@@ -97,10 +97,9 @@ fn main() -> tsukuyomi_server::Result<()> {
                     })
                     .map(|post_opt| post_opt.map(tsukuyomi::output::json))))
         ])
-    })
-    .map(Server::new)?;
+    })?;
 
-    server.run()
+    Server::new(app.into_service()).run()
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>

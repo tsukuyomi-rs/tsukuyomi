@@ -58,6 +58,7 @@ fn main() -> tsukuyomi_server::Result<()> {
         path!("*") //
             .to(endpoint::any().reply("default route"))
     ])
+    .map(App::into_service)
     .map(Server::new)?
     .run()
 }

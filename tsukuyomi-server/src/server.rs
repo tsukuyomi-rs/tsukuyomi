@@ -140,7 +140,7 @@ macro_rules! serve {
                 let make_service = make_service.clone();
                 let task = accept.and_then(move |io| {
                     let service = make_service
-                        .make_service(&io)
+                        .make_service_ref(&io)
                         .map_err(|e| log::error!("make_service error: {}", e.into()));
                     service
                         .and_then(|service| {

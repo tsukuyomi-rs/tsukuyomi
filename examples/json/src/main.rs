@@ -17,7 +17,7 @@ struct User {
 }
 
 fn main() -> tsukuyomi_server::Result<()> {
-    App::create(
+    let app = App::create(
         path!("/") //
             .to(chain![
                 endpoint::get().reply(User {
@@ -28,7 +28,7 @@ fn main() -> tsukuyomi_server::Result<()> {
                     .extract(extractor::body::json())
                     .call(|user: User| user),
             ]),
-    )
-    .map(Server::new)?
-    .run()
+    )?;
+
+    Server::new(app.into_service()).run()
 }

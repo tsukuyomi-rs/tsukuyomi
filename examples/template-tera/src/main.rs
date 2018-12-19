@@ -28,6 +28,7 @@ fn main() -> tsukuyomi_server::Result<()> {
                 .call(|name| Index { name }))
             .modify(WithTera::from(engine)),
     ) //
+    .map(App::into_service)
     .map(Server::new)?
     .run()
 }

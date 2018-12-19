@@ -34,7 +34,7 @@ fn integration_test() -> tsukuyomi_server::Result<()> {
             .modify(GraphQLModifier::default())
     })?;
 
-    let test_server = tsukuyomi_server::test::server(app)?;
+    let test_server = tsukuyomi_server::test::server(app.into_service())?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),
@@ -46,7 +46,14 @@ fn integration_test() -> tsukuyomi_server::Result<()> {
 }
 
 struct TestTsukuyomiIntegration {
-    local_server: RefCell<TestServer<tsukuyomi::App>>,
+    local_server: RefCell<
+        TestServer<
+            tsukuyomi::app::MakeAppService<
+                tsukuyomi::app::config::ThreadSafe, //
+                (),
+            >,
+        >,
+    >,
 }
 
 impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {

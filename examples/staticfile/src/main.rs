@@ -16,6 +16,7 @@ fn main() -> tsukuyomi_server::Result<()> {
                 .reply(NamedFile::open(manifest_dir.join("static/index.html")))),
         Staticfiles::new(manifest_dir.join("static")),
     ])
+    .map(App::into_service)
     .map(Server::new)?
     .run()
 }

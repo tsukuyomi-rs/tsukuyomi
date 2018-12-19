@@ -48,7 +48,7 @@ fn main() -> tsukuyomi_server::Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
     println!("Listening on http://{}", addr);
 
-    Server::new(app).bind(addr).run()
+    Server::new(app.into_service()).bind(addr).run()
 }
 ```
 

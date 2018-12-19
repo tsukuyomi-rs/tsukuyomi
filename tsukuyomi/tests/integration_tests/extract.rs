@@ -15,7 +15,7 @@ fn unit_input() -> tsukuyomi_server::Result<()> {
             .to(endpoint::any().call(|| "dummy"))
     })?;
 
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -29,7 +29,7 @@ fn params() -> tsukuyomi_server::Result<()> {
             .call(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)))
     })?;
 
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/23/bob/path/to/file")?;
     assert_eq!(response.body().to_utf8()?, "23,bob,path/to/file");
@@ -57,7 +57,7 @@ fn route_macros() -> tsukuyomi_server::Result<()> {
         path!("/static/*path") //
             .to(endpoint::any().call(|path: String| format!("static(path={})", path))),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/root")?;
     assert_eq!(response.body().to_utf8()?, "root");
@@ -86,7 +86,7 @@ fn plain_body() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::body::plain())
                 .call(|body: String| body)),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
 
@@ -134,7 +134,7 @@ fn json_body() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::body::json())
                 .call(|params: Params| format!("{},{}", params.id, params.name))),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform(
         Request::post("/")
@@ -180,7 +180,7 @@ fn urlencoded_body() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::body::urlencoded())
                 .call(|params: Params| format!("{},{}", params.id, params.name))),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     const BODY: &[u8] = b"id=23&name=bob";
 
@@ -291,7 +291,7 @@ fn local_data() -> tsukuyomi_server::Result<()> {
             })
             .modify(InsertMyData::default()),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -318,7 +318,7 @@ fn missing_local_data() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::local::remove(&MyData::KEY))
                 .call(|x: MyData| x.0))
     })?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 500);
@@ -350,7 +350,7 @@ fn optional() -> tsukuyomi_server::Result<()> {
                     })
             }),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform(
         Request::post("/")
@@ -391,7 +391,7 @@ fn either_or() -> tsukuyomi_server::Result<()> {
                     .call(|params: Params| format!("{},{}", params.id, params.name))
             }),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = tsukuyomi_server::test::server(app.into_service())?;
 
     let response = server.perform("/?id=23&name=bob")?;
     assert_eq!(response.status(), 200);

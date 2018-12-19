@@ -10,7 +10,7 @@ pub use self::{
     server::{Server, Session},
 };
 
-use {http::Request, tsukuyomi_service::MakeService};
+use {http::Request, tsukuyomi_service::MakeServiceRef};
 
 pub trait ResponseExt {
     fn header<H>(&self, name: H) -> super::Result<&http::header::HeaderValue>
@@ -32,7 +32,7 @@ impl<T> ResponseExt for http::Response<T> {
 
 pub fn server<S>(make_service: S) -> super::Result<Server<S, tokio::runtime::Runtime>>
 where
-    S: MakeService<(), Request<hyper::Body>>,
+    S: MakeServiceRef<(), Request<hyper::Body>>,
 {
     let mut builder = tokio::runtime::Builder::new();
     builder.core_threads(1);
@@ -46,7 +46,7 @@ pub fn current_thread_server<S>(
     make_service: S,
 ) -> super::Result<Server<S, tokio::runtime::current_thread::Runtime>>
 where
-    S: MakeService<(), Request<hyper::Body>>,
+    S: MakeServiceRef<(), Request<hyper::Body>>,
 {
     let runtime = tokio::runtime::current_thread::Runtime::new()?;
     Ok(Server::new(make_service, runtime))

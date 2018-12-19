@@ -1,5 +1,5 @@
 use {
-    super::{config::Concurrency, recognizer::Captures, AppBase, AppInner, EndpointId},
+    super::{config::Concurrency, recognizer::Captures, AppInner, EndpointId},
     crate::{
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
@@ -26,7 +26,13 @@ macro_rules! ready {
     };
 }
 
-impl<C, T, Bd> MakeService<T, Request<Bd>> for AppBase<C>
+#[derive(Debug)]
+pub struct MakeAppService<C: Concurrency, Target> {
+    pub(super) inner: Arc<AppInner<C>>,
+    pub(super) _marker: PhantomData<fn(&Target)>,
+}
+
+impl<'a, C, Target, Bd> MakeService<&'a Target, Request<Bd>> for MakeAppService<C, Target>
 where
     C: Concurrency,
     RequestBody: From<Bd>,
@@ -37,7 +43,7 @@ where
     type MakeError = Never;
     type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
 
-    fn make_service(&self, _: T) -> Self::Future {
+    fn make_service(&self, _: &'a Target) -> Self::Future {
         futures01::future::ok(AppService {
             inner: self.inner.clone(),
         })

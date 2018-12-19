@@ -1,15 +1,22 @@
-use tsukuyomi::App;
-use tsukuyomi_server::Server;
+use {
+    std::net::SocketAddr,
+    tsukuyomi::{
+        config::prelude::*, //
+        App,
+    },
+    tsukuyomi_server::Server,
+};
 
 fn main() -> tsukuyomi_server::Result<()> {
-    let server = App::create({
-        use tsukuyomi::config::prelude::*;
-
+    let app = App::create(
         path!("/") //
             .to(endpoint::any() //
-                .reply("Hello, world!\n"))
-    }) //
-    .map(Server::new)?;
+                .reply("Hello, world!\n")),
+    )?;
 
-    server.run()
+    let addr: SocketAddr = "127.0.0.1:4000".parse()?;
+    println!("Listening on http://{}", addr);
+    Server::new(app.into_service()) //
+        .bind(addr) //
+        .run()
 }

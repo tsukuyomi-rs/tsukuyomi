@@ -33,7 +33,7 @@ pub trait MakeServiceRef<Target, Request> {
     type MakeError;
     type Future: Future<Item = Self::Service, Error = Self::MakeError>;
 
-    fn make_service(&self, target: &Target) -> Self::Future;
+    fn make_service_ref(&self, target: &Target) -> Self::Future;
 }
 
 impl<S, T, Req, Res, Err, Svc, MkErr, Fut> MakeServiceRef<T, Req> for S
@@ -57,7 +57,7 @@ where
     type Future = Fut;
 
     #[inline]
-    fn make_service(&self, target: &T) -> Self::Future {
+    fn make_service_ref(&self, target: &T) -> Self::Future {
         MakeService::make_service(self, target)
     }
 }

@@ -25,7 +25,7 @@ fn main() -> tsukuyomi_server::Result<()> {
         })
     };
 
-    App::create(chain![
+    let app = App::create(chain![
         // renders the source of GraphiQL.
         path!("/") //
             .to(endpoint::get() //
@@ -40,7 +40,7 @@ fn main() -> tsukuyomi_server::Result<()> {
                     request.execute(schema.clone(), context)
                 }))
             .modify(GraphQLModifier::default()) // <-- modifies all errors thrown from this route into GraphQL error.
-    ])
-    .map(Server::new)?
-    .run()
+    ])?;
+
+    Server::new(app.into_service()).run()
 }
