@@ -8,8 +8,8 @@ publish = false # never published
 doubter = { version = "0.1.0", default-features = false }
 
 [dev-dependencies]
-tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
-tsukuyomi-server = { version = "0.2.0", path = "tsukuyomi-server" }
+tsukuyomi = { version = "0.5", path = "tsukuyomi" }
+tsukuyomi-server = { version = "0.2", path = "tsukuyomi-server" }
 
 # for documentation
 failure = "0.1.3"
@@ -57,7 +57,8 @@ members = [
 ]
 
 [patch.crates-io]
-tsukuyomi = { version = "0.5.0-dev", path = "tsukuyomi" }
+tsukuyomi = { version = "0.5.0", path = "tsukuyomi" }
+tsukuyomi-macros = { version = "0.5.0", path = "tsukuyomi/macros" }
 tsukuyomi-server = { version = "0.2.0", path = "tsukuyomi-server" }
 tsukuyomi-service = { version = "0.1.0", path = "tsukuyomi-service" }
 tsukuyomi-askama = { version = "0.2.0-dev", path = "tsukuyomi-askama" }

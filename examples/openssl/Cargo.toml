@@ -11,6 +11,6 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = { version = "0.5.0-dev" }
-tsukuyomi-server = { version = "0.2", features = ["use-openssl"] }
+tsukuyomi = "0.5.0"
+tsukuyomi-server = { version = "0.2.0", features = ["use-openssl"] }
 openssl = "0.10"
