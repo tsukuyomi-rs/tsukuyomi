@@ -11,7 +11,7 @@ mod tests;
 pub(crate) use self::recognizer::Captures;
 pub use self::{
     config::{Error, Result},
-    service::{AppService, MakeAppService},
+    service::AppService,
 };
 
 use {
@@ -20,10 +20,10 @@ use {
         recognizer::{RecognizeError, Recognizer},
         scope::{Scope, ScopeId, Scopes},
     },
-    crate::{input::body::RequestBody, uri::Uri},
+    crate::{input::body::RequestBody, uri::Uri, util::Never},
     http::Request,
     std::{fmt, sync::Arc},
-    tsukuyomi_service::{IntoMakeService, MakeService, Service},
+    tsukuyomi_service::{MakeService, Service},
 };
 
 /// The main type representing an HTTP application.
@@ -48,7 +48,7 @@ where
     }
 }
 
-impl<C, Ctx, Bd> IntoMakeService<Ctx, Request<Bd>> for AppBase<C>
+impl<C, Ctx, Bd> MakeService<Ctx, Request<Bd>> for AppBase<C>
 where
     C: Concurrency,
     RequestBody: From<Bd>,
@@ -56,15 +56,13 @@ where
     type Response = <AppService<C> as Service<Request<Bd>>>::Response;
     type Error = <AppService<C> as Service<Request<Bd>>>::Error;
     type Service = AppService<C>;
-    type MakeError = <Self::MakeService as MakeService<Ctx, Request<Bd>>>::MakeError;
-    type MakeFuture = <Self::MakeService as MakeService<Ctx, Request<Bd>>>::Future;
-    type MakeService = MakeAppService<C, ()>;
+    type MakeError = Never;
+    type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
 
-    fn into_make_service(self) -> Self::MakeService {
-        MakeAppService {
-            inner: self.inner,
-            modify_service: (),
-        }
+    fn make_service(&self, _: Ctx) -> Self::Future {
+        futures01::future::ok(AppService {
+            inner: self.inner.clone(),
+        })
     }
 }
 
@@ -77,7 +75,7 @@ mod with_modify_service {
         pub(super) modify_service: M,
     }
 
-    impl<C, M, Ctx, Bd> IntoMakeService<Ctx, Request<Bd>> for WithModifyService<C, M>
+    impl<C, M, Ctx, Bd> MakeService<Ctx, Request<Bd>> for WithModifyService<C, M>
     where
         C: Concurrency,
         RequestBody: From<Bd>,
@@ -87,14 +85,13 @@ mod with_modify_service {
         type Error = M::Error;
         type Service = M::Service;
         type MakeError = M::ModifyError;
-        type MakeFuture = M::Future;
-        type MakeService = MakeAppService<C, M>;
+        type Future = M::Future;
 
-        fn into_make_service(self) -> Self::MakeService {
-            MakeAppService {
-                inner: self.inner,
-                modify_service: self.modify_service,
-            }
+        fn make_service(&self, ctx: Ctx) -> Self::Future {
+            let service = AppService {
+                inner: self.inner.clone(),
+            };
+            self.modify_service.modify(service, ctx)
         }
     }
 }

@@ -16,7 +16,7 @@ use {
         server::conn::Http,
     },
     std::{marker::PhantomData, net::SocketAddr, rc::Rc, sync::Arc},
-    tsukuyomi_service::{IntoMakeServiceRef, MakeServiceRef, Service},
+    tsukuyomi_service::{MakeServiceRef, Service},
 };
 
 // ==== Server ====
@@ -162,11 +162,13 @@ macro_rules! serve {
 
 impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::Runtime>
 where
-    S: IntoMakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>,
-    S::MakeServiceRef: Send + Sync + 'static,
+    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>
+        + Send
+        + Sync
+        + 'static,
     S::Error: Into<crate::CritError>,
     S::MakeError: Into<crate::CritError>,
-    S::MakeFuture: Send + 'static,
+    S::Future: Send + 'static,
     S::Service: Send + 'static,
     <S::Service as Service<Request<hyper::Body>>>::Future: Send + 'static,
     Bd: Payload,
@@ -184,7 +186,7 @@ where
         };
 
         let serve = serve! {
-            make_service: Arc::new(self.make_service.into_make_service_ref()),
+            make_service: Arc::new(self.make_service),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Arc::new(
@@ -199,11 +201,10 @@ where
 
 impl<S, T, A, Bd> Server<S, T, A, tokio::runtime::current_thread::Runtime>
 where
-    S: IntoMakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>>,
-    S::MakeServiceRef: 'static,
+    S: MakeServiceRef<A::Conn, Request<hyper::Body>, Response = Response<Bd>> + 'static,
     S::Error: Into<crate::CritError>,
     S::MakeError: Into<crate::CritError>,
-    S::MakeFuture: 'static,
+    S::Future: 'static,
     S::Service: 'static,
     <S::Service as Service<Request<hyper::Body>>>::Future: 'static,
     Bd: Payload,
@@ -221,7 +222,7 @@ where
         };
 
         let serve = serve! {
-            make_service: Rc::new(self.make_service.into_make_service_ref()),
+            make_service: Rc::new(self.make_service),
             listener: self.listener,
             acceptor: self.acceptor,
             protocol: Rc::new(

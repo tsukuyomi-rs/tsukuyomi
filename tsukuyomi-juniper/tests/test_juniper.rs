@@ -46,14 +46,7 @@ fn integration_test() -> tsukuyomi_server::Result<()> {
 }
 
 struct TestTsukuyomiIntegration {
-    local_server: RefCell<
-        TestServer<
-            tsukuyomi::app::MakeAppService<
-                tsukuyomi::app::config::ThreadSafe, //
-                (),
-            >,
-        >,
-    >,
+    local_server: RefCell<TestServer<tsukuyomi::app::App>>,
 }
 
 impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
