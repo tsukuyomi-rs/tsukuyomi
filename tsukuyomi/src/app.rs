@@ -104,17 +104,13 @@ pub type LocalApp = AppBase<self::config::CurrentThread>;
 
 #[derive(Debug)]
 struct AppInner<C: Concurrency> {
-    recognizer: Recognizer<Endpoint<C>>,
+    recognizer: Recognizer<Arc<Endpoint<C>>>,
     scopes: Scopes<ScopeData<C>>,
 }
 
 impl<C: Concurrency> AppInner<C> {
     fn scope(&self, id: ScopeId) -> &Scope<ScopeData<C>> {
         &self.scopes[id]
-    }
-
-    fn endpoint(&self, id: EndpointId) -> &Endpoint<C> {
-        self.recognizer.get(id.0).expect("the wrong resource ID")
     }
 
     /// Infers the scope where the input path belongs from the extracted candidates.
@@ -169,13 +165,15 @@ impl<C: Concurrency> AppInner<C> {
         &self,
         path: &str,
         captures: &mut Option<Captures>,
-    ) -> std::result::Result<&Endpoint<C>, &Scope<ScopeData<C>>> {
+    ) -> std::result::Result<&Arc<Endpoint<C>>, &Scope<ScopeData<C>>> {
         match self.recognizer.recognize(path, captures) {
             Ok(endpoint) => Ok(endpoint),
             Err(RecognizeError::NotMatched) => Err(self.scope(ScopeId::root())),
             Err(RecognizeError::PartiallyMatched(candidates)) => Err(self.infer_scope(
                 path,
-                candidates.iter().filter_map(|i| self.recognizer.get(i)),
+                candidates
+                    .iter()
+                    .filter_map(|i| self.recognizer.get(i).map(|e| &**e)),
             )),
         }
     }
@@ -198,12 +196,8 @@ impl<C: Concurrency> fmt::Debug for ScopeData<C> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct EndpointId(usize);
-
 /// A type representing a set of endpoints with the same HTTP path.
 struct Endpoint<C: Concurrency> {
-    id: EndpointId,
     scope: ScopeId,
     ancestors: Vec<ScopeId>,
     uri: Uri,
@@ -213,7 +207,6 @@ struct Endpoint<C: Concurrency> {
 impl<C: Concurrency> fmt::Debug for Endpoint<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Endpoint")
-            .field("id", &self.id)
             .field("scope", &self.scope)
             .field("ancestors", &self.ancestors)
             .field("uri", &self.uri)

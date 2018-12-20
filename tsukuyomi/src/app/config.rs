@@ -2,7 +2,7 @@ use {
     super::{
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
-        AppBase, AppInner, Endpoint, EndpointId, ScopeData, Uri,
+        AppBase, AppInner, Endpoint, ScopeData, Uri,
     },
     crate::{
         handler::{Handler, ModifyHandler},
@@ -269,7 +269,7 @@ where
 /// A type representing the contextual information in `Config::configure`.
 #[derive(Debug)]
 pub struct Scope<'a, M, T: Concurrency> {
-    recognizer: &'a mut Recognizer<Endpoint<T>>,
+    recognizer: &'a mut Recognizer<Arc<Endpoint<T>>>,
     scopes: &'a mut Scopes<ScopeData<T>>,
     modifier: &'a M,
     scope_id: ScopeId,
@@ -299,13 +299,11 @@ where
                 .join(&uri)
                 .map_err(Error::custom)?;
 
-            let id = EndpointId(self.recognizer.len());
             let scope = &self.scopes[self.scope_id];
             self.recognizer
                 .insert(
                     uri.as_str(),
-                    Endpoint {
-                        id,
+                    Arc::new(Endpoint {
                         scope: scope.id(),
                         ancestors: scope
                             .ancestors()
@@ -315,7 +313,7 @@ where
                             .collect(),
                         uri: uri.clone(),
                         handler: self.modifier.modify(handler).into(),
-                    },
+                    }),
                 )
                 .map_err(Error::custom)?;
         } else {

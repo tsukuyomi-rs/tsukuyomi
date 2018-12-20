@@ -47,6 +47,18 @@ impl PartialEq for Uri {
     }
 }
 
+impl PartialEq<str> for Uri {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl<'a> PartialEq<&'a str> for Uri {
+    fn eq(&self, other: &&'a str) -> bool {
+        self.eq(*other)
+    }
+}
+
 impl Eq for Uri {}
 
 impl Hash for Uri {

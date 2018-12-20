@@ -1,5 +1,5 @@
 use {
-    super::{config::Concurrency, recognizer::Captures, AppInner, EndpointId},
+    super::{config::Concurrency, recognizer::Captures, AppInner, Endpoint},
     crate::{
         input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
         output::ResponseBody,
@@ -85,7 +85,7 @@ where
             cookie_jar: None,
             response_headers: None,
             locals,
-            endpoint_id: None,
+            endpoint: None,
             captures: None,
             state: AppFutureState::Init,
         }
@@ -101,7 +101,7 @@ pub struct AppFuture<C: Concurrency> {
     cookie_jar: Option<CookieJar>,
     response_headers: Option<HeaderMap>,
     locals: LocalMap,
-    endpoint_id: Option<EndpointId>,
+    endpoint: Option<Arc<Endpoint<C>>>,
     captures: Option<Captures>,
     state: AppFutureState<C>,
 }
@@ -127,10 +127,10 @@ macro_rules! input {
         &mut Input {
             request: &$self.request,
             params: {
-                &if let Some(endpoint_id) = $self.endpoint_id {
+                &if let Some(ref endpoint) = $self.endpoint {
                     Some(Params {
                         path: $self.request.uri().path(),
-                        names: $self.inner.endpoint(endpoint_id).uri.capture_names(),
+                        names: endpoint.uri.capture_names(),
                         captures: $self.captures.as_ref(),
                     })
                 } else {
@@ -147,7 +147,7 @@ macro_rules! input {
 
 impl<C: Concurrency> AppFuture<C> {
     fn process_recognize(&mut self) -> Result<C::Handle, crate::Error> {
-        self.endpoint_id = None;
+        self.endpoint = None;
         self.captures = None;
 
         match self
@@ -155,7 +155,7 @@ impl<C: Concurrency> AppFuture<C> {
             .find_endpoint(self.request.uri().path(), &mut self.captures)
         {
             Ok(endpoint) => {
-                self.endpoint_id = Some(endpoint.id);
+                self.endpoint = Some(endpoint.clone());
                 Ok(C::handle(&endpoint.handler))
             }
             Err(scope) => match self.inner.find_default_handler(scope.id()) {

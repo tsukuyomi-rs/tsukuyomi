@@ -1,5 +1,5 @@
 use {
-    super::{config::Result, App, EndpointId, LocalApp},
+    super::{config::Result, App, LocalApp},
     crate::config::prelude::*,
     matches::assert_matches,
 };
@@ -20,38 +20,14 @@ fn route_single_method() -> Result<()> {
 
     assert_matches!(
         app.inner.find_endpoint("/", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
+        Ok(endpoint) if endpoint.uri == "/"
     );
 
     assert_matches!(app.inner.find_endpoint("/path/to", &mut None), Err(..));
 
     assert_matches!(
         app.inner.find_endpoint("/", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
-    );
-
-    Ok(())
-}
-
-#[test]
-fn route_multiple_method() -> Result<()> {
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::allow_only("GET, POST")?.reply("")),
-    )?;
-
-    assert_matches!(
-        app.inner.find_endpoint("/", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
-    );
-    assert_matches!(
-        app.inner.find_endpoint("/", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
-    );
-
-    assert_matches!(
-        app.inner.find_endpoint("/", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
+        Ok(endpoint) if endpoint.uri == "/"
     );
 
     Ok(())
@@ -70,23 +46,19 @@ fn scope_simple() -> Result<()> {
 
     assert_matches!(
         app.inner.find_endpoint("/a", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
+        Ok(endpoint) if endpoint.uri == "/a"
     );
     assert_matches!(
         app.inner.find_endpoint("/b", &mut None),
-        Ok(resource) if resource.id == EndpointId(1)
+        Ok(endpoint) if endpoint.uri == "/b"
     );
     assert_matches!(
         app.inner.find_endpoint("/foo", &mut None),
-        Ok(resource) if resource.id == EndpointId(2)
+        Ok(endpoint) if endpoint.uri == "/foo"
     );
     assert_matches!(
         app.inner.find_endpoint("/c/d", &mut None),
-        Ok(resource) if resource.id == EndpointId(3)
-    );
-    assert_matches!(
-        app.inner.find_endpoint("/c/d", &mut None),
-        Ok(resource) if resource.id == EndpointId(3)
+        Ok(endpoint) if endpoint.uri == "/c/d"
     );
 
     Ok(())
@@ -114,27 +86,27 @@ fn scope_nested() -> Result<()> {
 
     assert_matches!(
         app.inner.find_endpoint("/foo", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
+        Ok(endpoint) if endpoint.uri == "/foo"
     );
     assert_matches!(
         app.inner.find_endpoint("/bar", &mut None),
-        Ok(resource) if resource.id == EndpointId(1)
+        Ok(endpoint) if endpoint.uri == "/bar"
     );
     assert_matches!(
         app.inner.find_endpoint("/foo", &mut None),
-        Ok(resource) if resource.id == EndpointId(0)
+        Ok(endpoint) if endpoint.uri == "/foo"
     );
     assert_matches!(
         app.inner.find_endpoint("/baz", &mut None),
-        Ok(resource) if resource.id == EndpointId(2)
+        Ok(endpoint) if endpoint.uri == "/baz"
     );
     assert_matches!(
         app.inner.find_endpoint("/baz/foobar", &mut None),
-        Ok(resource) if resource.id == EndpointId(3)
+        Ok(endpoint) if endpoint.uri == "/baz/foobar"
     );
     assert_matches!(
         app.inner.find_endpoint("/hoge", &mut None),
-        Ok(resource) if resource.id == EndpointId(4)
+        Ok(endpoint) if endpoint.uri == "/hoge"
     );
 
     assert_matches!(app.inner.find_endpoint("/baz/", &mut None), Err(..));
