@@ -91,7 +91,7 @@ mod with_modify_service {
             let service = AppService {
                 inner: self.inner.clone(),
             };
-            self.modify_service.modify(service, ctx)
+            self.modify_service.modify_service(service, ctx)
         }
     }
 }
