@@ -469,7 +469,7 @@ dependencies = [
  "tokio 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
  "tsukuyomi-server 0.2.0-dev",
- "tsukuyomi-service 0.1.0-dev",
+ "tsukuyomi-service 0.1.0",
 ]
 
 [[package]]
@@ -2065,7 +2065,7 @@ dependencies = [
  "tokio-threadpool 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi-macros 0.5.0-dev",
  "tsukuyomi-server 0.2.0-dev",
- "tsukuyomi-service 0.1.0-dev",
+ "tsukuyomi-service 0.1.0",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2154,13 +2154,13 @@ dependencies = [
  "tokio-rustls 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tls 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi-rt 0.1.0-dev",
- "tsukuyomi-service 0.1.0-dev",
+ "tsukuyomi-service 0.1.0",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "tsukuyomi-service"
-version = "0.1.0-dev"
+version = "0.1.0"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "tower-service 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",

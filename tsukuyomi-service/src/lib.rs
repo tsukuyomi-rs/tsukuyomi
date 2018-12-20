@@ -1,8 +1,8 @@
-//! Abstraction of service layer, based on [`tower-service`].
+//! Abstraction of service layer in Tsukuyomi, based on [`tower-service`].
 //!
 //! [`tower-service`]: https://crates.io/crates/tower-service
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-service/0.1.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-service/0.1.0")]
 #![deny(
     missing_docs,
     missing_debug_implementations,

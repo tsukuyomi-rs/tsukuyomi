@@ -1,8 +1,13 @@
 [package]
 name = "tsukuyomi-service"
-version = "0.1.0-dev"
+description = """
+Abstraction of service layer in Tsukuyomi, based on tower-service.
+"""
+version = "0.1.0"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
 [dependencies]
 futures = "0.1"
