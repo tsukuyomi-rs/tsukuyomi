@@ -12,7 +12,7 @@ doc = false
 
 [dependencies]
 tsukuyomi = "0.5.0-dev"
-tsukuyomi-server = "0.2.0-dev"
+tsukuyomi-server = "0.2"
 tsukuyomi-juniper = "0.3.0-dev"
 juniper = "0.10"
 futures = "0.1"

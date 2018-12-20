@@ -12,6 +12,6 @@ doc = false
 
 [dependencies]
 tsukuyomi = "0.5.0-dev"
-tsukuyomi-server = "0.2.0-dev"
+tsukuyomi-server = "0.2"
 tsukuyomi-askama = "0.2.0-dev"
 askama = "0.7"

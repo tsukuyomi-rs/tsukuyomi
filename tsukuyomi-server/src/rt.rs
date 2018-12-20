@@ -1,13 +1,23 @@
-//! Primitives and re-exports for handling asynchronous tasks.
+//! Miscellaneous primitives and re-exports for building asynchronous tasks.
 
 #[doc(no_inline)]
 pub use {
     futures::sync::oneshot::SpawnHandle,
-    tokio::executor::{spawn, DefaultExecutor, Executor, Spawn, SpawnError},
-    tokio_threadpool::{blocking as poll_blocking, BlockingError},
+    tokio::{
+        executor::{
+            spawn, //
+            DefaultExecutor,
+            Executor,
+            Spawn,
+            SpawnError,
+        },
+        prelude::*, //
+    },
+    tokio_threadpool::{
+        blocking as poll_blocking, //
+        BlockingError,
+    },
 };
-
-use futures::Future;
 
 /// Spawns the specified `Future` onto the default task executor, and returns its handle.
 #[inline]
@@ -31,7 +41,7 @@ pub fn blocking<T>(op: impl FnOnce() -> T) -> impl Future<Item = T, Error = Bloc
     let mut op = Some(op);
     futures::future::poll_fn(move || {
         poll_blocking(|| {
-            let op = op.take().expect("The future has already polled");
+            let op = op.take().expect("The future has already been polled");
             op()
         })
     })

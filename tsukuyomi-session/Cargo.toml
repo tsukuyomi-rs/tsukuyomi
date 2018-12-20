@@ -23,7 +23,7 @@ serde = "1"
 [dev-dependencies]
 http = "0.1"
 version-sync = "0.6"
-tsukuyomi-server = { version = "0.2.0-dev", path = "../tsukuyomi-server" }
+tsukuyomi-server = { version = "0.2", path = "../tsukuyomi-server" }
 
 [features]
 default = ["secure"]

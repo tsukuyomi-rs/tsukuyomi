@@ -25,7 +25,7 @@
 ```toml
 [dependencies]
 tsukuyomi = "0.5.0-dev"
-tsukuyomi-server = "0.2.0-dev"
+tsukuyomi-server = "0.2"
 ```
 
 ```rust,no_run

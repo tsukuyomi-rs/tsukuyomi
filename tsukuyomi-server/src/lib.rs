@@ -1,11 +1,9 @@
-//! An implementation of HTTP server for Tsukuyomi.
-//!
-//! This crate is based on [`hyper`] and [`tower-service`].
+//! An implementation of HTTP server for Tsukuyomi, based on [`hyper`] and [`tower-service`].
 //!
 //! [`hyper`]: https://crates.io/crates/hyper
 //! [`tower-service`]: https://crates.io/crates/tower-service
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-server/0.2.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-server/0.2.0")]
 #![deny(
     missing_debug_implementations,
     nonstandard_style,
@@ -17,7 +15,7 @@
 
 mod error;
 mod io;
-mod runtime;
+pub mod rt;
 pub mod test;
 
 pub use crate::{
@@ -26,7 +24,6 @@ pub use crate::{
 };
 
 use {
-    crate::runtime::Runtime,
     futures::{Future, Poll, Stream},
     http::{Request, Response},
     hyper::{
@@ -198,7 +195,7 @@ where
     A::Accept: Send + 'static,
 {
     pub fn run(self) -> crate::Result<()> {
-        let runtime = match self.runtime {
+        let mut runtime = match self.runtime {
             Some(rt) => rt,
             None => tokio::runtime::Runtime::new()?,
         };
@@ -210,10 +207,13 @@ where
             protocol: Arc::new(
                 self.protocol.with_executor(tokio::executor::DefaultExecutor::current())
             ),
-            spawn: |future| tsukuyomi_rt::spawn(future),
+            spawn: |future| crate::rt::spawn(future),
         };
 
-        Runtime::run(runtime, serve).map_err(Into::into)
+        runtime.spawn(serve);
+        runtime.shutdown_on_idle().wait().unwrap();
+
+        Ok(())
     }
 }
 
@@ -234,7 +234,7 @@ where
     A::Accept: 'static,
 {
     pub fn run(self) -> crate::Result<()> {
-        let runtime = match self.runtime {
+        let mut runtime = match self.runtime {
             Some(rt) => rt,
             None => tokio::runtime::current_thread::Runtime::new()?,
         };
@@ -249,7 +249,10 @@ where
             spawn: |future| tokio::runtime::current_thread::spawn(future),
         };
 
-        Runtime::run(runtime, serve).map_err(Into::into)
+        let _ = runtime.block_on(serve);
+        runtime.run()?;
+
+        Ok(())
     }
 }
 

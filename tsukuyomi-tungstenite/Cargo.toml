@@ -9,6 +9,7 @@ repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
 [dependencies]
 tsukuyomi = { version = "0.5.0-dev", path = "../tsukuyomi" }
+tsukuyomi-server = { version = "0.2", path = "../tsukuyomi-server" }
 
 base64 = "0.10"
 failure = "0.1.2"
@@ -19,10 +20,5 @@ tokio-tungstenite = "0.6"
 tungstenite = "0.6"
 log = "0.4"
 
-[dependencies.tsukuyomi-rt]
-version = "0.1.0-dev"
-path = "../tsukuyomi-rt"
-
 [dev-dependencies]
 version-sync = "0.6"
-tsukuyomi-server = { version = "0.2.0-dev", path = "../tsukuyomi-server" }

@@ -107,7 +107,7 @@ where
     F: FnOnce() -> Result<T, E>,
     E: Into<Error>,
 {
-    tsukuyomi_rt::blocking(op).then(|result| {
+    tsukuyomi_server::rt::blocking(op).then(|result| {
         result
             .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
             .and_then(|result| {

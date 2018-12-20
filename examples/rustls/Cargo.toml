@@ -12,7 +12,7 @@ doc = false
 
 [dependencies]
 tsukuyomi = { version = "0.5.0-dev" }
-tsukuyomi-server = { version = "0.2.0-dev", features = ["use-rustls"] }
+tsukuyomi-server = { version = "0.2", features = ["use-rustls"] }
 rustls = "0.14"
 tokio-rustls = "0.8"
 failure = "0.1.3"

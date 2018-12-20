@@ -4,7 +4,7 @@ use {
     tokio::io::{AsyncRead, AsyncWrite},
 };
 
-/// A trait representing the low-level I/O.
+/// A trait that represents the low-level I/O.
 pub trait Listener {
     type Conn: AsyncRead + AsyncWrite;
     type Error: Into<CritError>;
@@ -14,6 +14,9 @@ pub trait Listener {
     fn listen(self) -> Result<Self::Incoming, Self::Error>;
 }
 
+/// A trait that represents the conversion of asynchronous I/Os.
+///
+/// Typically, the implementors of this trait establish a TLS session.
 pub trait Acceptor<T> {
     type Conn: AsyncRead + AsyncWrite;
     type Error;

@@ -12,5 +12,5 @@ doc = false
 
 [dependencies]
 tsukuyomi = { version = "0.5.0-dev" }
-tsukuyomi-server = { version = "0.2.0-dev", features = ["use-openssl"] }
+tsukuyomi-server = { version = "0.2", features = ["use-openssl"] }
 openssl = "0.10"

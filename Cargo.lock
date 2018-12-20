@@ -430,7 +430,7 @@ name = "example-basic"
 version = "0.0.0"
 dependencies = [
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -440,7 +440,7 @@ dependencies = [
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
  "tsukuyomi-cors 0.2.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -455,8 +455,7 @@ dependencies = [
  "pretty_env_logger 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-rt 0.1.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -468,7 +467,7 @@ dependencies = [
  "reqwest 0.9.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "tsukuyomi-service 0.1.0",
 ]
 
@@ -480,7 +479,7 @@ dependencies = [
  "http 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -491,7 +490,7 @@ dependencies = [
  "juniper 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
  "tsukuyomi-juniper 0.3.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -502,7 +501,7 @@ dependencies = [
  "native-tls 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tls 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -511,7 +510,7 @@ version = "0.0.0"
 dependencies = [
  "openssl 0.10.16 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -519,7 +518,7 @@ name = "example-routing"
 version = "0.0.0"
 dependencies = [
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -530,7 +529,7 @@ dependencies = [
  "rustls 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-rustls 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -540,7 +539,7 @@ dependencies = [
  "either 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "tsukuyomi-session 0.2.0-dev",
 ]
 
@@ -549,7 +548,7 @@ name = "example-staticfile"
 version = "0.0.0"
 dependencies = [
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -559,7 +558,7 @@ dependencies = [
  "askama 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
  "tsukuyomi-askama 0.2.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -572,7 +571,7 @@ dependencies = [
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "tera 0.11.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -580,7 +579,7 @@ name = "example-unix-socket"
 version = "0.0.0"
 dependencies = [
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
 ]
 
 [[package]]
@@ -589,7 +588,7 @@ version = "0.0.0"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "tsukuyomi-tungstenite 0.2.0-dev",
 ]
 
@@ -2064,7 +2063,7 @@ dependencies = [
  "tokio-io 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-threadpool 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi-macros 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "tsukuyomi-service 0.1.0",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2080,7 +2079,7 @@ dependencies = [
  "http 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "mime_guess 2.0.0-alpha.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -2093,7 +2092,7 @@ dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -2111,8 +2110,7 @@ dependencies = [
  "serde_json 1.0.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_urlencoded 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-rt 0.1.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -2126,18 +2124,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tsukuyomi-rt"
-version = "0.1.0-dev"
-dependencies = [
- "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-threadpool 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "tsukuyomi-server"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "bytes 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "cookie 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2152,8 +2140,8 @@ dependencies = [
  "tokio 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-openssl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-rustls 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-threadpool 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tls 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "tsukuyomi-rt 0.1.0-dev",
  "tsukuyomi-service 0.1.0",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2178,7 +2166,7 @@ dependencies = [
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "uuid 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2195,8 +2183,7 @@ dependencies = [
  "sha-1 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tungstenite 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-rt 0.1.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "tungstenite 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "version-sync 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -2212,7 +2199,7 @@ dependencies = [
  "tokio-rustls 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tungstenite 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0-dev",
- "tsukuyomi-server 0.2.0-dev",
+ "tsukuyomi-server 0.2.0",
  "tungstenite 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "walkdir 2.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
