@@ -6,7 +6,6 @@
 
 [![Crates.io][crates-io-badge]][crates-io]
 [![Minimal Rust Version: 1.31.0][rust-version-badge]][rust-version]
-[![dependency status][deps-rs-badge]][deps-rs]
 [![Build Status][azure-pipelines-badge]][azure-pipelines]
 [![Coverage Status][codecov-badge]][codecov]
 [![Gitter][gitter-badge]][gitter]
@@ -21,12 +20,6 @@
   - TLS support (with [`native-tls`](./examples/native-tls), [`rustls`](./examples/rustls) or [`openssl`](./examples/openssl))
 
 ## Usage
-
-```toml
-[dependencies]
-tsukuyomi = "0.5.0-dev"
-tsukuyomi-server = "0.2"
-```
 
 ```rust,no_run
 use {
@@ -72,18 +65,16 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 
 [crates-io]: https://crates.io/crates/tsukuyomi
 [docs-rs]: https://docs.rs/tsukuyomi
-[rust-version]: https://www.rust-lang.org
+[rust-version]: https://blog.rust-lang.org/2018/12/06/Rust-1.31-and-rust-2018.html
 [master-doc]: https://tsukuyomi-rs.github.io/tsukuyomi
 [gitter]: https://gitter.im/ubnt-intrepid/tsukuyomi
 [examples]: https://github.com/tsukuyomi-rs/examples
-[deps-rs]: https://deps.rs/crate/tsukuyomi/0.4.0
 [azure-pipelines]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_build/latest?definitionId=1
 [codecov]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi
 
 [crates-io-badge]: https://img.shields.io/crates/v/tsukuyomi.svg
 [rust-version-badge]: https://img.shields.io/badge/rustc-1.31.0+-yellow.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
-[deps-rs-badge]: https://deps.rs/crate/tsukuyomi/0.4.0/status.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
 [codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
 
