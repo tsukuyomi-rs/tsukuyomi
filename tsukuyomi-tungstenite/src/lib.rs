@@ -35,7 +35,7 @@ use {
         },
         responder::Responder,
     },
-    tsukuyomi_server::rt::Executor,
+    tsukuyomi_rt::Executor,
     tungstenite::protocol::Role,
 };
 
@@ -220,7 +220,7 @@ where
                 on_upgrade(transport).into_future()
             });
 
-        tsukuyomi_server::rt::DefaultExecutor::current()
+        tsukuyomi_rt::DefaultExecutor::current()
             .spawn(Box::new(task))
             .map_err(tsukuyomi::error::internal_server_error)?;
 

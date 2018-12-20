@@ -5,7 +5,7 @@ use {
         config::prelude::*, //
         App,
     },
-    tsukuyomi_server::server::Server,
+    tsukuyomi_server::Server,
 };
 
 #[derive(Debug, Serialize)]

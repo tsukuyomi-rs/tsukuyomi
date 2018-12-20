@@ -195,7 +195,7 @@ where
             schema,
             context,
         } = self;
-        let handle = tsukuyomi_server::rt::spawn_fn(move || -> tsukuyomi::Result<_> {
+        let handle = tsukuyomi_rt::spawn_fn(move || -> tsukuyomi::Result<_> {
             use self::GraphQLRequestKind::*;
             match request.0 {
                 Single(request) => {
@@ -241,9 +241,9 @@ where
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
 pub struct GraphQLRespond {
-    handle: tsukuyomi_server::rt::SpawnHandle<
+    handle: tsukuyomi_rt::SpawnHandle<
         tsukuyomi::Result<Response<Vec<u8>>>,
-        tsukuyomi_server::rt::BlockingError,
+        tsukuyomi_rt::BlockingError,
     >,
 }
 

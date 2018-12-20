@@ -43,7 +43,7 @@ fn test_current_thread() -> tsukuyomi_server::Result<()> {
             })),
     )?;
 
-    let mut server = tsukuyomi_server::test::current_thread_server(app)?;
+    let mut server = tsukuyomi_server::test::local_server(app)?;
     let _ = server.perform("/")?;
 
     Ok(())

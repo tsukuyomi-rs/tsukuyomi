@@ -19,9 +19,10 @@ tokio-tungstenite = "0.6"
 tungstenite = "0.6"
 log = "0.4"
 
-[dependencies.tsukuyomi-server]
-version = "0.2.0-dev"
-path = "../tsukuyomi-server"
+[dependencies.tsukuyomi-rt]
+version = "0.1.0-dev"
+path = "../tsukuyomi-rt"
 
 [dev-dependencies]
 version-sync = "0.6"
+tsukuyomi-server = { version = "0.2.0-dev", path = "../tsukuyomi-server" }

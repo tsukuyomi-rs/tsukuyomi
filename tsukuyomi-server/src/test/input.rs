@@ -5,12 +5,14 @@ use {
 
 // ==== traits ====
 
+/// A trait representing the input to the test server.
 pub trait Input: InputImpl {}
 
 pub trait InputImpl {
     fn build_request(self) -> http::Result<Request<Body>>;
 }
 
+///
 pub trait IntoRequestBody: IntoRequestBodyImpl {}
 
 pub trait IntoRequestBodyImpl {
@@ -37,7 +39,7 @@ impl InputImpl for String {
     }
 }
 
-impl<T: IntoRequestBody> Input for Request<T> {}
+impl<T> Input for Request<T> where T: IntoRequestBody {}
 impl<T: IntoRequestBody> InputImpl for Request<T> {
     fn build_request(mut self) -> http::Result<Request<Body>> {
         if let Some(content_type) = self.body().content_type() {
@@ -47,7 +49,12 @@ impl<T: IntoRequestBody> InputImpl for Request<T> {
     }
 }
 
-impl<T: IntoRequestBody, E: Into<http::Error>> Input for Result<Request<T>, E> {}
+impl<T, E> Input for Result<Request<T>, E>
+where
+    T: IntoRequestBody,
+    E: Into<http::Error>,
+{
+}
 impl<T: IntoRequestBody, E: Into<http::Error>> InputImpl for Result<Request<T>, E> {
     fn build_request(self) -> http::Result<Request<Body>> {
         self.map_err(Into::into)?.build_request()
