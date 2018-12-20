@@ -12,7 +12,7 @@ use {
 fn unit_input() -> tsukuyomi_server::Result<()> {
     let app = App::create({
         path!("/") //
-            .to(endpoint::any().call(|| "dummy"))
+            .to(endpoint::call(|| "dummy"))
     })?;
 
     let mut server = tsukuyomi_server::test::server(app)?;
@@ -24,10 +24,9 @@ fn unit_input() -> tsukuyomi_server::Result<()> {
 
 #[test]
 fn params() -> tsukuyomi_server::Result<()> {
-    let app = App::create({
-        path!("/:id/:name/*path").to(endpoint::any()
-            .call(|id: u32, name: String, path: String| format!("{},{},{}", id, name, path)))
-    })?;
+    let app = App::create(path!("/:id/:name/*path").to(endpoint::call(
+        |id: u32, name: String, path: String| format!("{},{},{}", id, name, path),
+    )))?;
 
     let mut server = tsukuyomi_server::test::server(app)?;
 
@@ -44,10 +43,12 @@ fn params() -> tsukuyomi_server::Result<()> {
 fn route_macros() -> tsukuyomi_server::Result<()> {
     let app = App::create(chain![
         path!("/root") //
-            .to(endpoint::any().call(|| "root")),
+            .to(endpoint::call(|| "root")),
         path!("/params/:id/:name") //
-            .to(endpoint::any()
-                .call(|id: i32, name: String| format!("params(id={}, name={})", id, name))),
+            .to(endpoint::call(|id: i32, name: String| format!(
+                "params(id={}, name={})",
+                id, name
+            ))),
         path!("/posts/:id/edit") //
             .to({
                 endpoint::put()
@@ -55,7 +56,10 @@ fn route_macros() -> tsukuyomi_server::Result<()> {
                     .call(|id: u32, body: String| format!("posts(id={}, body={})", id, body))
             }),
         path!("/static/*path") //
-            .to(endpoint::any().call(|path: String| format!("static(path={})", path))),
+            .to(endpoint::call(|path: String| format!(
+                "static(path={})",
+                path
+            ))),
     ])?;
     let mut server = tsukuyomi_server::test::server(app)?;
 

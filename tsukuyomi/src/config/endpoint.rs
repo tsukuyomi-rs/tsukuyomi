@@ -5,7 +5,7 @@ use {
         extractor::Extractor,
         generic::{Combine, Func},
         handler::AllowedMethods,
-        util::{Chain, TryInto},
+        util::{Chain, Never, TryInto},
     },
     futures01::IntoFuture,
     http::Method,
@@ -182,6 +182,57 @@ where
     {
         self.call(move || output.clone())
     }
+}
+
+/// A shortcut to `endpoint::any().call(f)`
+#[inline]
+pub fn call<T, F>(
+    f: F,
+) -> impl Endpoint<
+    T, //
+    Output = F::Out,
+    Error = Never,
+    Future = self::call::CallFuture<(), F, T>, // private
+>
+where
+    T: Combine<()>,
+    F: Func<<T as Combine<()>>::Out> + Clone,
+{
+    any().call(f)
+}
+
+/// A shortcut to `endpoint::any().call_async(f)`.
+pub fn call_async<T, F, R>(
+    f: F,
+) -> impl Endpoint<
+    T,
+    Output = R::Item,
+    Error = Error,
+    Future = self::call_async::CallAsyncFuture<(), F, R, T>, // private
+>
+where
+    T: Combine<()>,
+    F: Func<<T as Combine<()>>::Out, Out = R> + Clone,
+    R: IntoFuture,
+    R::Error: Into<Error>,
+{
+    any().call_async(f)
+}
+
+/// A shortcut to `endpoint::any().reply(output)`.
+#[inline]
+pub fn reply<R>(
+    output: R,
+) -> impl Endpoint<
+    (), //
+    Output = R,
+    Error = Never,
+    Future = self::call::CallFuture<(), impl Func<(), Out = R>, ()>,
+>
+where
+    R: Clone,
+{
+    any().reply(output)
 }
 
 mod call {

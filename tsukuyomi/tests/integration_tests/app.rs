@@ -23,7 +23,7 @@ fn empty_routes() -> tsukuyomi_server::Result<()> {
 fn single_route() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/hello") //
-            .to(endpoint::any().call(|| "Tsukuyomi")),
+            .to(endpoint::call(|| "Tsukuyomi")),
     )?;
     let mut server = tsukuyomi_server::test::server(app)?;
 
@@ -147,7 +147,7 @@ fn default_options() -> tsukuyomi_server::Result<()> {
 fn map_output() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/")
-            .to(endpoint::any().reply(42))
+            .to(endpoint::reply(42))
             .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
     )?;
     let mut server = tsukuyomi_server::test::server(app)?;
@@ -166,24 +166,22 @@ fn scoped_fallback() -> tsukuyomi_server::Result<()> {
 
     let app = App::create(chain![
         path!("*") //
-            .to(endpoint::any() //
-                .call({
-                    let marker = marker.clone();
-                    move || {
-                        marker.lock().unwrap().push("F1");
-                        "f1"
-                    }
-                })),
+            .to(endpoint::call({
+                let marker = marker.clone();
+                move || {
+                    marker.lock().unwrap().push("F1");
+                    "f1"
+                }
+            })),
         mount("/api/v1/").with(chain![
             path!("*") //
-                .to(endpoint::any() //
-                    .call({
-                        let marker = marker.clone();
-                        move || {
-                            marker.lock().unwrap().push("F2");
-                            "f2"
-                        }
-                    })),
+                .to(endpoint::call({
+                    let marker = marker.clone();
+                    move || {
+                        marker.lock().unwrap().push("F2");
+                        "f2"
+                    }
+                })),
             path!("/posts") //
                 .to(endpoint::post().reply("posts")),
             mount("/events").with(

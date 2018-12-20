@@ -13,7 +13,8 @@ pub mod prelude {
     pub mod endpoint {
         #[doc(no_inline)]
         pub use super::super::endpoint::{
-            allow_only, any, connect, delete, get, head, options, patch, post, put, trace,
+            allow_only, any, call, call_async, connect, delete, get, head, options, patch, post,
+            put, reply, trace,
         };
     }
 }

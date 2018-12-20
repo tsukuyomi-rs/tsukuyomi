@@ -13,8 +13,9 @@ fn test_catch_unwind() {
 
         let app = App::create(
             path!("/") //
-                .to(endpoint::any() //
-                    .call(|| -> &'static str { panic!("explicit panic") })),
+                .to(endpoint::call(|| -> &'static str {
+                    panic!("explicit panic")
+                })),
         )?;
 
         let mut server = tsukuyomi_server::test::server(app)?;
@@ -36,7 +37,7 @@ fn test_current_thread() -> tsukuyomi_server::Result<()> {
 
     let app = LocalApp::create(
         path!("/") //
-            .to(endpoint::any().call(move || {
+            .to(endpoint::call(move || {
                 let _ptr = ptr.clone();
                 "dummy"
             })),

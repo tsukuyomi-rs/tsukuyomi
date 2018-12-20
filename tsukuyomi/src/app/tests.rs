@@ -15,7 +15,7 @@ fn new_empty() -> Result<()> {
 fn route_single_method() -> Result<()> {
     let app = App::create(
         path!("/") //
-            .to(endpoint::any().reply("")),
+            .to(endpoint::reply("")),
     )?;
 
     assert_matches!(
@@ -61,11 +61,11 @@ fn route_multiple_method() -> Result<()> {
 fn scope_simple() -> Result<()> {
     let app = App::create(chain![
         mount("/").with(chain![
-            path!("/a").to(endpoint::any().reply("")),
-            path!("/b").to(endpoint::any().reply("")),
+            path!("/a").to(endpoint::reply("")),
+            path!("/b").to(endpoint::reply("")),
         ]),
-        path!("/foo").to(endpoint::any().reply("")),
-        mount("/c").with(path!("/d").to(endpoint::any().reply(""))),
+        path!("/foo").to(endpoint::reply("")),
+        mount("/c").with(path!("/d").to(endpoint::reply(""))),
     ])?;
 
     assert_matches!(
@@ -97,19 +97,19 @@ fn scope_nested() -> Result<()> {
     let app = App::create(chain![
         mount("/") // 0
             .with(chain![
-                path!("/foo").to(endpoint::any().reply("")), // /foo
-                path!("/bar").to(endpoint::any().reply("")), // /bar
+                path!("/foo").to(endpoint::reply("")), // /foo
+                path!("/bar").to(endpoint::reply("")), // /bar
             ]),
         mount("/baz") // 1
             .with(chain![
-                path!("/").to(endpoint::any().reply("")), // /baz
+                path!("/").to(endpoint::reply("")), // /baz
                 mount("/") // 2
                     .with(chain![
-                        path!("/foobar").to(endpoint::any().reply("")), // /baz/foobar
+                        path!("/foobar").to(endpoint::reply("")), // /baz/foobar
                     ])
             ]), //
         path!("/hoge") //
-            .to(endpoint::any().reply("")) // /hoge
+            .to(endpoint::reply("")) // /hoge
     ])?;
 
     assert_matches!(
@@ -156,7 +156,7 @@ fn failcase_duplicate_uri() -> Result<()> {
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
     let app = App::create(chain![
         path!("/path") //
-            .to(endpoint::any().call(|| ""),),
+            .to(endpoint::call(|| ""),),
         mount("/").with(
             path!("/path") //
                 .to(endpoint::post().call(|| ""))
@@ -172,7 +172,7 @@ fn current_thread() -> Result<()> {
 
     let _app = LocalApp::create(
         path!("/") //
-            .to(endpoint::any().call(move || {
+            .to(endpoint::call(move || {
                 let _ptr = ptr.clone();
                 "dummy"
             })),

@@ -16,8 +16,7 @@ fn main() -> tsukuyomi_server::Result<()> {
 
     App::create(
         path!("/") //
-            .to(endpoint::any() //
-                .reply("Hello, Tsukuyomi.\n")),
+            .to(endpoint::reply("Hello, Tsukuyomi.\n")),
     ) //
     .map(Server::new)?
     .acceptor(acceptor)

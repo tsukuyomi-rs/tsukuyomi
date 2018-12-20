@@ -10,8 +10,7 @@ use {
 fn main() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/") //
-            .to(endpoint::any() //
-                .reply("Hello, world!\n")),
+            .to(endpoint::reply("Hello, world!\n")),
     )?;
 
     let addr: SocketAddr = "127.0.0.1:4000".parse()?;
