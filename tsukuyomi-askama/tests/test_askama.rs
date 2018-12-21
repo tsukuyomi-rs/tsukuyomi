@@ -14,7 +14,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn test_template_with_derivation_responder() -> tsukuyomi_server::Result<()> {
+fn test_template_derivation() -> tsukuyomi_server::Result<()> {
     #[derive(Template, IntoResponse)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     #[response(with = "tsukuyomi_askama::into_response")]
@@ -49,7 +49,7 @@ fn test_template_with_modifier() -> tsukuyomi_server::Result<()> {
         path!("/") //
             .to(endpoint::get() //
                 .call(|| Index { name: "Alice" }))
-            .modify(tsukuyomi_askama::Renderer::default()),
+            .modify(tsukuyomi_askama::renderer()),
     )?;
     let mut server = tsukuyomi_server::test::server(app)?;
 

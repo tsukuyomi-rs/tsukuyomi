@@ -1,34 +1,6 @@
 //! Askama integration for Tsukuyomi.
-//!
-//! ```
-//! extern crate askama;
-//! extern crate tsukuyomi;
-//! extern crate tsukuyomi_askama;
-//!
-//! use askama::Template;
-//! use tsukuyomi::{
-//!     config::prelude::*,
-//!     App,
-//!     IntoResponse,
-//! };
-//!
-//! #[derive(Template, IntoResponse)]
-//! #[template(source = "Hello, {{name}}!", ext = "html")]
-//! #[response(with = "tsukuyomi_askama::into_response")]
-//! struct Index {
-//!     name: String,
-//! }
-//!
-//! # fn main() -> tsukuyomi::app::Result<()> {
-//! App::create(
-//!     path!("/:name")
-//!         .to(endpoint::get().call(|name| Index { name }))
-//! )
-//! #   .map(drop)
-//! # }
-//! ```
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-askama/0.2.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-askama/0.2.0")]
 #![deny(
     missing_debug_implementations,
     nonstandard_style,
@@ -40,21 +12,33 @@
 
 use {
     askama::Template,
-    futures::Poll,
     http::{
         header::{HeaderValue, CONTENT_TYPE},
         Request, Response,
     },
     mime_guess::get_mime_type_str,
     tsukuyomi::{
-        error::{internal_server_error, Error},
-        future::TryFuture,
-        handler::{AllowedMethods, Handler, ModifyHandler},
-        input::Input,
-        output::IntoResponse,
+        error::internal_server_error,
+        handler::{Handler, ModifyHandler},
     },
 };
 
+/// A function for deriving the implementation of `IntoResponse` to Askama templates.
+///
+/// # Example
+///
+/// ```
+/// use askama::Template;
+/// use tsukuyomi::IntoResponse;
+///
+/// #[derive(Template, IntoResponse)]
+/// #[template(source = "Hello, {{name}}!", ext = "html")]
+/// #[response(with = "tsukuyomi_askama::into_response")]
+/// struct Index {
+///     name: String,
+/// }
+/// # fn main() {}
+/// ```
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
 pub fn into_response<T>(t: T, _: &Request<()>) -> tsukuyomi::Result<Response<String>>
@@ -75,17 +59,9 @@ where
     Ok(response)
 }
 
-#[derive(Debug)]
-pub struct Rendered<T: Template>(T);
-
-impl<T: Template> IntoResponse for Rendered<T> {
-    type Body = String;
-    type Error = Error;
-
-    #[inline]
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response(self.0, request)
-    }
+/// Creates a `ModifyHandler` that renders the outputs of handlers as Askama template.
+pub fn renderer() -> Renderer {
+    Renderer::default()
 }
 
 #[derive(Debug, Default)]
@@ -96,52 +72,64 @@ where
     H: Handler,
     H::Output: Template,
 {
-    type Output = Rendered<H::Output>;
-    type Handler = RenderedHandler<H>;
+    type Output = Response<String>;
+    type Handler = self::renderer::RenderedHandler<H>; // private
 
     fn modify(&self, inner: H) -> Self::Handler {
-        RenderedHandler { inner }
+        self::renderer::RenderedHandler { inner }
     }
 }
 
-#[derive(Debug)]
-pub struct RenderedHandler<H> {
-    inner: H,
-}
+mod renderer {
+    use {
+        askama::Template,
+        http::Response,
+        tsukuyomi::{
+            error::Error,
+            future::{Poll, TryFuture},
+            handler::{AllowedMethods, Handler},
+            input::Input,
+        },
+    };
 
-#[allow(clippy::type_complexity)]
-impl<H> Handler for RenderedHandler<H>
-where
-    H: Handler,
-    H::Output: Template,
-{
-    type Output = Rendered<H::Output>;
-    type Error = H::Error;
-    type Handle = RenderedHandle<H::Handle>;
-
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        self.inner.allowed_methods()
+    #[allow(missing_debug_implementations)]
+    pub struct RenderedHandler<H> {
+        pub(super) inner: H,
     }
 
-    fn handle(&self) -> Self::Handle {
-        RenderedHandle(self.inner.handle())
+    impl<H> Handler for RenderedHandler<H>
+    where
+        H: Handler,
+        H::Output: Template,
+    {
+        type Output = Response<String>;
+        type Error = Error;
+        type Handle = RenderedHandle<H::Handle>;
+
+        fn allowed_methods(&self) -> Option<&AllowedMethods> {
+            self.inner.allowed_methods()
+        }
+
+        fn handle(&self) -> Self::Handle {
+            RenderedHandle(self.inner.handle())
+        }
     }
-}
 
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct RenderedHandle<H>(H);
+    #[allow(missing_debug_implementations)]
+    pub struct RenderedHandle<H>(H);
 
-impl<H> TryFuture for RenderedHandle<H>
-where
-    H: TryFuture,
-    H::Ok: Template,
-{
-    type Ok = Rendered<H::Ok>;
-    type Error = H::Error;
+    impl<H> TryFuture for RenderedHandle<H>
+    where
+        H: TryFuture,
+        H::Ok: Template,
+    {
+        type Ok = Response<String>;
+        type Error = Error;
 
-    #[inline]
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-        self.0.poll_ready(input).map(|x| x.map(Rendered))
+        #[inline]
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            let ctx = tsukuyomi::future::try_ready!(self.0.poll_ready(input).map_err(Into::into));
+            super::into_response(ctx, input.request).map(Into::into)
+        }
     }
 }

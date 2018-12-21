@@ -16,13 +16,10 @@ struct Index {
 }
 
 fn main() -> tsukuyomi_server::Result<()> {
-    App::create({
+    App::create(
         path!("/:name") //
-            .to({
-                endpoint::get() //
-                    .call(|name| Index { name })
-            })
-    })
+            .to(endpoint::call(|name| Index { name })),
+    )
     .map(Server::new)?
     .run()
 }

@@ -557,7 +557,7 @@ version = "0.0.0"
 dependencies = [
  "askama 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0",
- "tsukuyomi-askama 0.2.0-dev",
+ "tsukuyomi-askama 0.2.0",
  "tsukuyomi-server 0.2.0",
 ]
 
@@ -2072,10 +2072,9 @@ dependencies = [
 
 [[package]]
 name = "tsukuyomi-askama"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "askama 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "mime_guess 2.0.0-alpha.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0",
