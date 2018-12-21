@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Tsukuyomi WebSocket Example</title>
+    <link rel="stylesheet" href="/index.css" />
+</head>
+<body>
+    <h3>Connection</h3>
+    <div>
+        Status: <span id="status">disconnected</span>
+        <button id="connect">Connect</button>
+    </div>
+
+    <h3>Form</h3>
+    <form onsubmit="return false;">
+        <input id="text" type="text" />
+        <input id="send" type="button" value="Send" />
+    </form>
+
+    <h3>Log</h3>
+    <div id="log"></div>
+
+    <script type="text/javascript" src="/index.js"></script>
+</body>
+</html>

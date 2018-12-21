@@ -16,8 +16,8 @@ failure = "0.1.2"
 futures = "0.1"
 http = "0.1"
 sha-1 = "0.8"
-tokio-tungstenite = "0.6"
-tungstenite = "0.6"
+tokio-tungstenite = { version = "0.6", default-features = false }
+tungstenite = { version = "0.6", default-features = false }
 log = "0.4"
 
 [dev-dependencies]
