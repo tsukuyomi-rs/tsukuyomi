@@ -1,4 +1,4 @@
-#![cfg(feature = "redis-backend")]
+#![cfg(feature = "use-redis")]
 
 use {
     crate::{Backend, RawSession},
@@ -92,6 +92,7 @@ impl RedisBackendInner {
 
 impl Backend for RedisBackend {
     type Session = RedisSession;
+    type ReadError = Error;
     type ReadSession = ReadSession;
 
     fn read(&self) -> Self::ReadSession {
@@ -118,6 +119,7 @@ enum Inner {
 }
 
 impl RawSession for RedisSession {
+    type WriteError = Error;
     type WriteSession = WriteSession;
 
     fn get(&self, name: &str) -> Option<&str> {

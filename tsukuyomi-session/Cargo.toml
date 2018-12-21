@@ -1,6 +1,6 @@
 [package]
 name = "tsukuyomi-session"
-version = "0.2.0-dev"
+version = "0.2.0"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 description = """
@@ -28,4 +28,4 @@ tsukuyomi-server = { version = "0.2.0", path = "../tsukuyomi-server" }
 [features]
 default = ["secure"]
 secure = ["cookie/secure", "tsukuyomi/secure"]
-redis-backend = ["redis", "uuid"]
+use-redis = ["redis", "uuid"]

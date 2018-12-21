@@ -540,7 +540,19 @@ dependencies = [
  "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
  "tsukuyomi 0.5.0",
  "tsukuyomi-server 0.2.0",
- "tsukuyomi-session 0.2.0-dev",
+ "tsukuyomi-session 0.2.0",
+]
+
+[[package]]
+name = "example-session-redis"
+version = "0.0.0"
+dependencies = [
+ "either 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "redis 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.82 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tsukuyomi 0.5.0",
+ "tsukuyomi-server 0.2.0",
+ "tsukuyomi-session 0.2.0",
 ]
 
 [[package]]
@@ -2140,7 +2152,7 @@ dependencies = [
 
 [[package]]
 name = "tsukuyomi-session"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "cookie 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",

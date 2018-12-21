@@ -1,6 +1,6 @@
 //! Session support for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-session/0.2.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-session/0.2.0")]
 #![deny(
     missing_docs,
     missing_debug_implementations,
@@ -19,19 +19,50 @@ use {
     tsukuyomi::{
         error::Error, //
         extractor::Extractor,
-        future::{MaybeDone, Poll, TryFuture},
-        input::Input,
+        future::{MaybeDone, TryFuture},
         responder::Responder,
     },
 };
 
 /// A trait representing the session backend.
-#[allow(missing_docs)]
 pub trait Backend {
+    /// The type of session which will be crated by `ReadSession`.
     type Session: RawSession;
-    type ReadSession: TryFuture<Ok = Self::Session, Error = Error> + Send + 'static;
+    /// The type or errors which will occur when polling `ReadSession`.
+    type ReadError: Into<Error>;
+    /// The type of `TryFuture` that will return a `Session`.
+    type ReadSession: TryFuture<Ok = Self::Session, Error = Self::ReadError>;
 
+    /// Creates a `TryFuture` to create a `Session` asynchronously.
     fn read(&self) -> Self::ReadSession;
+}
+
+impl<B> Backend for Box<B>
+where
+    B: Backend,
+{
+    type Session = B::Session;
+    type ReadError = B::ReadError;
+    type ReadSession = B::ReadSession;
+
+    #[inline]
+    fn read(&self) -> Self::ReadSession {
+        (**self).read()
+    }
+}
+
+impl<B> Backend for std::rc::Rc<B>
+where
+    B: Backend,
+{
+    type Session = B::Session;
+    type ReadError = B::ReadError;
+    type ReadSession = B::ReadSession;
+
+    #[inline]
+    fn read(&self) -> Self::ReadSession {
+        (**self).read()
+    }
 }
 
 impl<B> Backend for std::sync::Arc<B>
@@ -39,23 +70,83 @@ where
     B: Backend,
 {
     type Session = B::Session;
+    type ReadError = B::ReadError;
     type ReadSession = B::ReadSession;
 
+    #[inline]
     fn read(&self) -> Self::ReadSession {
         (**self).read()
     }
 }
 
-#[allow(missing_docs)]
+/// A trait that abstracts the management of session data during request handling.
 pub trait RawSession {
-    type WriteSession: TryFuture<Ok = (), Error = Error> + Send + 'static;
+    /// The error type during writing modification to the backend.
+    type WriteError: Into<Error>;
+    /// A `TryFuture` to write the modification of session data.
+    type WriteSession: TryFuture<Ok = (), Error = Self::WriteError>;
 
+    /// Returns the value of session data with the specified key name, if exists.
     fn get(&self, name: &str) -> Option<&str>;
+
+    /// Appends a value to session data with the specified key name.
     fn set(&mut self, name: &str, value: String);
+
+    /// Removes the value with the specified key name from session data.
     fn remove(&mut self, name: &str);
+
+    /// Mark the session data as *cleared*.
     fn clear(&mut self);
 
+    /// Consumes itself and creates a `TryFuture` to write the modification of session data.
     fn write(self) -> Self::WriteSession;
+}
+
+/// Create an `Extractor` which returns a `Session`.
+pub fn session<B>(
+    backend: B,
+) -> impl Extractor<
+    Output = (Session<B::Session>,),
+    Error = B::ReadError,
+    Extract = self::impl_extractor::SessionExtract<B::ReadSession>, // private
+>
+where
+    B: Backend,
+{
+    tsukuyomi::extractor::extract(move || self::impl_extractor::SessionExtract {
+        read_session: backend.read(),
+    })
+}
+
+mod impl_extractor {
+    use {
+        super::{RawSession, Session},
+        tsukuyomi::{
+            future::{Poll, TryFuture},
+            input::Input,
+        },
+    };
+
+    #[allow(missing_debug_implementations)]
+    pub struct SessionExtract<Fut> {
+        pub(super) read_session: Fut,
+    }
+
+    impl<Fut> TryFuture for SessionExtract<Fut>
+    where
+        Fut: TryFuture,
+        Fut::Ok: RawSession,
+    {
+        type Ok = (Session<Fut::Ok>,);
+        type Error = Fut::Error;
+
+        #[inline]
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            self.read_session
+                .poll_ready(input)
+                .map(|x| x.map(|raw| (Session { raw },)))
+        }
+    }
 }
 
 /// An interface of session values.
@@ -114,78 +205,50 @@ where
     ) -> impl Responder<
         Response = T::Response,
         Error = Error,
-        Respond = impl TryFuture<Ok = T::Response, Error = Error> + Send + 'static,
+        Respond = self::impl_responder::SessionRespond<S::WriteSession, T::Respond>, // private
     >
     where
         T: Responder,
-        T::Respond: Send + 'static,
-        T::Response: Send + 'static,
     {
-        let mut write_session = MaybeDone::Pending(self.raw.write());
-        let mut respond = MaybeDone::Pending(output.respond());
+        tsukuyomi::responder::respond(self::impl_responder::SessionRespond {
+            write_session: MaybeDone::Pending(self.raw.write()),
+            respond: MaybeDone::Pending(output.respond()),
+        })
+    }
+}
 
-        tsukuyomi::responder::respond(tsukuyomi::future::poll_fn(move |input| {
-            futures::try_ready!(write_session.poll_ready(input));
-            futures::try_ready!(respond.poll_ready(input).map_err(Into::into));
-            write_session
+mod impl_responder {
+    use tsukuyomi::{
+        error::Error,
+        future::{try_ready, MaybeDone, Poll, TryFuture},
+        input::Input,
+    };
+
+    #[allow(missing_debug_implementations)]
+    pub struct SessionRespond<S: TryFuture, T: TryFuture> {
+        pub(super) write_session: MaybeDone<S>,
+        pub(super) respond: MaybeDone<T>,
+    }
+
+    impl<S, T> TryFuture for SessionRespond<S, T>
+    where
+        S: TryFuture<Ok = ()>,
+        T: TryFuture,
+    {
+        type Ok = T::Ok;
+        type Error = Error;
+
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            try_ready!(self.write_session.poll_ready(input).map_err(Into::into));
+            try_ready!(self.respond.poll_ready(input).map_err(Into::into));
+            self.write_session
                 .take_item()
                 .expect("the future has already been polled.");
-            let output = respond
+            let output = self
+                .respond
                 .take_item()
                 .expect("the future has already been polled.");
             Ok(output.into())
-        }))
-    }
-}
-
-/// Create an `Extractor` which returns a `Session`.
-pub fn session<B>(backend: B) -> SessionExtractor<B>
-where
-    B: Backend,
-{
-    SessionExtractor { backend }
-}
-
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct SessionExtractor<B> {
-    backend: B,
-}
-
-#[allow(clippy::type_complexity)]
-impl<B> Extractor for SessionExtractor<B>
-where
-    B: Backend,
-{
-    type Output = (Session<B::Session>,);
-    type Error = Error;
-    type Extract = SessionExtract<B::ReadSession>;
-
-    fn extract(&self) -> Self::Extract {
-        SessionExtract {
-            read_session: self.backend.read(),
         }
-    }
-}
-
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-pub struct SessionExtract<Fut> {
-    read_session: Fut,
-}
-
-impl<Fut> TryFuture for SessionExtract<Fut>
-where
-    Fut: TryFuture,
-    Fut::Ok: RawSession,
-{
-    type Ok = (Session<Fut::Ok>,);
-    type Error = Fut::Error;
-
-    #[inline]
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-        self.read_session
-            .poll_ready(input)
-            .map(|x| x.map(|raw| (Session { raw },)))
     }
 }

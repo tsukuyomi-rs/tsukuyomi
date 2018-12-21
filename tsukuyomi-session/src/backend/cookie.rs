@@ -175,6 +175,7 @@ impl CookieBackendInner {
 
 impl Backend for CookieBackend {
     type Session = CookieSession;
+    type ReadError = Error;
     type ReadSession = ReadSession;
 
     fn read(&self) -> Self::ReadSession {
@@ -215,6 +216,7 @@ enum Inner {
 
 impl RawSession for CookieSession {
     type WriteSession = WriteSession;
+    type WriteError = Error;
 
     fn get(&self, name: &str) -> Option<&str> {
         match self.inner {

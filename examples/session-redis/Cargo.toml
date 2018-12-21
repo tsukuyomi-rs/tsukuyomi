@@ -1,18 +1,19 @@
 [package]
-name = "example-session"
+name = "example-session-redis"
 version = "0.0.0"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 publish = false
 
 [[bin]]
-name = "example_session"
+name = "example_session_redis"
 path = "src/main.rs"
 doc = false
 
 [dependencies]
 tsukuyomi = "0.5.0"
 tsukuyomi-server = "0.2.0"
-tsukuyomi-session = "0.2.0"
+tsukuyomi-session = { version = "0.2.0", features = ["use-redis"] }
 either = "1"
 serde = { version = "1", features = ["derive"] }
+redis = "0.9"

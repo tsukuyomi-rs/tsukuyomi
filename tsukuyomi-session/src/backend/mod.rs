@@ -4,5 +4,5 @@ mod cookie;
 mod redis;
 
 pub use self::cookie::CookieBackend;
-#[cfg(feature = "redis-backend")]
+#[cfg(feature = "use-redis")]
 pub use self::redis::RedisBackend;

@@ -49,6 +49,7 @@ members = [
   "examples/routing",
   "examples/rustls",
   "examples/session",
+  "examples/session-redis",
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
@@ -64,5 +65,5 @@ tsukuyomi-service = { version = "0.1.0", path = "tsukuyomi-service" }
 tsukuyomi-askama = { version = "0.2.0", path = "tsukuyomi-askama" }
 tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
 tsukuyomi-juniper = { version = "0.3.0-dev", path = "tsukuyomi-juniper" }
-tsukuyomi-session = { version = "0.2.0-dev", path = "tsukuyomi-session" }
+tsukuyomi-session = { version = "0.2.0", path = "tsukuyomi-session" }
 tsukuyomi-tungstenite = { version = "0.2.0-dev", path = "tsukuyomi-tungstenite" }
