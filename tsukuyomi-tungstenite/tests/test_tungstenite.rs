@@ -20,7 +20,7 @@ use {
         App,
     },
     tsukuyomi_server::test::ResponseExt,
-    tsukuyomi_tungstenite::{ws, Ws},
+    tsukuyomi_tungstenite::Ws,
 };
 
 #[test]
@@ -32,9 +32,7 @@ fn test_version_sync() {
 fn test_handshake() -> tsukuyomi_server::Result<()> {
     let app = App::create(
         path!("/ws") //
-            .to(endpoint::get()
-                .extract(ws())
-                .call(|ws: Ws| ws.finish(|_| Ok(())))),
+            .to(endpoint::get().reply(Ws::new(|_| Ok(())))),
     )?;
     let mut server = tsukuyomi_server::test::server(app)?;
 
