@@ -1,6 +1,6 @@
 //! The basic WebSocket support for Tsukuyomi, powered by tungstenite.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.2.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.2.0")]
 #![deny(
     missing_docs,
     missing_debug_implementations,
@@ -45,7 +45,7 @@ where
         }
     }
 
-    /// Sets the protocol level configuration of WebSocket.
+    /// Sets the configuration of upgraded WebSocket connection.
     pub fn config(self, config: WebSocketConfig) -> Self {
         Self {
             config: Some(config),
