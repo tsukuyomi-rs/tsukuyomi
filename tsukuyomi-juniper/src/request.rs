@@ -2,8 +2,9 @@ use {
     crate::{error::GraphQLParseError, Schema},
     futures::Future,
     http::{Method, Response, StatusCode},
-    juniper::InputValue,
+    juniper::{DefaultScalarValue, InputValue, ScalarRefValue, ScalarValue},
     percent_encoding::percent_decode,
+    serde::Deserialize,
     tsukuyomi::{
         error::Error,
         extractor::Extractor,
@@ -18,11 +19,15 @@ use {
 };
 
 /// Create an `Extractor` that parses the incoming request as GraphQL query.
-pub fn request() -> impl Extractor<
-    Output = (GraphQLRequest,), //
+pub fn request<S>() -> impl Extractor<
+    Output = (GraphQLRequest<S>,), //
     Error = Error,
-    Extract = impl TryFuture<Ok = (GraphQLRequest,), Error = Error> + Send + 'static,
-> {
+    Extract = impl TryFuture<Ok = (GraphQLRequest<S>,), Error = Error> + Send + 'static,
+>
+where
+    S: ScalarValue + Send + 'static,
+    for<'a> &'a S: ScalarRefValue<'a>,
+{
     #[allow(missing_debug_implementations)]
     #[derive(Copy, Clone)]
     enum RequestKind {
@@ -89,7 +94,11 @@ pub fn request() -> impl Extractor<
     })
 }
 
-fn parse_query_request(input: &mut Input<'_>) -> tsukuyomi::Result<GraphQLRequest> {
+fn parse_query_request<S>(input: &mut Input<'_>) -> tsukuyomi::Result<GraphQLRequest<S>>
+where
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
+{
     let query_str = input
         .request
         .uri()
@@ -98,7 +107,11 @@ fn parse_query_request(input: &mut Input<'_>) -> tsukuyomi::Result<GraphQLReques
     parse_query_str(query_str).map_err(Into::into)
 }
 
-fn parse_query_str(s: &str) -> Result<GraphQLRequest, GraphQLParseError> {
+fn parse_query_str<S>(s: &str) -> Result<GraphQLRequest<S>, GraphQLParseError>
+where
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
+{
     #[derive(Debug, serde::Deserialize)]
     struct ParsedQuery {
         query: String,
@@ -138,20 +151,25 @@ fn parse_query_str(s: &str) -> Result<GraphQLRequest, GraphQLParseError> {
 
 /// The type representing a GraphQL request from the client.
 #[derive(Debug, serde::Deserialize)]
-pub struct GraphQLRequest(GraphQLRequestKind);
+#[serde(bound = "InputValue<S>: Deserialize<'de>")]
+pub struct GraphQLRequest<S: ScalarValue = DefaultScalarValue>(GraphQLRequestKind<S>);
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(untagged)]
-enum GraphQLRequestKind {
-    Single(juniper::http::GraphQLRequest),
-    Batch(Vec<juniper::http::GraphQLRequest>),
+#[derive(Debug, Deserialize)]
+#[serde(untagged, bound = "InputValue<S>: Deserialize<'de>")]
+enum GraphQLRequestKind<S: ScalarValue> {
+    Single(juniper::http::GraphQLRequest<S>),
+    Batch(Vec<juniper::http::GraphQLRequest<S>>),
 }
 
-impl GraphQLRequest {
+impl<S> GraphQLRequest<S>
+where
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
+{
     fn single(
         query: String,
         operation_name: Option<String>,
-        variables: Option<InputValue>,
+        variables: Option<InputValue<S>>,
     ) -> Self {
         GraphQLRequest(GraphQLRequestKind::Single(
             juniper::http::GraphQLRequest::new(query, operation_name, variables),
@@ -159,10 +177,11 @@ impl GraphQLRequest {
     }
 
     /// Creates a `Responder` that executes this request using the specified schema and context.
-    pub fn execute<S, CtxT>(self, schema: S, context: CtxT) -> GraphQLResponse<S, CtxT>
+    pub fn execute<T, CtxT>(self, schema: T, context: CtxT) -> GraphQLResponse<T, CtxT, S>
     where
-        S: Schema + Send + 'static,
-        CtxT: AsRef<S::Context> + Send + 'static,
+        T: Schema<S> + Send + 'static,
+        CtxT: AsRef<T::Context> + Send + 'static,
+        S: Send + 'static,
     {
         GraphQLResponse {
             request: self,
@@ -174,16 +193,18 @@ impl GraphQLRequest {
 
 /// The type representing the result from the executing a GraphQL request.
 #[derive(Debug)]
-pub struct GraphQLResponse<S, CtxT> {
-    request: GraphQLRequest,
-    schema: S,
+pub struct GraphQLResponse<T, CtxT, S: ScalarValue = DefaultScalarValue> {
+    request: GraphQLRequest<S>,
+    schema: T,
     context: CtxT,
 }
 
-impl<S, CtxT> Responder for GraphQLResponse<S, CtxT>
+impl<T, CtxT, S> Responder for GraphQLResponse<T, CtxT, S>
 where
-    S: Schema + Send + 'static,
-    CtxT: AsRef<S::Context> + Send + 'static,
+    T: Schema<S> + Send + 'static,
+    CtxT: AsRef<T::Context> + Send + 'static,
+    S: ScalarValue + Send + 'static,
+    for<'a> &'a S: ScalarRefValue<'a>,
 {
     type Response = Response<Vec<u8>>;
     type Error = Error;

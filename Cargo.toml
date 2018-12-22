@@ -13,7 +13,6 @@ tsukuyomi-server = { version = "0.2", path = "tsukuyomi-server" }
 
 # for documentation
 failure = "0.1.3"
-juniper = "0.10"
 tokio-rustls = "0.8"
 tokio-tungstenite = { version = "0.6", default-features = false }
 tungstenite = { version = "0.6", default-features = false }

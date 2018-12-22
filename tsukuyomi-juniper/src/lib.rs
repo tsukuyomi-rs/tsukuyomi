@@ -22,26 +22,32 @@ pub use crate::{
 };
 
 use {
-    juniper::{GraphQLType, RootNode},
+    juniper::{DefaultScalarValue, GraphQLType, RootNode, ScalarRefValue, ScalarValue},
     std::sync::Arc,
 };
 
 /// A marker trait representing a root node of GraphQL schema.
 #[allow(missing_docs)]
-pub trait Schema {
-    type Query: GraphQLType<Context = Self::Context, TypeInfo = Self::QueryInfo>;
+pub trait Schema<S = DefaultScalarValue>
+where
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
+{
+    type Query: GraphQLType<S, Context = Self::Context, TypeInfo = Self::QueryInfo>;
     type QueryInfo;
-    type Mutation: GraphQLType<Context = Self::Context, TypeInfo = Self::MutationInfo>;
+    type Mutation: GraphQLType<S, Context = Self::Context, TypeInfo = Self::MutationInfo>;
     type MutationInfo;
     type Context;
 
-    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation>;
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation, S>;
 }
 
-impl<QueryT, MutationT, CtxT> Schema for RootNode<'static, QueryT, MutationT>
+impl<QueryT, MutationT, CtxT, S> Schema<S> for RootNode<'static, QueryT, MutationT, S>
 where
-    QueryT: GraphQLType<Context = CtxT>,
-    MutationT: GraphQLType<Context = CtxT>,
+    QueryT: GraphQLType<S, Context = CtxT>,
+    MutationT: GraphQLType<S, Context = CtxT>,
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
 {
     type Query = QueryT;
     type QueryInfo = QueryT::TypeInfo;
@@ -50,39 +56,43 @@ where
     type Context = CtxT;
 
     #[inline]
-    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation> {
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation, S> {
         self
     }
 }
 
-impl<S> Schema for Box<S>
+impl<T, S> Schema<S> for Box<T>
 where
-    S: Schema,
+    T: Schema<S>,
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
 {
-    type Query = S::Query;
-    type QueryInfo = S::QueryInfo;
-    type Mutation = S::Mutation;
-    type MutationInfo = S::MutationInfo;
-    type Context = S::Context;
+    type Query = T::Query;
+    type QueryInfo = T::QueryInfo;
+    type Mutation = T::Mutation;
+    type MutationInfo = T::MutationInfo;
+    type Context = T::Context;
 
     #[inline]
-    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation> {
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation, S> {
         (**self).as_root_node()
     }
 }
 
-impl<S> Schema for Arc<S>
+impl<T, S> Schema<S> for Arc<T>
 where
-    S: Schema,
+    T: Schema<S>,
+    S: ScalarValue,
+    for<'a> &'a S: ScalarRefValue<'a>,
 {
-    type Query = S::Query;
-    type QueryInfo = S::QueryInfo;
-    type Mutation = S::Mutation;
-    type MutationInfo = S::MutationInfo;
-    type Context = S::Context;
+    type Query = T::Query;
+    type QueryInfo = T::QueryInfo;
+    type Mutation = T::Mutation;
+    type MutationInfo = T::MutationInfo;
+    type Context = T::Context;
 
     #[inline]
-    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation> {
+    fn as_root_node(&self) -> &RootNode<'static, Self::Query, Self::Mutation, S> {
         (**self).as_root_node()
     }
 }
