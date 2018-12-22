@@ -1,10 +1,9 @@
 use {
-    either::Either,
     std::sync::Arc,
     tsukuyomi::{
         config::prelude::*, //
         extractor,
-        output::{html, redirect},
+        output::{html, redirect, IntoResponse},
         App,
     },
     tsukuyomi_server::Server,
@@ -14,6 +13,12 @@ use {
         Session,
     },
 };
+
+#[derive(IntoResponse)]
+enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
 
 fn main() -> tsukuyomi_server::Result<()> {
     let backend = CookieBackend::plain();

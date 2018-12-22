@@ -24,63 +24,109 @@ where
     ParseError::new(pos.span(), message)
 }
 
-fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
-    let mut meta = None;
-    for attr in attrs {
-        let m = attr.parse_meta()?;
-        if m.name() == "response" {
-            meta = Some(m);
-        }
+fn parse_with(lit: &syn::Lit) -> ParseResult<syn::Path> {
+    match lit {
+        syn::Lit::Str(ref lit) => lit.parse(),
+        _ => Err(parse_error_at(lit, "the literal must be string")),
     }
+}
 
-    let meta_list = match meta {
-        Some(syn::Meta::List(inner)) => inner,
-        Some(..) => return Err(parse_error("attribute 'response' has incorrect type")),
-        None => return Ok(None),
-    };
+fn parse_bound(lit: &syn::Lit) -> ParseResult<syn::WherePredicate> {
+    match lit {
+        syn::Lit::Str(ref lit) => lit.parse(),
+        _ => Err(parse_error_at(lit, "the literal must be string")),
+    }
+}
 
-    let mut into_response = None;
-    for nm_item in meta_list.nested {
-        if let syn::NestedMeta::Meta(ref item) = nm_item {
-            if let syn::Meta::NameValue(ref pair) = item {
+pub fn parse(input: DeriveInput) -> ParseResult<IntoResponseInput> {
+    let mut with = None;
+    let mut bounds: Option<Vec<syn::WherePredicate>> = None;
+
+    for attr in &input.attrs {
+        let m = attr.parse_meta()?;
+        if m.name() != "response" {
+            continue;
+        }
+
+        let meta_list = match m {
+            syn::Meta::List(inner) => inner,
+            m => {
+                return Err(parse_error_at(
+                    &m,
+                    "the attribute 'response' has incorrect type",
+                ))
+            }
+        };
+        for nm_item in meta_list.nested {
+            if let syn::NestedMeta::Meta(syn::Meta::NameValue(ref pair)) = nm_item {
                 match pair.ident.to_string().as_ref() {
-                    "with" => {
-                        if let syn::Lit::Str(ref lit) = pair.lit {
-                            into_response = lit.parse().map(Some).unwrap();
-                        } else {
-                            return Err(parse_error_at(&pair.lit, "the literal must be string"));
-                        }
+                    "with" => with = parse_with(&pair.lit).map(Some)?,
+                    "bound" => {
+                        let bound = parse_bound(&pair.lit)?;
+                        bounds.get_or_insert_with(Default::default).push(bound);
                     }
-                    _ => return Err(parse_error_at(&pair.ident, "unsupported field")),
+                    s => {
+                        return Err(parse_error_at(
+                            &pair.ident,
+                            format!("unsupported field: '{}'", s),
+                        ))
+                    }
                 }
             }
         }
     }
 
-    Ok(into_response)
-}
-
-pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
-    let into_response = collect_attrs(&input.attrs)?;
-    Ok(ResponderInput {
-        into_response,
+    Ok(IntoResponseInput {
         input,
+        into_response: with,
+        bounds,
     })
 }
 
 #[derive(Debug)]
-pub struct ResponderInput {
-    into_response: Option<syn::Path>,
+pub struct IntoResponseInput {
     input: DeriveInput,
+    into_response: Option<syn::Path>,
+    bounds: Option<Vec<syn::WherePredicate>>,
 }
 
-impl ResponderInput {
+impl IntoResponseInput {
     fn derive_explicit(&self, into_response: &syn::Path) -> TokenStream {
         quote!(
             #into_response(self, request)
                 .map(|response| response.map(Into::into))
                 .map_err(Into::into)
         )
+    }
+
+    #[allow(nonstandard_style)]
+    fn generate_impl_generics_with_bounds(
+        &self,
+        IntoResponse: &TokenStream,
+    ) -> (
+        syn::ImplGenerics<'_>, //
+        syn::TypeGenerics<'_>,
+        Option<syn::WhereClause>,
+    ) {
+        let (impl_generics, type_generics, where_clause) = self.input.generics.split_for_impl();
+
+        let mut where_clause = where_clause.cloned();
+
+        for type_param in self.input.generics.type_params() {
+            let ty_ident = &type_param.ident;
+
+            where_clause
+                .get_or_insert_with(|| syn::WhereClause {
+                    where_token: Default::default(),
+                    predicates: Default::default(),
+                })
+                .predicates
+                .push(syn::parse_quote!(
+                    #ty_ident: #IntoResponse
+                ));
+        }
+
+        (impl_generics, type_generics, where_clause)
     }
 
     #[allow(nonstandard_style)]
@@ -152,15 +198,6 @@ impl ResponderInput {
 
     #[allow(nonstandard_style)]
     pub fn derive(&self) -> ParseResult<TokenStream> {
-        let derived = match (&self.into_response, &self.input.data) {
-            (Some(into_response), _) => self.derive_explicit(into_response),
-            (None, syn::Data::Struct(ref data)) => self.derive_struct(data)?,
-            (None, syn::Data::Enum(ref data)) => self.derive_enum(data)?,
-            (None, syn::Data::Union(..)) => {
-                return Err(parse_error("tagged union is not supported."));
-            }
-        };
-
         let Self_ = &self.input.ident;
         let IntoResponse = quote!(tsukuyomi::output::internal::IntoResponse);
         let ResponseBody = quote!(tsukuyomi::output::internal::ResponseBody);
@@ -168,14 +205,53 @@ impl ResponderInput {
         let Request = quote!(tsukuyomi::output::internal::Request);
         let Response = quote!(tsukuyomi::output::internal::Response);
 
+        let (body, impl_generics, ty_generics, mut where_clause) =
+            match (&self.into_response, &self.input.data) {
+                (Some(into_response), _) => {
+                    let body = self.derive_explicit(into_response);
+                    let (impl_generics, ty_generics, where_clause) =
+                        self.input.generics.split_for_impl();
+                    (body, impl_generics, ty_generics, where_clause.cloned())
+                }
+                (None, syn::Data::Struct(ref data)) => {
+                    let body = self.derive_struct(data)?;
+                    debug_assert!(
+                        self.input.generics.type_params().count() <= 1,
+                        "the type parameter must be at most one."
+                    );
+                    let (impl_generics, ty_generics, where_clause) =
+                        self.generate_impl_generics_with_bounds(&IntoResponse);
+                    (body, impl_generics, ty_generics, where_clause)
+                }
+                (None, syn::Data::Enum(ref data)) => {
+                    let body = self.derive_enum(data)?;
+                    let (impl_generics, ty_generics, where_clause) =
+                        self.generate_impl_generics_with_bounds(&IntoResponse);
+                    (body, impl_generics, ty_generics, where_clause)
+                }
+                (None, syn::Data::Union(..)) => {
+                    return Err(parse_error("tagged union is not supported."));
+                }
+            };
+
+        if let Some(ref bounds) = self.bounds {
+            where_clause
+                .get_or_insert_with(|| syn::WhereClause {
+                    where_token: Default::default(),
+                    predicates: Default::default(),
+                })
+                .predicates
+                .extend(bounds.into_iter().cloned());
+        }
+
         Ok(quote!(
-            impl #IntoResponse for #Self_ {
+            impl #impl_generics #IntoResponse for #Self_ #ty_generics #where_clause {
                 type Body = #ResponseBody;
                 type Error = #Error;
 
                 #[inline]
                 fn into_response(self, request: &#Request<()>) -> Result<#Response<Self::Body>, Self::Error> {
-                    #derived
+                    #body
                 }
             }
         ))
