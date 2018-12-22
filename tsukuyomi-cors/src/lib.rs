@@ -1,6 +1,6 @@
 //! CORS support for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-cors/0.2.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-cors/0.2.0")]
 #![deny(
     missing_docs,
     missing_debug_implementations,
@@ -340,8 +340,7 @@ mod impl_modify_handler_for_cors {
         #[inline]
         fn handle(&self) -> Self::Handle {
             CORSHandle {
-                applied: false,
-                cors: self.cors.clone(),
+                cors: Some(self.cors.clone()),
                 handle: self.handler.handle(),
             }
         }
@@ -349,8 +348,7 @@ mod impl_modify_handler_for_cors {
 
     #[derive(Debug)]
     pub struct CORSHandle<H: TryFuture> {
-        applied: bool,
-        cors: CORS,
+        cors: Option<CORS>,
         handle: H,
     }
 
@@ -359,9 +357,8 @@ mod impl_modify_handler_for_cors {
         type Error = Error;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            if !self.applied {
-                self.applied = true;
-                if let Some(output) = self.cors.inner.process_request(input)? {
+            if let Some(cors) = self.cors.take() {
+                if let Some(output) = cors.inner.process_request(input)? {
                     return Ok(Async::Ready(Either::Left(output)));
                 }
             }

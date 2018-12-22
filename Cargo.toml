@@ -62,7 +62,7 @@ tsukuyomi-macros = { version = "0.5.0", path = "tsukuyomi/macros" }
 tsukuyomi-server = { version = "0.2.0", path = "tsukuyomi-server" }
 tsukuyomi-service = { version = "0.1.0", path = "tsukuyomi-service" }
 tsukuyomi-askama = { version = "0.2.0", path = "tsukuyomi-askama" }
-tsukuyomi-cors = { version = "0.2.0-dev", path = "tsukuyomi-cors" }
+tsukuyomi-cors = { version = "0.2.0", path = "tsukuyomi-cors" }
 tsukuyomi-juniper = { version = "0.3.0", path = "tsukuyomi-juniper" }
 tsukuyomi-session = { version = "0.2.0", path = "tsukuyomi-session" }
 tsukuyomi-tungstenite = { version = "0.2.0", path = "tsukuyomi-tungstenite" }
