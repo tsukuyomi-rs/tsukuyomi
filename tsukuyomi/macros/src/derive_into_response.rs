@@ -24,46 +24,48 @@ where
     ParseError::new(pos.span(), message)
 }
 
-fn collect_attrs(attrs: &[syn::Attribute]) -> ParseResult<Option<syn::Path>> {
-    let mut meta = None;
-    for attr in attrs {
-        let m = attr.parse_meta()?;
-        if m.name() == "response" {
-            meta = Some(m);
-        }
+fn parse_with(lit: &syn::Lit) -> ParseResult<syn::Path> {
+    match lit {
+        syn::Lit::Str(ref lit) => lit.parse(),
+        _ => Err(parse_error_at(lit, "the literal must be string")),
     }
+}
 
-    let meta_list = match meta {
-        Some(syn::Meta::List(inner)) => inner,
-        Some(..) => return Err(parse_error("attribute 'response' has incorrect type")),
-        None => return Ok(None),
-    };
+pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
+    let mut with = None;
 
-    let mut into_response = None;
-    for nm_item in meta_list.nested {
-        if let syn::NestedMeta::Meta(ref item) = nm_item {
-            if let syn::Meta::NameValue(ref pair) = item {
+    for attr in &input.attrs {
+        let m = attr.parse_meta()?;
+        if m.name() != "response" {
+            continue;
+        }
+
+        let meta_list = match m {
+            syn::Meta::List(inner) => inner,
+            m => {
+                return Err(parse_error_at(
+                    &m,
+                    "the attribute 'response' has incorrect type",
+                ))
+            }
+        };
+        for nm_item in meta_list.nested {
+            if let syn::NestedMeta::Meta(syn::Meta::NameValue(ref pair)) = nm_item {
                 match pair.ident.to_string().as_ref() {
-                    "with" => {
-                        if let syn::Lit::Str(ref lit) = pair.lit {
-                            into_response = lit.parse().map(Some).unwrap();
-                        } else {
-                            return Err(parse_error_at(&pair.lit, "the literal must be string"));
-                        }
+                    "with" => with = parse_with(&pair.lit).map(Some)?,
+                    s => {
+                        return Err(parse_error_at(
+                            &pair.ident,
+                            format!("unsupported field: '{}'", s),
+                        ))
                     }
-                    _ => return Err(parse_error_at(&pair.ident, "unsupported field")),
                 }
             }
         }
     }
 
-    Ok(into_response)
-}
-
-pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
-    let into_response = collect_attrs(&input.attrs)?;
     Ok(ResponderInput {
-        into_response,
+        into_response: with,
         input,
     })
 }
