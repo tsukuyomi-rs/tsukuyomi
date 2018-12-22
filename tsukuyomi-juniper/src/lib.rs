@@ -1,6 +1,6 @@
 //! Components for integrating GraphQL endpoints into Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.3.0-dev")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.3.0")]
 #![deny(
     missing_docs,
     missing_debug_implementations,
@@ -16,7 +16,7 @@ mod graphiql;
 mod request;
 
 pub use crate::{
-    error::GraphQLModifier,
+    error::capture_errors,
     graphiql::graphiql_source,
     request::{request, GraphQLRequest, GraphQLResponse},
 };

@@ -7,7 +7,7 @@ use {
     crate::context::{Context, Database},
     std::sync::{Arc, RwLock},
     tsukuyomi::{config::prelude::*, App},
-    tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
+    tsukuyomi_juniper::{capture_errors, GraphQLRequest},
     tsukuyomi_server::Server,
 };
 
@@ -39,7 +39,7 @@ fn main() -> tsukuyomi_server::Result<()> {
                     // creates a `Responder` that executes a GraphQL request with the specified schema and context.
                     request.execute(schema.clone(), context)
                 }))
-            .modify(GraphQLModifier::default()) // <-- modifies all errors thrown from this route into GraphQL error.
+            .modify(capture_errors()) // <-- modifies all errors that this route throws into GraphQL errors.
     ])?;
 
     Server::new(app).run()

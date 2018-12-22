@@ -13,6 +13,5 @@ doc = false
 [dependencies]
 tsukuyomi = "0.5.0"
 tsukuyomi-server = "0.2.0"
-tsukuyomi-juniper = "0.3.0-dev"
-juniper = "0.10"
-futures = "0.1"
+tsukuyomi-juniper = "0.3.0"
+juniper = "0.11.1"

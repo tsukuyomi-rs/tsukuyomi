@@ -4,7 +4,7 @@ use {
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{config::prelude::*, App},
-    tsukuyomi_juniper::{GraphQLModifier, GraphQLRequest},
+    tsukuyomi_juniper::GraphQLRequest,
     tsukuyomi_server::test::{Output as TestOutput, Server as TestServer},
 };
 
@@ -31,7 +31,7 @@ fn integration_test() -> tsukuyomi_server::Result<()> {
                     let database = database.clone();
                     request.execute(schema, database)
                 }))
-            .modify(GraphQLModifier::default())
+            .modify(tsukuyomi_juniper::capture_errors())
     })?;
 
     let test_server = tsukuyomi_server::test::server(app)?;
