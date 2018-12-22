@@ -84,6 +84,36 @@ impl ResponderInput {
     }
 
     #[allow(nonstandard_style)]
+    fn generate_impl_generics_with_bounds(
+        &self,
+        IntoResponse: &TokenStream,
+    ) -> (
+        syn::ImplGenerics<'_>, //
+        syn::TypeGenerics<'_>,
+        Option<syn::WhereClause>,
+    ) {
+        let (impl_generics, type_generics, where_clause) = self.input.generics.split_for_impl();
+
+        let mut where_clause = where_clause.cloned();
+
+        for type_param in self.input.generics.type_params() {
+            let ty_ident = &type_param.ident;
+
+            where_clause
+                .get_or_insert_with(|| syn::WhereClause {
+                    where_token: Default::default(),
+                    predicates: Default::default(),
+                })
+                .predicates
+                .push(syn::parse_quote!(
+                    #ty_ident: #IntoResponse
+                ));
+        }
+
+        (impl_generics, type_generics, where_clause)
+    }
+
+    #[allow(nonstandard_style)]
     fn derive_struct(&self, data: &syn::DataStruct) -> ParseResult<TokenStream> {
         let Self_ = &self.input.ident;
         let into_response = quote!(tsukuyomi::output::internal::into_response);
@@ -152,15 +182,6 @@ impl ResponderInput {
 
     #[allow(nonstandard_style)]
     pub fn derive(&self) -> ParseResult<TokenStream> {
-        let derived = match (&self.into_response, &self.input.data) {
-            (Some(into_response), _) => self.derive_explicit(into_response),
-            (None, syn::Data::Struct(ref data)) => self.derive_struct(data)?,
-            (None, syn::Data::Enum(ref data)) => self.derive_enum(data)?,
-            (None, syn::Data::Union(..)) => {
-                return Err(parse_error("tagged union is not supported."));
-            }
-        };
-
         let Self_ = &self.input.ident;
         let IntoResponse = quote!(tsukuyomi::output::internal::IntoResponse);
         let ResponseBody = quote!(tsukuyomi::output::internal::ResponseBody);
@@ -168,14 +189,43 @@ impl ResponderInput {
         let Request = quote!(tsukuyomi::output::internal::Request);
         let Response = quote!(tsukuyomi::output::internal::Response);
 
+        let (body, impl_generics, ty_generics, where_clause) =
+            match (&self.into_response, &self.input.data) {
+                (Some(into_response), _) => {
+                    let body = self.derive_explicit(into_response);
+                    let (impl_generics, ty_generics, where_clause) =
+                        self.input.generics.split_for_impl();
+                    (body, impl_generics, ty_generics, where_clause.cloned())
+                }
+                (None, syn::Data::Struct(ref data)) => {
+                    let body = self.derive_struct(data)?;
+                    debug_assert!(
+                        self.input.generics.type_params().count() <= 1,
+                        "the type parameter must be at most one."
+                    );
+                    let (impl_generics, ty_generics, where_clause) =
+                        self.generate_impl_generics_with_bounds(&IntoResponse);
+                    (body, impl_generics, ty_generics, where_clause)
+                }
+                (None, syn::Data::Enum(ref data)) => {
+                    let body = self.derive_enum(data)?;
+                    let (impl_generics, ty_generics, where_clause) =
+                        self.generate_impl_generics_with_bounds(&IntoResponse);
+                    (body, impl_generics, ty_generics, where_clause)
+                }
+                (None, syn::Data::Union(..)) => {
+                    return Err(parse_error("tagged union is not supported."));
+                }
+            };
+
         Ok(quote!(
-            impl #IntoResponse for #Self_ {
+            impl #impl_generics #IntoResponse for #Self_ #ty_generics #where_clause {
                 type Body = #ResponseBody;
                 type Error = #Error;
 
                 #[inline]
                 fn into_response(self, request: &#Request<()>) -> Result<#Response<Self::Body>, Self::Error> {
-                    #derived
+                    #body
                 }
             }
         ))

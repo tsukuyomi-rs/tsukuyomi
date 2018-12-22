@@ -27,9 +27,13 @@ mod responder {
             inner: String,
         }
 
+        #[derive(IntoResponse)]
+        struct Generic<T>(T);
+
         assert_impl_into_response::<Unit>();
         assert_impl_into_response::<NewType>();
         assert_impl_into_response::<SingleField>();
+        assert_impl_into_response::<Generic<Unit>>();
     }
 
     #[test]
@@ -63,11 +67,18 @@ mod responder {
             Named { field: String },
         }
 
+        #[derive(IntoResponse)]
+        enum Either<L, R> {
+            Left(L),
+            Right(R),
+        }
+
         assert_impl_into_response::<Never>();
         assert_impl_into_response::<Unit>();
         assert_impl_into_response::<Unnamed>();
         assert_impl_into_response::<Named>();
         assert_impl_into_response::<Complex>();
+        assert_impl_into_response::<Either<Never, Never>>();
     }
 
     mod sub {
