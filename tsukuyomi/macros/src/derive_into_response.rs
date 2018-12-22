@@ -31,8 +31,16 @@ fn parse_with(lit: &syn::Lit) -> ParseResult<syn::Path> {
     }
 }
 
-pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
+fn parse_bound(lit: &syn::Lit) -> ParseResult<syn::WherePredicate> {
+    match lit {
+        syn::Lit::Str(ref lit) => lit.parse(),
+        _ => Err(parse_error_at(lit, "the literal must be string")),
+    }
+}
+
+pub fn parse(input: DeriveInput) -> ParseResult<IntoResponseInput> {
     let mut with = None;
+    let mut bounds: Option<Vec<syn::WherePredicate>> = None;
 
     for attr in &input.attrs {
         let m = attr.parse_meta()?;
@@ -53,6 +61,10 @@ pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
             if let syn::NestedMeta::Meta(syn::Meta::NameValue(ref pair)) = nm_item {
                 match pair.ident.to_string().as_ref() {
                     "with" => with = parse_with(&pair.lit).map(Some)?,
+                    "bound" => {
+                        let bound = parse_bound(&pair.lit)?;
+                        bounds.get_or_insert_with(Default::default).push(bound);
+                    }
                     s => {
                         return Err(parse_error_at(
                             &pair.ident,
@@ -64,19 +76,21 @@ pub fn parse(input: DeriveInput) -> ParseResult<ResponderInput> {
         }
     }
 
-    Ok(ResponderInput {
-        into_response: with,
+    Ok(IntoResponseInput {
         input,
+        into_response: with,
+        bounds,
     })
 }
 
 #[derive(Debug)]
-pub struct ResponderInput {
-    into_response: Option<syn::Path>,
+pub struct IntoResponseInput {
     input: DeriveInput,
+    into_response: Option<syn::Path>,
+    bounds: Option<Vec<syn::WherePredicate>>,
 }
 
-impl ResponderInput {
+impl IntoResponseInput {
     fn derive_explicit(&self, into_response: &syn::Path) -> TokenStream {
         quote!(
             #into_response(self, request)
@@ -191,7 +205,7 @@ impl ResponderInput {
         let Request = quote!(tsukuyomi::output::internal::Request);
         let Response = quote!(tsukuyomi::output::internal::Response);
 
-        let (body, impl_generics, ty_generics, where_clause) =
+        let (body, impl_generics, ty_generics, mut where_clause) =
             match (&self.into_response, &self.input.data) {
                 (Some(into_response), _) => {
                     let body = self.derive_explicit(into_response);
@@ -219,6 +233,16 @@ impl ResponderInput {
                     return Err(parse_error("tagged union is not supported."));
                 }
             };
+
+        if let Some(ref bounds) = self.bounds {
+            where_clause
+                .get_or_insert_with(|| syn::WhereClause {
+                    where_token: Default::default(),
+                    predicates: Default::default(),
+                })
+                .predicates
+                .extend(bounds.into_iter().cloned());
+        }
 
         Ok(quote!(
             impl #impl_generics #IntoResponse for #Self_ #ty_generics #where_clause {

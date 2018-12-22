@@ -110,20 +110,35 @@ mod responder {
             }
         }
 
-        let app = App::create({
-            path!("/") //
-                .to(endpoint::call(|| Foo("Foo".into())))
+        #[derive(tsukuyomi::output::IntoResponse)]
+        #[response(with = "self::sub::display", bound = "T: fmt::Display")]
+        struct Bar<T>(T);
+
+        impl<T: fmt::Display> fmt::Display for Bar<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        let app = App::create(chain! {
+            path!("/foo") //
+                .to(endpoint::call(|| Foo("Foo".into()))),
+            path!("/bar") //
+                .to(endpoint::call(|| Bar("Bar")))
         })?;
 
         let mut server = tsukuyomi_server::test::server(app)?;
 
-        let response = server.perform("/")?;
+        let response = server.perform("/foo")?;
         assert_eq!(response.status(), 200);
         assert_eq!(
             response.header("content-type")?,
             "text/plain; charset=utf-8"
         );
         assert_eq!(response.body().to_utf8()?, "Foo");
+
+        let response = server.perform("/bar")?;
+        assert_eq!(response.body().to_utf8()?, "Bar");
 
         Ok(())
     }

@@ -55,12 +55,12 @@ use proc_macro::TokenStream;
 /// use std::fmt::Debug;
 ///
 /// #[derive(Debug, IntoResponse)]
-/// #[response(with = "into_response")]
-/// struct CustomValue<T, U>
-/// where
-///     T: Debug,
-///     U: Debug,
-/// {
+/// #[response(
+///     with = "into_response",
+///     bound = "T: Debug",
+///     bound = "U: Debug",
+/// )]
+/// struct CustomValue<T, U> {
 ///     t: T,
 ///     u: U,
 /// }
