@@ -8,6 +8,7 @@
     rust_2018_compatibility,
     unused
 )]
+#![cfg_attr(test, deny(warnings))]
 #![forbid(clippy::unimplemented)]
 
 #[macro_use]

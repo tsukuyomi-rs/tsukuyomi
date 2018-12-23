@@ -419,6 +419,7 @@ mod map_err {
         f: F,
     }
 
+    #[allow(clippy::redundant_closure)]
     impl<Fut, F, U> TryFuture for MapErrFuture<Fut, F>
     where
         Fut: TryFuture,

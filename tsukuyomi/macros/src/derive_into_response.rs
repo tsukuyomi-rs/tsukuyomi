@@ -1,3 +1,5 @@
+#![allow(clippy::large_enum_variant)]
+
 use {
     proc_macro2::TokenStream, //
     quote::*,

@@ -155,6 +155,7 @@ mod map_output {
         f: F,
     }
 
+    #[allow(clippy::redundant_closure)]
     impl<H, F, T> TryFuture for HandleMapOutput<H, F>
     where
         H: TryFuture,
