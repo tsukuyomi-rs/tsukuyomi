@@ -93,7 +93,7 @@ use proc_macro::TokenStream;
 #[allow(nonstandard_style)]
 #[cfg_attr(tarpaulin, skip)]
 pub fn IntoResponse(input: TokenStream) -> TokenStream {
-    crate::derive_into_response::derive_into_response(input.into())
+    crate::derive_into_response::derive(input.into())
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }
