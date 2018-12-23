@@ -23,16 +23,6 @@ pub mod internal {
         },
         http::{Request, Response},
     };
-
-    #[inline]
-    pub fn into_response<T>(t: T, request: &Request<()>) -> Result<Response<ResponseBody>, Error>
-    where
-        T: IntoResponse,
-    {
-        IntoResponse::into_response(t, request)
-            .map(|response| response.map(Into::into))
-            .map_err(Into::into)
-    }
 }
 
 /// A type representing the message body in an HTTP response.
