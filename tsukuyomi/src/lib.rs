@@ -1,6 +1,6 @@
 //! Tsukuyomi is an asynchronous Web framework for Rust.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.5.0")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi/0.5.1")]
 #![deny(
     missing_debug_implementations,
     nonstandard_style,

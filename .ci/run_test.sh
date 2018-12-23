@@ -10,7 +10,7 @@ if cargo fmt --version >/dev/null 2>&1; then
 fi
 
 if cargo clippy --version >/dev/null 2>&1; then
-    cargo clippy --all
+    cargo clippy --all --all-targets
 
     cargo clippy -p tsukuyomi --all-features --all-targets
     cargo clippy -p tsukuyomi-session --all-features --all-targets
