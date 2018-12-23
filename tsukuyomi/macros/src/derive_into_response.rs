@@ -69,14 +69,7 @@ mod parsing {
         parse::Error::new(pos.span(), message)
     }
 
-    fn parse_with(lit: &syn::Lit) -> parse::Result<syn::Path> {
-        match lit {
-            syn::Lit::Str(ref lit) => lit.parse(),
-            _ => Err(parse_error_at(lit, "the literal must be string")),
-        }
-    }
-
-    fn parse_bound(lit: &syn::Lit) -> parse::Result<syn::WherePredicate> {
+    fn parse_literal<T: parse::Parse>(lit: &syn::Lit) -> parse::Result<T> {
         match lit {
             syn::Lit::Str(ref lit) => lit.parse(),
             _ => Err(parse_error_at(lit, "the literal must be string")),
@@ -87,7 +80,11 @@ mod parsing {
         fn parse(input: parse::ParseStream<'_>) -> parse::Result<Self> {
             let input: syn::DeriveInput = input.parse()?;
 
-            let mut with = None;
+            enum ExplicitKind {
+                Fn(syn::Path),
+            }
+
+            let mut explicit_path: Option<ExplicitKind> = None;
             let mut bounds: Option<Vec<syn::WherePredicate>> = None;
 
             for attr in &input.attrs {
@@ -109,9 +106,18 @@ mod parsing {
                 for nm_item in meta_list.nested {
                     if let syn::NestedMeta::Meta(syn::Meta::NameValue(ref pair)) = nm_item {
                         match pair.ident.to_string().as_ref() {
-                            "with" => with = parse_with(&pair.lit).map(Some)?,
+                            "with" => {
+                                if explicit_path.is_some() {
+                                    return Err(parse_error_at(
+                                        &pair,
+                                        "the parameter 'with' has already been set",
+                                    ));
+                                }
+                                let path = parse_literal(&pair.lit)?;
+                                explicit_path = Some(ExplicitKind::Fn(path));
+                            }
                             "bound" => {
-                                let bound = parse_bound(&pair.lit)?;
+                                let bound = parse_literal(&pair.lit)?;
                                 bounds.get_or_insert_with(Default::default).push(bound);
                             }
                             s => {
@@ -125,8 +131,8 @@ mod parsing {
                 }
             }
 
-            let kind = match with {
-                Some(with) => InputKind::ExplicitWithFnPath(with),
+            let kind = match explicit_path {
+                Some(ExplicitKind::Fn(path)) => InputKind::ExplicitWithFnPath(path),
                 None => match input.data {
                     syn::Data::Struct(data) => {
                         let field = match data.fields {
@@ -225,11 +231,6 @@ impl<'a> Context<'a> {
         let IntoResponse: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::IntoResponse);
         let Request: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Request);
         let Response: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Response);
-
-        // The path of types drawn at the position of the associated type.
-        let ResponseBody: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::ResponseBody);
-        let Error: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Error);
-
         let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
 
         // appends additional bounds specified by the macro user to where clause.
@@ -244,37 +245,45 @@ impl<'a> Context<'a> {
                 .extend(bounds.into_iter().cloned());
         }
 
-        let body = match &self.kind {
-            InputKind::ExplicitWithFnPath(into_response) => quote!(
-                #into_response(self, request)
-                    .map(|response| response.map(Into::into))
-                    .map_err(Into::into)
-            ),
-
-            InputKind::Struct(target) => match target {
-                Target::Unit | Target::UnnamedField(None) | Target::NamedField(None) => quote!(
-                    #IntoResponse::into_response((), request)
+        // The path of types drawn at the position of the associated type.
+        let (Body, Error, body): (syn::Type, syn::Type, TokenStream);
+        match &self.kind {
+            InputKind::ExplicitWithFnPath(path_fn) => {
+                Body = syn::parse_quote!(tsukuyomi::output::internal::ResponseBody);
+                Error = syn::parse_quote!(tsukuyomi::output::internal::Error);
+                body = quote!(
+                    #path_fn(self, request)
                         .map(|response| response.map(Into::into))
                         .map_err(Into::into)
-                ),
+                )
+            }
+
+            InputKind::Struct(target) => match target {
+                Target::Unit | Target::UnnamedField(None) | Target::NamedField(None) => {
+                    Body = syn::parse_quote!(<() as #IntoResponse>::Body);
+                    Error = syn::parse_quote!(<() as #IntoResponse>::Error);
+                    body = quote!(#IntoResponse::into_response((), request));
+                }
 
                 Target::UnnamedField(Some(field)) => {
                     append_into_response_bound(&mut where_clause, field, &IntoResponse);
-                    quote!(match self {
-                        #Self_(__arg_0) => #IntoResponse::into_response(__arg_0, request)
-                            .map(|response| response.map(Into::into))
-                            .map_err(Into::into),
-                    })
+                    let bounded_ty = &field.ty;
+                    Body = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Body);
+                    Error = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Error);
+                    body = quote!(match self {
+                        #Self_(__arg_0) => #IntoResponse::into_response(__arg_0, request),
+                    });
                 }
 
                 Target::NamedField(Some(field)) => {
                     append_into_response_bound(&mut where_clause, field, &IntoResponse);
-                    let field = &field.ident;
-                    quote!(match self {
-                        #Self_ { #field: __arg_0, } => #IntoResponse::into_response(__arg_0, request)
-                            .map(|response| response.map(Into::into))
-                            .map_err(Into::into),
-                    })
+                    let field_ident = &field.ident;
+                    let bounded_ty = &field.ty;
+                    Body = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Body);
+                    Error = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Error);
+                    body = quote!(match self {
+                        #Self_ { #field_ident: __arg_0, } => #IntoResponse::into_response(__arg_0, request),
+                    });
                 }
             },
 
@@ -315,9 +324,11 @@ impl<'a> Context<'a> {
                     }
                 });
 
-                quote!(match self {
+                Body = syn::parse_quote!(tsukuyomi::output::internal::ResponseBody);
+                Error = syn::parse_quote!(tsukuyomi::output::internal::Error);
+                body = quote!(match self {
                     #( #variants, )*
-                })
+                });
             }
         };
 
@@ -332,7 +343,7 @@ impl<'a> Context<'a> {
             impl #impl_generics #IntoResponse for #Self_ #ty_generics
             #where_clause
             {
-                type Body = #ResponseBody;
+                type Body = #Body;
                 type Error = #Error;
 
                 #[inline]
@@ -411,8 +422,8 @@ mod tests {
         source: { struct A; },
         expected: {
             impl tsukuyomi::output::internal::IntoResponse for A {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
+                type Body = <() as tsukuyomi::output::internal::IntoResponse>::Body;
+                type Error = <() as tsukuyomi::output::internal::IntoResponse>::Error;
 
                 #[inline]
                 fn into_response(
@@ -423,8 +434,6 @@ mod tests {
                     Self::Error
                 > {
                     tsukuyomi::output::internal::IntoResponse::into_response((), request)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into)
                 }
             }
         },
@@ -440,8 +449,8 @@ mod tests {
             where
                 String: tsukuyomi::output::internal::IntoResponse,
             {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
+                type Body = <String as tsukuyomi::output::internal::IntoResponse>::Body;
+                type Error = <String as tsukuyomi::output::internal::IntoResponse>::Error;
 
                 #[inline]
                 fn into_response(
@@ -453,9 +462,7 @@ mod tests {
                 > {
                     match self {
                         A(__arg_0) =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request)
-                                .map(|response| response.map(Into::into))
-                                .map_err(Into::into),
+                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
                     }
                 }
             }
@@ -469,8 +476,8 @@ mod tests {
         },
         expected: {
             impl tsukuyomi::output::internal::IntoResponse for A {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
+                type Body = <() as tsukuyomi::output::internal::IntoResponse>::Body;
+                type Error = <() as tsukuyomi::output::internal::IntoResponse>::Error;
 
                 #[inline]
                 fn into_response(
@@ -481,8 +488,6 @@ mod tests {
                     Self::Error
                 > {
                     tsukuyomi::output::internal::IntoResponse::into_response((), request)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into)
                 }
             }
         },
@@ -500,8 +505,8 @@ mod tests {
             where
                 B: tsukuyomi::output::internal::IntoResponse,
             {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
+                type Body = <B as tsukuyomi::output::internal::IntoResponse>::Body;
+                type Error = <B as tsukuyomi::output::internal::IntoResponse>::Error;
 
                 #[inline]
                 fn into_response(
@@ -513,9 +518,7 @@ mod tests {
                 > {
                     match self {
                         A { b: __arg_0, } =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request)
-                                .map(|response| response.map(Into::into))
-                                .map_err(Into::into),
+                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
                     }
                 }
             }
@@ -529,8 +532,8 @@ mod tests {
         },
         expected: {
             impl tsukuyomi::output::internal::IntoResponse for A {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
+                type Body = <() as tsukuyomi::output::internal::IntoResponse>::Body;
+                type Error = <() as tsukuyomi::output::internal::IntoResponse>::Error;
 
                 #[inline]
                 fn into_response(
@@ -541,8 +544,6 @@ mod tests {
                     Self::Error
                 > {
                     tsukuyomi::output::internal::IntoResponse::into_response((), request)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into)
                 }
             }
         },
