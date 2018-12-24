@@ -14,82 +14,104 @@ use proc_macro::TokenStream;
 
 /// A procedural macro for deriving the implementation of `IntoResponse`.
 ///
-/// # Example
+/// # Examples
 ///
-/// If the custom derive applied to a struct with one field, the implementation
-/// that calls the method `IntoResponse::into_response` of its field.
-///
-/// ```
-/// # use tsukuyomi::IntoResponse;
-/// #[derive(IntoResponse)]
-/// struct Foo(String);
-///
-/// #[derive(IntoResponse)]
-/// struct Bar {
-///     name: String,
-/// }
-///
-/// #[derive(IntoResponse)]
-/// struct Generic<T> {
-///     inner: T,
-/// }
-/// ```
-///
-/// An example that applies the derivation to an enum:
+/// This macro has a parameter `#[response(preset = "..")]`, which specifies
+/// the path to a type that implements a trait [`Preset`]:
 ///
 /// ```
 /// # use tsukuyomi::IntoResponse;
-/// #[derive(IntoResponse)]
-/// enum Either<L, R> {
-///     Left(L),
-///     Right(R),
+/// use serde::Serialize;
+///
+/// #[derive(Debug, Serialize, IntoResponse)]
+/// #[response(preset = "tsukuyomi::output::preset::Json")]
+/// struct Post {
+///     title: String,
+///     text: String,
 /// }
+/// # fn main() {}
 /// ```
 ///
-/// It is possible to explicitly specify the function to create the HTTP response
-/// by passing the path to function with `with = ".."` in the attribute `response`.
+/// You can specify the additional trait bounds to type parameters
+/// by using the parameter `#[response(bound = "..")]`:
 ///
 /// ```
 /// # use tsukuyomi::IntoResponse;
-/// # use tsukuyomi::vendor::http::{Request, Response};
-/// # use tsukuyomi::util::Never;
-/// use std::fmt::Debug;
-///
+/// # use serde::Serialize;
 /// #[derive(Debug, IntoResponse)]
 /// #[response(
-///     with = "into_response",
-///     bound = "T: Debug",
-///     bound = "U: Debug",
+///     preset = "tsukuyomi::output::preset::Json",
+///     bound = "T: Serialize",
+///     bound = "U: Serialize",
 /// )]
 /// struct CustomValue<T, U> {
 ///     t: T,
 ///     u: U,
 /// }
-///
-/// fn into_response(
-///     t: impl Debug,
-///     request: &Request<()>,
-/// ) -> Result<Response<String>, Never> {
-///     // ...
-/// #   unimplemented!()
-/// }
 /// # fn main() {}
 /// ```
 ///
-/// # Restrictions
-/// Without specifying `with = "..."`, the number of fields in the struct
-/// or the number of fields of each variant inside of the enum must be
-/// at most one.  This is because the field to call `IntoResponse::into_response`
-/// will not be determined if there are two or more fields in a struct or a variant.
+/// # Notes
+/// 1. When `preset = ".."` is omitted for struct, a field in the specified
+///    struct is chosen and the the implementation of `IntoResponse` for its
+///    type is used. For example, the impls derived to the following types
+///    outputs eventually the same result as the implementation of
+///    `IntoResponse` for `String`:
+///    ```
+///    # use tsukuyomi::IntoResponse;
+///    #[derive(IntoResponse)]
+///    struct Foo(String);
+///   
+///    #[derive(IntoResponse)]
+///    struct Bar {
+///        inner: String,
+///    }
+///    ```
+/// 1. When `preset = ".."` is omitted for enum, the same rule as struct is
+///    applied to each variant:
+///    ```
+///    # use tsukuyomi::IntoResponse;
+///    # use tsukuyomi::vendor::http::Response;
+///    #[derive(IntoResponse)]
+///    enum MyResponse {
+///        Text(String),
+///        Raw { response: Response<String> },
+///    }
+///    ```
+/// 1. Without specifying the preset, the number of fields in the struct
+///    or the number of fields of each variant inside of the enum must be
+///    at most one.  This is because the field that implements `IntoResponse`
+///    cannot be determined if there are two or more fields in a struct or
+///    a variant:
+///    ```compile_fail
+///    # use tsukuyomi::IntoResponse;
+///    #[derive(IntoResponse)]
+///    enum ApiResponse {
+///        Text(String),
+///        Post { title: String, text: String },
+///    }
+///    ```
+///    If you want to apply the derivation to complex enums,
+///    consider cutting each variant into one struct and specifying
+///    the preset explicitly as follows:
+///    ```
+///    # use tsukuyomi::IntoResponse;
+///    # use serde::Serialize;
+///    #[derive(IntoResponse)]
+///    enum ApiResponse {
+///        Text(String),
+///        Post(Post),
+///    }
 ///
-/// ```compile_fail
-/// # use tsukuyomi::IntoResponse;
-/// #[derive(IntoResponse)]
-/// struct MultiField {
-///     title: String,
-///     text: String,
-/// }
-/// ```
+///    #[derive(Debug, Serialize, IntoResponse)]
+///    #[response(preset = "tsukuyomi::output::preset::Json")]
+///    struct Post {
+///         title: String,
+///         text: String,
+///    }
+///    ```
+///
+/// [`Preset`]: https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/output/preset/trait.Preset.html
 #[proc_macro_derive(IntoResponse, attributes(response))]
 #[allow(nonstandard_style)]
 #[cfg_attr(tarpaulin, skip)]
