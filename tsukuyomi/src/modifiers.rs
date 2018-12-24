@@ -1,50 +1,52 @@
 //! A set of built-in `ModifyHandler`s.
 
-use {
-    crate::handler::{Handler, ModifyHandler},
-    either::Either,
-    http::Response,
-};
+pub use self::{default_options::DefaultOptions, map_output::MapOutput};
 
 /// Creates a `ModifyHandler` that overwrites the handling when receiving `OPTIONS`.
-pub fn default_options<H>() -> impl ModifyHandler<
-    H,
-    Output = Either<Response<()>, H::Output>,
-    Handler = self::default_options::DefaultOptions<H>, // private
->
-where
-    H: Handler,
-{
-    crate::handler::modify_handler(|inner: H| {
-        let allowed_methods = inner.allowed_methods().cloned().map(|mut methods| {
-            methods.extend(Some(http::Method::OPTIONS));
-            methods
-        });
-        self::default_options::DefaultOptions {
-            inner,
-            allowed_methods,
-        }
-    })
+pub fn default_options() -> DefaultOptions {
+    DefaultOptions(())
 }
 
 mod default_options {
     use {
         crate::{
             future::{Poll, TryFuture},
-            handler::{AllowedMethods, Handler},
+            handler::{AllowedMethods, Handler, ModifyHandler},
             input::Input,
         },
         either::Either,
         http::{header::HeaderValue, Method, Response},
     };
 
-    #[allow(missing_debug_implementations)]
-    pub struct DefaultOptions<H> {
-        pub(super) inner: H,
-        pub(super) allowed_methods: Option<AllowedMethods>,
+    #[derive(Debug, Clone)]
+    pub struct DefaultOptions(pub(super) ());
+
+    impl<H> ModifyHandler<H> for DefaultOptions
+    where
+        H: Handler,
+    {
+        type Output = Either<Response<()>, H::Output>;
+        type Handler = DefaultOptionsHandler<H>; // private
+
+        fn modify(&self, inner: H) -> Self::Handler {
+            let allowed_methods = inner.allowed_methods().cloned().map(|mut methods| {
+                methods.extend(Some(http::Method::OPTIONS));
+                methods
+            });
+            DefaultOptionsHandler {
+                inner,
+                allowed_methods,
+            }
+        }
     }
 
-    impl<H> Handler for DefaultOptions<H>
+    #[allow(missing_debug_implementations)]
+    pub struct DefaultOptionsHandler<H> {
+        inner: H,
+        allowed_methods: Option<AllowedMethods>,
+    }
+
+    impl<H> Handler for DefaultOptionsHandler<H>
     where
         H: Handler,
     {
@@ -102,33 +104,45 @@ mod default_options {
 }
 
 /// Creates a `ModifyHandler` that converts the output value using the specified function.
-pub fn map_output<H, F, T>(
-    f: F,
-) -> impl ModifyHandler<H, Output = T, Handler = self::map_output::MapOutput<H, F>>
-where
-    H: Handler,
-    F: Fn(H::Output) -> T + Clone,
-{
-    crate::handler::modify_handler(move |handler: H| self::map_output::MapOutput {
-        handler,
-        f: f.clone(),
-    })
+pub fn map_output<F>(f: F) -> MapOutput<F> {
+    self::map_output::MapOutput { f }
 }
 
 mod map_output {
     use crate::{
         future::{Poll, TryFuture},
-        handler::{AllowedMethods, Handler},
+        handler::{AllowedMethods, Handler, ModifyHandler},
         input::Input,
     };
 
-    #[allow(missing_debug_implementations)]
-    pub struct MapOutput<H, F> {
-        pub(super) handler: H,
+    #[derive(Debug, Clone)]
+    pub struct MapOutput<F> {
         pub(super) f: F,
     }
 
-    impl<H, F, T> Handler for MapOutput<H, F>
+    impl<H, F, T> ModifyHandler<H> for MapOutput<F>
+    where
+        H: Handler,
+        F: Fn(H::Output) -> T + Clone,
+    {
+        type Output = T;
+        type Handler = MapOutputHandler<H, F>;
+
+        fn modify(&self, handler: H) -> Self::Handler {
+            MapOutputHandler {
+                handler,
+                f: self.f.clone(),
+            }
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct MapOutputHandler<H, F> {
+        handler: H,
+        f: F,
+    }
+
+    impl<H, F, T> Handler for MapOutputHandler<H, F>
     where
         H: Handler,
         F: Fn(H::Output) -> T + Clone,
