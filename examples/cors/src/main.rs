@@ -11,7 +11,7 @@ use {
 };
 
 #[derive(Debug, Deserialize, Serialize, IntoResponse)]
-#[response(with = "tsukuyomi::output::into_response::json")]
+#[response(preset = "tsukuyomi::output::preset::Json")]
 struct UserInfo {
     username: String,
     email: String,

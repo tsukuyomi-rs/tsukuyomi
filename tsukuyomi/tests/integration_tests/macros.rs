@@ -98,6 +98,7 @@ mod responder {
         }
     }
 
+    #[allow(deprecated)]
     #[test]
     fn test_into_response_explicit_fn() -> tsukuyomi_server::Result<()> {
         #[derive(tsukuyomi::output::IntoResponse)]

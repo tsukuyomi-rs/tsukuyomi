@@ -4,6 +4,7 @@
 #![deny(nonstandard_style, rust_2018_idioms, rust_2018_compatibility, unused)]
 #![cfg_attr(test, deny(warnings))]
 #![forbid(clippy::unimplemented)]
+#![doc(test(attr(deny(deprecated))))]
 
 extern crate proc_macro;
 

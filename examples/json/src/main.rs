@@ -10,7 +10,7 @@ use {
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, IntoResponse)]
-#[response(with = "tsukuyomi::output::into_response::json")]
+#[response(preset = "tsukuyomi::output::preset::Json")]
 struct User {
     name: String,
     age: u32,

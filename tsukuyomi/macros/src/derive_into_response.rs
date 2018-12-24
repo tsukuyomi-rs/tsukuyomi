@@ -1,7 +1,7 @@
 #![allow(clippy::large_enum_variant)]
 
 use {
-    proc_macro2::TokenStream, //
+    proc_macro2::{Span, TokenStream}, //
     quote::*,
 };
 
@@ -29,7 +29,7 @@ struct Input {
 enum InputKind {
     Struct(Target),
     Enum(Vec<Variant>),
-    ExplicitWithFnPath(syn::Path),
+    ExplicitWithFnPath(syn::Path, Span),
     UsePreset(syn::Path),
 }
 
@@ -86,7 +86,7 @@ mod parsing {
             // The kind when specifying the path to `into_response` explicitly.
             enum ExplicitKind {
                 // Old style - free function with the same sigunature as `IntoResponse::into_response`
-                Fn(syn::Path),
+                Fn(syn::Path, Span),
                 // New style - a type that implements Preset<T>
                 Preset(syn::Path),
             }
@@ -121,7 +121,7 @@ mod parsing {
                                     ));
                                 }
                                 let path = parse_literal(&pair.lit)?;
-                                explicit_path = Some(ExplicitKind::Fn(path));
+                                explicit_path = Some(ExplicitKind::Fn(path, pair.span()));
                             }
                             "preset" => {
                                 if explicit_path.is_some() {
@@ -149,7 +149,7 @@ mod parsing {
             }
 
             let kind = match explicit_path {
-                Some(ExplicitKind::Fn(path)) => InputKind::ExplicitWithFnPath(path),
+                Some(ExplicitKind::Fn(path, span)) => InputKind::ExplicitWithFnPath(path, span),
                 Some(ExplicitKind::Preset(path)) => InputKind::UsePreset(path),
                 None => match input.data {
                     syn::Data::Struct(data) => {
@@ -268,11 +268,14 @@ impl<'a> Context<'a> {
         // The path of types drawn at the position of the associated type.
         let (Body, Error, body): (syn::Type, syn::Type, TokenStream);
         match &self.kind {
-            InputKind::ExplicitWithFnPath(path_fn) => {
+            InputKind::ExplicitWithFnPath(path, span) => {
                 Body = syn::parse_quote!(tsukuyomi::output::internal::ResponseBody);
                 Error = syn::parse_quote!(tsukuyomi::output::internal::Error);
-                body = quote!(
-                    #path_fn(self, request)
+                body = quote_spanned!(*span =>
+                    #[deprecated(since = "0.5.2", note = "the parameter 'with' will be removed in the next version")]
+                    const _DEPRECATED: () = ();
+                    let _ = _DEPRECATED;
+                    #path(self, request)
                         .map(|response| response.map(Into::into))
                         .map_err(Into::into)
                 )
@@ -659,6 +662,9 @@ mod tests {
                     tsukuyomi::output::internal::Response<Self::Body>,
                     Self::Error
                 > {
+                    #[deprecated(since = "0.5.2", note = "the parameter 'with' will be removed in the next version")]
+                    const _DEPRECATED: () = ();
+                    let _ = _DEPRECATED;
                     my::into_response(self, request)
                         .map(|response| response.map(Into::into))
                         .map_err(Into::into)
@@ -697,6 +703,9 @@ mod tests {
                     tsukuyomi::output::internal::Response<Self::Body>,
                     Self::Error
                 > {
+                    #[deprecated(since = "0.5.2", note = "the parameter 'with' will be removed in the next version")]
+                    const _DEPRECATED: () = ();
+                    let _ = _DEPRECATED;
                     my::into_response(self, request)
                         .map(|response| response.map(Into::into))
                         .map_err(Into::into)

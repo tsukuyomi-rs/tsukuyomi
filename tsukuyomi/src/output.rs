@@ -205,6 +205,7 @@ impl IntoResponse for &'static str {
     type Error = Never;
 
     #[inline]
+    #[allow(deprecated)]
     fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         self::into_response::plain(self, request)
     }
@@ -215,6 +216,7 @@ impl IntoResponse for String {
     type Error = Never;
 
     #[inline]
+    #[allow(deprecated)]
     fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         self::into_response::plain(self, request)
     }
@@ -262,6 +264,7 @@ where
 }
 
 /// Creates a JSON responder from the specified data.
+#[allow(deprecated)]
 #[inline]
 pub fn json<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
 where
@@ -271,6 +274,7 @@ where
 }
 
 /// Creates a JSON responder with pretty output from the specified data.
+#[allow(deprecated)]
 #[inline]
 pub fn json_pretty<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
 where
@@ -280,6 +284,7 @@ where
 }
 
 /// Creates an HTML responder with the specified response body.
+#[allow(deprecated)]
 #[inline]
 pub fn html<T>(body: T) -> impl IntoResponse<Body = T, Error = Never>
 where
@@ -379,7 +384,11 @@ pub mod preset {
     }
 }
 
-#[allow(missing_docs)]
+#[doc(hidden)]
+#[deprecated(
+    since = "0.5.2",
+    note = "this module will be removed in the next version."
+)]
 pub mod into_response {
     use {
         super::ResponseBody,
