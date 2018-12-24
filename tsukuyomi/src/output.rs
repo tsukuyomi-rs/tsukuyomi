@@ -19,7 +19,7 @@ pub mod internal {
     pub use {
         crate::{
             error::Error,
-            output::{IntoResponse, ResponseBody},
+            output::{preset::Preset, IntoResponse, ResponseBody},
         },
         http::{Request, Response},
     };
@@ -225,10 +225,7 @@ impl IntoResponse for serde_json::Value {
     type Error = Never;
 
     fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self::into_response::make_response(
-            self.to_string(),
-            "application/json",
-        ))
+        Ok(self::make_response(self.to_string(), "application/json"))
     }
 }
 
@@ -291,6 +288,97 @@ where
     self::into_response(move |request| self::into_response::html(body, request))
 }
 
+/// Create an instance of `Response<T>` with the provided body and content type.
+fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::header::HeaderValue::from_static(content_type),
+    );
+    response
+}
+
+pub mod preset {
+    use {
+        super::ResponseBody,
+        crate::{error::Error, util::Never},
+        http::{Request, Response},
+        serde::Serialize,
+    };
+
+    /// A trait representing the *preset* for deriving the implementation of `IntoResponse`.
+    pub trait Preset<T> {
+        type Body: Into<ResponseBody>;
+        type Error: Into<Error>;
+
+        fn into_response(t: T, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error>;
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct Json(());
+
+    impl<T> Preset<T> for Json
+    where
+        T: Serialize,
+    {
+        type Body = Vec<u8>;
+        type Error = Error;
+
+        fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+            serde_json::to_vec(&data)
+                .map(|body| super::make_response(body, "application/json"))
+                .map_err(crate::error::internal_server_error)
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct JsonPretty(());
+
+    impl<T> Preset<T> for JsonPretty
+    where
+        T: Serialize,
+    {
+        type Body = Vec<u8>;
+        type Error = Error;
+
+        fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+            serde_json::to_vec_pretty(&data)
+                .map(|body| super::make_response(body, "application/json"))
+                .map_err(crate::error::internal_server_error)
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct Html(());
+
+    impl<T> Preset<T> for Html
+    where
+        T: Into<ResponseBody>,
+    {
+        type Body = T;
+        type Error = Never;
+
+        fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+            Ok(super::make_response(body, "text/html"))
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct Plain(());
+
+    impl<T> Preset<T> for Plain
+    where
+        T: Into<ResponseBody>,
+    {
+        type Body = T;
+        type Error = Never;
+
+        fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+            Ok(super::make_response(body, "text/plain; charset=utf-8"))
+        }
+    }
+}
+
 #[allow(missing_docs)]
 pub mod into_response {
     use {
@@ -306,7 +394,7 @@ pub mod into_response {
         T: Serialize,
     {
         serde_json::to_vec(&data)
-            .map(|body| self::make_response(body, "application/json"))
+            .map(|body| super::make_response(body, "application/json"))
             .map_err(crate::error::internal_server_error)
     }
 
@@ -316,7 +404,7 @@ pub mod into_response {
         T: Serialize,
     {
         serde_json::to_vec_pretty(&data)
-            .map(|body| self::make_response(body, "application/json"))
+            .map(|body| super::make_response(body, "application/json"))
             .map_err(crate::error::internal_server_error)
     }
 
@@ -325,7 +413,7 @@ pub mod into_response {
     where
         T: Into<ResponseBody>,
     {
-        Ok(self::make_response(body, "text/html"))
+        Ok(super::make_response(body, "text/html"))
     }
 
     #[inline]
@@ -333,15 +421,6 @@ pub mod into_response {
     where
         T: Into<ResponseBody>,
     {
-        Ok(self::make_response(body, "text/plain; charset=utf-8"))
-    }
-
-    pub(super) fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
-        let mut response = Response::new(body);
-        response.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::header::HeaderValue::from_static(content_type),
-        );
-        response
+        Ok(super::make_response(body, "text/plain; charset=utf-8"))
     }
 }

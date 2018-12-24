@@ -30,6 +30,7 @@ enum InputKind {
     Struct(Target),
     Enum(Vec<Variant>),
     ExplicitWithFnPath(syn::Path),
+    UsePreset(syn::Path),
 }
 
 #[derive(Debug)]
@@ -82,8 +83,12 @@ mod parsing {
         fn parse(input: parse::ParseStream<'_>) -> parse::Result<Self> {
             let input: syn::DeriveInput = input.parse()?;
 
+            // The kind when specifying the path to `into_response` explicitly.
             enum ExplicitKind {
+                // Old style - free function with the same sigunature as `IntoResponse::into_response`
                 Fn(syn::Path),
+                // New style - a type that implements Preset<T>
+                Preset(syn::Path),
             }
 
             let mut explicit_path: Option<ExplicitKind> = None;
@@ -112,11 +117,21 @@ mod parsing {
                                 if explicit_path.is_some() {
                                     return Err(parse_error_at(
                                         &pair,
-                                        "the parameter 'with' has already been set",
+                                        "the parameter 'with' or 'preset' has already been provided",
                                     ));
                                 }
                                 let path = parse_literal(&pair.lit)?;
                                 explicit_path = Some(ExplicitKind::Fn(path));
+                            }
+                            "preset" => {
+                                if explicit_path.is_some() {
+                                    return Err(parse_error_at(
+                                        &pair,
+                                        "the parameter 'with' or 'preset' has already been provided",
+                                    ));
+                                }
+                                let path = parse_literal(&pair.lit)?;
+                                explicit_path = Some(ExplicitKind::Preset(path));
                             }
                             "bound" => {
                                 let bound = parse_literal(&pair.lit)?;
@@ -135,6 +150,7 @@ mod parsing {
 
             let kind = match explicit_path {
                 Some(ExplicitKind::Fn(path)) => InputKind::ExplicitWithFnPath(path),
+                Some(ExplicitKind::Preset(path)) => InputKind::UsePreset(path),
                 None => match input.data {
                     syn::Data::Struct(data) => {
                         let field = match data.fields {
@@ -233,6 +249,8 @@ impl<'a> Context<'a> {
         let IntoResponse: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::IntoResponse);
         let Request: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Request);
         let Response: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Response);
+        let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Preset);
+
         let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
 
         // appends additional bounds specified by the macro user to where clause.
@@ -260,6 +278,20 @@ impl<'a> Context<'a> {
                 )
             }
 
+            InputKind::UsePreset(path) => {
+                where_clause
+                    .get_or_insert_with(|| syn::WhereClause {
+                        where_token: Default::default(),
+                        predicates: Default::default(),
+                    })
+                    .predicates
+                    .push(syn::parse_quote!(#path: #Preset<Self>));
+
+                Body = syn::parse_quote!(<#path as #Preset<Self>>::Body);
+                Error = syn::parse_quote!(<#path as #Preset<Self>>::Error);
+                body = quote!(< #path as #Preset<Self> >::into_response(self, request));
+            }
+
             InputKind::Struct(target) => match target {
                 Target::Unit | Target::UnnamedField(None) | Target::NamedField(None) => {
                     Body = syn::parse_quote!(<() as #IntoResponse>::Body);
@@ -268,8 +300,14 @@ impl<'a> Context<'a> {
                 }
 
                 Target::UnnamedField(Some(field)) => {
-                    append_into_response_bound(&mut where_clause, field, &IntoResponse);
                     let bounded_ty = &field.ty;
+                    where_clause
+                        .get_or_insert_with(|| syn::WhereClause {
+                            where_token: Default::default(),
+                            predicates: Default::default(),
+                        })
+                        .predicates
+                        .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                     Body = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Body);
                     Error = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Error);
                     body = quote!(match self {
@@ -278,9 +316,15 @@ impl<'a> Context<'a> {
                 }
 
                 Target::NamedField(Some(field)) => {
-                    append_into_response_bound(&mut where_clause, field, &IntoResponse);
-                    let field_ident = &field.ident;
                     let bounded_ty = &field.ty;
+                    let field_ident = &field.ident;
+                    where_clause
+                        .get_or_insert_with(|| syn::WhereClause {
+                            where_token: Default::default(),
+                            predicates: Default::default(),
+                        })
+                        .predicates
+                        .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                     Body = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Body);
                     Error = syn::parse_quote!(<#bounded_ty as #IntoResponse>::Error);
                     body = quote!(match self {
@@ -305,7 +349,14 @@ impl<'a> Context<'a> {
                                 .map_err(Into::into))
                         }
                         Target::UnnamedField(Some(field)) => {
-                            append_into_response_bound(&mut  where_clause, field, &IntoResponse);
+                            let bounded_ty = &field.ty;
+                            where_clause
+                                .get_or_insert_with(|| syn::WhereClause {
+                                    where_token: Default::default(),
+                                    predicates: Default::default(),
+                                })
+                                .predicates
+                                .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                             quote!(#Self_ :: #Variant (__arg_0) => #IntoResponse::into_response(__arg_0, request)
                                 .map(|response| response.map(Into::into))
                                 .map_err(Into::into))
@@ -317,7 +368,14 @@ impl<'a> Context<'a> {
                                 .map_err(Into::into))
                         }
                         Target::NamedField(Some(field)) => {
-                            append_into_response_bound(&mut  where_clause, field, &IntoResponse);
+                            let bounded_ty = &field.ty;
+                            where_clause
+                                .get_or_insert_with(|| syn::WhereClause {
+                                    where_token: Default::default(),
+                                    predicates: Default::default(),
+                                })
+                                .predicates
+                                .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                             let field = &field.ident;
                             quote!(#Self_ :: #Variant { #field: __arg_0, } => #IntoResponse::into_response(__arg_0, request)
                                 .map(|response| response.map(Into::into))
@@ -355,33 +413,6 @@ impl<'a> Context<'a> {
             }
         )
     }
-}
-
-#[allow(nonstandard_style)]
-fn append_into_response_bound(
-    where_clause: &mut Option<syn::WhereClause>,
-    field: &syn::Field,
-    IntoResponse: &syn::Path,
-) {
-    where_clause
-        .get_or_insert_with(|| syn::WhereClause {
-            where_token: Default::default(),
-            predicates: Default::default(),
-        })
-        .predicates
-        .push(syn::WherePredicate::Type(syn::PredicateType {
-            lifetimes: None,
-            bounded_ty: field.ty.clone(),
-            colon_token: Default::default(),
-            bounds: vec![syn::TypeParamBound::Trait(syn::TraitBound {
-                paren_token: None,
-                modifier: syn::TraitBoundModifier::None,
-                lifetimes: None,
-                path: IntoResponse.clone(),
-            })]
-            .into_iter()
-            .collect(),
-        }));
 }
 
 // ==== test ====
@@ -607,7 +638,7 @@ mod tests {
     }
 
     t! {
-        name: explicit_struct,
+        name: explicit_with_fn,
         source: {
             #[response(with = "my::into_response")]
             struct A {
@@ -637,7 +668,7 @@ mod tests {
     }
 
     t! {
-        name: explicit_with_additional_bounds,
+        name: explicit_with_fn_additional_bounds,
         source: {
             #[response(
                 with = "my::into_response",
@@ -669,6 +700,74 @@ mod tests {
                     my::into_response(self, request)
                         .map(|response| response.map(Into::into))
                         .map_err(Into::into)
+                }
+            }
+        },
+    }
+
+    t! {
+        name: explicit_preset,
+        source: {
+            #[response(preset = "my::Preset")]
+            struct A {
+                x: X,
+                y: Y,
+            }
+        },
+        expected: {
+            impl tsukuyomi::output::internal::IntoResponse for A
+            where
+                my::Preset: tsukuyomi::output::internal::Preset<Self>,
+            {
+                type Body = <my::Preset as tsukuyomi::output::internal::Preset<Self> >::Body;
+                type Error = <my::Preset as tsukuyomi::output::internal::Preset<Self> >::Error;
+
+                #[inline]
+                fn into_response(
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> Result<
+                    tsukuyomi::output::internal::Response<Self::Body>,
+                    Self::Error
+                > {
+                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
+                }
+            }
+        },
+    }
+
+    t! {
+        name: explicit_preset_additional_bounds,
+        source: {
+            #[response(
+                preset = "my::Preset",
+                bound = "X: Foo",
+                bound = "Y: Foo",
+            )]
+            struct A<X, Y> {
+                x: X,
+                y: Y,
+            }
+        },
+        expected: {
+            impl<X, Y> tsukuyomi::output::internal::IntoResponse for A<X, Y>
+            where
+                X: Foo,
+                Y: Foo,
+                my::Preset: tsukuyomi::output::internal::Preset<Self>,
+            {
+                type Body = <my::Preset as tsukuyomi::output::internal::Preset<Self> >::Body;
+                type Error = <my::Preset as tsukuyomi::output::internal::Preset<Self> >::Error;
+
+                #[inline]
+                fn into_response(
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> Result<
+                    tsukuyomi::output::internal::Response<Self::Body>,
+                    Self::Error
+                > {
+                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
                 }
             }
         },
@@ -724,4 +823,20 @@ mod tests {
         error: "multiple fields is not supported.",
     }
 
+    t! {
+        name: failcase_duplicate_with_and_preset,
+        source: {
+            #[response(
+                with = "path::to::into_response",
+                preset = "path::to::Preset",
+            )]
+            enum A {
+                B {
+                    c: C,
+                    d: D,
+                },
+            }
+        },
+        error: "the parameter 'with' or 'preset' has already been provided",
+    }
 }
