@@ -1,0 +1,21 @@
+[package]
+name = "example-{{ name }}" # replace the placeholder
+edition = "2018"
+version = "0.0.0"
+authors = [
+  "Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>",
+  # append your name :)
+]
+publish = false
+
+[[bin]]
+name = "example_{{ name }}" # replace the placeholder
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.5"
+tsukuyomi-server = "0.2"
+
+# append additional dependencies
+
