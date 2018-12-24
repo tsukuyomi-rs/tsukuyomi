@@ -493,6 +493,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-logging"
+version = "0.1.0"
+dependencies = [
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pretty_env_logger 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tsukuyomi 0.5.1",
+ "tsukuyomi-server 0.2.0",
+]
+
+[[package]]
 name = "example-native-tls"
 version = "0.0.0"
 dependencies = [

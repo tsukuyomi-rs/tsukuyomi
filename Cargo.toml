@@ -45,6 +45,7 @@ members = [
   "examples/http-proxy",
   "examples/juniper",
   "examples/json",
+  "examples/logging",
   "examples/native-tls",
   "examples/openssl",
   "examples/routing",

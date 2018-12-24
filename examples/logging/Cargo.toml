@@ -1,0 +1,17 @@
+[package]
+name = "example-logging"
+version = "0.1.0"
+edition = "2018"
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+publish = false
+
+[[bin]]
+name = "example_logging"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tsukuyomi = "0.5"
+tsukuyomi-server = "0.2"
+log = "0.4"
+pretty_env_logger = "0.2"
