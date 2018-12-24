@@ -494,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "example-logging"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pretty_env_logger 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
