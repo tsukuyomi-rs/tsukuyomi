@@ -17,3 +17,4 @@ proc-macro2 = "0.4.20"
 
 [dev-dependencies]
 tsukuyomi = { version = "0.5", path = ".." }
+serde = { version = "1", features = ["derive"] }
