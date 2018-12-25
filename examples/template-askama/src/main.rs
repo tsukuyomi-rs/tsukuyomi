@@ -10,7 +10,7 @@ use {
 
 #[derive(Template, IntoResponse)]
 #[template(path = "index.html")]
-#[response(with = "tsukuyomi_askama::into_response")]
+#[response(preset = "tsukuyomi_askama::Askama")]
 struct Index {
     name: String,
 }

@@ -1,6 +1,6 @@
 //! Askama integration for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-askama/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-askama/0.2.1")]
 #![deny(
     missing_debug_implementations,
     nonstandard_style,
@@ -20,10 +20,12 @@ use {
     tsukuyomi::{
         error::internal_server_error,
         handler::{Handler, ModifyHandler},
+        output::preset::Preset,
     },
 };
 
-/// A function for deriving the implementation of `IntoResponse` to Askama templates.
+/// An implementor of `Preset` for deriving the implementation of `IntoResponse`
+/// to Askama templates.
 ///
 /// # Example
 ///
@@ -33,12 +35,34 @@ use {
 ///
 /// #[derive(Template, IntoResponse)]
 /// #[template(source = "Hello, {{name}}!", ext = "html")]
-/// #[response(with = "tsukuyomi_askama::into_response")]
+/// #[response(preset = "tsukuyomi_askama::Askama")]
 /// struct Index {
 ///     name: String,
 /// }
 /// # fn main() {}
 /// ```
+#[allow(missing_debug_implementations)]
+pub struct Askama(());
+
+impl<T> Preset<T> for Askama
+where
+    T: Template,
+{
+    type Body = String;
+    type Error = tsukuyomi::Error;
+
+    #[allow(deprecated)]
+    #[inline]
+    fn into_response(ctx: T, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        self::into_response(ctx, request)
+    }
+}
+
+#[doc(hidden)]
+#[deprecated(
+    since = "0.2.1",
+    note = "this function will be removed in the next version."
+)]
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
 pub fn into_response<T>(t: T, _: &Request<()>) -> tsukuyomi::Result<Response<String>>
@@ -126,6 +150,7 @@ mod renderer {
         type Ok = Response<String>;
         type Error = Error;
 
+        #[allow(deprecated)]
         #[inline]
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let ctx = tsukuyomi::future::try_ready!(self.0.poll_ready(input).map_err(Into::into));

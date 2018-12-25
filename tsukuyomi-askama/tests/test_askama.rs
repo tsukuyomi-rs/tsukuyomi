@@ -17,7 +17,7 @@ fn test_version_sync() {
 fn test_template_derivation() -> tsukuyomi_server::Result<()> {
     #[derive(Template, IntoResponse)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
-    #[response(with = "tsukuyomi_askama::into_response")]
+    #[response(preset = "tsukuyomi_askama::Askama")]
     struct Index {
         name: &'static str,
     }
