@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 Asynchronous Web framework for Rust
 """
-version = "0.5.1"
+version = "0.5.2"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -54,7 +54,7 @@ url = "1.7.1"
 uuid = "0.7.1"
 
 [dependencies.tsukuyomi-macros]
-version = "=0.5.1"
+version = "0.5.2"
 path = "./macros"
 
 [dependencies.tsukuyomi-service]
