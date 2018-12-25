@@ -17,6 +17,7 @@ use {
         Request, Response, StatusCode,
     },
     log::trace,
+    mime::Mime,
     std::{
         borrow::Cow,
         cmp, fmt,
@@ -169,6 +170,7 @@ where
     }
 }
 
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct OpenNamedFile<P> {
     path: P,
@@ -194,9 +196,12 @@ where
         let last_modified = FileTime::from_last_modification_time(&meta);
         let etag = ETag::from_metadata(&meta);
 
+        let content_type = mime_guess::guess_mime_type(&self.path);
+
         let response = NamedFileResponse {
             file,
             meta,
+            content_type,
             last_modified,
             etag,
             config,
@@ -211,6 +216,7 @@ where
 struct NamedFileResponse {
     file: File,
     meta: Metadata,
+    content_type: Mime,
     etag: ETag,
     last_modified: FileTime,
     config: OpenConfig,
@@ -299,6 +305,7 @@ impl IntoResponse for NamedFileResponse {
         let stream = ReadStream::new(self.file, self.meta, self.config.chunk_size);
 
         Ok(Response::builder()
+            .header(header::CONTENT_TYPE, self.content_type.as_ref())
             .header(header::CACHE_CONTROL, &*cache_control)
             .header(header::LAST_MODIFIED, &*last_modified)
             .header(header::ETAG, &*self.etag.to_string())
