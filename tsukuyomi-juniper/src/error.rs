@@ -91,15 +91,24 @@ impl HttpError for GraphQLError {
 
 /// Creates a `ModifyHandler` that catches the all kind of errors that the handler throws
 /// and converts them into GraphQL errors.
-pub fn capture_errors<H>() -> impl ModifyHandler<
-    H,
-    Output = H::Output,
-    Handler = GraphQLHandler<H>, // private
->
+pub fn capture_errors() -> CaptureErrors {
+    CaptureErrors(())
+}
+
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct CaptureErrors(());
+
+impl<H> ModifyHandler<H> for CaptureErrors
 where
     H: Handler,
 {
-    tsukuyomi::handler::modify_handler(|inner: H| GraphQLHandler { inner })
+    type Output = H::Output;
+    type Handler = GraphQLHandler<H>; // private;
+
+    fn modify(&self, inner: H) -> Self::Handler {
+        GraphQLHandler { inner }
+    }
 }
 
 #[derive(Debug)]
