@@ -1,6 +1,6 @@
 use {
     crate::{error::GraphQLParseError, Schema},
-    futures::Future,
+    futures::{stream::Concat2, Future, Stream},
     http::{Method, Response, StatusCode},
     juniper::{DefaultScalarValue, InputValue, ScalarRefValue, ScalarValue},
     percent_encoding::percent_decode,
@@ -9,11 +9,7 @@ use {
         error::Error,
         extractor::Extractor,
         future::{Async, Poll, TryFuture},
-        input::{
-            body::{ReadAll, RequestBody},
-            header::ContentType,
-            Input,
-        },
+        input::{body::RequestBody, header::ContentType, localmap::LocalData, Input},
         responder::Responder,
     },
 };
@@ -38,7 +34,7 @@ where
     #[allow(missing_debug_implementations)]
     enum State {
         Init,
-        Receive(ReadAll, RequestKind),
+        Receive(Concat2<RequestBody>, RequestKind),
     }
 
     tsukuyomi::extractor::extract(|| {
@@ -59,14 +55,13 @@ where
                             Err(err) => return Err(err),
                         };
 
-                        let read_all = match input.locals.remove(&RequestBody::KEY) {
-                            Some(body) => body.read_all(),
-                            None => {
-                                return Err(tsukuyomi::error::internal_server_error(
+                        let read_all = RequestBody::take_from(input.locals)
+                            .ok_or_else(|| {
+                                tsukuyomi::error::internal_server_error(
                                     "the payload has already stolen by another extractor",
-                                ))
-                            }
-                        };
+                                )
+                            })?
+                            .concat2();
                         State::Receive(read_all, kind)
                     } else {
                         return Err(GraphQLParseError::InvalidRequestMethod.into());

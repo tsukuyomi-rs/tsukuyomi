@@ -89,6 +89,7 @@ mod imp {
             future::{Poll, TryFuture},
             input::{
                 body::{RequestBody, UpgradedIo},
+                localmap::LocalData,
                 Input,
             },
         },
@@ -114,9 +115,7 @@ mod imp {
 
             let accept_hash = handshake(input)?;
 
-            let body = input
-                .locals
-                .remove(&RequestBody::KEY) //
+            let body = RequestBody::take_from(input.locals) //
                 .ok_or_else(|| {
                     tsukuyomi::error::internal_server_error(
                         "the request body has already been stolen by someone",

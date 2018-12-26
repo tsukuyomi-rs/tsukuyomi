@@ -60,6 +60,43 @@ impl<T: Send + 'static> LocalKey<T> {
     }
 }
 
+/// A trait representing a data to be stored in `LocalMap`s.
+pub trait LocalData: Sized + Send + 'static {
+    /// The value of `LocalKey` associated with this type.
+    const KEY: LocalKey<Self>;
+
+    /// Acquires a reference to `Self` stored in the specified localmap.
+    fn get(map: &LocalMap) -> Option<&Self> {
+        map.get(&Self::KEY)
+    }
+
+    /// Acquires a mutable reference to `Self` stored in the specified localmap.
+    fn get_mut(map: &mut LocalMap) -> Option<&mut Self> {
+        map.get_mut(&Self::KEY)
+    }
+
+    /// Returns `true` if a value of `Self` is stored in the specified localmap.
+    fn contains(map: &LocalMap) -> bool {
+        map.contains_key(&Self::KEY)
+    }
+
+    /// Extracts the instance of `Self` stored in the specified localmap.
+    fn take_from(map: &mut LocalMap) -> Option<Self> {
+        map.remove(&Self::KEY)
+    }
+
+    /// Stores itself into the specified localmap.
+    fn insert_into(self, map: &mut LocalMap) -> Option<Self> {
+        map.insert(&Self::KEY, self)
+    }
+
+    /// Creates an `Entry` for in-place manipulation corresponds
+    /// to an entry of `Self` in the specified map.
+    fn entry(map: &mut LocalMap) -> Entry<'_, Self> {
+        map.entry(&Self::KEY)
+    }
+}
+
 struct IdentHasher(u64);
 
 impl Default for IdentHasher {

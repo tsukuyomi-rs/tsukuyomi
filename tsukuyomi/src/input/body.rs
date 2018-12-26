@@ -1,23 +1,18 @@
 //! Components for receiving incoming request bodies.
 
 use {
-    super::localmap::local_key,
+    super::localmap::{local_key, LocalData},
     bytes::{Buf, BufMut, Bytes, BytesMut},
     futures01::{Async, Future, Poll, Stream},
     http::header::HeaderMap,
     hyper::body::{Body, Payload},
-    std::{io, mem},
+    std::{fmt, io, mem},
 };
 
 #[derive(Debug)]
 pub struct RequestBody(Body);
 
 impl RequestBody {
-    local_key! {
-        /// The local key to manage the request body stored in the current context.
-        pub const KEY: Self;
-    }
-
     #[inline]
     pub fn on_upgrade(self) -> OnUpgrade {
         OnUpgrade(self.0.on_upgrade())
@@ -27,10 +22,22 @@ impl RequestBody {
         self.0
     }
 
-    /// Convert this instance into a `Future` which polls all chunks in the incoming message body
-    /// and merges them into a `Bytes`.
+    #[doc(hidden)]
+    #[deprecated(
+        since = "0.5.3",
+        note = "this method will be removed in the next version."
+    )]
+    #[allow(deprecated)]
     pub fn read_all(self) -> ReadAll {
         ReadAll::new(self)
+    }
+}
+
+impl LocalData for RequestBody {
+    local_key! {
+        /// The local key to manage the request body
+        /// stored in the current context.
+        const KEY: Self;
     }
 }
 
@@ -72,27 +79,6 @@ impl Stream for RequestBody {
     #[inline]
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
         self.poll_data()
-    }
-}
-
-#[cfg(feature = "tower-middleware")]
-mod tower {
-    use super::*;
-
-    use tower_web::util::BufStream;
-
-    impl BufStream for RequestBody {
-        type Item = hyper::Chunk;
-        type Error = hyper::Error;
-
-        #[inline]
-        fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-            BufStream::poll(&mut self.0)
-        }
-
-        fn size_hint(&self) -> tower_web::util::buf_stream::SizeHint {
-            self.0.size_hint()
-        }
     }
 }
 
@@ -159,11 +145,23 @@ impl Future for OnUpgrade {
 
 // ==== ReadAll ====
 
-/// A future to receive the entire of incoming message body.
-#[derive(Debug)]
+#[doc(hidden)]
+#[deprecated(
+    since = "0.5.3",
+    note = "this struct will be removed in the next version."
+)]
 #[must_use = "futures do nothing unless polled"]
 pub struct ReadAll {
     state: ReadAllState,
+}
+
+#[allow(deprecated)]
+impl fmt::Debug for ReadAll {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReadAll")
+            .field("state", &self.state)
+            .finish()
+    }
 }
 
 #[derive(Debug)]
@@ -172,6 +170,7 @@ enum ReadAllState {
     Done,
 }
 
+#[allow(deprecated)]
 impl ReadAll {
     fn new(body: RequestBody) -> Self {
         Self {
@@ -180,6 +179,7 @@ impl ReadAll {
     }
 }
 
+#[allow(deprecated)]
 impl Future for ReadAll {
     type Item = Bytes;
     type Error = hyper::Error;

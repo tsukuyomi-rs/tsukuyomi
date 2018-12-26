@@ -5,10 +5,10 @@ use {
     crate::{
         error::Error,
         future::{Poll, TryFuture},
-        input::{body::RequestBody, header::ContentType, Input},
+        input::{body::RequestBody, header::ContentType, localmap::LocalData, Input},
     },
     bytes::Bytes,
-    futures01::Future,
+    futures01::{Future, Stream},
     mime::Mime,
     serde::de::DeserializeOwned,
     std::{marker::PhantomData, str},
@@ -37,7 +37,7 @@ enum ExtractBodyError {
 
 trait Decoder<T> {
     fn validate_mime(mime: Option<&Mime>) -> Result<(), ExtractBodyError>;
-    fn decode(data: &Bytes) -> Result<T, ExtractBodyError>;
+    fn decode(data: &[u8]) -> Result<T, ExtractBodyError>;
 }
 
 fn decode<T, D>() -> impl Extractor<
@@ -73,7 +73,7 @@ where
     #[allow(missing_debug_implementations)]
     enum State {
         Init,
-        ReadAll(crate::input::body::ReadAll),
+        ReadAll(futures01::stream::Concat2<RequestBody>),
     }
 
     #[allow(missing_debug_implementations)]
@@ -95,16 +95,13 @@ where
                     State::Init => {
                         let mime_opt = crate::input::header::parse::<ContentType>(input)?;
                         D::validate_mime(mime_opt).map_err(crate::error::bad_request)?;
-
-                        let read_all = match input.locals.remove(&RequestBody::KEY) {
-                            Some(body) => body.read_all(),
-                            None => return Err(stolen_payload()),
-                        };
-                        State::ReadAll(read_all)
+                        RequestBody::take_from(input.locals)
+                            .map(|body| State::ReadAll(body.concat2()))
+                            .ok_or_else(stolen_payload)?
                     }
                     State::ReadAll(ref mut read_all) => {
                         let data = futures01::try_ready!(read_all.poll());
-                        return D::decode(&data)
+                        return D::decode(&*data)
                             .map(|out| (out,).into())
                             .map_err(crate::error::bad_request);
                     }
@@ -150,7 +147,7 @@ where
             Ok(())
         }
 
-        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+        fn decode(data: &[u8]) -> Result<T, ExtractBodyError> {
             let s = str::from_utf8(&*data) //
                 .map_err(|cause| ExtractBodyError::InvalidContent {
                     cause: cause.into(),
@@ -191,7 +188,7 @@ where
             Ok(())
         }
 
-        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+        fn decode(data: &[u8]) -> Result<T, ExtractBodyError> {
             serde_json::from_slice(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
                 cause: cause.into(),
             })
@@ -227,7 +224,7 @@ where
             Ok(())
         }
 
-        fn decode(data: &Bytes) -> Result<T, ExtractBodyError> {
+        fn decode(data: &[u8]) -> Result<T, ExtractBodyError> {
             serde_urlencoded::from_bytes(&*data).map_err(|cause| ExtractBodyError::InvalidContent {
                 cause: cause.into(),
             })
@@ -244,20 +241,18 @@ pub fn read_all() -> impl Extractor<
     Extract = impl TryFuture<Ok = (Bytes,), Error = Error> + Send + 'static,
 > {
     super::extract(|| {
-        let mut read_all: Option<crate::input::body::ReadAll> = None;
+        let mut read_all: Option<futures01::stream::Concat2<RequestBody>> = None;
         crate::future::poll_fn(move |input| loop {
             if let Some(ref mut read_all) = read_all {
                 return read_all
                     .poll()
-                    .map(|x| x.map(|bytes| (bytes,)))
+                    .map(|x| x.map(|chunk| (chunk.into_bytes(),)))
                     .map_err(Into::into);
             }
             read_all = Some(
-                input
-                    .locals
-                    .remove(&RequestBody::KEY)
+                RequestBody::take_from(input.locals)
                     .ok_or_else(stolen_payload)?
-                    .read_all(),
+                    .concat2(),
             );
         })
     })
@@ -271,9 +266,7 @@ pub fn stream() -> impl Extractor<
 > {
     super::extract(|| {
         crate::future::poll_fn(|input| {
-            input
-                .locals
-                .remove(&RequestBody::KEY)
+            RequestBody::take_from(input.locals)
                 .map(|body| (body,).into())
                 .ok_or_else(stolen_payload)
         })
