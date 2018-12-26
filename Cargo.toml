@@ -60,7 +60,7 @@ members = [
 ]
 
 [patch.crates-io]
-tsukuyomi = { version = "0.5.2", path = "tsukuyomi" }
+tsukuyomi = { version = "0.5.3", path = "tsukuyomi" }
 tsukuyomi-macros = { version = "0.5.2", path = "tsukuyomi/macros" }
 tsukuyomi-server = { version = "0.2.0", path = "tsukuyomi-server" }
 tsukuyomi-service = { version = "0.1.0", path = "tsukuyomi-service" }
