@@ -1,7 +1,7 @@
 //! Components for receiving incoming request bodies.
 
 use {
-    super::localmap::local_key,
+    super::localmap::{local_key, LocalData},
     bytes::{Buf, BufMut, Bytes, BytesMut},
     futures01::{Async, Future, Poll, Stream},
     http::header::HeaderMap,
@@ -13,11 +13,6 @@ use {
 pub struct RequestBody(Body);
 
 impl RequestBody {
-    local_key! {
-        /// The local key to manage the request body stored in the current context.
-        pub const KEY: Self;
-    }
-
     #[inline]
     pub fn on_upgrade(self) -> OnUpgrade {
         OnUpgrade(self.0.on_upgrade())
@@ -31,6 +26,14 @@ impl RequestBody {
     /// and merges them into a `Bytes`.
     pub fn read_all(self) -> ReadAll {
         ReadAll::new(self)
+    }
+}
+
+impl LocalData for RequestBody {
+    local_key! {
+        /// The local key to manage the request body
+        /// stored in the current context.
+        const KEY: Self;
     }
 }
 

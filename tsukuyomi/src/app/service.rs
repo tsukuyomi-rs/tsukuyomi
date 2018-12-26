@@ -1,7 +1,12 @@
 use {
     super::{config::Concurrency, recognizer::Captures, AppInner, Endpoint},
     crate::{
-        input::{body::RequestBody, localmap::LocalMap, param::Params, Cookies, Input},
+        input::{
+            body::RequestBody,
+            localmap::{LocalData, LocalMap},
+            param::Params,
+            Cookies, Input,
+        },
         output::ResponseBody,
         util::Never,
     },
@@ -51,7 +56,7 @@ where
         let (parts, body) = request.into_parts();
 
         let mut locals = LocalMap::default();
-        locals.insert(&RequestBody::KEY, body.into());
+        RequestBody::from(body).insert_into(&mut locals);
 
         AppFuture {
             request: Request::from_parts(parts, ()),

@@ -12,6 +12,7 @@ use {
         input::{
             body::{ReadAll, RequestBody},
             header::ContentType,
+            localmap::LocalData,
             Input,
         },
         responder::Responder,
@@ -59,14 +60,13 @@ where
                             Err(err) => return Err(err),
                         };
 
-                        let read_all = match input.locals.remove(&RequestBody::KEY) {
-                            Some(body) => body.read_all(),
-                            None => {
-                                return Err(tsukuyomi::error::internal_server_error(
+                        let read_all = RequestBody::take_from(input.locals)
+                            .ok_or_else(|| {
+                                tsukuyomi::error::internal_server_error(
                                     "the payload has already stolen by another extractor",
-                                ))
-                            }
-                        };
+                                )
+                            })?
+                            .read_all();
                         State::Receive(read_all, kind)
                     } else {
                         return Err(GraphQLParseError::InvalidRequestMethod.into());

@@ -5,7 +5,7 @@ use {
     crate::{
         error::Error,
         future::{Poll, TryFuture},
-        input::{body::RequestBody, header::ContentType, Input},
+        input::{body::RequestBody, header::ContentType, localmap::LocalData, Input},
     },
     bytes::Bytes,
     futures01::Future,
@@ -95,12 +95,9 @@ where
                     State::Init => {
                         let mime_opt = crate::input::header::parse::<ContentType>(input)?;
                         D::validate_mime(mime_opt).map_err(crate::error::bad_request)?;
-
-                        let read_all = match input.locals.remove(&RequestBody::KEY) {
-                            Some(body) => body.read_all(),
-                            None => return Err(stolen_payload()),
-                        };
-                        State::ReadAll(read_all)
+                        RequestBody::take_from(input.locals)
+                            .map(|body| State::ReadAll(body.read_all()))
+                            .ok_or_else(stolen_payload)?
                     }
                     State::ReadAll(ref mut read_all) => {
                         let data = futures01::try_ready!(read_all.poll());
@@ -253,9 +250,7 @@ pub fn read_all() -> impl Extractor<
                     .map_err(Into::into);
             }
             read_all = Some(
-                input
-                    .locals
-                    .remove(&RequestBody::KEY)
+                RequestBody::take_from(input.locals)
                     .ok_or_else(stolen_payload)?
                     .read_all(),
             );
@@ -271,9 +266,7 @@ pub fn stream() -> impl Extractor<
 > {
     super::extract(|| {
         crate::future::poll_fn(|input| {
-            input
-                .locals
-                .remove(&RequestBody::KEY)
+            RequestBody::take_from(input.locals)
                 .map(|body| (body,).into())
                 .ok_or_else(stolen_payload)
         })
