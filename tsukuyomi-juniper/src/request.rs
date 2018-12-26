@@ -1,6 +1,6 @@
 use {
     crate::{error::GraphQLParseError, Schema},
-    futures::Future,
+    futures::{stream::Concat2, Future, Stream},
     http::{Method, Response, StatusCode},
     juniper::{DefaultScalarValue, InputValue, ScalarRefValue, ScalarValue},
     percent_encoding::percent_decode,
@@ -9,12 +9,7 @@ use {
         error::Error,
         extractor::Extractor,
         future::{Async, Poll, TryFuture},
-        input::{
-            body::{ReadAll, RequestBody},
-            header::ContentType,
-            localmap::LocalData,
-            Input,
-        },
+        input::{body::RequestBody, header::ContentType, localmap::LocalData, Input},
         responder::Responder,
     },
 };
@@ -39,7 +34,7 @@ where
     #[allow(missing_debug_implementations)]
     enum State {
         Init,
-        Receive(ReadAll, RequestKind),
+        Receive(Concat2<RequestBody>, RequestKind),
     }
 
     tsukuyomi::extractor::extract(|| {
@@ -66,7 +61,7 @@ where
                                     "the payload has already stolen by another extractor",
                                 )
                             })?
-                            .read_all();
+                            .concat2();
                         State::Receive(read_all, kind)
                     } else {
                         return Err(GraphQLParseError::InvalidRequestMethod.into());
