@@ -15,16 +15,16 @@ use {
 /// A proxy object for accessing the incoming HTTP request data.
 #[derive(Debug)]
 pub struct Input<'task> {
-    /// The information of incoming request without the message body.
+    /// A reference to `Request` without the message body.
     pub request: &'task Request<()>,
 
-    /// A set of extracted parameters from inner.
+    /// A set of parameter values extracted by the router.
     pub params: &'task Option<Params<'task>>,
 
     /// A proxy object for accessing Cookie values.
     pub cookies: &'task mut Cookies<'task>,
 
-    /// A typemap that holds arbitrary request-local inner.
+    /// An any-map that contains arbitrary request-local data.
     pub locals: &'task mut LocalMap,
 
     /// A map of header fields that will be inserted at reply to the client.
