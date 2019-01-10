@@ -13,12 +13,11 @@ use {
     cookie::CookieJar,
     futures01::{Async, Future, Poll},
     http::{
-        header::{self, HeaderMap, HeaderValue},
+        header::{self, HeaderMap},
         Request, Response,
     },
-    hyper::body::Payload,
+    izanami_service::Service,
     std::{fmt, marker::PhantomData, sync::Arc},
-    tsukuyomi_service::Service,
 };
 
 macro_rules! ready {
@@ -160,19 +159,6 @@ impl<C: Concurrency> AppFuture<C> {
             for (k, v) in hdrs.drain() {
                 output.headers_mut().extend(v.map(|v| (k.clone(), v)));
             }
-        }
-
-        // append the value of Content-Length to the response header if missing.
-        if let Some(len) = output.body().content_length() {
-            output
-                .headers_mut()
-                .entry(header::CONTENT_LENGTH)
-                .expect("never fails")
-                .or_insert_with(|| {
-                    // safety: '0'-'9' is ascii.
-                    // TODO: more efficient
-                    unsafe { HeaderValue::from_shared_unchecked(len.to_string().into()) }
-                });
         }
     }
 }

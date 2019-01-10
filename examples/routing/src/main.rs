@@ -1,14 +1,14 @@
 use {
+    izanami::Server,
     std::path::PathBuf,
     tsukuyomi::{
         config::prelude::*, //
         App,
     },
-    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
-    App::create(chain![
+fn main() -> izanami::Result<()> {
+    let app = App::create(chain![
         // a route that matches the root path.
         path!("/") //
             .to({
@@ -53,7 +53,7 @@ fn main() -> tsukuyomi_server::Result<()> {
         // A route that matches any path.
         path!("*") //
             .to(endpoint::reply("default route"))
-    ])
-    .map(Server::new)?
-    .run()
+    ])?;
+
+    Server::build().start(app)
 }

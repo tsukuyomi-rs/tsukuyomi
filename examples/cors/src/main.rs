@@ -1,4 +1,5 @@
 use {
+    izanami::Server,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
         config::prelude::*, //
@@ -7,7 +8,6 @@ use {
         App,
     },
     tsukuyomi_cors::CORS,
-    tsukuyomi_server::Server,
 };
 
 #[derive(Debug, Deserialize, Serialize, IntoResponse)]
@@ -19,7 +19,7 @@ struct UserInfo {
     confirm_password: String,
 }
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let cors = CORS::builder()
         .allow_origin("http://127.0.0.1:5000")?
         .allow_methods(vec!["GET", "POST"])?
@@ -43,7 +43,6 @@ fn main() -> tsukuyomi_server::Result<()> {
             .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
     ])?;
 
-    Server::new(app)
-        .bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000)))
-        .run()
+    Server::bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000))) //
+        .start(app)
 }

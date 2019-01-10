@@ -68,17 +68,6 @@ impl HttpError for failure::Error {
     }
 }
 
-impl HttpError for hyper::Error {
-    type Body = String;
-
-    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
-        Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(format!("hyper error: {}", self))
-            .expect("should be a valid response")
-    }
-}
-
 impl HttpError for Never {
     type Body = ResponseBody;
 

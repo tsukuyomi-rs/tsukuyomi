@@ -4,7 +4,7 @@ use {
 };
 
 #[test]
-fn enable_manage_cookies() -> tsukuyomi_server::Result<()> {
+fn enable_manage_cookies() -> izanami::Result<()> {
     let app = App::create(chain![
         path!("/first") //
             .to(endpoint::reply(tsukuyomi::responder::oneshot(|input| {
@@ -17,7 +17,7 @@ fn enable_manage_cookies() -> tsukuyomi_server::Result<()> {
                 Ok::<_, tsukuyomi::Error>("")
             }))),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let mut session = server.new_session()?.save_cookies(true);
     let _ = session.perform("/first")?;
@@ -27,7 +27,7 @@ fn enable_manage_cookies() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn disable_manage_cookies() -> tsukuyomi_server::Result<()> {
+fn disable_manage_cookies() -> izanami::Result<()> {
     let app = App::create(chain![
         path!("/first") //
             .to(endpoint::reply(tsukuyomi::responder::oneshot(|input| {
@@ -40,7 +40,7 @@ fn disable_manage_cookies() -> tsukuyomi_server::Result<()> {
                 Ok::<_, tsukuyomi::Error>("")
             }))),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let mut session = server.new_session()?;
     let _ = session.perform("/first")?;

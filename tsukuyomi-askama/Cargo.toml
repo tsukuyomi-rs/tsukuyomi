@@ -1,7 +1,7 @@
 [package]
 name = "tsukuyomi-askama"
 description = "Askama integration for Tsukuyomi."
-version = "0.2.1"
+version = "0.3.0-dev"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -9,11 +9,11 @@ repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 readme = "README.md"
 
 [dependencies]
-tsukuyomi = { version = "0.5.2", path = "../tsukuyomi" }
+tsukuyomi = { version = "0.6.0-dev", path = "../tsukuyomi" }
 askama = "0.7"
 mime_guess = "2.0.0-alpha.6"
 http = "0.1"
 
 [dev-dependencies]
 version-sync = "0.6"
-tsukuyomi-server = { version = "0.2.0", path = "../tsukuyomi-server" }
+izanami = "0.1.0-preview.1"

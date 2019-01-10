@@ -8,8 +8,7 @@ publish = false # never published
 doubter = { version = "0.1.0", default-features = false }
 
 [dev-dependencies]
-tsukuyomi = { version = "0.5", path = "tsukuyomi" }
-tsukuyomi-server = { version = "0.2", path = "tsukuyomi-server" }
+tsukuyomi = { version = "0.6.0-dev", path = "tsukuyomi" }
 
 # for documentation
 askama = "0.7.2"
@@ -30,9 +29,6 @@ members = [
   "tsukuyomi",
   "tsukuyomi/macros",
 
-  "tsukuyomi-server",
-  "tsukuyomi-service",
-
   "tsukuyomi-askama",
   "tsukuyomi-cors",
   "tsukuyomi-juniper",
@@ -46,26 +42,27 @@ members = [
   "examples/juniper",
   "examples/json",
   "examples/logging",
-  "examples/native-tls",
-  "examples/openssl",
   "examples/routing",
-  "examples/rustls",
   "examples/session",
   "examples/session-redis",
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
-  "examples/unix-socket",
   "examples/websocket",
 ]
 
 [patch.crates-io]
-tsukuyomi = { version = "0.5.3", path = "tsukuyomi" }
-tsukuyomi-macros = { version = "0.5.2", path = "tsukuyomi/macros" }
-tsukuyomi-server = { version = "0.2.0", path = "tsukuyomi-server" }
-tsukuyomi-service = { version = "0.1.0", path = "tsukuyomi-service" }
-tsukuyomi-askama = { version = "0.2.1", path = "tsukuyomi-askama" }
-tsukuyomi-cors = { version = "0.2.0", path = "tsukuyomi-cors" }
-tsukuyomi-juniper = { version = "0.3.1", path = "tsukuyomi-juniper" }
-tsukuyomi-session = { version = "0.2.0", path = "tsukuyomi-session" }
-tsukuyomi-tungstenite = { version = "0.2.0", path = "tsukuyomi-tungstenite" }
+tsukuyomi = { path = "tsukuyomi" }
+tsukuyomi-macros = { path = "tsukuyomi/macros" }
+tsukuyomi-askama = { path = "tsukuyomi-askama" }
+tsukuyomi-cors = { path = "tsukuyomi-cors" }
+tsukuyomi-juniper = { path = "tsukuyomi-juniper" }
+tsukuyomi-session = { path = "tsukuyomi-session" }
+tsukuyomi-tungstenite = { path = "tsukuyomi-tungstenite" }
+
+version-sync = { git = "https://github.com/ubnt-intrepid/version-sync.git", branch = "bump-version" }
+
+izanami = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+izanami-http = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+izanami-rt = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+izanami-service = { git = "https://github.com/ubnt-intrepid/izanami.git" }

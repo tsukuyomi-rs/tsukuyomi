@@ -1,11 +1,11 @@
 use {
     http::{Request, Response},
+    izanami::test::{Output as TestOutput, Server as TestServer},
     juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{config::prelude::*, App},
     tsukuyomi_juniper::GraphQLRequest,
-    tsukuyomi_server::test::{Output as TestOutput, Server as TestServer},
 };
 
 #[test]
@@ -14,7 +14,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn integration_test() -> tsukuyomi_server::Result<()> {
+fn integration_test() -> izanami::Result<()> {
     let database = Arc::new(Database::new());
     let schema = Arc::new(RootNode::new(
         Database::new(),
@@ -34,7 +34,7 @@ fn integration_test() -> tsukuyomi_server::Result<()> {
             .modify(tsukuyomi_juniper::capture_errors())
     })?;
 
-    let test_server = tsukuyomi_server::test::server(app)?;
+    let test_server = izanami::test::server(app)?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),

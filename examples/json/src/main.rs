@@ -1,4 +1,5 @@
 use {
+    izanami::Server,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
         config::prelude::*, //
@@ -6,7 +7,6 @@ use {
         App,
         IntoResponse,
     },
-    tsukuyomi_server::Server,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, IntoResponse)]
@@ -16,7 +16,7 @@ struct User {
     age: u32,
 }
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let app = App::create(
         path!("/") //
             .to(chain![
@@ -30,5 +30,5 @@ fn main() -> tsukuyomi_server::Result<()> {
             ]),
     )?;
 
-    Server::new(app).run()
+    Server::build().start(app)
 }

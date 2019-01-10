@@ -1,6 +1,6 @@
 use {
     crate::{error::GraphQLParseError, Schema},
-    futures::{stream::Concat2, Future, Stream},
+    futures::Future,
     http::{Method, Response, StatusCode},
     juniper::{DefaultScalarValue, InputValue, ScalarRefValue, ScalarValue},
     percent_encoding::percent_decode,
@@ -9,7 +9,12 @@ use {
         error::Error,
         extractor::Extractor,
         future::{Async, Poll, TryFuture},
-        input::{body::RequestBody, header::ContentType, localmap::LocalData, Input},
+        input::{
+            body::{ReadAll, RequestBody},
+            header::ContentType,
+            localmap::LocalData,
+            Input,
+        },
         responder::Responder,
     },
 };
@@ -34,7 +39,7 @@ where
     #[allow(missing_debug_implementations)]
     enum State {
         Init,
-        Receive(Concat2<RequestBody>, RequestKind),
+        Receive(ReadAll, RequestKind),
     }
 
     tsukuyomi::extractor::extract(|| {
@@ -61,7 +66,7 @@ where
                                     "the payload has already stolen by another extractor",
                                 )
                             })?
-                            .concat2();
+                            .read_all();
                         State::Receive(read_all, kind)
                     } else {
                         return Err(GraphQLParseError::InvalidRequestMethod.into());
@@ -211,7 +216,7 @@ where
             schema,
             context,
         } = self;
-        let handle = tsukuyomi_server::rt::spawn_fn(move || -> tsukuyomi::Result<_> {
+        let handle = izanami_rt::spawn_fn(move || -> tsukuyomi::Result<_> {
             use self::GraphQLRequestKind::*;
             match request.0 {
                 Single(request) => {
@@ -257,9 +262,9 @@ where
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
 pub struct GraphQLRespond {
-    handle: tsukuyomi_server::rt::SpawnHandle<
-        tsukuyomi::Result<Response<Vec<u8>>>,
-        tsukuyomi_server::rt::BlockingError,
+    handle: izanami_rt::SpawnHandle<
+        tsukuyomi::Result<Response<Vec<u8>>>, //
+        izanami_rt::BlockingError,
     >,
 }
 

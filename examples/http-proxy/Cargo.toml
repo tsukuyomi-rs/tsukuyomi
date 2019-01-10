@@ -11,11 +11,11 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.5.0"
-tsukuyomi-server = "0.2.0"
-tsukuyomi-service = "0.1.0"
+tsukuyomi = "0.6.0-dev"
+izanami = "0.1.0-preview.1"
+izanami-service = "0.1.0-preview.1"
 
 futures = "0.1"
 http = "0.1"
-reqwest = "0.9"
+reqwest = { version = "0.9", default-features = false, features = ["rustls-tls"] }
 tokio = "0.1"

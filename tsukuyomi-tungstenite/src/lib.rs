@@ -1,6 +1,6 @@
 //! The basic WebSocket support for Tsukuyomi, powered by tungstenite.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-tungstenite/0.3.0-dev")]
 #![deny(
     missing_docs,
     missing_debug_implementations,
@@ -83,6 +83,7 @@ mod imp {
             },
             Request, Response, StatusCode,
         },
+        izanami_rt::{DefaultExecutor, Executor},
         sha1::{Digest, Sha1},
         tsukuyomi::{
             error::HttpError,
@@ -93,7 +94,6 @@ mod imp {
                 Input,
             },
         },
-        tsukuyomi_server::rt::{DefaultExecutor, Executor},
         tungstenite::protocol::Role,
     };
 

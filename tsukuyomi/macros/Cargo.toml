@@ -1,7 +1,7 @@
 [package]
 name = "tsukuyomi-macros"
 description = "Procerual macros for Tsukuyomi"
-version = "0.5.2"
+version = "0.6.0-dev"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -17,7 +17,3 @@ proc-macro2 = "0.4.20"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies.tsukuyomi]
-version = "0.5"
-path = ".."

@@ -1,13 +1,13 @@
 use {
+    izanami::Server,
     tsukuyomi::{
         config::prelude::*, //
         vendor::http::StatusCode,
         App,
     },
-    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::try_init()?;
 
@@ -24,7 +24,7 @@ fn main() -> tsukuyomi_server::Result<()> {
     let addr: std::net::SocketAddr = "127.0.0.1:4000".parse()?;
 
     log::info!("Listening on http://{}", addr);
-    Server::new(app).bind(addr).run()
+    Server::bind(addr).start(app)
 }
 
 mod logging {
