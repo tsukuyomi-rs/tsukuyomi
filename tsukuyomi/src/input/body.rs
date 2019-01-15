@@ -201,7 +201,7 @@ impl Future for ReadAll {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         while let Some(buf) = futures01::try_ready!(self.body.poll_buf()) {
-            self.acc.put(buf);
+            self.acc.extend_from_slice(buf.bytes());
         }
 
         let buf = std::mem::replace(&mut self.acc, BytesMut::new()).freeze();
