@@ -11,9 +11,9 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.6.0-dev"
+tsukuyomi = { path = "../../tsukuyomi" }
 izanami = "0.1.0-preview.1"
-tsukuyomi-session = { version = "0.3.0-dev", features = ["use-redis"] }
+tsukuyomi-session = { path = "../../tsukuyomi-session", features = ["use-redis"] }
 either = "1"
 serde = { version = "1", features = ["derive"] }
 redis = "0.9"

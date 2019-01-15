@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
 [dependencies]
-tsukuyomi = "0.6.0-dev"
+tsukuyomi = { version = "0.6.0-dev", path = "../tsukuyomi" }
 cookie = "0.11"
 
 # for Redis session backend
@@ -22,7 +22,7 @@ serde = "1"
 
 [dev-dependencies]
 http = "0.1"
-version-sync = "0.6"
+version-sync = "0.7"
 izanami = "0.1.0-preview.1"
 
 [features]

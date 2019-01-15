@@ -99,7 +99,8 @@ fn main() -> izanami::Result<()> {
         ])
     })?;
 
-    Server::build().start(app)
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>
@@ -107,7 +108,7 @@ where
     F: FnOnce() -> Result<T, E>,
     E: Into<Error>,
 {
-    izanami::rt::blocking(op).then(|result| {
+    izanami::util::rt::blocking(op).then(|result| {
         result
             .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
             .and_then(|result| {

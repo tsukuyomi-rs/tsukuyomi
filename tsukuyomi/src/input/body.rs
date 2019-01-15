@@ -6,9 +6,9 @@ use {
     bytes::{Buf, BufMut, Bytes, BytesMut},
     futures01::{Future, Poll, Stream},
     http::{Request, Response, StatusCode},
-    izanami_http::{
+    izanami_util::{
         buf_stream::{BufStream, SizeHint},
-        upgrade::{Upgrade, Upgraded},
+        http::{Upgrade, Upgraded},
     },
     std::{fmt, io},
     tokio_io::{AsyncRead, AsyncWrite},

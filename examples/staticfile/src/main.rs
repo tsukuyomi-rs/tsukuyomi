@@ -17,5 +17,8 @@ fn main() -> izanami::Result<()> {
         Staticfiles::new(manifest_dir.join("static")),
     ])?;
 
-    Server::build().start(app)
+    let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
+    let server = Server::bind_tcp(&addr)?;
+
+    server.start(app)
 }

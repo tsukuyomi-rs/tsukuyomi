@@ -39,8 +39,8 @@ filetime = "0.2"
 futures01 = { package = "futures", version = "0.1" }
 http = "0.1"
 indexmap = "1"
-izanami-http = "0.1.0-preview.1"
 izanami-service = "0.1.0-preview.1"
+izanami-util = "0.1.0-preview.1"
 lazy_static = "1.2"
 log = "0.4"
 mime = "0.3"
@@ -62,7 +62,7 @@ path = "./macros"
 [dev-dependencies]
 izanami = "0.1.0-preview.1"
 matches = "0.1"
-version-sync = "0.6"
+version-sync = "0.7"
 
 [features]
 default = []

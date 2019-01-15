@@ -22,9 +22,13 @@ fn main() -> izanami::Result<()> {
     )?;
 
     let addr: std::net::SocketAddr = "127.0.0.1:4000".parse()?;
+    let mut server = Server::bind_tcp(&addr)?;
 
-    log::info!("Listening on http://{}", addr);
-    Server::bind(addr).start(app)
+    log::info!(
+        "Listening on http://{}",
+        server.transport().get_ref().0.local_addr()?
+    );
+    server.start(app)
 }
 
 mod logging {

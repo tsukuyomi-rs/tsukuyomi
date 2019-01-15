@@ -15,5 +15,5 @@ mime_guess = "2.0.0-alpha.6"
 http = "0.1"
 
 [dev-dependencies]
-version-sync = "0.6"
+version-sync = "0.7"
 izanami = "0.1.0-preview.1"

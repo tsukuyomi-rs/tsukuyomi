@@ -16,7 +16,7 @@ use {
         header::{self, HeaderMap},
         Request, Response, StatusCode,
     },
-    izanami_http::buf_stream::BufStream,
+    izanami_util::buf_stream::BufStream,
     log::trace,
     mime::Mime,
     std::{

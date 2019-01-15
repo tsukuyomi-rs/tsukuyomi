@@ -10,8 +10,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/tsukuyomi-rs/tsukuyomi.git"
 
 [dependencies]
-tsukuyomi = "0.6.0-dev"
-izanami-rt = "0.1.0-preview.1"
+tsukuyomi = { version = "0.6.0-dev", path = "../tsukuyomi" }
+izanami-util = "0.1.0-preview.1"
 juniper = "0.11.1"
 
 bytes = "0.4"
@@ -26,7 +26,7 @@ serde_urlencoded = "0.5"
 [dev-dependencies]
 izanami = "0.1.0-preview.1"
 percent-encoding = "1"
-version-sync = "0.6"
+version-sync = "0.7"
 
 [dev-dependencies.juniper]
 version = "0.11.1"

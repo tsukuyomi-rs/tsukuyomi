@@ -34,5 +34,6 @@ fn main() -> izanami::Result<()> {
 
     let app = app.with_modify_service(crate::peer::with_peer_addr());
 
-    Server::build().start(app)
+    let server = Server::bind_tcp(&"127.0.0.1:4000".parse()?)?;
+    server.start(app)
 }

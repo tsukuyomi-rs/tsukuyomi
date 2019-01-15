@@ -2,7 +2,7 @@ use {
     bytes::{Buf, Bytes, IntoBuf},
     either::Either,
     futures01::{Poll, Stream},
-    izanami_http::buf_stream::{BufStream, SizeHint},
+    izanami_util::buf_stream::{BufStream, SizeHint},
     std::{fmt, io},
 };
 
@@ -134,7 +134,7 @@ impl BufStream for ResponseBody {
         match &mut self.0 {
             Inner::Sized(chunk) => chunk
                 .poll_buf()
-                .map(|x| x.map(|opt| opt.map(|chunk| Either::Left(chunk))))
+                .map(|x| x.map(|opt| opt.map(Either::Left)))
                 .map_err(Into::into),
             Inner::Chunked(chunks) => chunks
                 .poll_buf_boxed()

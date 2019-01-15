@@ -30,5 +30,6 @@ fn main() -> izanami::Result<()> {
             ]),
     )?;
 
-    Server::build().start(app)
+    let server = Server::bind_tcp(&"127.0.0.1:4000".parse()?)?;
+    server.start(app)
 }

@@ -42,5 +42,6 @@ fn main() -> izanami::Result<()> {
             .modify(capture_errors()) // <-- modifies all errors that this route throws into GraphQL errors.
     ])?;
 
-    Server::build().start(app)
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }

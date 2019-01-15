@@ -43,6 +43,6 @@ fn main() -> izanami::Result<()> {
             .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
     ])?;
 
-    Server::bind(std::net::SocketAddr::from(([127, 0, 0, 1], 4000))) //
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
         .start(app)
 }

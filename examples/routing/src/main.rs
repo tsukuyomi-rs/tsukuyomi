@@ -55,5 +55,8 @@ fn main() -> izanami::Result<()> {
             .to(endpoint::reply("default route"))
     ])?;
 
-    Server::build().start(app)
+    let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
+    let server = Server::bind_tcp(&addr)?;
+
+    server.start(app)
 }

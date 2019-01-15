@@ -52,17 +52,6 @@ members = [
 ]
 
 [patch.crates-io]
-tsukuyomi = { path = "tsukuyomi" }
-tsukuyomi-macros = { path = "tsukuyomi/macros" }
-tsukuyomi-askama = { path = "tsukuyomi-askama" }
-tsukuyomi-cors = { path = "tsukuyomi-cors" }
-tsukuyomi-juniper = { path = "tsukuyomi-juniper" }
-tsukuyomi-session = { path = "tsukuyomi-session" }
-tsukuyomi-tungstenite = { path = "tsukuyomi-tungstenite" }
-
-version-sync = { git = "https://github.com/ubnt-intrepid/version-sync.git", branch = "bump-version" }
-
-izanami = { git = "https://github.com/ubnt-intrepid/izanami.git" }
-izanami-http = { git = "https://github.com/ubnt-intrepid/izanami.git" }
-izanami-rt = { git = "https://github.com/ubnt-intrepid/izanami.git" }
-izanami-service = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+# izanami = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+# izanami-service = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+# izanami-util = { git = "https://github.com/ubnt-intrepid/izanami.git" }

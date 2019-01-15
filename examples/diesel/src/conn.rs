@@ -30,7 +30,7 @@ where
 
     Ok(tsukuyomi::extractor::extract(move || {
         let pool = pool.clone();
-        izanami::rt::blocking(move || pool.get()) //
+        izanami::util::rt::blocking(move || pool.get()) //
             .then(|result| {
                 result
                     .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError

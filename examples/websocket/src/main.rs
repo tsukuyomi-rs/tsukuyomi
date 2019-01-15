@@ -33,5 +33,6 @@ fn main() -> izanami::Result<()> {
         Staticfiles::new(STATIC_PATH)
     ])?;
 
-    Server::build().start(app)
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }

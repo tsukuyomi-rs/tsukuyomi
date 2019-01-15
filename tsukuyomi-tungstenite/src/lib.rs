@@ -83,7 +83,7 @@ mod imp {
             },
             Request, Response, StatusCode,
         },
-        izanami_rt::{DefaultExecutor, Executor},
+        izanami_util::rt::{DefaultExecutor, Executor},
         sha1::{Digest, Sha1},
         tsukuyomi::{
             error::HttpError,
