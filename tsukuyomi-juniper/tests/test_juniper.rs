@@ -51,24 +51,36 @@ struct TestTsukuyomiIntegration {
 
 impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
     fn get(&self, url: &str) -> http_tests::TestResponse {
+        eprintln!("GET {:?}", url);
         let response = self
             .local_server
             .borrow_mut()
             .perform(Request::get(custom_url_encode(url)))
             .unwrap();
+        eprintln!(
+            "-> {} {:?}",
+            response.status(),
+            response.body().to_utf8().unwrap()
+        );
         make_test_response(&response)
     }
 
     fn post(&self, url: &str, body: &str) -> http_tests::TestResponse {
+        eprintln!("POST {:?} ({:?})", url, body);
         let response = self
             .local_server
             .borrow_mut()
             .perform(
                 Request::post(custom_url_encode(url))
                     .header("content-type", "application/json")
-                    .body(body),
+                    .body(body.as_bytes()),
             )
             .unwrap();
+        eprintln!(
+            "-> {} {:?}",
+            response.status(),
+            response.body().to_utf8().unwrap()
+        );
         make_test_response(&response)
     }
 }
