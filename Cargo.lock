@@ -2066,6 +2066,7 @@ dependencies = [
  "cargo-husky 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "doubter 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "izanami 0.1.0-preview.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "juniper 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-rustls 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tungstenite 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",

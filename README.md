@@ -28,10 +28,10 @@ use {
         App,
         config::prelude::*,
     },
-    tsukuyomi_server::Server,
+    izanami::Server,
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let app = App::create(
         path!("/")
             .to(endpoint::reply("Hello, world.\n"))
@@ -40,7 +40,7 @@ fn main() -> tsukuyomi_server::Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
     println!("Listening on http://{}", addr);
 
-    Server::new(app).bind(addr).run()
+    Server::bind_tcp(&addr)?.start(app)
 }
 ```
 

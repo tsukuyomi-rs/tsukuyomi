@@ -9,6 +9,7 @@ doubter = { version = "0.1.0", default-features = false }
 
 [dev-dependencies]
 tsukuyomi = { version = "0.6.0-dev", path = "tsukuyomi" }
+izanami = "0.1.0-preview.1"
 
 # for documentation
 askama = "0.7.2"
