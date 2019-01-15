@@ -217,8 +217,13 @@ impl IntoResponse for &'static str {
 
     #[inline]
     #[allow(deprecated)]
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response::plain(self, request)
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        let len = self.len() as u64;
+        Ok(self::make_response(
+            self,
+            "text/plain; charset=utf-8",
+            Some(len),
+        ))
     }
 }
 
@@ -228,8 +233,13 @@ impl IntoResponse for String {
 
     #[inline]
     #[allow(deprecated)]
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response::plain(self, request)
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        let len = self.len() as u64;
+        Ok(self::make_response(
+            self,
+            "text/plain; charset=utf-8",
+            Some(len),
+        ))
     }
 }
 
@@ -238,7 +248,9 @@ impl IntoResponse for serde_json::Value {
     type Error = Never;
 
     fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self::make_response(self.to_string(), "application/json"))
+        let body = self.to_string();
+        let len = body.len() as u64;
+        Ok(self::make_response(body, "application/json", Some(len)))
     }
 }
 
@@ -305,12 +317,20 @@ where
 }
 
 /// Create an instance of `Response<T>` with the provided body and content type.
-fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
+fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Response<T> {
     let mut response = Response::new(body);
     response.headers_mut().insert(
         http::header::CONTENT_TYPE,
         http::header::HeaderValue::from_static(content_type),
     );
+    if let Some(len) = len {
+        response.headers_mut().insert(
+            http::header::CONTENT_LENGTH,
+            len.to_string()
+                .parse()
+                .expect("should be a valid header value"),
+        );
+    }
     response
 }
 
@@ -342,7 +362,10 @@ pub mod preset {
 
         fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
             serde_json::to_vec(&data)
-                .map(|body| super::make_response(body, "application/json"))
+                .map(|body| {
+                    let len = body.len() as u64;
+                    super::make_response(body, "application/json", Some(len))
+                })
                 .map_err(crate::error::internal_server_error)
         }
     }
@@ -359,7 +382,10 @@ pub mod preset {
 
         fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
             serde_json::to_vec_pretty(&data)
-                .map(|body| super::make_response(body, "application/json"))
+                .map(|body| {
+                    let len = body.len() as u64;
+                    super::make_response(body, "application/json", Some(len))
+                })
                 .map_err(crate::error::internal_server_error)
         }
     }
@@ -375,7 +401,7 @@ pub mod preset {
         type Error = Never;
 
         fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(super::make_response(body, "text/html"))
+            Ok(super::make_response(body, "text/html", None))
         }
     }
 
@@ -390,7 +416,11 @@ pub mod preset {
         type Error = Never;
 
         fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(super::make_response(body, "text/plain; charset=utf-8"))
+            Ok(super::make_response(
+                body,
+                "text/plain; charset=utf-8",
+                None,
+            ))
         }
     }
 }
@@ -414,7 +444,10 @@ pub mod into_response {
         T: Serialize,
     {
         serde_json::to_vec(&data)
-            .map(|body| super::make_response(body, "application/json"))
+            .map(|body| {
+                let len = body.len() as u64;
+                super::make_response(body, "application/json", Some(len))
+            })
             .map_err(crate::error::internal_server_error)
     }
 
@@ -424,7 +457,10 @@ pub mod into_response {
         T: Serialize,
     {
         serde_json::to_vec_pretty(&data)
-            .map(|body| super::make_response(body, "application/json"))
+            .map(|body| {
+                let len = body.len() as u64;
+                super::make_response(body, "application/json", Some(len))
+            })
             .map_err(crate::error::internal_server_error)
     }
 
@@ -433,7 +469,7 @@ pub mod into_response {
     where
         T: Into<ResponseBody>,
     {
-        Ok(super::make_response(body, "text/html"))
+        Ok(super::make_response(body, "text/html", None))
     }
 
     #[inline]
@@ -441,6 +477,10 @@ pub mod into_response {
     where
         T: Into<ResponseBody>,
     {
-        Ok(super::make_response(body, "text/plain; charset=utf-8"))
+        Ok(super::make_response(
+            body,
+            "text/plain; charset=utf-8",
+            None,
+        ))
     }
 }

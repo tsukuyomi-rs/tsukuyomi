@@ -138,7 +138,6 @@ fn default_options() -> izanami::Result<()> {
     let response = server.perform(Request::options("/path"))?;
     assert_eq!(response.status(), 204);
     assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
-    assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
 
     Ok(())
 }
