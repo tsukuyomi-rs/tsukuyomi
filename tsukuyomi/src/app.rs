@@ -153,7 +153,7 @@ impl<C: Concurrency> AppInner<C> {
         let node_id = ancestors
             .and_then(|ancestors| {
                 ancestors
-                    .into_iter()
+                    .iter()
                     .find(|&&scope| self.scope(scope).data.prefix.as_str().starts_with(path)) //
                     .or_else(|| ancestors.last())
                     .cloned()
@@ -170,7 +170,7 @@ impl<C: Concurrency> AppInner<C> {
         }
         scope
             .ancestors()
-            .into_iter()
+            .iter()
             .rev()
             .filter_map(|&id| self.scope(id).data.default_handler.as_ref())
             .next()

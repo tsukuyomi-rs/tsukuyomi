@@ -196,7 +196,7 @@ mod imp {
             Some(h) => {
                 if h.len() != 24 || {
                     h.as_bytes()
-                        .into_iter()
+                        .iter()
                         .any(|&b| !b.is_ascii_alphanumeric() && b != b'+' && b != b'/' && b != b'=')
                 } {
                     Err(HandshakeError::InvalidSecWebSocketKey)?;

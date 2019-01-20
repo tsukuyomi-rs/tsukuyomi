@@ -262,7 +262,7 @@ impl<'a> Context<'a> {
                     predicates: Default::default(),
                 })
                 .predicates
-                .extend(bounds.into_iter().cloned());
+                .extend(bounds.iter().cloned());
         }
 
         // The path of types drawn at the position of the associated type.
@@ -337,7 +337,7 @@ impl<'a> Context<'a> {
             },
 
             InputKind::Enum(variants) => {
-                let variants = variants.into_iter().map(|variant| {
+                let variants = variants.iter().map(|variant| {
                     let Variant = &variant.ident;
                     match &variant.target {
                         Target::Unit => quote!(
