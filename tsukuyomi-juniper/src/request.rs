@@ -85,7 +85,7 @@ where
                                 .map(|query| {
                                     Async::Ready((GraphQLRequest::single(query, None, None),))
                                 })
-                                .map_err(|e| GraphQLParseError::DecodeUtf8(e.utf8_error()).into())
+                                .map_err(|e| GraphQLParseError::DecodeUtf8(e.utf8_error()).into());
                         }
                     }
                 }
