@@ -1,6 +1,6 @@
-[source.crates-io]
-registry = 'https://github.com/rust-lang/crates.io-index'
-replace-with = 'registry-index'
-
 [source.registry-index]
 local-registry = '.registry-index'
+
+# Uncomment here when using the local registry.
+# [source.crates-io]
+# replace-with = 'registry-index'
