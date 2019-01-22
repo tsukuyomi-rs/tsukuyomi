@@ -1,0 +1,8 @@
+steps:
+- bash: cargo update
+- bash: cargo local-registry --verbose -s Cargo.lock .registry-index
+- bash: cp -f Cargo.lock .registry-index/Cargo.lock
+- task: PublishPipelineArtifact@0
+  inputs:
+    artifactName: 'dependencies'
+    targetPath: '.registry-index'
