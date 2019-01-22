@@ -9,15 +9,8 @@ jobs:
     pool:
       vmImage: 'vs2017-win2016'
     variables:
-      OPENSSL_DIR: C:\OpenSSL
-      OPENSSL_VERSION: 1_1_0j
+      CARGO_TERM_VERBOSE: true
     steps:
-    - script: |
-        mkdir %OPENSSL_DIR%
-        curl -sSfO http://slproweb.com/download/Win64OpenSSL-%OPENSSL_VERSION%.exe
-        Win64OpenSSL-%OPENSSL_VERSION%.exe /SILENT /VERYSILENT /SP- /DIR=%OPENSSL_DIR%
-      displayName: 'install OpenSSL'
-
     - script: |
         curl -sSf -o rustup-init.exe https://win.rustup.rs
         rustup-init.exe -y --default-toolchain stable
@@ -40,6 +33,8 @@ jobs:
   - job: macOS
     pool:
       vmImage: 'macOS-10.13'
+    variables:
+      CARGO_TERM_VERBOSE: true
     steps:
     - script: |
         curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
@@ -113,6 +108,8 @@ jobs:
   - job: tarpaulin
     pool:
       vmImage: 'ubuntu-16.04'
+    variables:
+      CARGO_TERM_VERBOSE: true
     container: tarpaulin
     steps:
     - script: |
