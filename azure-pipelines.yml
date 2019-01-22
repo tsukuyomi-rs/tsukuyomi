@@ -1,7 +1,7 @@
 resources:
   containers:
-    - container: tsukuyomi
-      image: ubntintrepid/tsukuyomi:latest
+    - container: tarpaulin
+      image: xd009642/tarpaulin:latest
       options: --security-opt seccomp=unconfined
 
 jobs:
@@ -110,16 +110,15 @@ jobs:
       env:
         GH_TOKEN: $(myGitHubToken)
 
-  - job: linux_coverage
-    displayName: Linux (coverage test)
+  - job: tarpaulin
     pool:
       vmImage: 'ubuntu-16.04'
-    container: tsukuyomi
+    container: tarpaulin
     steps:
     - script: |
         cargo --version
         rustc --version
-        kcov --version
+        cargo tarpaulin --version
       displayName: show tool versions
 
     - bash: .ci/sync-local-registry.sh
