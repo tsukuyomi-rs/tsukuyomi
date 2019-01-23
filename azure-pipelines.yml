@@ -1,7 +1,7 @@
 resources:
   containers:
-    - container: rust
-      image: rust:latest
+    - container: toolkit
+      image: ubntintrepid/tsukuyomi:0.6
     - container: tarpaulin
       image: xd009642/tarpaulin:latest
       options: --security-opt seccomp=unconfined
@@ -10,12 +10,10 @@ jobs:
   - job: RegistryIndex
     pool:
       vmImage: 'ubuntu-16.04'
-    container: rust
+    container: toolkit
     variables:
       CARGO_TERM_VERBOSE: true
     steps:
-    - script: cargo install --git https://github.com/alexcrichton/cargo-local-registry.git
-      displayName: install cargo-local-registry
     - template: .ci/templates/steps/create-registry-index.yml
 
   - job: Windows
