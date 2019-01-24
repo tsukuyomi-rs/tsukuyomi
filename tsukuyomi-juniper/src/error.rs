@@ -1,91 +1,37 @@
 use {
-    http::{Request, Response, StatusCode},
+    http::{Response, StatusCode},
     serde_json::json,
-    std::fmt,
     tsukuyomi::{
         error::{Error, HttpError}, //
-        future::{Poll, TryFuture},
+        future::{Async, Poll, TryFuture},
         handler::{AllowedMethods, Handler, ModifyHandler},
         input::Input,
-        output::ResponseBody,
+        output::IntoResponse,
+        util::Either,
     },
 };
 
-#[derive(Debug)]
+#[derive(Debug, failure::Fail)]
 pub enum GraphQLParseError {
+    #[fail(display = "the request method is invalid")]
     InvalidRequestMethod,
+    #[fail(display = "missing query")]
     MissingQuery,
+    #[fail(display = "missing content-type")]
     MissingMime,
+    #[fail(display = "the content type is invalid.")]
     InvalidMime,
-    ParseJson(serde_json::Error),
-    ParseQuery(serde_urlencoded::de::Error),
-    DecodeUtf8(std::str::Utf8Error),
-}
-
-impl fmt::Display for GraphQLParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            GraphQLParseError::InvalidRequestMethod => f.write_str("the request method is invalid"),
-            GraphQLParseError::MissingQuery => f.write_str("missing query"),
-            GraphQLParseError::MissingMime => f.write_str("missing content-type"),
-            GraphQLParseError::InvalidMime => f.write_str("the content type is invalid."),
-            GraphQLParseError::ParseJson(ref e) => e.fmt(f),
-            GraphQLParseError::ParseQuery(ref e) => e.fmt(f),
-            GraphQLParseError::DecodeUtf8(ref e) => e.fmt(f),
-        }
-    }
+    #[fail(display = "failed to parse input as a JSON object")]
+    ParseJson(#[fail(cause)] serde_json::Error),
+    #[fail(display = "failed to parse HTTP query")]
+    ParseQuery(#[fail(cause)] serde_urlencoded::de::Error),
+    #[fail(display = "failed to decode input as a UTF-8 sequence")]
+    DecodeUtf8(#[fail(cause)] std::str::Utf8Error),
 }
 
 impl HttpError for GraphQLParseError {
-    type Body = String;
-
-    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
-        let body = json!({
-            "errors": [
-                {
-                    "message": self.to_string(),
-                }
-            ],
-        })
-        .to_string();
-        Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .header("content-type", "application/json")
-            .body(body)
-            .expect("should be a valid response")
-    }
-}
-
-#[derive(Debug)]
-pub struct GraphQLError(Error);
-
-impl fmt::Display for GraphQLError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl HttpError for GraphQLError {
-    type Body = ResponseBody;
-
-    fn into_response(self, request: &Request<()>) -> Response<Self::Body> {
-        let body = json!({
-            "errors": [
-                {
-                    "message": self.to_string(),
-                }
-            ],
-        })
-        .to_string();
-
-        let mut response = self.0.into_response(request).map(|_| body.into());
-
-        response.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::header::HeaderValue::from_static("application/json"),
-        );
-
-        response
+    fn status_code(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
     }
 }
 
@@ -103,58 +49,77 @@ impl<H> ModifyHandler<H> for CaptureErrors
 where
     H: Handler,
 {
-    type Output = H::Output;
-    type Handler = GraphQLHandler<H>; // private;
+    type Output = Either<Response<String>, H::Output>;
+    type Handler = CaptureErrorsHandler<H>; // private;
 
     fn modify(&self, inner: H) -> Self::Handler {
-        GraphQLHandler { inner }
+        CaptureErrorsHandler { inner }
     }
 }
 
 #[derive(Debug)]
-pub struct GraphQLHandler<H> {
+pub struct CaptureErrorsHandler<H> {
     inner: H,
 }
 
-impl<H> Handler for GraphQLHandler<H>
+impl<H> Handler for CaptureErrorsHandler<H>
 where
     H: Handler,
 {
-    type Output = H::Output;
+    type Output = Either<Response<String>, H::Output>;
     type Error = Error;
-    type Handle = GraphQLHandle<H::Handle>;
+    type Handle = CaptureErrorsHandle<H::Handle>;
 
     fn allowed_methods(&self) -> Option<&AllowedMethods> {
         self.inner.allowed_methods()
     }
 
     fn handle(&self) -> Self::Handle {
-        GraphQLHandle {
+        CaptureErrorsHandle {
             inner: self.inner.handle(),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct GraphQLHandle<H> {
+pub struct CaptureErrorsHandle<H> {
     inner: H,
 }
 
-impl<H> TryFuture for GraphQLHandle<H>
+impl<H> TryFuture for CaptureErrorsHandle<H>
 where
     H: TryFuture,
 {
-    type Ok = H::Ok;
+    type Ok = Either<Response<String>, H::Ok>;
     type Error = Error;
 
+    #[inline]
     fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-        self.inner.poll_ready(input).map_err(|err| {
-            let err = err.into();
-            if err.is::<GraphQLParseError>() || err.is::<GraphQLError>() {
-                err
-            } else {
-                GraphQLError(err).into()
+        match self.inner.poll_ready(input) {
+            Ok(Async::Ready(ok)) => Ok(Async::Ready(Either::Right(ok))),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(err) => {
+                let err = err.into();
+                let body = json!({
+                    "errors": [
+                        {
+                            "message": err.to_string(),
+                        }
+                    ],
+                })
+                .to_string();
+
+                let mut response = err
+                    .into_response(input.request)
+                    .expect("never fails")
+                    .map(|_| body);
+                response.headers_mut().insert(
+                    http::header::CONTENT_TYPE,
+                    http::header::HeaderValue::from_static("application/json"),
+                );
+
+                Ok(Async::Ready(Either::Left(response)))
             }
-        })
+        }
     }
 }

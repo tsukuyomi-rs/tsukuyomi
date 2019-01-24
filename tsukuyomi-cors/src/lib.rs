@@ -579,13 +579,8 @@ impl From<CORSErrorKind> for CORSError {
 }
 
 impl HttpError for CORSError {
-    type Body = String;
-
-    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
-        Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .body(self.to_string())
-            .expect("should be a valid response")
+    fn status_code(&self) -> StatusCode {
+        StatusCode::FORBIDDEN
     }
 }
 

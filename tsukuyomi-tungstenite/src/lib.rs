@@ -81,7 +81,7 @@ mod imp {
                 SEC_WEBSOCKET_VERSION,
                 UPGRADE,
             },
-            Request, Response, StatusCode,
+            Response, StatusCode,
         },
         izanami_util::rt::{DefaultExecutor, Executor},
         sha1::{Digest, Sha1},
@@ -161,13 +161,8 @@ mod imp {
     }
 
     impl HttpError for HandshakeError {
-        type Body = String;
-
-        fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
-            Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(self.to_string())
-                .expect("should be a valid response")
+        fn status_code(&self) -> StatusCode {
+            StatusCode::BAD_REQUEST
         }
     }
 
