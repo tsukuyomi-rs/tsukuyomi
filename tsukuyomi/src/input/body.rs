@@ -5,7 +5,7 @@ use {
     crate::error::HttpError,
     bytes::{Buf, BufMut, Bytes, BytesMut},
     futures01::{Future, Poll, Stream},
-    http::{Request, Response, StatusCode},
+    http::StatusCode,
     izanami_util::{
         buf_stream::{BufStream, SizeHint},
         http::{Upgrade, Upgraded},
@@ -71,12 +71,8 @@ impl std::error::Error for Error {
 }
 
 impl HttpError for Error {
-    type Body = String;
-
-    fn into_response(self, _: &Request<()>) -> Response<Self::Body> {
-        let mut response = Response::new(self.to_string());
-        *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-        response
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 }
 

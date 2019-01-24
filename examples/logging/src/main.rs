@@ -119,7 +119,11 @@ mod logging {
             //
             let response = result
                 .map(|response| response.map(Into::into))
-                .unwrap_or_else(|e| e.into_response(input.request).map(Into::into));
+                .unwrap_or_else(|e| {
+                    e.into_response(input.request)
+                        .expect("never fails")
+                        .map(Into::into)
+                });
 
             let log_level = match response.status().as_u16() {
                 400...599 => log::Level::Error,

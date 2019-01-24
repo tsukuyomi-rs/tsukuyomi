@@ -7,7 +7,7 @@ use {
             param::Params,
             Cookies, Input,
         },
-        output::ResponseBody,
+        output::{IntoResponse, ResponseBody},
         util::Never,
     },
     cookie::CookieJar,
@@ -184,7 +184,7 @@ impl<C: Concurrency> Future for AppFuture<C> {
 
         let mut output = match polled {
             Ok(output) => output,
-            Err(err) => err.into_response(&self.request),
+            Err(err) => err.into_response(&self.request)?,
         };
 
         self.process_before_reply(&mut output);

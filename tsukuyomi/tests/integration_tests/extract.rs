@@ -370,7 +370,6 @@ fn optional() -> izanami::Result<()> {
             .body(&b"id=23&name=bob"[..]),
     )?;
     assert_eq!(response.status(), 500);
-    assert_eq!(response.body().to_utf8()?, "####none####");
 
     Ok(())
 }

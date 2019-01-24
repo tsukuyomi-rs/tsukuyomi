@@ -134,7 +134,7 @@ mod support_tera {
                         .expect("should be a valid response")
                         .into()
                 })
-                .map_err(tsukuyomi::error::internal_server_error)
+                .map_err(|e| tsukuyomi::error::internal_server_error(e.to_string()))
         }
     }
 }
