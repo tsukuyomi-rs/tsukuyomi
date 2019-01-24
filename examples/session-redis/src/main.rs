@@ -1,5 +1,6 @@
 use {
     either::Either,
+    izanami::Server,
     std::sync::Arc,
     tsukuyomi::{
         config::prelude::*, //
@@ -7,7 +8,6 @@ use {
         output::{html, redirect},
         App,
     },
-    tsukuyomi_server::Server,
     tsukuyomi_session::{
         backend::RedisBackend, //
         session,
@@ -15,12 +15,12 @@ use {
     },
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let backend = RedisBackend::new(client);
     let session = Arc::new(session(backend));
 
-    App::create(chain![
+    let app = App::create(chain![
         path!("/") //
             .to(endpoint::get() //
                 .extract(session.clone())
@@ -79,7 +79,8 @@ fn main() -> tsukuyomi_server::Result<()> {
                     session.remove("username");
                     session.finish(redirect::to("/"))
                 }))
-    ])
-    .map(Server::new)?
-    .run()
+    ])?;
+
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }

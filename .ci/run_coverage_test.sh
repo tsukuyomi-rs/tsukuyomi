@@ -4,14 +4,11 @@ DIR="$(cd $(dirname $BASH_SOURCE); pwd)"
 
 set -ex
 
-$DIR/run_kcov.py --all
-$DIR/run_kcov.py -p tsukuyomi --all-features
-$DIR/run_kcov.py -p tsukuyomi-session --all-features
+cargo tarpaulin --verbose --out Xml --all
+bash <(curl -s https://codecov.io/bash)
 
-bash <(curl -s https://codecov.io/bash) \
-  -B "${BUILD_SOURCEBRANCHNAME:-}" \
-  -C "${BUILD_SOURCEVERSION:-}" \
-  -P "${SYSTEM_PULLREQUEST_PULLREQUESTNUMBER:-}" \
-  -b "${BUILD_BUILDID:-}"\
-  -K \
-  -s "$DIR/../target/cov"
+cargo tarpaulin --verbose --packages tsukuyomi --all-features
+bash <(curl -s https://codecov.io/bash)
+
+cargo tarpaulin --verbose --packages tsukuyomi-session --all-features
+bash <(curl -s https://codecov.io/bash)

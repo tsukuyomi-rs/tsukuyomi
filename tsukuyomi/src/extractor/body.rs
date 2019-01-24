@@ -5,10 +5,15 @@ use {
     crate::{
         error::Error,
         future::{Poll, TryFuture},
-        input::{body::RequestBody, header::ContentType, localmap::LocalData, Input},
+        input::{
+            body::{ReadAll, RequestBody},
+            header::ContentType,
+            localmap::LocalData,
+            Input,
+        },
     },
     bytes::Bytes,
-    futures01::{Future, Stream},
+    futures01::Future,
     mime::Mime,
     serde::de::DeserializeOwned,
     std::{marker::PhantomData, str},
@@ -24,9 +29,6 @@ enum ExtractBodyError {
         expected
     )]
     UnexpectedContentType { expected: &'static str },
-
-    #[fail(display = "the header field `Content-type` is not a valid MIME")]
-    InvalidMime,
 
     #[fail(display = "charset in `Content-type` must be equal to `utf-8`")]
     NotUtf8Charset,
@@ -73,7 +75,7 @@ where
     #[allow(missing_debug_implementations)]
     enum State {
         Init,
-        ReadAll(futures01::stream::Concat2<RequestBody>),
+        ReadAll(ReadAll),
     }
 
     #[allow(missing_debug_implementations)]
@@ -96,7 +98,7 @@ where
                         let mime_opt = crate::input::header::parse::<ContentType>(input)?;
                         D::validate_mime(mime_opt).map_err(crate::error::bad_request)?;
                         RequestBody::take_from(input.locals)
-                            .map(|body| State::ReadAll(body.concat2()))
+                            .map(|body| State::ReadAll(body.read_all()))
                             .ok_or_else(stolen_payload)?
                     }
                     State::ReadAll(ref mut read_all) => {
@@ -241,18 +243,18 @@ pub fn read_all() -> impl Extractor<
     Extract = impl TryFuture<Ok = (Bytes,), Error = Error> + Send + 'static,
 > {
     super::extract(|| {
-        let mut read_all: Option<futures01::stream::Concat2<RequestBody>> = None;
+        let mut read_all: Option<ReadAll> = None;
         crate::future::poll_fn(move |input| loop {
             if let Some(ref mut read_all) = read_all {
                 return read_all
                     .poll()
-                    .map(|x| x.map(|chunk| (chunk.into_bytes(),)))
+                    .map(|x| x.map(|chunk| (chunk,)))
                     .map_err(Into::into);
             }
             read_all = Some(
                 RequestBody::take_from(input.locals)
                     .ok_or_else(stolen_payload)?
-                    .concat2(),
+                    .read_all(),
             );
         })
     })

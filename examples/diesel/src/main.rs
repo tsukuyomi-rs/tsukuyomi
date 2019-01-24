@@ -14,6 +14,7 @@ use {
     },
     dotenv::dotenv,
     futures::Future,
+    izanami::Server,
     std::{env, sync::Arc},
     tsukuyomi::{
         config::prelude::*, //
@@ -21,10 +22,9 @@ use {
         extractor::{self, ExtractorExt},
         App,
     },
-    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     pretty_env_logger::init();
     dotenv()?;
 
@@ -99,7 +99,8 @@ fn main() -> tsukuyomi_server::Result<()> {
         ])
     })?;
 
-    Server::new(app).run()
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }
 
 fn blocking_section<F, T, E>(op: F) -> impl Future<Error = Error, Item = T>
@@ -107,7 +108,7 @@ where
     F: FnOnce() -> Result<T, E>,
     E: Into<Error>,
 {
-    tsukuyomi_server::rt::blocking(op).then(|result| {
+    izanami::util::rt::blocking(op).then(|result| {
         result
             .map_err(tsukuyomi::error::internal_server_error) // <-- BlockingError
             .and_then(|result| {

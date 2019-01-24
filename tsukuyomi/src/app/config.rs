@@ -307,7 +307,7 @@ where
                         scope: scope.id(),
                         ancestors: scope
                             .ancestors()
-                            .into_iter()
+                            .iter()
                             .cloned()
                             .chain(Some(scope.id()))
                             .collect(),

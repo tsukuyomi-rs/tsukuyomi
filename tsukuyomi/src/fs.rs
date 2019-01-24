@@ -16,6 +16,7 @@ use {
         header::{self, HeaderMap},
         Request, Response, StatusCode,
     },
+    izanami_util::buf_stream::BufStream,
     log::trace,
     mime::Mime,
     std::{
@@ -331,6 +332,15 @@ impl ReadStream {
         let buf_size = finalize_block_size(buf_size, &meta);
         drop(meta);
         ReadStream(State::Reading { file, buf_size })
+    }
+}
+
+impl BufStream for ReadStream {
+    type Item = io::Cursor<Bytes>;
+    type Error = io::Error;
+
+    fn poll_buf(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        self.poll().map(|x| x.map(|opt| opt.map(io::Cursor::new)))
     }
 }
 

@@ -21,9 +21,10 @@ use {
         scope::{Scope, ScopeId, Scopes},
     },
     crate::{input::body::RequestBody, uri::Uri, util::Never},
+    futures01::Future,
     http::Request,
+    izanami_service::{MakeService, Service},
     std::{fmt, sync::Arc},
-    tsukuyomi_service::{MakeService, Service},
 };
 
 /// The main type representing an HTTP application.
@@ -66,8 +67,25 @@ where
     }
 }
 
+/// A trait representing the modification of `Service` to another one.
+pub trait ModifyService<Ctx, Request, S> {
+    /// The response type returned by the modified `Service`.
+    type Response;
+    /// The error type returned by the modified `Service`.
+    type Error;
+    /// The type of modified service.
+    type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
+    /// The error that occurs when modifying services.
+    type ModifyError;
+    /// The type of `Future` returned from `modify_service`.
+    type Future: Future<Item = Self::Service, Error = Self::ModifyError>;
+
+    /// Modifies a service using the specified context.
+    fn modify_service(&self, input: S, ctx: Ctx) -> Self::Future;
+}
+
 mod with_modify_service {
-    use {super::*, tsukuyomi_service::ModifyService};
+    use super::*;
 
     #[derive(Debug)]
     pub struct WithModifyService<C: Concurrency, M> {
@@ -135,7 +153,7 @@ impl<C: Concurrency> AppInner<C> {
         let node_id = ancestors
             .and_then(|ancestors| {
                 ancestors
-                    .into_iter()
+                    .iter()
                     .find(|&&scope| self.scope(scope).data.prefix.as_str().starts_with(path)) //
                     .or_else(|| ancestors.last())
                     .cloned()
@@ -152,7 +170,7 @@ impl<C: Concurrency> AppInner<C> {
         }
         scope
             .ancestors()
-            .into_iter()
+            .iter()
             .rev()
             .filter_map(|&id| self.scope(id).data.default_handler.as_ref())
             .next()

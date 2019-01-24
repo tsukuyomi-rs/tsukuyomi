@@ -1,6 +1,6 @@
 //! Components for integrating GraphQL endpoints into Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.3.1")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-juniper/0.4.0-dev")]
 #![deny(
     missing_docs,
     missing_debug_implementations,

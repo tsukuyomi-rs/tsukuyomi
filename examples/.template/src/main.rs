@@ -3,11 +3,11 @@ use {
         config::prelude::*,
         App,
     },
-    tsukuyomi_server::Server,
+    izanami::Server,
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let app = App::create(())?;
 
-    Server::new(app).run()
+    Server::build().start(app)
 }

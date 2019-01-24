@@ -9,13 +9,13 @@ use {
 };
 
 #[test]
-fn unit_input() -> tsukuyomi_server::Result<()> {
+fn unit_input() -> izanami::Result<()> {
     let app = App::create({
         path!("/") //
             .to(endpoint::call(|| "dummy"))
     })?;
 
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -23,12 +23,12 @@ fn unit_input() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn params() -> tsukuyomi_server::Result<()> {
+fn params() -> izanami::Result<()> {
     let app = App::create(path!("/:id/:name/*path").to(endpoint::call(
         |id: u32, name: String, path: String| format!("{},{},{}", id, name, path),
     )))?;
 
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/23/bob/path/to/file")?;
     assert_eq!(response.body().to_utf8()?, "23,bob,path/to/file");
@@ -40,7 +40,7 @@ fn params() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn route_macros() -> tsukuyomi_server::Result<()> {
+fn route_macros() -> izanami::Result<()> {
     let app = App::create(chain![
         path!("/root") //
             .to(endpoint::call(|| "root")),
@@ -61,7 +61,7 @@ fn route_macros() -> tsukuyomi_server::Result<()> {
                 path
             ))),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/root")?;
     assert_eq!(response.body().to_utf8()?, "root");
@@ -83,14 +83,14 @@ fn route_macros() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn plain_body() -> tsukuyomi_server::Result<()> {
+fn plain_body() -> izanami::Result<()> {
     let app = App::create(
         path!("/") //
             .to(endpoint::post()
                 .extract(extractor::body::plain())
                 .call(|body: String| body)),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     const BODY: &[u8] = b"The quick brown fox jumps over the lazy dog";
 
@@ -125,7 +125,7 @@ fn plain_body() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn json_body() -> tsukuyomi_server::Result<()> {
+fn json_body() -> izanami::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -138,7 +138,7 @@ fn json_body() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::body::json())
                 .call(|params: Params| format!("{},{}", params.id, params.name))),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform(
         Request::post("/")
@@ -171,7 +171,7 @@ fn json_body() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn urlencoded_body() -> tsukuyomi_server::Result<()> {
+fn urlencoded_body() -> izanami::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -184,7 +184,7 @@ fn urlencoded_body() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::body::urlencoded())
                 .call(|params: Params| format!("{},{}", params.id, params.name))),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     const BODY: &[u8] = b"id=23&name=bob";
 
@@ -219,7 +219,7 @@ fn urlencoded_body() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn local_data() -> tsukuyomi_server::Result<()> {
+fn local_data() -> izanami::Result<()> {
     use {
         futures01::Poll,
         tsukuyomi::{
@@ -295,7 +295,7 @@ fn local_data() -> tsukuyomi_server::Result<()> {
             })
             .modify(InsertMyData::default()),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 200);
@@ -304,7 +304,7 @@ fn local_data() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn missing_local_data() -> tsukuyomi_server::Result<()> {
+fn missing_local_data() -> izanami::Result<()> {
     use tsukuyomi::input::localmap::local_key;
 
     #[derive(Clone)]
@@ -322,7 +322,7 @@ fn missing_local_data() -> tsukuyomi_server::Result<()> {
                 .extract(extractor::local::remove(&MyData::KEY))
                 .call(|x: MyData| x.0))
     })?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), 500);
@@ -331,7 +331,7 @@ fn missing_local_data() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn optional() -> tsukuyomi_server::Result<()> {
+fn optional() -> izanami::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -354,7 +354,7 @@ fn optional() -> tsukuyomi_server::Result<()> {
                     })
             }),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform(
         Request::post("/")
@@ -376,7 +376,7 @@ fn optional() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn either_or() -> tsukuyomi_server::Result<()> {
+fn either_or() -> izanami::Result<()> {
     #[derive(Debug, serde::Deserialize)]
     struct Params {
         id: u32,
@@ -395,7 +395,7 @@ fn either_or() -> tsukuyomi_server::Result<()> {
                     .call(|params: Params| format!("{},{}", params.id, params.name))
             }),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/?id=23&name=bob")?;
     assert_eq!(response.status(), 200);

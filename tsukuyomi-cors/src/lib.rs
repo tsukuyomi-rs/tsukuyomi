@@ -1,6 +1,6 @@
 //! CORS support for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-cors/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-cors/0.3.0-dev")]
 #![deny(
     missing_docs,
     missing_debug_implementations,

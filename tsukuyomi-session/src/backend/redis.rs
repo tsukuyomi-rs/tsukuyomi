@@ -351,7 +351,7 @@ impl TryFuture for WriteSession {
                     return op
                         .poll()
                         .map(|x| x.map(|_| ()))
-                        .map_err(tsukuyomi::error::internal_server_error)
+                        .map_err(tsukuyomi::error::internal_server_error);
                 }
             }
         }

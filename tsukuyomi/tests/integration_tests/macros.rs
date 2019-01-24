@@ -1,11 +1,11 @@
 mod responder {
     use {
+        izanami::test::ResponseExt,
         std::fmt,
         tsukuyomi::{
             config::prelude::*, //
             App,
         },
-        tsukuyomi_server::test::ResponseExt,
     };
 
     fn assert_impl_into_response<T: tsukuyomi::output::IntoResponse>() {}
@@ -100,7 +100,7 @@ mod responder {
 
     #[allow(deprecated)]
     #[test]
-    fn test_into_response_explicit_fn() -> tsukuyomi_server::Result<()> {
+    fn test_into_response_explicit_fn() -> izanami::Result<()> {
         #[derive(tsukuyomi::output::IntoResponse)]
         #[response(with = "self::sub::display")]
         struct Foo(String);
@@ -128,7 +128,7 @@ mod responder {
                 .to(endpoint::call(|| Bar("Bar")))
         })?;
 
-        let mut server = tsukuyomi_server::test::server(app)?;
+        let mut server = izanami::test::server(app)?;
 
         let response = server.perform("/foo")?;
         assert_eq!(response.status(), 200);
@@ -145,7 +145,7 @@ mod responder {
     }
 
     #[test]
-    fn test_into_response_preset() -> tsukuyomi_server::Result<()> {
+    fn test_into_response_preset() -> izanami::Result<()> {
         use {
             http::{Request, Response},
             std::fmt,
@@ -199,7 +199,7 @@ mod responder {
                 .to(endpoint::call(|| Bar("Bar")))
         })?;
 
-        let mut server = tsukuyomi_server::test::server(app)?;
+        let mut server = izanami::test::server(app)?;
 
         let response = server.perform("/foo")?;
         assert_eq!(response.status(), 200);

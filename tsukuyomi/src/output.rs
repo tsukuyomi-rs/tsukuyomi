@@ -1,15 +1,13 @@
 //! Components for constructing HTTP responses.
 
+pub mod body;
 pub mod redirect;
 
-pub use tsukuyomi_macros::IntoResponse;
+pub use {self::body::ResponseBody, tsukuyomi_macros::IntoResponse};
 
 use {
-    crate::{error::Error, input::body::RequestBody, util::Never},
-    bytes::{Buf, Bytes, IntoBuf},
-    futures01::{Poll, Stream},
-    http::{header::HeaderMap, Request, Response, StatusCode},
-    hyper::body::{Body, Payload},
+    crate::{error::Error, util::Never},
+    http::{Request, Response, StatusCode},
     serde::Serialize,
 };
 
@@ -25,93 +23,106 @@ pub mod internal {
     };
 }
 
-/// A type representing the message body in an HTTP response.
-#[derive(Debug, Default)]
-pub struct ResponseBody(Body);
-
-impl ResponseBody {
-    /// Creates an empty `ResponseBody`.
-    #[inline]
-    pub fn empty() -> Self {
-        Self::default()
-    }
-
-    /// Wraps a `Stream` into a `ResponseBody`.
-    pub fn wrap_stream<S>(stream: S) -> Self
-    where
-        S: Stream + Send + 'static,
-        S::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
-        S::Item: IntoBuf,
-    {
-        ResponseBody(Body::wrap_stream(
-            stream.map(|chunk| chunk.into_buf().collect::<Bytes>()),
-        ))
-    }
-}
-
-impl From<()> for ResponseBody {
-    fn from(_: ()) -> Self {
-        ResponseBody(Body::empty())
-    }
-}
-
-impl From<RequestBody> for ResponseBody {
-    fn from(body: RequestBody) -> Self {
-        ResponseBody(body.into_inner())
-    }
-}
-
-macro_rules! impl_response_body {
-    ($($t:ty,)*) => {$(
-        impl From<$t> for ResponseBody {
-            fn from(body: $t) -> Self {
-                ResponseBody(Body::from(body))
-            }
-        }
-    )*};
-}
-
-impl_response_body! {
-    &'static str,
-    &'static [u8],
-    String,
-    Vec<u8>,
-    bytes::Bytes,
-    std::borrow::Cow<'static, str>,
-    std::borrow::Cow<'static, [u8]>,
-    hyper::Body,
-}
-
-impl Payload for ResponseBody {
-    type Data = <Body as Payload>::Data;
-    type Error = <Body as Payload>::Error;
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
-        self.0.poll_data()
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
-        self.0.poll_trailers()
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn is_end_stream(&self) -> bool {
-        self.0.is_end_stream()
-    }
-
-    #[inline]
-    #[cfg_attr(tarpaulin, skip)]
-    fn content_length(&self) -> Option<u64> {
-        self.0.content_length()
-    }
-}
-
 /// A trait representing the conversion into an HTTP response.
+///
+/// # Examples
+///
+/// This macro has a parameter `#[response(preset = "..")]`, which specifies
+/// the path to a type that implements a trait [`Preset`]:
+///
+/// ```
+/// # use tsukuyomi::IntoResponse;
+/// use serde::Serialize;
+///
+/// #[derive(Debug, Serialize, IntoResponse)]
+/// #[response(preset = "tsukuyomi::output::preset::Json")]
+/// struct Post {
+///     title: String,
+///     text: String,
+/// }
+/// # fn main() {}
+/// ```
+///
+/// You can specify the additional trait bounds to type parameters
+/// by using the parameter `#[response(bound = "..")]`:
+///
+/// ```
+/// # use tsukuyomi::IntoResponse;
+/// # use serde::Serialize;
+/// #[derive(Debug, IntoResponse)]
+/// #[response(
+///     preset = "tsukuyomi::output::preset::Json",
+///     bound = "T: Serialize",
+///     bound = "U: Serialize",
+/// )]
+/// struct CustomValue<T, U> {
+///     t: T,
+///     u: U,
+/// }
+/// # fn main() {}
+/// ```
+///
+/// # Notes
+/// 1. When `preset = ".."` is omitted for struct, a field in the specified
+///    struct is chosen and the the implementation of `IntoResponse` for its
+///    type is used. For example, the impls derived to the following types
+///    outputs eventually the same result as the implementation of
+///    `IntoResponse` for `String`:
+///    ```
+///    # use tsukuyomi::IntoResponse;
+///    #[derive(IntoResponse)]
+///    struct Foo(String);
+///   
+///    #[derive(IntoResponse)]
+///    struct Bar {
+///        inner: String,
+///    }
+///    ```
+/// 1. When `preset = ".."` is omitted for enum, the same rule as struct is
+///    applied to each variant:
+///    ```
+///    # use tsukuyomi::IntoResponse;
+///    # use tsukuyomi::vendor::http::Response;
+///    #[derive(IntoResponse)]
+///    enum MyResponse {
+///        Text(String),
+///        Raw { response: Response<String> },
+///    }
+///    ```
+/// 1. Without specifying the preset, the number of fields in the struct
+///    or the number of fields of each variant inside of the enum must be
+///    at most one.  This is because the field that implements `IntoResponse`
+///    cannot be determined if there are two or more fields in a struct or
+///    a variant:
+///    ```compile_fail
+///    # use tsukuyomi::IntoResponse;
+///    #[derive(IntoResponse)]
+///    enum ApiResponse {
+///        Text(String),
+///        Post { title: String, text: String },
+///    }
+///    ```
+///    If you want to apply the derivation to complex enums,
+///    consider cutting each variant into one struct and specifying
+///    the preset explicitly as follows:
+///    ```
+///    # use tsukuyomi::IntoResponse;
+///    # use serde::Serialize;
+///    #[derive(IntoResponse)]
+///    enum ApiResponse {
+///        Text(String),
+///        Post(Post),
+///    }
+///
+///    #[derive(Debug, Serialize, IntoResponse)]
+///    #[response(preset = "tsukuyomi::output::preset::Json")]
+///    struct Post {
+///         title: String,
+///         text: String,
+///    }
+///    ```
+///
+/// [`Preset`]: https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/output/preset/trait.Preset.html
 pub trait IntoResponse {
     type Body: Into<ResponseBody>;
     type Error: Into<Error>;
@@ -206,8 +217,13 @@ impl IntoResponse for &'static str {
 
     #[inline]
     #[allow(deprecated)]
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response::plain(self, request)
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        let len = self.len() as u64;
+        Ok(self::make_response(
+            self,
+            "text/plain; charset=utf-8",
+            Some(len),
+        ))
     }
 }
 
@@ -217,8 +233,13 @@ impl IntoResponse for String {
 
     #[inline]
     #[allow(deprecated)]
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        self::into_response::plain(self, request)
+    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+        let len = self.len() as u64;
+        Ok(self::make_response(
+            self,
+            "text/plain; charset=utf-8",
+            Some(len),
+        ))
     }
 }
 
@@ -227,7 +248,9 @@ impl IntoResponse for serde_json::Value {
     type Error = Never;
 
     fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self::make_response(self.to_string(), "application/json"))
+        let body = self.to_string();
+        let len = body.len() as u64;
+        Ok(self::make_response(body, "application/json", Some(len)))
     }
 }
 
@@ -294,12 +317,20 @@ where
 }
 
 /// Create an instance of `Response<T>` with the provided body and content type.
-fn make_response<T>(body: T, content_type: &'static str) -> Response<T> {
+fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Response<T> {
     let mut response = Response::new(body);
     response.headers_mut().insert(
         http::header::CONTENT_TYPE,
         http::header::HeaderValue::from_static(content_type),
     );
+    if let Some(len) = len {
+        response.headers_mut().insert(
+            http::header::CONTENT_LENGTH,
+            len.to_string()
+                .parse()
+                .expect("should be a valid header value"),
+        );
+    }
     response
 }
 
@@ -331,7 +362,10 @@ pub mod preset {
 
         fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
             serde_json::to_vec(&data)
-                .map(|body| super::make_response(body, "application/json"))
+                .map(|body| {
+                    let len = body.len() as u64;
+                    super::make_response(body, "application/json", Some(len))
+                })
                 .map_err(crate::error::internal_server_error)
         }
     }
@@ -348,7 +382,10 @@ pub mod preset {
 
         fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
             serde_json::to_vec_pretty(&data)
-                .map(|body| super::make_response(body, "application/json"))
+                .map(|body| {
+                    let len = body.len() as u64;
+                    super::make_response(body, "application/json", Some(len))
+                })
                 .map_err(crate::error::internal_server_error)
         }
     }
@@ -364,7 +401,7 @@ pub mod preset {
         type Error = Never;
 
         fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(super::make_response(body, "text/html"))
+            Ok(super::make_response(body, "text/html", None))
         }
     }
 
@@ -379,7 +416,11 @@ pub mod preset {
         type Error = Never;
 
         fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(super::make_response(body, "text/plain; charset=utf-8"))
+            Ok(super::make_response(
+                body,
+                "text/plain; charset=utf-8",
+                None,
+            ))
         }
     }
 }
@@ -403,7 +444,10 @@ pub mod into_response {
         T: Serialize,
     {
         serde_json::to_vec(&data)
-            .map(|body| super::make_response(body, "application/json"))
+            .map(|body| {
+                let len = body.len() as u64;
+                super::make_response(body, "application/json", Some(len))
+            })
             .map_err(crate::error::internal_server_error)
     }
 
@@ -413,7 +457,10 @@ pub mod into_response {
         T: Serialize,
     {
         serde_json::to_vec_pretty(&data)
-            .map(|body| super::make_response(body, "application/json"))
+            .map(|body| {
+                let len = body.len() as u64;
+                super::make_response(body, "application/json", Some(len))
+            })
             .map_err(crate::error::internal_server_error)
     }
 
@@ -422,7 +469,7 @@ pub mod into_response {
     where
         T: Into<ResponseBody>,
     {
-        Ok(super::make_response(body, "text/html"))
+        Ok(super::make_response(body, "text/html", None))
     }
 
     #[inline]
@@ -430,6 +477,10 @@ pub mod into_response {
     where
         T: Into<ResponseBody>,
     {
-        Ok(super::make_response(body, "text/plain; charset=utf-8"))
+        Ok(super::make_response(
+            body,
+            "text/plain; charset=utf-8",
+            None,
+        ))
     }
 }

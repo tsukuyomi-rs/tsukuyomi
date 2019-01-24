@@ -1,0 +1,17 @@
+steps:
+- task: DownloadPipelineArtifact@0
+  inputs:
+    artifactName: 'dependencies'
+    targetPath: '.registry-index'
+
+- bash: |
+    set -ex
+    cp -f .registry-index/Cargo.lock Cargo.lock
+    mkdir -p .cargo
+    cat << EOF >> .cargo/config
+    [source.registry-index]
+    local-registry = '.registry-index'
+    [source.crates-io]
+    replace-with = "registry-index"
+    EOF
+  displayName: 'override crates-io to the local registry index'

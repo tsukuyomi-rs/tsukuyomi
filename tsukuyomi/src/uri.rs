@@ -196,7 +196,7 @@ impl Uri {
                 UriKind::Root => Ok(Self::segments(segment, names)),
                 UriKind::Segments(ref other_segment, ref other_names) => {
                     segment += if segment.ends_with('/') {
-                        other_segment.trim_left_matches('/')
+                        other_segment.trim_start_matches('/')
                     } else {
                         other_segment
                     };

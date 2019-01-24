@@ -51,7 +51,7 @@ where
 }
 
 #[test]
-fn global_modifier() -> tsukuyomi_server::Result<()> {
+fn global_modifier() -> izanami::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
@@ -63,7 +63,7 @@ fn global_modifier() -> tsukuyomi_server::Result<()> {
             }),
     )?;
 
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M"]);
@@ -76,7 +76,7 @@ fn global_modifier() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn global_modifiers() -> tsukuyomi_server::Result<()> {
+fn global_modifiers() -> izanami::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
@@ -93,7 +93,7 @@ fn global_modifiers() -> tsukuyomi_server::Result<()> {
                 }
             ]),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -102,7 +102,7 @@ fn global_modifiers() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn scoped_modifier() -> tsukuyomi_server::Result<()> {
+fn scoped_modifier() -> izanami::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
@@ -122,7 +122,7 @@ fn scoped_modifier() -> tsukuyomi_server::Result<()> {
             name: "M1",
         }),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let _ = server.perform("/path1")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
@@ -135,7 +135,7 @@ fn scoped_modifier() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn nested_modifiers() -> tsukuyomi_server::Result<()> {
+fn nested_modifiers() -> izanami::Result<()> {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create({
@@ -164,7 +164,7 @@ fn nested_modifiers() -> tsukuyomi_server::Result<()> {
                 })
         })
     })?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let _ = server.perform("/path/to")?;
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);

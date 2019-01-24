@@ -1,66 +1,62 @@
 resources:
   containers:
-    - container: tsukuyomi
-      image: ubntintrepid/tsukuyomi:latest
+    - container: toolkit
+      image: ubntintrepid/tsukuyomi:0.6
+    - container: tarpaulin
+      image: xd009642/tarpaulin:latest
       options: --security-opt seccomp=unconfined
 
 jobs:
+  - job: RegistryIndex
+    pool:
+      vmImage: 'ubuntu-16.04'
+    container: toolkit
+    variables:
+      CARGO_TERM_VERBOSE: true
+    steps:
+    - template: .ci/templates/steps/create-registry-index.yml
+
   - job: Windows
+    dependsOn: RegistryIndex
+    condition: succeeded()
     pool:
       vmImage: 'vs2017-win2016'
     variables:
-      OPENSSL_DIR: C:\OpenSSL
-      OPENSSL_VERSION: 1_1_0j
+      CARGO_TERM_VERBOSE: true
+    strategy:
+      matrix:
+        stable:
+          rust_toolchain: stable
     steps:
-    - script: |
-        git submodule update --init --depth=1
-      displayName: 'sync local registry'
-
-    - script: |
-        mkdir %OPENSSL_DIR%
-        curl -sSfO http://slproweb.com/download/Win64OpenSSL-%OPENSSL_VERSION%.exe
-        Win64OpenSSL-%OPENSSL_VERSION%.exe /SILENT /VERYSILENT /SP- /DIR=%OPENSSL_DIR%
-      displayName: 'install OpenSSL'
-
-    - script: |
-        curl -sSf -o rustup-init.exe https://win.rustup.rs
-        rustup-init.exe -y --default-toolchain stable
-        set PATH=%PATH%;%USERPROFILE%\.cargo\bin
-        echo '##vso[task.setvariable variable=PATH;]%PATH%;%USERPROFILE%\.cargo\bin'
-      displayName: 'install rustup'
-
-    - script: |
-        rustup --version
-        rustc --version
-        cargo --version
-      displayName: 'show toolchain version'
-
+    - template: .ci/templates/steps/sync-registry-index.yml
+    - template: .ci/templates/steps/install-rustup.yml
+      parameters:
+        name: Windows
     - script: bash .ci/run_test.sh
       displayName: 'run test script'
 
   - job: macOS
+    dependsOn: RegistryIndex
+    condition: succeeded()
     pool:
       vmImage: 'macOS-10.13'
+    variables:
+      CARGO_TERM_VERBOSE: true
+    strategy:
+      matrix:
+        stable:
+          rust_toolchain: stable
     steps:
-    - script: |
-        git submodule update --init --depth=1
-      displayName: 'sync local registry'
-
-    - script: |
-        curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable -y
-        echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
-      displayName: 'install rustup'
-
-    - script: |
-        rustup --version
-        rustc --version
-        cargo --version
-      displayName: 'show toolchain version'
-
-    - script: bash .ci/run_test.sh
+    - template: .ci/templates/steps/sync-registry-index.yml
+    - template: .ci/templates/steps/install-rustup.yml
+      parameters:
+        name: macOS
+    - bash: .ci/run_test.sh
       displayName: 'run test script'
 
   - job: Linux
+    dependsOn: RegistryIndex
+    condition: succeeded()
     pool:
       vmImage: 'ubuntu-16.04'
     variables:
@@ -76,56 +72,52 @@ jobs:
         minimum_supported:
           rust_toolchain: 1.31.0
     steps:
-    - script: |
-        git submodule update --init --depth=1
-      displayName: 'sync local registry'
-
-    - script: |
-        curl -sSf https://sh.rustup.rs | sh -s -- --default-toolchain $RUST_TOOLCHAIN -y
-        echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
-      displayName: 'install rustup'
-
-    - script: |
-        rustup --version
-        rustc --version
-        cargo --version
-      displayName: 'show toolchain version'
-
+    - template: .ci/templates/steps/sync-registry-index.yml
+    - template: .ci/templates/steps/install-rustup.yml
+      parameters:
+        name: Linux
     - script: |
         rustup component add rustfmt-preview clippy-preview
       displayName: 'install supplemental components'
       condition: eq(variables['rust_toolchain'], 'stable')
-
-    - script: bash .ci/run_test.sh
+    - bash: .ci/run_test.sh
       displayName: 'run test'
       condition: ne(variables['rust_toolchain'], 'nightly')
-
-    - script: bash .ci/run_test.sh || true
+    - bash: .ci/run_test.sh
       displayName: 'run test (allow failure)'
       condition: eq(variables['rust_toolchain'], 'nightly')
-
-    - bash: >-
-        rm -rf target/doc &&
-        bash .ci/build_doc.sh &&
-        bash .ci/deploy_doc.sh
+      continueOnError: true
+    - bash: .ci/build_doc.sh
+      displayName: build API doc
+    - bash: |
+        set -e
+        cd target/doc
+        git init
+        git remote add upstream "https://${GH_TOKEN}@github.com/tsukuyomi-rs/tsukuyomi.git"
+        git config user.name 'Yusuke Sasaki'
+        git config user.email 'yusuke.sasaki.nuem@gmail.com'
+        git add -A .
+        git commit -qm "Build API doc at $(git rev-parse --short HEAD)"
+        git push -q upstream HEAD:refs/heads/gh-pages --force
       displayName: 'deploy API doc'
-      condition: eq(variables['rust_toolchain'], 'stable')
+      condition: and(succeeded(), eq(variables['rust_toolchain'], 'stable'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
       env:
         GH_TOKEN: $(myGitHubToken)
 
-  - job: linux_coverage
-    displayName: Linux (coverage test)
+  - job: tarpaulin
+    dependsOn: RegistryIndex
+    condition: succeeded()
     pool:
       vmImage: 'ubuntu-16.04'
-    container: tsukuyomi
+    variables:
+      CARGO_TERM_VERBOSE: true
+    container: tarpaulin
     steps:
-    - script: |
-        git submodule update --init --depth=1
-      displayName: 'sync local registry'
+    - template: .ci/templates/steps/sync-registry-index.yml
     - script: |
         cargo --version
         rustc --version
-        kcov --version
+        cargo tarpaulin --version
       displayName: show tool versions
     - script: bash .ci/run_coverage_test.sh
       displayName: 'run coverage test'

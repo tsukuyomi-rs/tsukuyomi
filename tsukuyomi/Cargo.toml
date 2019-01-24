@@ -3,7 +3,7 @@ name = "tsukuyomi"
 description = """
 Asynchronous Web framework for Rust
 """
-version = "0.5.3"
+version = "0.6.0-dev"
 edition = "2018"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -31,16 +31,17 @@ maintenance = { status = "actively-developed" }
 features = ["full"]
 
 [dependencies]
-bytes = "0.4"
+bytes = { version = "0.4", features = ["either"] }
 cookie = { version = "0.11", features = ["percent-encode"] }
 either = "1.5"
 failure = "0.1.2"
 filetime = "0.2"
 futures01 = { package = "futures", version = "0.1" }
 http = "0.1"
-hyper = "0.12"
 indexmap = "1"
-lazy_static = "1"
+izanami-service = "0.1.0-preview.1"
+izanami-util = "0.1.0-preview.1"
+lazy_static = "1.2"
 log = "0.4"
 mime = "0.3"
 mime_guess = "2.0.0-alpha.6"
@@ -55,20 +56,13 @@ url = "1.7.1"
 uuid = "0.7.1"
 
 [dependencies.tsukuyomi-macros]
-version = "0.5.2"
+version = "0.6.0-dev"
 path = "./macros"
 
-[dependencies.tsukuyomi-service]
-version = "0.1.0"
-path = "../tsukuyomi-service"
-
 [dev-dependencies]
+izanami = "0.1.0-preview.1"
 matches = "0.1"
-version-sync = "0.6"
-
-[dev-dependencies.tsukuyomi-server]
-version = "0.2.0"
-path = "../tsukuyomi-server"
+version-sync = "0.7"
 
 [features]
 default = []

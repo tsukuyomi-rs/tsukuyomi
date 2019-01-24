@@ -1,4 +1,5 @@
 use {
+    izanami::Server,
     std::sync::Arc,
     tsukuyomi::{
         config::prelude::*, //
@@ -6,7 +7,6 @@ use {
         output::{html, redirect, IntoResponse},
         App,
     },
-    tsukuyomi_server::Server,
     tsukuyomi_session::{
         backend::CookieBackend, //
         session,
@@ -20,11 +20,11 @@ enum Either<L, R> {
     Right(R),
 }
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let backend = CookieBackend::plain();
     let session = Arc::new(session(backend));
 
-    App::create(chain![
+    let app = App::create(chain![
         path!("/") //
             .to(endpoint::get() //
                 .extract(session.clone())
@@ -83,7 +83,8 @@ fn main() -> tsukuyomi_server::Result<()> {
                     session.remove("username");
                     session.finish(redirect::to("/"))
                 }))
-    ])
-    .map(Server::new)?
-    .run()
+    ])?;
+
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }

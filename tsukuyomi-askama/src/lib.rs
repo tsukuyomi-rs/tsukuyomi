@@ -1,6 +1,6 @@
 //! Askama integration for Tsukuyomi.
 
-#![doc(html_root_url = "https://docs.rs/tsukuyomi-askama/0.2.1")]
+#![doc(html_root_url = "https://docs.rs/tsukuyomi-askama/0.3.0-dev")]
 #![deny(
     missing_debug_implementations,
     nonstandard_style,

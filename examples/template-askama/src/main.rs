@@ -1,11 +1,11 @@
 use {
     askama::Template,
+    izanami::Server,
     tsukuyomi::{
         config::prelude::*, //
         App,
         IntoResponse,
     },
-    tsukuyomi_server::Server,
 };
 
 #[derive(Template, IntoResponse)]
@@ -15,11 +15,12 @@ struct Index {
     name: String,
 }
 
-fn main() -> tsukuyomi_server::Result<()> {
-    App::create(
+fn main() -> izanami::Result<()> {
+    let app = App::create(
         path!("/:name") //
             .to(endpoint::call(|name| Index { name })),
-    )
-    .map(Server::new)?
-    .run()
+    )?;
+
+    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
+        .start(app)
 }

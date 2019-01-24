@@ -1,17 +1,17 @@
 use {
     http::{header, Request, StatusCode},
+    izanami::test::ResponseExt,
     tsukuyomi::{
         config::prelude::*, //
         extractor,
         App,
     },
-    tsukuyomi_server::test::ResponseExt,
 };
 
 #[test]
-fn empty_routes() -> tsukuyomi_server::Result<()> {
+fn empty_routes() -> izanami::Result<()> {
     let app = App::create(())?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -20,12 +20,12 @@ fn empty_routes() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn single_route() -> tsukuyomi_server::Result<()> {
+fn single_route() -> izanami::Result<()> {
     let app = App::create(
         path!("/hello") //
             .to(endpoint::call(|| "Tsukuyomi")),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/hello")?;
 
@@ -41,14 +41,14 @@ fn single_route() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn post_body() -> tsukuyomi_server::Result<()> {
+fn post_body() -> izanami::Result<()> {
     let app = App::create(
         path!("/hello") //
             .to(endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
                 .call(|body: String| body)),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform(
         Request::post("/hello") //
@@ -67,7 +67,7 @@ fn post_body() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn cookies() -> tsukuyomi_server::Result<()> {
+fn cookies() -> izanami::Result<()> {
     use cookie::Cookie;
     use time::Duration;
 
@@ -94,7 +94,7 @@ fn cookies() -> tsukuyomi_server::Result<()> {
                 }))
                 .call(|| "Logged out")),
     ])?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/login")?;
 
@@ -123,13 +123,13 @@ fn cookies() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn default_options() -> tsukuyomi_server::Result<()> {
+fn default_options() -> izanami::Result<()> {
     let app = App::create(
         path!("/path")
             .to(endpoint::allow_only("GET, POST")?.call(|| "reply"))
             .modify(tsukuyomi::modifiers::default_options()),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/path")?;
     assert_eq!(response.status(), 200);
@@ -138,19 +138,18 @@ fn default_options() -> tsukuyomi_server::Result<()> {
     let response = server.perform(Request::options("/path"))?;
     assert_eq!(response.status(), 204);
     assert_eq!(response.header(header::ALLOW)?, "GET, POST, OPTIONS");
-    assert_eq!(response.header(header::CONTENT_LENGTH)?, "0");
 
     Ok(())
 }
 
 #[test]
-fn map_output() -> tsukuyomi_server::Result<()> {
+fn map_output() -> izanami::Result<()> {
     let app = App::create(
         path!("/")
             .to(endpoint::reply(42))
             .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform("/")?;
     assert_eq!(response.body().to_utf8()?, "42");
@@ -159,7 +158,7 @@ fn map_output() -> tsukuyomi_server::Result<()> {
 }
 
 #[test]
-fn scoped_fallback() -> tsukuyomi_server::Result<()> {
+fn scoped_fallback() -> izanami::Result<()> {
     use std::sync::{Arc, Mutex};
 
     let marker = Arc::new(Mutex::new(vec![]));
@@ -191,7 +190,7 @@ fn scoped_fallback() -> tsukuyomi_server::Result<()> {
         ]),
     ])?;
 
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let _ = server.perform("/")?;
     assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);

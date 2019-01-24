@@ -7,14 +7,14 @@ mod proxy;
 use {
     crate::proxy::Client, //
     futures::prelude::*,
+    izanami::Server,
     tsukuyomi::{
         config::prelude::*, //
         App,
     },
-    tsukuyomi_server::Server,
 };
 
-fn main() -> tsukuyomi_server::Result<()> {
+fn main() -> izanami::Result<()> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 
@@ -34,5 +34,6 @@ fn main() -> tsukuyomi_server::Result<()> {
 
     let app = app.with_modify_service(crate::peer::with_peer_addr());
 
-    Server::new(app).run()
+    let server = Server::bind_tcp(&"127.0.0.1:4000".parse()?)?;
+    server.start(app)
 }

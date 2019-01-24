@@ -1,5 +1,5 @@
 [package]
-name = "example-{{ name }}" # replace the placeholder
+name = "example-{{ name }}" # replace the placeholder (kebab-case)
 edition = "2018"
 version = "0.0.0"
 authors = [
@@ -9,13 +9,13 @@ authors = [
 publish = false
 
 [[bin]]
-name = "example_{{ name }}" # replace the placeholder
+name = "example_{{ name }}" # replace the placeholder (snake_case)
 path = "src/main.rs"
 doc = false
 
 [dependencies]
-tsukuyomi = "0.5"
-tsukuyomi-server = "0.2"
+tsukuyomi = "0.6"
+izanami = "0.1.0-preview.1"
 
-# append additional dependencies
+# append additional dependencies here
 

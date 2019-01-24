@@ -15,11 +15,11 @@ use {
         },
         Request,
     },
+    izanami::test::ResponseExt,
     tsukuyomi::{
         config::prelude::*, //
         App,
     },
-    tsukuyomi_server::test::ResponseExt,
     tsukuyomi_tungstenite::Ws,
 };
 
@@ -29,12 +29,12 @@ fn test_version_sync() {
 }
 
 #[test]
-fn test_handshake() -> tsukuyomi_server::Result<()> {
+fn test_handshake() -> izanami::Result<()> {
     let app = App::create(
         path!("/ws") //
             .to(endpoint::get().reply(Ws::new(|_| Ok(())))),
     )?;
-    let mut server = tsukuyomi_server::test::server(app)?;
+    let mut server = izanami::test::server(app)?;
 
     let response = server.perform(
         Request::get("/ws")
