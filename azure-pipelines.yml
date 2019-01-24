@@ -2,6 +2,7 @@ resources:
   containers:
     - container: toolkit
       image: ubntintrepid/tsukuyomi:0.6
+      options: --security-opt seccomp=unconfined
     - container: tarpaulin
       image: xd009642/tarpaulin:latest
       options: --security-opt seccomp=unconfined
@@ -12,6 +13,7 @@ jobs:
       vmImage: 'ubuntu-16.04'
     container: toolkit
     variables:
+      CARGO_HOME: $(Build.SourceDirectory)/.cargo
       CARGO_TERM_VERBOSE: true
     steps:
     - template: .ci/templates/steps/create-registry-index.yml
