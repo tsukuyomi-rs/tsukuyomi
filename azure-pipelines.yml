@@ -83,16 +83,24 @@ jobs:
     - bash: .ci/run_test.sh
       displayName: 'run test'
       condition: ne(variables['rust_toolchain'], 'nightly')
-    - bash: |
-        .ci/run_test.sh || true
+    - bash: .ci/run_test.sh
       displayName: 'run test (allow failure)'
       condition: eq(variables['rust_toolchain'], 'nightly')
-    - bash: >-
-        rm -rf target/doc &&
-        bash .ci/build_doc.sh &&
-        bash .ci/deploy_doc.sh
+      continueOnError: true
+    - bash: .ci/build_doc.sh
+      displayName: build API doc
+    - bash: |
+        set -e
+        cd target/doc
+        git init
+        git remote add upstream "https://${GH_TOKEN}@github.com/tsukuyomi-rs/tsukuyomi.git"
+        git config user.name 'Yusuke Sasaki'
+        git config user.email 'yusuke.sasaki.nuem@gmail.com'
+        git add -A .
+        git commit -qm "Build API doc at $(git rev-parse --short HEAD)"
+        git push -q upstream HEAD:refs/heads/gh-pages --force
       displayName: 'deploy API doc'
-      condition: eq(variables['rust_toolchain'], 'stable')
+      condition: and(succeeded(), eq(variables['rust_toolchain'], 'stable'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
       env:
         GH_TOKEN: $(myGitHubToken)
 

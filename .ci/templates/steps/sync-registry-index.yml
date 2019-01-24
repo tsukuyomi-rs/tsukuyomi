@@ -7,7 +7,10 @@ steps:
 - bash: |
     set -ex
     cp -f .registry-index/Cargo.lock Cargo.lock
+    mkdir -p .cargo
     cat << EOF >> .cargo/config
+    [source.registry-index]
+    local-registry = '.registry-index'
     [source.crates-io]
     replace-with = "registry-index"
     EOF
