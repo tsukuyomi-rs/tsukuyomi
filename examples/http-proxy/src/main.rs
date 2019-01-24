@@ -1,7 +1,6 @@
 #![allow(clippy::needless_pass_by_value)]
 #![recursion_limit = "128"]
 
-mod peer;
 mod proxy;
 
 use {
@@ -31,8 +30,6 @@ fn main() -> izanami::Result<()> {
                 .call_async(|client: Client| client
                     .send_forwarded_request("https://www.rust-lang.org/en-US/"))),
     ])?;
-
-    let app = app.with_modify_service(crate::peer::with_peer_addr());
 
     let server = Server::bind_tcp(&"127.0.0.1:4000".parse()?)?;
     server.start(app)

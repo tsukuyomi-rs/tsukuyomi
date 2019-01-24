@@ -1,7 +1,7 @@
 use {
-    crate::peer::PeerAddr,
     futures::prelude::*,
     http::header::{Entry, HeaderMap},
+    izanami::RemoteAddr,
     reqwest::IntoUrl,
     std::mem,
     tsukuyomi::{
@@ -19,7 +19,7 @@ use {
 pub struct Client {
     client: reqwest::r#async::Client,
     headers: HeaderMap,
-    peer_addr: PeerAddr,
+    remote_addr: RemoteAddr,
 }
 
 impl Client {
@@ -30,7 +30,7 @@ impl Client {
         let Self {
             client,
             mut headers,
-            peer_addr,
+            remote_addr,
         } = self;
 
         headers.remove("host");
@@ -40,11 +40,20 @@ impl Client {
             .expect("should be a valid header name")
         {
             Entry::Occupied(mut entry) => {
-                let addrs = format!("{}, {}", entry.get().to_str().unwrap(), peer_addr);
-                entry.insert(addrs.parse().unwrap());
+                let addrs = match remote_addr.as_tcp() {
+                    Some(remote_addr) => {
+                        format!("{}, {}", entry.get().to_str().unwrap(), remote_addr)
+                            .parse()
+                            .unwrap()
+                    }
+                    None => entry.get().clone(),
+                };
+                entry.insert(addrs);
             }
             Entry::Vacant(entry) => {
-                entry.insert(peer_addr.to_string().parse().unwrap());
+                if let Some(remote_addr) = remote_addr.as_tcp() {
+                    entry.insert(remote_addr.to_string().parse().unwrap());
+                }
             }
         }
 
@@ -115,9 +124,9 @@ pub fn proxy_client(
         extractor::header::headers(),
         extractor::value(client),
     ]
-    .map(|peer_addr, headers, client| Client {
+    .map(|remote_addr, headers, client| Client {
         client,
         headers,
-        peer_addr,
+        remote_addr,
     })
 }

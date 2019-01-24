@@ -53,6 +53,6 @@ members = [
 ]
 
 [patch.crates-io]
-# izanami = { git = "https://github.com/ubnt-intrepid/izanami.git" }
-# izanami-service = { git = "https://github.com/ubnt-intrepid/izanami.git" }
-# izanami-util = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+izanami = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+izanami-service = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+izanami-util = { git = "https://github.com/ubnt-intrepid/izanami.git" }

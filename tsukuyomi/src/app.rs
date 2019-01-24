@@ -21,7 +21,6 @@ use {
         scope::{Scope, ScopeId, Scopes},
     },
     crate::{input::body::RequestBody, uri::Uri, util::Never},
-    futures01::Future,
     http::Request,
     izanami_service::{MakeService, Service},
     std::{fmt, sync::Arc},
@@ -31,22 +30,6 @@ use {
 #[derive(Debug, Clone)]
 pub struct AppBase<C: Concurrency = self::config::ThreadSafe> {
     inner: Arc<AppInner<C>>,
-}
-
-impl<C> AppBase<C>
-where
-    C: Concurrency,
-{
-    /// Converts itself into a `MakeService` with the specified `ModifyService`.
-    pub fn with_modify_service<M>(
-        self,
-        modify_service: M,
-    ) -> self::with_modify_service::WithModifyService<C, M> {
-        self::with_modify_service::WithModifyService {
-            inner: self.inner,
-            modify_service,
-        }
-    }
 }
 
 impl<C, Ctx, Bd> MakeService<Ctx, Request<Bd>> for AppBase<C>
@@ -64,53 +47,6 @@ where
         futures01::future::ok(AppService {
             inner: self.inner.clone(),
         })
-    }
-}
-
-/// A trait representing the modification of `Service` to another one.
-pub trait ModifyService<Ctx, Request, S> {
-    /// The response type returned by the modified `Service`.
-    type Response;
-    /// The error type returned by the modified `Service`.
-    type Error;
-    /// The type of modified service.
-    type Service: Service<Request, Response = Self::Response, Error = Self::Error>;
-    /// The error that occurs when modifying services.
-    type ModifyError;
-    /// The type of `Future` returned from `modify_service`.
-    type Future: Future<Item = Self::Service, Error = Self::ModifyError>;
-
-    /// Modifies a service using the specified context.
-    fn modify_service(&self, input: S, ctx: Ctx) -> Self::Future;
-}
-
-mod with_modify_service {
-    use super::*;
-
-    #[derive(Debug)]
-    pub struct WithModifyService<C: Concurrency, M> {
-        pub(super) inner: Arc<AppInner<C>>,
-        pub(super) modify_service: M,
-    }
-
-    impl<C, M, Ctx, Bd> MakeService<Ctx, Request<Bd>> for WithModifyService<C, M>
-    where
-        C: Concurrency,
-        RequestBody: From<Bd>,
-        M: ModifyService<Ctx, Request<Bd>, AppService<C>>,
-    {
-        type Response = M::Response;
-        type Error = M::Error;
-        type Service = M::Service;
-        type MakeError = M::ModifyError;
-        type Future = M::Future;
-
-        fn make_service(&self, ctx: Ctx) -> Self::Future {
-            let service = AppService {
-                inner: self.inner.clone(),
-            };
-            self.modify_service.modify_service(service, ctx)
-        }
     }
 }
 
