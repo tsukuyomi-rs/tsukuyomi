@@ -30,9 +30,6 @@ enum ExtractBodyError {
     )]
     UnexpectedContentType { expected: &'static str },
 
-    #[fail(display = "the header field `Content-type` is not a valid MIME")]
-    InvalidMime,
-
     #[fail(display = "charset in `Content-type` must be equal to `utf-8`")]
     NotUtf8Charset,
 
