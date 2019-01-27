@@ -6,47 +6,65 @@ use {
         future::TryFuture,
         util::{Chain, Never, TryFrom}, //
     },
+    either::Either,
     http::{header::HeaderValue, HttpTryFrom, Method},
     indexmap::{indexset, IndexSet},
-    lazy_static::lazy_static,
     std::{iter::FromIterator, sync::Arc},
 };
 
 /// A set of request methods that a route accepts.
-#[derive(Debug, Clone)]
-pub struct AllowedMethods(IndexSet<Method>);
+#[derive(Debug, Clone, Default)]
+pub struct AllowedMethods(Option<IndexSet<Method>>);
 
 impl AllowedMethods {
-    pub fn get() -> &'static AllowedMethods {
-        lazy_static! {
-            static ref VALUE: AllowedMethods = AllowedMethods::from(Method::GET);
-        }
-        &*VALUE
+    /// Creates an `AllowedMethods` indicating that the all of HTTP methods are accepted.
+    pub fn any() -> Self {
+        Self::default()
+    }
+
+    /// Returns whether this set accepts the all of HTTP methods or not.
+    pub fn is_any(&self) -> bool {
+        self.0.is_none()
     }
 
     pub fn contains(&self, method: &Method) -> bool {
-        self.0.contains(method)
+        self.0.as_ref().map_or(true, |m| m.contains(method))
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
-        self.0.iter()
+        self.into_iter()
     }
 
     pub fn to_header_value(&self) -> HeaderValue {
         let mut bytes = bytes::BytesMut::new();
-        for (i, method) in self.iter().enumerate() {
-            if i > 0 {
-                bytes.extend_from_slice(b", ");
+        let iter = self.iter();
+        if let (0, Some(0)) = iter.size_hint() {
+            bytes.extend_from_slice(b"*");
+        } else {
+            for (i, method) in iter.enumerate() {
+                if i > 0 {
+                    bytes.extend_from_slice(b", ");
+                }
+                bytes.extend_from_slice(method.as_str().as_bytes());
             }
-            bytes.extend_from_slice(method.as_str().as_bytes());
         }
         unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
+    }
+
+    pub fn merge(self, right: Self) -> Self {
+        match (self.0, right.0) {
+            (Some(mut left), Some(right)) => {
+                left.extend(right);
+                AllowedMethods(Some(left))
+            }
+            _ => Self::any(),
+        }
     }
 }
 
 impl From<Method> for AllowedMethods {
     fn from(method: Method) -> Self {
-        AllowedMethods(indexset! { method })
+        AllowedMethods(Some(indexset! { method }))
     }
 }
 
@@ -55,13 +73,15 @@ impl FromIterator<Method> for AllowedMethods {
     where
         T: IntoIterator<Item = Method>,
     {
-        AllowedMethods(FromIterator::from_iter(iter))
+        AllowedMethods(Some(FromIterator::from_iter(iter)))
     }
 }
 
 impl Extend<Method> for AllowedMethods {
     fn extend<I: IntoIterator<Item = Method>>(&mut self, iterable: I) {
-        self.0.extend(iterable)
+        if let Some(m) = &mut self.0 {
+            m.extend(iterable)
+        }
     }
 }
 
@@ -115,19 +135,48 @@ impl<'a> TryFrom<&'a str> for AllowedMethods {
 
 impl IntoIterator for AllowedMethods {
     type Item = Method;
-    type IntoIter = indexmap::set::IntoIter<Method>;
+    type IntoIter = Either<indexmap::set::IntoIter<Method>, std::option::IntoIter<Method>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        match self.0 {
+            Some(m) => Either::Left(m.into_iter()),
+            None => Either::Right(None.into_iter()),
+        }
     }
 }
 
 impl<'a> IntoIterator for &'a AllowedMethods {
     type Item = &'a Method;
-    type IntoIter = indexmap::set::Iter<'a, Method>;
+    type IntoIter = Either<indexmap::set::Iter<'a, Method>, std::option::IntoIter<&'a Method>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        match &self.0 {
+            Some(m) => Either::Left(m.iter()),
+            None => Either::Right(None.into_iter()),
+        }
+    }
+}
+
+/// A set of metadata associated with the certain `Handler`.
+#[derive(Debug, Clone, Default)]
+pub struct Metadata {
+    allowed_methods: AllowedMethods,
+}
+
+impl Metadata {
+    /// Creates a new `Metadata` with the specified parameters.
+    pub fn new(allowed_methods: AllowedMethods) -> Self {
+        Self { allowed_methods }
+    }
+
+    /// Returns a reference to the inner value of `AllowedMethods`.
+    pub fn allowed_methods(&self) -> &AllowedMethods {
+        &self.allowed_methods
+    }
+
+    /// Returns a mutable reference to the inner value of `AllowedMethods`.
+    pub fn allowed_methods_mut(&mut self) -> &mut AllowedMethods {
+        &mut self.allowed_methods
     }
 }
 
@@ -137,13 +186,11 @@ pub trait Handler {
     type Error: Into<Error>;
     type Handle: TryFuture<Ok = Self::Output, Error = Self::Error>;
 
-    /// Returns a list of HTTP methods that this handler accepts.
-    ///
-    /// If it returns a `None`, it means that the handler accepts *all* methods.
-    fn allowed_methods(&self) -> Option<&AllowedMethods>;
-
-    /// Creates a `Handle` which handles the incoming request.
+    /// Creates an instance of `Handle` to handle an incoming request.
     fn handle(&self) -> Self::Handle;
+
+    /// Returns the value of `Metadata` associated with this handler.
+    fn metadata(&self) -> Metadata;
 }
 
 impl<H> Handler for std::rc::Rc<H>
@@ -155,13 +202,13 @@ where
     type Handle = H::Handle;
 
     #[inline]
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        (**self).allowed_methods()
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
     }
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
-        (**self).handle()
+    fn metadata(&self) -> Metadata {
+        (**self).metadata()
     }
 }
 
@@ -174,19 +221,19 @@ where
     type Handle = H::Handle;
 
     #[inline]
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        (**self).allowed_methods()
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
     }
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
-        (**self).handle()
+    fn metadata(&self) -> Metadata {
+        (**self).metadata()
     }
 }
 
 pub fn handler<T>(
     handle_fn: impl Fn() -> T,
-    allowed_methods: Option<AllowedMethods>,
+    metadata: Metadata,
 ) -> impl Handler<
     Output = T::Ok, //
     Error = T::Error,
@@ -198,7 +245,7 @@ where
     #[allow(missing_debug_implementations)]
     struct HandlerFn<F> {
         handle_fn: F,
-        allowed_methods: Option<AllowedMethods>,
+        metadata: Metadata,
     }
 
     impl<F, T> Handler for HandlerFn<F>
@@ -211,19 +258,19 @@ where
         type Handle = T;
 
         #[inline]
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.allowed_methods.as_ref()
+        fn handle(&self) -> Self::Handle {
+            (self.handle_fn)()
         }
 
         #[inline]
-        fn handle(&self) -> Self::Handle {
-            (self.handle_fn)()
+        fn metadata(&self) -> Metadata {
+            self.metadata.clone()
         }
     }
 
     HandlerFn {
         handle_fn,
-        allowed_methods,
+        metadata,
     }
 }
 

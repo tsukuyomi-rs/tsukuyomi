@@ -4,7 +4,7 @@ use {
         endpoint::Endpoint, //
         error::Error,
         generic::Tuple,
-        handler::Handler,
+        handler::{Handler, Metadata},
         input::param::Params,
     },
     std::{marker::PhantomData, sync::Arc},
@@ -94,7 +94,7 @@ where
             path: path.into(),
             handler: crate::handler::handler(
                 move || self::handle::RouteHandle::new(endpoint.clone()),
-                allowed_methods,
+                Metadata::new(allowed_methods),
             ),
         }
     }

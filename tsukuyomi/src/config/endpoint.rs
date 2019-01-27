@@ -28,7 +28,7 @@ macro_rules! define_builder_with_allowing_sigle_method {
         pub fn $name() -> Builder {
             Builder {
                 extractor: (),
-                allowed_methods: Some(Method::$METHOD.into()),
+                allowed_methods: Method::$METHOD.into(),
             }
         }
     )*}
@@ -54,7 +54,7 @@ pub fn get_or_head() -> Builder {
 #[derive(Debug)]
 pub struct Builder<E: Extractor = ()> {
     extractor: E,
-    allowed_methods: Option<AllowedMethods>,
+    allowed_methods: AllowedMethods,
 }
 
 impl Builder {
@@ -62,7 +62,7 @@ impl Builder {
     pub fn allow_any() -> Self {
         Self {
             extractor: (),
-            allowed_methods: None,
+            allowed_methods: AllowedMethods::any(),
         }
     }
 
@@ -70,7 +70,7 @@ impl Builder {
     pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Self> {
         Ok(Self {
             extractor: (),
-            allowed_methods: methods.try_into().map(Some).map_err(super::Error::custom)?,
+            allowed_methods: methods.try_into().map_err(super::Error::custom)?,
         })
     }
 }
@@ -109,10 +109,7 @@ where
             let allowed_methods = self.allowed_methods.clone();
             let extractor = self.extractor;
             move |args: T, cx: &mut ApplyContext<'_, '_>| {
-                if allowed_methods
-                    .as_ref()
-                    .map_or(false, |methods| !methods.contains(cx.method()))
-                {
+                if !allowed_methods.contains(cx.method()) {
                     return Err((args, ApplyError::method_not_allowed()));
                 }
                 Ok(self::call::CallFuture {
@@ -145,10 +142,7 @@ where
             let allowed_methods = self.allowed_methods.clone();
             let extractor = self.extractor;
             move |args: T, cx: &mut ApplyContext<'_, '_>| {
-                if allowed_methods
-                    .as_ref()
-                    .map_or(false, |methods| !methods.contains(cx.method()))
-                {
+                if !allowed_methods.contains(cx.method()) {
                     return Err((args, ApplyError::method_not_allowed()));
                 }
 

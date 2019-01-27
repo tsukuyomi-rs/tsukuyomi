@@ -224,7 +224,7 @@ fn local_data() -> izanami::Result<()> {
         futures01::Poll,
         tsukuyomi::{
             future::TryFuture,
-            handler::{AllowedMethods, Handler, ModifyHandler},
+            handler::{Handler, Metadata, ModifyHandler},
             input::{localmap::local_key, Input},
         },
     };
@@ -257,8 +257,8 @@ fn local_data() -> izanami::Result<()> {
         type Error = H::Error;
         type Handle = InsertMyDataHandle<H::Handle>;
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.0.allowed_methods()
+        fn metadata(&self) -> Metadata {
+            self.0.metadata()
         }
 
         fn handle(&self) -> Self::Handle {

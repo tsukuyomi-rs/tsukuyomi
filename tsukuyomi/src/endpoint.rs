@@ -18,11 +18,8 @@ pub trait Endpoint<T> {
 
     /// Returns a list of HTTP methods that this endpoint accepts.
     ///
-    /// If it returns a `None`, it means that the endpoint accepts *all* methods.
-    ///
-    /// This method is called when constructing a `Handler` and used for implementation of
-    /// `Handler::allowed_methods`.
-    fn allowed_methods(&self) -> Option<AllowedMethods>;
+    /// This method is used for implementation of `Handler::metadata`.
+    fn allowed_methods(&self) -> AllowedMethods;
 }
 
 #[derive(Debug)]
@@ -63,7 +60,7 @@ pub type ApplyResult<T, E> = Result<<E as Endpoint<T>>::Future, (T, ApplyError)>
 /// A function to create an `Endpoint` from the specified components.
 pub fn endpoint<T, R>(
     apply: impl Fn(T, &mut ApplyContext<'_, '_>) -> Result<R, (T, ApplyError)>,
-    allowed_methods: Option<AllowedMethods>,
+    allowed_methods: AllowedMethods,
 ) -> impl Endpoint<T, Output = R::Ok, Error = R::Error, Future = R>
 where
     R: TryFuture,
@@ -71,7 +68,7 @@ where
     #[allow(missing_debug_implementations)]
     struct ApplyFn<F> {
         apply: F,
-        allowed_methods: Option<AllowedMethods>,
+        allowed_methods: AllowedMethods,
     }
 
     impl<F, T, R> Endpoint<T> for ApplyFn<F>
@@ -89,7 +86,7 @@ where
         }
 
         #[inline]
-        fn allowed_methods(&self) -> Option<AllowedMethods> {
+        fn allowed_methods(&self) -> AllowedMethods {
             self.allowed_methods.clone()
         }
     }
@@ -114,7 +111,7 @@ where
     }
 
     #[inline]
-    fn allowed_methods(&self) -> Option<AllowedMethods> {
+    fn allowed_methods(&self) -> AllowedMethods {
         (**self).allowed_methods()
     }
 }
@@ -133,7 +130,7 @@ where
     }
 
     #[inline]
-    fn allowed_methods(&self) -> Option<AllowedMethods> {
+    fn allowed_methods(&self) -> AllowedMethods {
         (**self).allowed_methods()
     }
 }
@@ -166,10 +163,10 @@ mod impl_chain {
         }
 
         #[inline]
-        fn allowed_methods(&self) -> Option<AllowedMethods> {
-            let left = self.left.allowed_methods()?;
-            let right = self.right.allowed_methods()?;
-            Some(left.iter().chain(right.iter()).cloned().collect())
+        fn allowed_methods(&self) -> AllowedMethods {
+            let left = self.left.allowed_methods();
+            let right = self.right.allowed_methods();
+            left.merge(right)
         }
     }
 

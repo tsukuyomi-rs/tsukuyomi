@@ -462,7 +462,7 @@ mod impl_handler_for_serve_file {
         crate::{
             error::Error,
             future::TryFuture,
-            handler::{AllowedMethods, Handler},
+            handler::{AllowedMethods, Handler, Metadata},
             input::Input,
         },
         futures01::{Async, Poll},
@@ -473,12 +473,12 @@ mod impl_handler_for_serve_file {
         type Error = Error;
         type Handle = Self;
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            Some(&AllowedMethods::get())
-        }
-
         fn handle(&self) -> Self::Handle {
             self.clone()
+        }
+
+        fn metadata(&self) -> Metadata {
+            Metadata::new(AllowedMethods::from(http::Method::GET))
         }
     }
 
