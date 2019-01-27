@@ -1,7 +1,7 @@
 #![allow(clippy::large_enum_variant)]
 
 use {
-    proc_macro2::{Span, TokenStream}, //
+    proc_macro2::TokenStream, //
     quote::*,
 };
 
@@ -29,7 +29,6 @@ struct Input {
 enum InputKind {
     Struct(Target),
     Enum(Vec<Variant>),
-    ExplicitWithFnPath(syn::Path, Span),
     UsePreset(syn::Path),
 }
 
@@ -85,8 +84,6 @@ mod parsing {
 
             // The kind when specifying the path to `into_response` explicitly.
             enum ExplicitKind {
-                // Old style - free function with the same sigunature as `IntoResponse::into_response`
-                Fn(syn::Path, Span),
                 // New style - a type that implements Preset<T>
                 Preset(syn::Path),
             }
@@ -113,21 +110,11 @@ mod parsing {
                 for nm_item in meta_list.nested {
                     if let syn::NestedMeta::Meta(syn::Meta::NameValue(ref pair)) = nm_item {
                         match pair.ident.to_string().as_ref() {
-                            "with" => {
-                                if explicit_path.is_some() {
-                                    return Err(parse_error_at(
-                                        &pair,
-                                        "the parameter 'with' or 'preset' has already been provided",
-                                    ));
-                                }
-                                let path = parse_literal(&pair.lit)?;
-                                explicit_path = Some(ExplicitKind::Fn(path, pair.span()));
-                            }
                             "preset" => {
                                 if explicit_path.is_some() {
                                     return Err(parse_error_at(
                                         &pair,
-                                        "the parameter 'with' or 'preset' has already been provided",
+                                        "the parameter 'preset' has already been provided",
                                     ));
                                 }
                                 let path = parse_literal(&pair.lit)?;
@@ -149,7 +136,6 @@ mod parsing {
             }
 
             let kind = match explicit_path {
-                Some(ExplicitKind::Fn(path, span)) => InputKind::ExplicitWithFnPath(path, span),
                 Some(ExplicitKind::Preset(path)) => InputKind::UsePreset(path),
                 None => match input.data {
                     syn::Data::Struct(data) => {
@@ -268,19 +254,6 @@ impl<'a> Context<'a> {
         // The path of types drawn at the position of the associated type.
         let (Body, Error, body): (syn::Type, syn::Type, TokenStream);
         match &self.kind {
-            InputKind::ExplicitWithFnPath(path, span) => {
-                Body = syn::parse_quote!(tsukuyomi::output::internal::ResponseBody);
-                Error = syn::parse_quote!(tsukuyomi::output::internal::Error);
-                body = quote_spanned!(*span =>
-                    #[deprecated(since = "0.5.2", note = "the parameter 'with' will be removed in the next version")]
-                    const _DEPRECATED: () = ();
-                    let _ = _DEPRECATED;
-                    #path(self, request)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into)
-                )
-            }
-
             InputKind::UsePreset(path) => {
                 where_clause
                     .get_or_insert_with(|| syn::WhereClause {
@@ -641,80 +614,6 @@ mod tests {
     }
 
     t! {
-        name: explicit_with_fn,
-        source: {
-            #[response(with = "my::into_response")]
-            struct A {
-                x: X,
-                y: Y,
-            }
-        },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
-
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> Result<
-                    tsukuyomi::output::internal::Response<Self::Body>,
-                    Self::Error
-                > {
-                    #[deprecated(since = "0.5.2", note = "the parameter 'with' will be removed in the next version")]
-                    const _DEPRECATED: () = ();
-                    let _ = _DEPRECATED;
-                    my::into_response(self, request)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into)
-                }
-            }
-        },
-    }
-
-    t! {
-        name: explicit_with_fn_additional_bounds,
-        source: {
-            #[response(
-                with = "my::into_response",
-                bound = "X: Foo",
-                bound = "Y: Foo",
-            )]
-            struct A<X, Y> {
-                x: X,
-                y: Y,
-            }
-        },
-        expected: {
-            impl<X, Y> tsukuyomi::output::internal::IntoResponse for A<X, Y>
-            where
-                X: Foo,
-                Y: Foo,
-            {
-                type Body = tsukuyomi::output::internal::ResponseBody;
-                type Error = tsukuyomi::output::internal::Error;
-
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> Result<
-                    tsukuyomi::output::internal::Response<Self::Body>,
-                    Self::Error
-                > {
-                    #[deprecated(since = "0.5.2", note = "the parameter 'with' will be removed in the next version")]
-                    const _DEPRECATED: () = ();
-                    let _ = _DEPRECATED;
-                    my::into_response(self, request)
-                        .map(|response| response.map(Into::into))
-                        .map_err(Into::into)
-                }
-            }
-        },
-    }
-
-    t! {
         name: explicit_preset,
         source: {
             #[response(preset = "my::Preset")]
@@ -830,22 +729,5 @@ mod tests {
             }
         },
         error: "multiple fields is not supported.",
-    }
-
-    t! {
-        name: failcase_duplicate_with_and_preset,
-        source: {
-            #[response(
-                with = "path::to::into_response",
-                preset = "path::to::Preset",
-            )]
-            enum A {
-                B {
-                    c: C,
-                    d: D,
-                },
-            }
-        },
-        error: "the parameter 'with' or 'preset' has already been provided",
     }
 }

@@ -235,43 +235,6 @@ pub trait ModifyHandler<H: Handler> {
     fn modify(&self, input: H) -> Self::Handler;
 }
 
-#[doc(hidden)]
-#[deprecated(
-    since = "0.5.2",
-    note = "this function will be removed in the next version."
-)]
-pub fn modify_handler<In, Out>(
-    modify: impl Fn(In) -> Out,
-) -> impl ModifyHandler<
-    In, //
-    Output = Out::Output,
-    Handler = Out,
->
-where
-    In: Handler,
-    Out: Handler,
-{
-    #[allow(missing_debug_implementations)]
-    struct ModifyHandlerFn<F>(F);
-
-    impl<F, In, Out> ModifyHandler<In> for ModifyHandlerFn<F>
-    where
-        F: Fn(In) -> Out,
-        In: Handler,
-        Out: Handler,
-    {
-        type Output = Out::Output;
-        type Handler = Out;
-
-        #[inline]
-        fn modify(&self, inner: In) -> Self::Handler {
-            (self.0)(inner)
-        }
-    }
-
-    ModifyHandlerFn(modify)
-}
-
 impl<'a, M, H> ModifyHandler<H> for &'a M
 where
     M: ModifyHandler<H>,

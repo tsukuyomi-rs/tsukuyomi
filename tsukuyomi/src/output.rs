@@ -216,7 +216,6 @@ impl IntoResponse for &'static str {
     type Error = Never;
 
     #[inline]
-    #[allow(deprecated)]
     fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         let len = self.len() as u64;
         Ok(self::make_response(
@@ -232,7 +231,6 @@ impl IntoResponse for String {
     type Error = Never;
 
     #[inline]
-    #[allow(deprecated)]
     fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         let len = self.len() as u64;
         Ok(self::make_response(
@@ -287,33 +285,44 @@ where
 }
 
 /// Creates a JSON responder from the specified data.
-#[allow(deprecated)]
 #[inline]
 pub fn json<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
 where
     T: Serialize,
 {
-    self::into_response(move |request| self::into_response::json(data, request))
+    self::into_response(move |_| {
+        serde_json::to_vec(&data)
+            .map(|body| {
+                let len = body.len() as u64;
+                self::make_response(body, "application/json", Some(len))
+            })
+            .map_err(crate::error::internal_server_error)
+    })
 }
 
 /// Creates a JSON responder with pretty output from the specified data.
-#[allow(deprecated)]
 #[inline]
 pub fn json_pretty<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
 where
     T: Serialize,
 {
-    self::into_response(move |request| self::into_response::json_pretty(data, request))
+    self::into_response(move |_| {
+        serde_json::to_vec_pretty(&data)
+            .map(|body| {
+                let len = body.len() as u64;
+                self::make_response(body, "application/json", Some(len))
+            })
+            .map_err(crate::error::internal_server_error)
+    })
 }
 
 /// Creates an HTML responder with the specified response body.
-#[allow(deprecated)]
 #[inline]
 pub fn html<T>(body: T) -> impl IntoResponse<Body = T, Error = Never>
 where
     T: Into<ResponseBody>,
 {
-    self::into_response(move |request| self::into_response::html(body, request))
+    self::into_response(move |_| Ok(self::make_response(body, "text/html", None)))
 }
 
 /// Create an instance of `Response<T>` with the provided body and content type.
@@ -422,65 +431,5 @@ pub mod preset {
                 None,
             ))
         }
-    }
-}
-
-#[doc(hidden)]
-#[deprecated(
-    since = "0.5.2",
-    note = "this module will be removed in the next version."
-)]
-pub mod into_response {
-    use {
-        super::ResponseBody,
-        crate::{error::Error, util::Never},
-        http::{Request, Response},
-        serde::Serialize,
-    };
-
-    #[inline]
-    pub fn json<T>(data: T, _: &Request<()>) -> Result<Response<Vec<u8>>, Error>
-    where
-        T: Serialize,
-    {
-        serde_json::to_vec(&data)
-            .map(|body| {
-                let len = body.len() as u64;
-                super::make_response(body, "application/json", Some(len))
-            })
-            .map_err(crate::error::internal_server_error)
-    }
-
-    #[inline]
-    pub fn json_pretty<T>(data: T, _: &Request<()>) -> Result<Response<Vec<u8>>, Error>
-    where
-        T: Serialize,
-    {
-        serde_json::to_vec_pretty(&data)
-            .map(|body| {
-                let len = body.len() as u64;
-                super::make_response(body, "application/json", Some(len))
-            })
-            .map_err(crate::error::internal_server_error)
-    }
-
-    #[inline]
-    pub fn html<T>(body: T, _: &Request<()>) -> Result<Response<T>, Never>
-    where
-        T: Into<ResponseBody>,
-    {
-        Ok(super::make_response(body, "text/html", None))
-    }
-
-    #[inline]
-    pub fn plain<T>(body: T, _: &Request<()>) -> Result<Response<T>, Never>
-    where
-        T: Into<ResponseBody>,
-    {
-        Ok(super::make_response(
-            body,
-            "text/plain; charset=utf-8",
-            None,
-        ))
     }
 }

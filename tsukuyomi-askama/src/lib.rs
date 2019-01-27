@@ -51,21 +51,15 @@ where
     type Body = String;
     type Error = tsukuyomi::Error;
 
-    #[allow(deprecated)]
     #[inline]
     fn into_response(ctx: T, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
         self::into_response(ctx, request)
     }
 }
 
-#[doc(hidden)]
-#[deprecated(
-    since = "0.2.1",
-    note = "this function will be removed in the next version."
-)]
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
-pub fn into_response<T>(t: T, _: &Request<()>) -> tsukuyomi::Result<Response<String>>
+fn into_response<T>(t: T, _: &Request<()>) -> tsukuyomi::Result<Response<String>>
 where
     T: Template,
 {
@@ -150,7 +144,6 @@ mod renderer {
         type Ok = Response<String>;
         type Error = Error;
 
-        #[allow(deprecated)]
         #[inline]
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let ctx = tsukuyomi::future::try_ready!(self.0.poll_ready(input).map_err(Into::into));
