@@ -369,25 +369,23 @@ where
     }
 }
 
-/// A trait that represents the settings for configuring an `AppBase`.
-pub trait Config<M, T: Concurrency> {
+/// A marker trait annotating that the implementator has an implementation of `Config<M, C>`
+/// for a certain `M` and `C`.
+pub trait IsConfig {}
+
+/// A trait that abstracts the configuring for constructing an instance of `AppBase`.
+pub trait Config<M, T: Concurrency>: IsConfig {
     type Error: Into<Error>;
 
     /// Applies this configuration to the specified context.
     fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error>;
 }
 
-impl<F, M, T, E> Config<M, T> for F
+impl<T1, T2> IsConfig for Chain<T1, T2>
 where
-    F: FnOnce(&mut Scope<'_, M, T>) -> std::result::Result<(), E>,
-    E: Into<Error>,
-    T: Concurrency,
+    T1: IsConfig,
+    T2: IsConfig,
 {
-    type Error = E;
-
-    fn configure(self, cx: &mut Scope<'_, M, T>) -> std::result::Result<(), Self::Error> {
-        self(cx)
-    }
 }
 
 impl<S1, S2, M, T> Config<M, T> for Chain<S1, S2>
@@ -405,6 +403,8 @@ where
     }
 }
 
+impl<T> IsConfig for Option<T> where T: IsConfig {}
+
 impl<M, S, T> Config<M, T> for Option<S>
 where
     S: Config<M, T>,
@@ -420,6 +420,13 @@ where
     }
 }
 
+impl<T, E> IsConfig for std::result::Result<T, E>
+where
+    T: IsConfig,
+    E: Into<Error>,
+{
+}
+
 impl<M, S, E, T> Config<M, T> for std::result::Result<S, E>
 where
     S: Config<M, T>,
@@ -432,6 +439,8 @@ where
         self.map_err(Into::into)?.configure(cx).map_err(Into::into)
     }
 }
+
+impl IsConfig for () {}
 
 impl<M, T> Config<M, T> for ()
 where

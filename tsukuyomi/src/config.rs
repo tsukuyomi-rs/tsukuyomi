@@ -20,7 +20,7 @@ pub mod prelude {
 }
 
 #[doc(no_inline)]
-pub use crate::app::config::{Config, Error, Result, Scope};
+pub use crate::app::config::{Config, Error, IsConfig, Result, Scope};
 
 use {
     crate::{
@@ -58,6 +58,13 @@ where
     }
 }
 
+impl<P, T> IsConfig for Mount<P, T>
+where
+    P: AsRef<str>,
+    T: IsConfig,
+{
+}
+
 impl<P, T, M, C> Config<M, C> for Mount<P, T>
 where
     P: AsRef<str>,
@@ -83,9 +90,11 @@ pub struct Modify<M, T> {
     config: T,
 }
 
+impl<M, T> IsConfig for Modify<M, T> where T: IsConfig {}
+
 impl<M, T, M2, C> Config<M2, C> for Modify<M, T>
 where
-    for<'a> T: Config<Chain<&'a M2, M>, C>,
+    T: for<'a> Config<Chain<&'a M2, M>, C>,
     C: Concurrency,
 {
     type Error = Error;
@@ -95,14 +104,24 @@ where
     }
 }
 
-pub trait ConfigExt: Sized {
-    /// Creates a `Config` with the specified `ModifyHandler`
+/// A set of extension methods for constructing the complex `Config`.
+pub trait ConfigExt: IsConfig + Sized {
+    /// Creates a `Config` that applies `Self` and the specified configuration in order.
+    fn chain<T>(self, next: T) -> Chain<Self, T>
+    where
+        T: IsConfig,
+    {
+        Chain::new(self, next)
+    }
+
+    /// Creates a `Config` that applies the specified `ModifyHandler` to all `Handler`s
+    /// registered by `Self`.
     fn modify<M>(self, modifier: M) -> Modify<M, Self> {
         modify(modifier, self)
     }
 }
 
-impl<T> ConfigExt for T {}
+impl<T: IsConfig> ConfigExt for T {}
 
 /// A `Config` that registers a route into a scope.
 #[derive(Debug)]
@@ -123,6 +142,8 @@ where
         }
     }
 }
+
+impl<H> IsConfig for Route<H> where H: Handler {}
 
 impl<H, M, C> Config<M, C> for Route<H>
 where

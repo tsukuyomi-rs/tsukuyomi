@@ -534,6 +534,8 @@ where
     }
 }
 
+impl<P> crate::config::IsConfig for Staticfiles<P> where P: AsRef<Path> {}
+
 impl<P, M, C> crate::config::Config<M, C> for Staticfiles<P>
 where
     P: AsRef<Path>,
