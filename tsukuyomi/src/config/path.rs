@@ -88,13 +88,17 @@ where
     {
         let Self { path, .. } = self;
         let endpoint = Arc::new(endpoint);
-        let allowed_methods = endpoint.allowed_methods();
+
+        let mut metadata = match path {
+            "*" => Metadata::without_suffix(),
+            path => Metadata::new(path.parse().expect("this is a bug")),
+        };
+        *metadata.allowed_methods_mut() = endpoint.allowed_methods();
 
         Route {
-            path: path.into(),
             handler: crate::handler::handler(
                 move || self::handle::RouteHandle::new(endpoint.clone()),
-                Metadata::new(allowed_methods),
+                metadata,
             ),
         }
     }

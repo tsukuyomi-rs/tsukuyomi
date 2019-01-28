@@ -6,6 +6,8 @@ use {
     std::iter::FromIterator,
 };
 
+pub use crate::uri::Uri;
+
 /// A set of request methods that a route accepts.
 #[derive(Debug, Clone, Default)]
 pub struct AllowedMethods(Option<IndexSet<Method>>);
@@ -152,15 +154,29 @@ impl<'a> IntoIterator for &'a AllowedMethods {
 }
 
 /// A set of metadata associated with the certain `Handler`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Metadata {
+    path: Option<Uri>,
     allowed_methods: AllowedMethods,
 }
 
 impl Metadata {
-    /// Creates a new `Metadata` with the specified parameters.
-    pub fn new(allowed_methods: AllowedMethods) -> Self {
-        Self { allowed_methods }
+    pub fn new(path: Uri) -> Self {
+        Self {
+            path: Some(path),
+            allowed_methods: AllowedMethods::any(),
+        }
+    }
+
+    pub fn without_suffix() -> Self {
+        Self {
+            path: None,
+            allowed_methods: AllowedMethods::any(),
+        }
+    }
+
+    pub fn path(&self) -> Option<&Uri> {
+        self.path.as_ref()
     }
 
     /// Returns a reference to the inner value of `AllowedMethods`.
