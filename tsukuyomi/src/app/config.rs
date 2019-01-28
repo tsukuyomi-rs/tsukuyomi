@@ -281,22 +281,19 @@ where
     T: Concurrency,
 {
     /// Adds a route onto the current scope.
-    pub fn route<H>(&mut self, path: impl AsRef<str>, handler: H) -> Result<()>
+    pub fn route<H>(&mut self, handler: H) -> Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
         M::Handler: Into<T::Handler>,
     {
-        let uri: Option<Uri> = match path.as_ref() {
-            "*" => None,
-            path => path.parse().map(Some).map_err(Error::custom)?,
-        };
+        let handler = self.modifier.modify(handler);
 
-        if let Some(uri) = uri {
+        if let Some(path) = handler.metadata().path().cloned() {
             let uri = self.scopes[self.scope_id]
                 .data
                 .prefix
-                .join(&uri)
+                .join(&path)
                 .map_err(Error::custom)?;
 
             let scope = &self.scopes[self.scope_id];
@@ -312,14 +309,14 @@ where
                             .chain(Some(scope.id()))
                             .collect(),
                         uri: uri.clone(),
-                        handler: self.modifier.modify(handler).into(),
+                        handler: handler.into(),
                     }),
                 )
                 .map_err(Error::custom)?;
         } else {
-            self.scopes[self.scope_id].data.default_handler =
-                Some(self.modifier.modify(handler).into());
+            self.scopes[self.scope_id].data.default_handler = Some(handler.into());
         }
+
         Ok(())
     }
 

@@ -4,7 +4,7 @@ use {
     tsukuyomi::{
         error::{Error, HttpError}, //
         future::{Async, Poll, TryFuture},
-        handler::{AllowedMethods, Handler, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         input::Input,
         output::IntoResponse,
         util::Either,
@@ -70,8 +70,8 @@ where
     type Error = Error;
     type Handle = CaptureErrorsHandle<H::Handle>;
 
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        self.inner.allowed_methods()
+    fn metadata(&self) -> Metadata {
+        self.inner.metadata()
     }
 
     fn handle(&self) -> Self::Handle {

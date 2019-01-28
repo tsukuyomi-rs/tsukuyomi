@@ -234,7 +234,7 @@ mod impl_endpoint_for_cors {
             endpoint::{ApplyContext, ApplyError, ApplyResult, Endpoint},
             error::Error,
             future::{Poll, TryFuture},
-            handler::AllowedMethods,
+            handler::metadata::AllowedMethods,
             input::Input,
         },
     };
@@ -252,8 +252,8 @@ mod impl_endpoint_for_cors {
             }
         }
 
-        fn allowed_methods(&self) -> Option<AllowedMethods> {
-            Some(AllowedMethods::from(Method::OPTIONS))
+        fn allowed_methods(&self) -> AllowedMethods {
+            AllowedMethods::from(Method::OPTIONS)
         }
     }
 
@@ -289,7 +289,7 @@ mod impl_modify_handler_for_cors {
         tsukuyomi::{
             error::Error,
             future::{Async, Poll, TryFuture},
-            handler::{AllowedMethods, Handler, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
     };
@@ -307,14 +307,12 @@ mod impl_modify_handler_for_cors {
         type Handler = CORSHandler<H>;
 
         fn modify(&self, handler: H) -> Self::Handler {
-            let allowed_methods = handler.allowed_methods().cloned().map(|mut methods| {
-                methods.extend(Some(Method::OPTIONS));
-                methods
-            });
+            let mut metadata = handler.metadata().clone();
+            metadata.allowed_methods_mut().extend(Some(Method::OPTIONS));
 
             CORSHandler {
                 handler,
-                allowed_methods,
+                metadata,
                 cors: self.clone(),
             }
         }
@@ -323,7 +321,7 @@ mod impl_modify_handler_for_cors {
     #[derive(Debug)]
     pub struct CORSHandler<H> {
         handler: H,
-        allowed_methods: Option<AllowedMethods>,
+        metadata: Metadata,
         cors: CORS,
     }
 
@@ -333,8 +331,8 @@ mod impl_modify_handler_for_cors {
         type Error = Error;
         type Handle = CORSHandle<H::Handle>;
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.allowed_methods.as_ref()
+        fn metadata(&self) -> Metadata {
+            self.metadata.clone()
         }
 
         #[inline]

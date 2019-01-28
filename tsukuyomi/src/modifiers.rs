@@ -11,7 +11,7 @@ mod default_options {
     use {
         crate::{
             future::{Poll, TryFuture},
-            handler::{AllowedMethods, Handler, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
         either::Either,
@@ -29,13 +29,17 @@ mod default_options {
         type Handler = DefaultOptionsHandler<H>; // private
 
         fn modify(&self, inner: H) -> Self::Handler {
-            let allowed_methods = inner.allowed_methods().cloned().map(|mut methods| {
-                methods.extend(Some(http::Method::OPTIONS));
-                methods
-            });
+            let mut metadata = inner.metadata().clone();
+            metadata
+                .allowed_methods_mut()
+                .extend(Some(http::Method::OPTIONS));
+
+            let allowed_methods_value = metadata.allowed_methods().to_header_value();
+
             DefaultOptionsHandler {
                 inner,
-                allowed_methods,
+                metadata,
+                allowed_methods_value,
             }
         }
     }
@@ -43,7 +47,8 @@ mod default_options {
     #[allow(missing_debug_implementations)]
     pub struct DefaultOptionsHandler<H> {
         inner: H,
-        allowed_methods: Option<AllowedMethods>,
+        metadata: Metadata,
+        allowed_methods_value: HeaderValue,
     }
 
     impl<H> Handler for DefaultOptionsHandler<H>
@@ -57,12 +62,12 @@ mod default_options {
         fn handle(&self) -> Self::Handle {
             HandleDefaultOptions {
                 inner: self.inner.handle(),
-                allowed_methods_value: self.allowed_methods().map(|m| m.to_header_value()),
+                allowed_methods_value: Some(self.allowed_methods_value.clone()),
             }
         }
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.allowed_methods.as_ref()
+        fn metadata(&self) -> Metadata {
+            self.metadata.clone()
         }
     }
 
@@ -111,7 +116,7 @@ pub fn map_output<F>(f: F) -> MapOutput<F> {
 mod map_output {
     use crate::{
         future::{Poll, TryFuture},
-        handler::{AllowedMethods, Handler, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         input::Input,
     };
 
@@ -158,8 +163,8 @@ mod map_output {
             }
         }
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.handler.allowed_methods()
+        fn metadata(&self) -> Metadata {
+            self.handler.metadata()
         }
     }
 

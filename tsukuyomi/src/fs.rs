@@ -4,7 +4,7 @@ use {
     crate::{
         error::Error,
         future::TryFuture,
-        handler::ModifyHandler,
+        handler::{metadata::Uri, ModifyHandler},
         input::Input,
         output::{IntoResponse, ResponseBody},
         responder::Responder,
@@ -454,6 +454,7 @@ struct ServeFileInner {
     path: ArcPath,
     config: Option<OpenConfig>,
     extract_path: bool,
+    uri: Uri,
 }
 
 mod impl_handler_for_serve_file {
@@ -462,10 +463,14 @@ mod impl_handler_for_serve_file {
         crate::{
             error::Error,
             future::TryFuture,
-            handler::{AllowedMethods, Handler},
+            handler::{
+                metadata::{AllowedMethods, Metadata},
+                Handler,
+            },
             input::Input,
         },
         futures01::{Async, Poll},
+        http::Method,
     };
 
     impl Handler for ServeFile {
@@ -473,12 +478,14 @@ mod impl_handler_for_serve_file {
         type Error = Error;
         type Handle = Self;
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            Some(&AllowedMethods::get())
-        }
-
         fn handle(&self) -> Self::Handle {
             self.clone()
+        }
+
+        fn metadata(&self) -> Metadata {
+            let mut metadata = Metadata::new(self.inner.uri.clone());
+            *metadata.allowed_methods_mut() = AllowedMethods::from(Method::GET);
+            metadata
         }
     }
 
@@ -566,27 +573,27 @@ where
 
             let file_type = entry.file_type().map_err(crate::config::Error::custom)?;
             if file_type.is_file() {
-                scope.route(
-                    format!("/{}", name),
-                    ServeFile {
-                        inner: Arc::new(ServeFileInner {
-                            path,
-                            config: config.clone(),
-                            extract_path: false,
-                        }),
-                    },
-                )?;
+                scope.route(ServeFile {
+                    inner: Arc::new(ServeFileInner {
+                        path,
+                        config: config.clone(),
+                        extract_path: false,
+                        uri: format!("/{}", name)
+                            .parse()
+                            .map_err(crate::config::Error::custom)?,
+                    }),
+                })?;
             } else if file_type.is_dir() {
-                scope.route(
-                    format!("/{}/*path", name),
-                    ServeFile {
-                        inner: Arc::new(ServeFileInner {
-                            path,
-                            config: config.clone(),
-                            extract_path: true,
-                        }),
-                    },
-                )?;
+                scope.route(ServeFile {
+                    inner: Arc::new(ServeFileInner {
+                        path,
+                        config: config.clone(),
+                        extract_path: true,
+                        uri: format!("/{}/*path", name)
+                            .parse()
+                            .map_err(crate::config::Error::custom)?,
+                    }),
+                })?;
             } else {
                 return Err(crate::config::Error::custom(failure::format_err!(
                     "unexpected file type"

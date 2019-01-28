@@ -36,7 +36,7 @@ mod logging {
         std::time::Instant,
         tsukuyomi::{
             future::{Async, Poll, TryFuture},
-            handler::{AllowedMethods, Handler, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
             output::{IntoResponse, ResponseBody},
             util::Never,
@@ -90,8 +90,8 @@ mod logging {
             }
         }
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.inner.allowed_methods()
+        fn metadata(&self) -> Metadata {
+            self.inner.metadata()
         }
     }
 

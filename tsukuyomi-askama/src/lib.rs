@@ -105,7 +105,7 @@ mod renderer {
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{AllowedMethods, Handler},
+            handler::{metadata::Metadata, Handler},
             input::Input,
         },
     };
@@ -124,8 +124,8 @@ mod renderer {
         type Error = Error;
         type Handle = RenderedHandle<H::Handle>;
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.inner.allowed_methods()
+        fn metadata(&self) -> Metadata {
+            self.inner.metadata()
         }
 
         fn handle(&self) -> Self::Handle {

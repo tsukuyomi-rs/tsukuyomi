@@ -2,7 +2,7 @@ use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         config::prelude::*, //
-        handler::{AllowedMethods, Handler, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         App,
     },
 };
@@ -40,8 +40,8 @@ where
     type Error = H::Error;
     type Handle = H::Handle;
 
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        self.inner.allowed_methods()
+    fn metadata(&self) -> Metadata {
+        self.inner.metadata()
     }
 
     fn handle(&self) -> Self::Handle {

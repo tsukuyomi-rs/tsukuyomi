@@ -40,7 +40,7 @@ mod support_tera {
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{AllowedMethods, Handler, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
     };
@@ -92,8 +92,8 @@ mod support_tera {
         type Error = Error;
         type Handle = WithTeraHandle<H::Handle>;
 
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.inner.allowed_methods()
+        fn metadata(&self) -> Metadata {
+            self.inner.metadata()
         }
 
         fn handle(&self) -> Self::Handle {

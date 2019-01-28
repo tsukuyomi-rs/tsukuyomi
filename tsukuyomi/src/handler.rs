@@ -1,135 +1,16 @@
 //! Definition of `Handler`.
 
+pub mod metadata;
+
 use {
+    self::metadata::Metadata,
     crate::{
         error::Error,
         future::TryFuture,
-        util::{Chain, Never, TryFrom}, //
+        util::Chain, //
     },
-    http::{header::HeaderValue, HttpTryFrom, Method},
-    indexmap::{indexset, IndexSet},
-    lazy_static::lazy_static,
-    std::{iter::FromIterator, sync::Arc},
+    std::{rc::Rc, sync::Arc},
 };
-
-/// A set of request methods that a route accepts.
-#[derive(Debug, Clone)]
-pub struct AllowedMethods(IndexSet<Method>);
-
-impl AllowedMethods {
-    pub fn get() -> &'static AllowedMethods {
-        lazy_static! {
-            static ref VALUE: AllowedMethods = AllowedMethods::from(Method::GET);
-        }
-        &*VALUE
-    }
-
-    pub fn contains(&self, method: &Method) -> bool {
-        self.0.contains(method)
-    }
-
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Method> + 'a {
-        self.0.iter()
-    }
-
-    pub fn to_header_value(&self) -> HeaderValue {
-        let mut bytes = bytes::BytesMut::new();
-        for (i, method) in self.iter().enumerate() {
-            if i > 0 {
-                bytes.extend_from_slice(b", ");
-            }
-            bytes.extend_from_slice(method.as_str().as_bytes());
-        }
-        unsafe { HeaderValue::from_shared_unchecked(bytes.freeze()) }
-    }
-}
-
-impl From<Method> for AllowedMethods {
-    fn from(method: Method) -> Self {
-        AllowedMethods(indexset! { method })
-    }
-}
-
-impl FromIterator<Method> for AllowedMethods {
-    fn from_iter<T>(iter: T) -> Self
-    where
-        T: IntoIterator<Item = Method>,
-    {
-        AllowedMethods(FromIterator::from_iter(iter))
-    }
-}
-
-impl Extend<Method> for AllowedMethods {
-    fn extend<I: IntoIterator<Item = Method>>(&mut self, iterable: I) {
-        self.0.extend(iterable)
-    }
-}
-
-impl TryFrom<Self> for AllowedMethods {
-    type Error = Never;
-
-    #[inline]
-    fn try_from(methods: Self) -> std::result::Result<Self, Self::Error> {
-        Ok(methods)
-    }
-}
-
-impl TryFrom<Method> for AllowedMethods {
-    type Error = Never;
-
-    #[inline]
-    fn try_from(method: Method) -> std::result::Result<Self, Self::Error> {
-        Ok(AllowedMethods::from(method))
-    }
-}
-
-impl<M> TryFrom<Vec<M>> for AllowedMethods
-where
-    Method: HttpTryFrom<M>,
-{
-    type Error = http::Error;
-
-    #[inline]
-    fn try_from(methods: Vec<M>) -> std::result::Result<Self, Self::Error> {
-        let methods: Vec<_> = methods
-            .into_iter()
-            .map(Method::try_from)
-            .collect::<std::result::Result<_, _>>()
-            .map_err(Into::into)?;
-        Ok(AllowedMethods::from_iter(methods))
-    }
-}
-
-impl<'a> TryFrom<&'a str> for AllowedMethods {
-    type Error = failure::Error;
-
-    #[inline]
-    fn try_from(methods: &'a str) -> std::result::Result<Self, Self::Error> {
-        let methods: Vec<_> = methods
-            .split(',')
-            .map(|s| Method::try_from(s.trim()).map_err(Into::into))
-            .collect::<http::Result<_>>()?;
-        Ok(AllowedMethods::from_iter(methods))
-    }
-}
-
-impl IntoIterator for AllowedMethods {
-    type Item = Method;
-    type IntoIter = indexmap::set::IntoIter<Method>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a AllowedMethods {
-    type Item = &'a Method;
-    type IntoIter = indexmap::set::Iter<'a, Method>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
 
 /// A trait representing the handler associated with the specified endpoint.
 pub trait Handler {
@@ -137,16 +18,14 @@ pub trait Handler {
     type Error: Into<Error>;
     type Handle: TryFuture<Ok = Self::Output, Error = Self::Error>;
 
-    /// Returns a list of HTTP methods that this handler accepts.
-    ///
-    /// If it returns a `None`, it means that the handler accepts *all* methods.
-    fn allowed_methods(&self) -> Option<&AllowedMethods>;
-
-    /// Creates a `Handle` which handles the incoming request.
+    /// Creates an instance of `Handle` to handle an incoming request.
     fn handle(&self) -> Self::Handle;
+
+    /// Returns the value of `Metadata` associated with this handler.
+    fn metadata(&self) -> Metadata;
 }
 
-impl<H> Handler for std::rc::Rc<H>
+impl<H> Handler for Rc<H>
 where
     H: Handler,
 {
@@ -155,13 +34,13 @@ where
     type Handle = H::Handle;
 
     #[inline]
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        (**self).allowed_methods()
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
     }
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
-        (**self).handle()
+    fn metadata(&self) -> Metadata {
+        (**self).metadata()
     }
 }
 
@@ -174,19 +53,19 @@ where
     type Handle = H::Handle;
 
     #[inline]
-    fn allowed_methods(&self) -> Option<&AllowedMethods> {
-        (**self).allowed_methods()
+    fn handle(&self) -> Self::Handle {
+        (**self).handle()
     }
 
     #[inline]
-    fn handle(&self) -> Self::Handle {
-        (**self).handle()
+    fn metadata(&self) -> Metadata {
+        (**self).metadata()
     }
 }
 
 pub fn handler<T>(
     handle_fn: impl Fn() -> T,
-    allowed_methods: Option<AllowedMethods>,
+    metadata: Metadata,
 ) -> impl Handler<
     Output = T::Ok, //
     Error = T::Error,
@@ -198,7 +77,7 @@ where
     #[allow(missing_debug_implementations)]
     struct HandlerFn<F> {
         handle_fn: F,
-        allowed_methods: Option<AllowedMethods>,
+        metadata: Metadata,
     }
 
     impl<F, T> Handler for HandlerFn<F>
@@ -211,19 +90,19 @@ where
         type Handle = T;
 
         #[inline]
-        fn allowed_methods(&self) -> Option<&AllowedMethods> {
-            self.allowed_methods.as_ref()
+        fn handle(&self) -> Self::Handle {
+            (self.handle_fn)()
         }
 
         #[inline]
-        fn handle(&self) -> Self::Handle {
-            (self.handle_fn)()
+        fn metadata(&self) -> Metadata {
+            self.metadata.clone()
         }
     }
 
     HandlerFn {
         handle_fn,
-        allowed_methods,
+        metadata,
     }
 }
 
