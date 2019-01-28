@@ -4,7 +4,7 @@ use {
         endpoint::Endpoint, //
         error::Error,
         generic::Tuple,
-        handler::{Handler, Metadata},
+        handler::{metadata::Metadata, Handler},
         input::param::Params,
     },
     std::{marker::PhantomData, sync::Arc},

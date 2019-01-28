@@ -234,7 +234,7 @@ mod impl_endpoint_for_cors {
             endpoint::{ApplyContext, ApplyError, ApplyResult, Endpoint},
             error::Error,
             future::{Poll, TryFuture},
-            handler::AllowedMethods,
+            handler::metadata::AllowedMethods,
             input::Input,
         },
     };
@@ -289,7 +289,7 @@ mod impl_modify_handler_for_cors {
         tsukuyomi::{
             error::Error,
             future::{Async, Poll, TryFuture},
-            handler::{Handler, Metadata, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
     };

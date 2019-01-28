@@ -1,7 +1,7 @@
 //! Definition of `Endpoint`.
 
 use {
-    crate::{error::Error, future::TryFuture, handler::AllowedMethods, input::Input},
+    crate::{error::Error, future::TryFuture, handler::metadata::AllowedMethods, input::Input},
     http::{Method, StatusCode},
 };
 
@@ -141,7 +141,7 @@ mod impl_chain {
         crate::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::AllowedMethods,
+            handler::metadata::AllowedMethods,
             input::Input,
             util::{Chain, Either},
         },

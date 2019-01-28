@@ -2,7 +2,7 @@ use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
         config::prelude::*, //
-        handler::{Handler, Metadata, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         App,
     },
 };

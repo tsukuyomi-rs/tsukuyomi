@@ -36,7 +36,7 @@ mod logging {
         std::time::Instant,
         tsukuyomi::{
             future::{Async, Poll, TryFuture},
-            handler::{Handler, Metadata, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
             output::{IntoResponse, ResponseBody},
             util::Never,

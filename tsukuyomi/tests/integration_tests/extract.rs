@@ -224,7 +224,7 @@ fn local_data() -> izanami::Result<()> {
         futures01::Poll,
         tsukuyomi::{
             future::TryFuture,
-            handler::{Handler, Metadata, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::{localmap::local_key, Input},
         },
     };

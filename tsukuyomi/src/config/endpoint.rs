@@ -4,7 +4,7 @@ use {
         error::Error,
         extractor::Extractor,
         generic::{Combine, Func},
-        handler::AllowedMethods,
+        handler::metadata::AllowedMethods,
         util::{Chain, Never, TryInto},
     },
     futures01::IntoFuture,

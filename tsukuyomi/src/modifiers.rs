@@ -11,7 +11,7 @@ mod default_options {
     use {
         crate::{
             future::{Poll, TryFuture},
-            handler::{Handler, Metadata, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
         either::Either,
@@ -116,7 +116,7 @@ pub fn map_output<F>(f: F) -> MapOutput<F> {
 mod map_output {
     use crate::{
         future::{Poll, TryFuture},
-        handler::{Handler, Metadata, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         input::Input,
     };
 

@@ -462,7 +462,10 @@ mod impl_handler_for_serve_file {
         crate::{
             error::Error,
             future::TryFuture,
-            handler::{AllowedMethods, Handler, Metadata},
+            handler::{
+                metadata::{AllowedMethods, Metadata},
+                Handler,
+            },
             input::Input,
         },
         futures01::{Async, Poll},

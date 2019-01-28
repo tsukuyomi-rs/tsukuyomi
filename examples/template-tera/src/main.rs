@@ -40,7 +40,7 @@ mod support_tera {
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{Handler, Metadata, ModifyHandler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
     };

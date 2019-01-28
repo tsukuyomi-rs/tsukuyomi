@@ -105,7 +105,7 @@ mod renderer {
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{Handler, Metadata},
+            handler::{metadata::Metadata, Handler},
             input::Input,
         },
     };

@@ -4,7 +4,7 @@ use {
     tsukuyomi::{
         error::{Error, HttpError}, //
         future::{Async, Poll, TryFuture},
-        handler::{Handler, Metadata, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         input::Input,
         output::IntoResponse,
         util::Either,
