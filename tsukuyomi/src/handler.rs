@@ -109,7 +109,8 @@ where
 /// A trait representing a type for modifying the instance of `Handler`.
 pub trait ModifyHandler<H: Handler> {
     type Output;
-    type Handler: Handler<Output = Self::Output>;
+    type Error: Into<Error>;
+    type Handler: Handler<Output = Self::Output, Error = Self::Error>;
 
     fn modify(&self, input: H) -> Self::Handler;
 }
@@ -120,6 +121,7 @@ where
     H: Handler,
 {
     type Output = M::Output;
+    type Error = M::Error;
     type Handler = M::Handler;
 
     #[inline]
@@ -134,6 +136,7 @@ where
     H: Handler,
 {
     type Output = M::Output;
+    type Error = M::Error;
     type Handler = M::Handler;
 
     #[inline]
@@ -148,6 +151,7 @@ where
     H: Handler,
 {
     type Output = M::Output;
+    type Error = M::Error;
     type Handler = M::Handler;
 
     #[inline]
@@ -161,6 +165,7 @@ where
     H: Handler,
 {
     type Output = H::Output;
+    type Error = H::Error;
     type Handler = H;
 
     #[inline]
@@ -176,6 +181,7 @@ where
     O: ModifyHandler<I::Handler>,
 {
     type Output = O::Output;
+    type Error = O::Error;
     type Handler = O::Handler;
 
     #[inline]

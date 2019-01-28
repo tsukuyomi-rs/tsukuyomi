@@ -58,6 +58,7 @@ mod logging {
         H::Output: IntoResponse,
     {
         type Output = Response<ResponseBody>;
+        type Error = Never;
         type Handler = WithLogging<H>;
 
         fn modify(&self, inner: H) -> Self::Handler {

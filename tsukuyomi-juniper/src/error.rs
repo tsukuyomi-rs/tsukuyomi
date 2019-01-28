@@ -50,6 +50,7 @@ where
     H: Handler,
 {
     type Output = Either<Response<String>, H::Output>;
+    type Error = Error;
     type Handler = CaptureErrorsHandler<H>; // private;
 
     fn modify(&self, inner: H) -> Self::Handler {

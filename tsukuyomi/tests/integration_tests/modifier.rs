@@ -15,6 +15,7 @@ struct MockModifier {
 
 impl<H: Handler> ModifyHandler<H> for MockModifier {
     type Output = H::Output;
+    type Error = H::Error;
     type Handler = MockHandler<H>;
 
     fn modify(&self, inner: H) -> Self::Handler {

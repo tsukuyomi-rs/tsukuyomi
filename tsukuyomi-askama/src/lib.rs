@@ -17,11 +17,7 @@ use {
         Request, Response,
     },
     mime_guess::get_mime_type_str,
-    tsukuyomi::{
-        error::internal_server_error,
-        handler::{Handler, ModifyHandler},
-        output::preset::Preset,
-    },
+    tsukuyomi::{error::internal_server_error, output::preset::Preset},
 };
 
 /// An implementor of `Preset` for deriving the implementation of `IntoResponse`
@@ -85,34 +81,36 @@ pub fn renderer() -> Renderer {
 #[derive(Debug, Default)]
 pub struct Renderer(());
 
-impl<H> ModifyHandler<H> for Renderer
-where
-    H: Handler,
-    H::Output: Template,
-{
-    type Output = Response<String>;
-    type Handler = self::renderer::RenderedHandler<H>; // private
-
-    fn modify(&self, inner: H) -> Self::Handler {
-        self::renderer::RenderedHandler { inner }
-    }
-}
-
 mod renderer {
     use {
+        super::Renderer,
         askama::Template,
         http::Response,
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{metadata::Metadata, Handler},
+            handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
         },
     };
 
+    impl<H> ModifyHandler<H> for Renderer
+    where
+        H: Handler,
+        H::Output: Template,
+    {
+        type Output = Response<String>;
+        type Error = Error;
+        type Handler = RenderedHandler<H>; // private
+
+        fn modify(&self, inner: H) -> Self::Handler {
+            RenderedHandler { inner }
+        }
+    }
+
     #[allow(missing_debug_implementations)]
     pub struct RenderedHandler<H> {
-        pub(super) inner: H,
+        inner: H,
     }
 
     impl<H> Handler for RenderedHandler<H>

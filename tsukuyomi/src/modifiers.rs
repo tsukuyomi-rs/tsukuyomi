@@ -26,6 +26,7 @@ mod default_options {
         H: Handler,
     {
         type Output = Either<Response<()>, H::Output>;
+        type Error = H::Error;
         type Handler = DefaultOptionsHandler<H>; // private
 
         fn modify(&self, inner: H) -> Self::Handler {
@@ -131,6 +132,7 @@ mod map_output {
         F: Fn(H::Output) -> T + Clone,
     {
         type Output = T;
+        type Error = H::Error;
         type Handler = MapOutputHandler<H, F>;
 
         fn modify(&self, handler: H) -> Self::Handler {

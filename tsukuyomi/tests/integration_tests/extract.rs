@@ -243,6 +243,7 @@ fn local_data() -> izanami::Result<()> {
 
     impl<H: Handler> ModifyHandler<H> for InsertMyData {
         type Output = H::Output;
+        type Error = H::Error;
         type Handler = InsertMyDataHandler<H>;
 
         fn modify(&self, inner: H) -> Self::Handler {

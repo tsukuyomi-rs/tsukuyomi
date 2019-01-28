@@ -304,6 +304,7 @@ mod impl_modify_handler_for_cors {
         H::Output: 'static,
     {
         type Output = Either<Response<()>, H::Output>;
+        type Error = Error;
         type Handler = CORSHandler<H>;
 
         fn modify(&self, handler: H) -> Self::Handler {

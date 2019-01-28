@@ -67,6 +67,7 @@ mod support_tera {
         H::Output: Template,
     {
         type Output = Response<String>;
+        type Error = Error;
         type Handler = WithTeraHandler<H>;
 
         fn modify(&self, inner: H) -> Self::Handler {
