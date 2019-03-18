@@ -1,7 +1,8 @@
 use {
-    izanami::test::ResponseExt,
+    http::{header, StatusCode},
     tsukuyomi::{
         config::prelude::*, //
+        test::{self, loc, TestServer},
         App,
     },
 };
@@ -80,7 +81,7 @@ fn compiletest_enum() {
 }
 
 #[test]
-fn test_into_response_preset() -> izanami::Result<()> {
+fn test_into_response_preset() -> test::Result {
     use {
         http::{Request, Response},
         std::fmt,
@@ -131,18 +132,19 @@ fn test_into_response_preset() -> izanami::Result<()> {
             .to(endpoint::call(|| Bar("Bar")))
     })?;
 
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform("/foo")?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(
-        response.header("content-type")?,
-        "text/plain; charset=utf-8"
-    );
-    assert_eq!(response.body().to_utf8()?, "Foo");
+    client
+        .get("/foo")
+        .assert(loc!(), StatusCode::OK)?
+        .assert(
+            loc!(),
+            test::header::eq(header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+        )?
+        .assert(loc!(), test::body::eq("Foo"))?;
 
-    let response = server.perform("/bar")?;
-    assert_eq!(response.body().to_utf8()?, "Bar");
+    client.get("/bar").assert(loc!(), test::body::eq("Bar"))?;
 
     Ok(())
 }

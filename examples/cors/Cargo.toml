@@ -13,5 +13,5 @@ doc = false
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
 tsukuyomi-cors = { path = "../../tsukuyomi-cors" }
-izanami = "0.1.0-preview.1"
 serde = { version = "1", features = ["derive"] }
+exitfailure = "0.5"

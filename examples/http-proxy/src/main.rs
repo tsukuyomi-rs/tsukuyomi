@@ -6,14 +6,14 @@ mod proxy;
 use {
     crate::proxy::Client, //
     futures::prelude::*,
-    izanami::Server,
     tsukuyomi::{
         config::prelude::*, //
+        server::Server,
         App,
     },
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), exitfailure::ExitFailure> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 
@@ -31,6 +31,9 @@ fn main() -> izanami::Result<()> {
                     .send_forwarded_request("https://www.rust-lang.org/en-US/"))),
     ])?;
 
-    let server = Server::bind_tcp(&"127.0.0.1:4000".parse()?)?;
-    server.start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }

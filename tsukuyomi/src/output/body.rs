@@ -2,8 +2,8 @@ use {
     bytes::{Buf, Bytes, IntoBuf},
     either::Either,
     futures01::{Poll, Stream},
-    izanami_util::buf_stream::{BufStream, SizeHint},
     std::{fmt, io},
+    tokio_buf::{BufStream, SizeHint},
 };
 
 pub type Chunk = Box<dyn Buf + Send + 'static>;
@@ -12,7 +12,6 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 trait BoxedBufStream {
     fn poll_buf_boxed(&mut self) -> Poll<Option<Chunk>, Error>;
     fn size_hint_boxed(&self) -> SizeHint;
-    fn consume_hint_boxed(&mut self, amt: usize);
 }
 
 impl<T> BoxedBufStream for T
@@ -29,10 +28,6 @@ where
 
     fn size_hint_boxed(&self) -> SizeHint {
         self.size_hint()
-    }
-
-    fn consume_hint_boxed(&mut self, amt: usize) {
-        self.consume_hint(amt)
     }
 }
 
@@ -93,7 +88,6 @@ impl ResponseBody {
             fn size_hint_boxed(&self) -> SizeHint {
                 SizeHint::new()
             }
-            fn consume_hint_boxed(&mut self, _: usize) {}
         }
 
         ResponseBody(Inner::Chunked(Box::new(WrapStream(stream))))
@@ -126,6 +120,7 @@ impl_response_body! {
     //std::borrow::Cow<'static, [u8]>,
 }
 
+// FIXME: switch to HttpBody
 impl BufStream for ResponseBody {
     type Item = Either<io::Cursor<Bytes>, Chunk>;
     type Error = Error;

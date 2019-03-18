@@ -9,7 +9,7 @@
     unused
 )]
 #![cfg_attr(test, deny(warnings))]
-#![forbid(clippy::unimplemented)]
+#![deny(clippy::unimplemented)]
 
 #[macro_use]
 pub mod util;
@@ -29,6 +29,8 @@ pub mod input;
 pub mod modifiers;
 pub mod output;
 pub mod responder;
+pub mod server;
+pub mod test;
 
 #[doc(inline)]
 pub use crate::{

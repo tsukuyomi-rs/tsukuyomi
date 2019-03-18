@@ -1,9 +1,10 @@
 use {
     crate::support_tera::{Template, WithTera},
-    izanami::Server,
+    exitfailure::ExitFailure,
     serde::Serialize,
     tsukuyomi::{
         config::prelude::*, //
+        server::Server,
         App,
     },
 };
@@ -19,7 +20,7 @@ impl Template for Index {
     }
 }
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), ExitFailure> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
     let app = App::create(
@@ -28,8 +29,11 @@ fn main() -> izanami::Result<()> {
             .modify(WithTera::from(engine)),
     )?; //
 
-    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
-        .start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }
 
 mod support_tera {

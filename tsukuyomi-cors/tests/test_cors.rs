@@ -12,11 +12,11 @@ use {
             HOST,
             ORIGIN,
         },
-        Method, Request,
+        Method, Request, StatusCode,
     },
-    izanami::test::ResponseExt,
     tsukuyomi::{
         config::prelude::*, //
+        test::{self, loc, TestServer},
         App,
     },
     tsukuyomi_cors::CORS,
@@ -28,7 +28,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn simple_request_with_default_configuration() -> izanami::Result<()> {
+fn simple_request_with_default_configuration() -> test::Result {
     let cors = CORS::new();
 
     let app = App::create(
@@ -37,31 +37,39 @@ fn simple_request_with_default_configuration() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.body().to_utf8()?, "hello");
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::get("/")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?
+        .assert(loc!(), test::body::eq("hello"))?;
 
     // without origin header
-    let response = server.perform(
-        Request::get("/") //
-            .header(HOST, "localhost"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.body().to_utf8()?, "hello");
-    assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+    client
+        .request(
+            Request::get("/") //
+                .header(HOST, "localhost")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(
+            loc!(),
+            test::header::not_exists(ACCESS_CONTROL_ALLOW_ORIGIN),
+        )?
+        .assert(loc!(), test::body::eq("hello"))?;
 
     Ok(())
 }
 
 #[test]
-fn simple_request_with_allow_origin() -> izanami::Result<()> {
+fn simple_request_with_allow_origin() -> test::Result {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let app = App::create(
@@ -70,33 +78,38 @@ fn simple_request_with_allow_origin() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.body().to_utf8()?, "hello");
-    assert_eq!(
-        response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?,
-        "http://example.com"
-    );
+    client
+        .request(
+            Request::get("/")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(
+            loc!(),
+            test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "http://example.com"),
+        )?
+        .assert(loc!(), test::body::eq("hello"))?;
 
     // disallowed origin
-    let response = server.perform(
-        Request::get("/")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.org"),
-    )?;
-    assert_eq!(response.status(), 403);
+    client
+        .request(
+            Request::get("/")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.org")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::FORBIDDEN)?;
 
     Ok(())
 }
 
 #[test]
-fn simple_request_with_allow_method() -> izanami::Result<()> {
+fn simple_request_with_allow_method() -> test::Result {
     let cors = CORS::builder() //
         .allow_method(Method::GET)?
         .build();
@@ -107,30 +120,35 @@ fn simple_request_with_allow_method() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.body().to_utf8()?, "hello");
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::get("/")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?
+        .assert(loc!(), test::body::eq("hello"))?;
 
     // disallowed method
-    let response = server.perform(
-        Request::delete("/")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert_eq!(response.status(), 403);
+    client
+        .request(
+            Request::delete("/")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::FORBIDDEN)?;
 
     Ok(())
 }
 
 #[test]
-fn simple_request_with_allow_credentials() -> izanami::Result<()> {
+fn simple_request_with_allow_credentials() -> test::Result {
     let cors = CORS::builder() //
         .allow_credentials(true)
         .build();
@@ -141,21 +159,27 @@ fn simple_request_with_allow_credentials() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors),
     )?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com")
-            .header(COOKIE, "session=xxxx"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.body().to_utf8()?, "hello");
-    assert_eq!(
-        response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?,
-        "http://example.com"
-    );
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_CREDENTIALS)?, "true",);
+    client
+        .request(
+            Request::get("/")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .header(COOKIE, "session=xxxx")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(
+            loc!(),
+            test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "http://example.com"),
+        )?
+        .assert(
+            loc!(),
+            test::header::eq(ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"),
+        )?
+        .assert(loc!(), test::body::eq("hello"))?;
 
     Ok(())
 }
@@ -185,7 +209,7 @@ macro_rules! assert_headers {
 }
 
 #[test]
-fn preflight_with_default_configuration() -> izanami::Result<()> {
+fn preflight_with_default_configuration() -> test::Result {
     let cors = CORS::new();
 
     let app = App::create(chain![
@@ -195,18 +219,24 @@ fn preflight_with_default_configuration() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors)  // OPTIONS /
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    let response = client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
     assert_methods!(
-        response.header(ACCESS_CONTROL_ALLOW_METHODS)?,
+        response
+            .headers()
+            .get(ACCESS_CONTROL_ALLOW_METHODS)
+            .unwrap(),
         [GET, POST, OPTIONS]
     );
 
@@ -214,7 +244,7 @@ fn preflight_with_default_configuration() -> izanami::Result<()> {
 }
 
 #[test]
-fn preflight_with_allow_origin() -> izanami::Result<()> {
+fn preflight_with_allow_origin() -> test::Result {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
     let app = App::create(chain![
@@ -224,29 +254,34 @@ fn preflight_with_allow_origin() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors)
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
+    client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?;
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.org")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 403);
+    client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.org")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::FORBIDDEN)?;
 
     Ok(())
 }
 
 #[test]
-fn preflight_with_allow_method() -> izanami::Result<()> {
+fn preflight_with_allow_method() -> test::Result {
     let cors = CORS::builder() //
         .allow_method(Method::GET)?
         .build();
@@ -258,29 +293,34 @@ fn preflight_with_allow_method() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors)  // OPTIONS /
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
+    client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?;
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.org")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "DELETE"),
-    )?;
-    assert_eq!(response.status(), 403);
+    client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.org")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "DELETE")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::FORBIDDEN)?;
 
     Ok(())
 }
 
 #[test]
-fn preflight_with_allow_headers() -> izanami::Result<()> {
+fn preflight_with_allow_headers() -> test::Result {
     const X_API_KEY: &str = "x-api-key";
 
     let cors = CORS::builder() //
@@ -294,35 +334,44 @@ fn preflight_with_allow_headers() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors)
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
-            .header(ACCESS_CONTROL_REQUEST_HEADERS, X_API_KEY),
-    )?;
-    assert_eq!(response.status(), 204);
+    let response = client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .header(ACCESS_CONTROL_REQUEST_HEADERS, X_API_KEY)
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?;
     assert_headers!(
-        response.header(ACCESS_CONTROL_ALLOW_HEADERS)?,
+        response
+            .headers()
+            .get(ACCESS_CONTROL_ALLOW_HEADERS)
+            .unwrap(),
         [X_API_KEY.parse().unwrap()]
     );
+    drop(response);
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.org")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
-            .header(ACCESS_CONTROL_REQUEST_HEADERS, "authorization"),
-    )?;
-    assert_eq!(response.status(), 403);
+    client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.org")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .header(ACCESS_CONTROL_REQUEST_HEADERS, "authorization")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::FORBIDDEN)?;
 
     Ok(())
 }
 
 #[test]
-fn preflight_max_age() -> izanami::Result<()> {
+fn preflight_max_age() -> test::Result {
     const SECS_PER_DAY: i64 = 60 * 60 * 24;
 
     let cors = CORS::builder() //
@@ -336,25 +385,28 @@ fn preflight_max_age() -> izanami::Result<()> {
                 .call(|| "hello"))
             .modify(cors)
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::options("*")
-            .header(HOST, "localhost")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
-    assert_eq!(
-        response.header(ACCESS_CONTROL_MAX_AGE)?,
-        SECS_PER_DAY.to_string().as_str()
-    );
+    client
+        .request(
+            Request::options("*")
+                .header(HOST, "localhost")
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?
+        .assert(
+            loc!(),
+            test::header::eq(ACCESS_CONTROL_MAX_AGE, SECS_PER_DAY.to_string()),
+        )?;
 
     Ok(())
 }
 
 #[test]
-fn as_route_modifier() -> izanami::Result<()> {
+fn as_route_modifier() -> test::Result {
     let cors = CORS::new();
 
     let app = App::create(chain![
@@ -366,42 +418,54 @@ fn as_route_modifier() -> izanami::Result<()> {
             .to(endpoint::get().call(|| "nocors")),
         path!("*").to(cors),
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/cors") //
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::get("/cors") //
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
 
-    let response = server.perform(
-        Request::options("/cors") //
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::options("/cors") //
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
 
-    let response = server.perform(
-        Request::options("*")
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::options("*")
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
 
-    let response = server.perform(
-        Request::get("/nocors") //
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+    client
+        .request(
+            Request::get("/nocors") //
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(
+            loc!(),
+            test::header::not_exists(ACCESS_CONTROL_ALLOW_ORIGIN),
+        )?;
 
     Ok(())
 }
 
 #[test]
-fn as_scope_modifier() -> izanami::Result<()> {
+fn as_scope_modifier() -> test::Result {
     let cors = CORS::new();
 
     let app = App::create(chain![
@@ -412,28 +476,38 @@ fn as_scope_modifier() -> izanami::Result<()> {
             .to(endpoint::get() //
                 .call(|| "nocors")),
     ])?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/cors") //
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::get("/cors") //
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::OK)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
 
-    let response = server.perform(
-        Request::options("/cors") //
-            .header(ORIGIN, "http://example.com")
-            .header(ACCESS_CONTROL_REQUEST_METHOD, "GET"),
-    )?;
-    assert_eq!(response.status(), 204);
-    assert_eq!(response.header(ACCESS_CONTROL_ALLOW_ORIGIN)?, "*");
+    client
+        .request(
+            Request::options("/cors") //
+                .header(ORIGIN, "http://example.com")
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::NO_CONTENT)?
+        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
 
-    let response = server.perform(
-        Request::get("/nocors") //
-            .header(ORIGIN, "http://example.com"),
-    )?;
-    assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+    client
+        .request(
+            Request::get("/nocors") //
+                .header(ORIGIN, "http://example.com")
+                .body("")?,
+        )
+        .assert(
+            loc!(),
+            test::header::not_exists(ACCESS_CONTROL_ALLOW_ORIGIN),
+        )?;
 
     Ok(())
 }

@@ -1,9 +1,10 @@
 use {
-    izanami::Server,
+    exitfailure::ExitFailure,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
         config::prelude::*, //
         extractor,
+        server::Server,
         App,
         IntoResponse,
     },
@@ -16,7 +17,7 @@ struct User {
     age: u32,
 }
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), ExitFailure> {
     let app = App::create(
         path!("/") //
             .to(chain![
@@ -30,6 +31,9 @@ fn main() -> izanami::Result<()> {
             ]),
     )?;
 
-    let server = Server::bind_tcp(&"127.0.0.1:4000".parse()?)?;
-    server.start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }

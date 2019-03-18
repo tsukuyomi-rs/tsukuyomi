@@ -1,13 +1,14 @@
 use {
-    izanami::Server,
+    exitfailure::ExitFailure,
     tsukuyomi::{
         config::prelude::*, //
         fs::{NamedFile, Staticfiles},
+        server::Server,
         App,
     },
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), ExitFailure> {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
 
     let app = App::create(chain![
@@ -17,8 +18,9 @@ fn main() -> izanami::Result<()> {
         Staticfiles::new(manifest_dir.join("static")),
     ])?;
 
-    let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
-    let server = Server::bind_tcp(&addr)?;
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
 
-    server.start(app)
+    Ok(())
 }

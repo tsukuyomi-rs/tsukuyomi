@@ -20,33 +20,31 @@ use {
         recognizer::{RecognizeError, Recognizer},
         scope::{Scope, ScopeId, Scopes},
     },
-    crate::{input::body::RequestBody, uri::Uri, util::Never},
-    http::Request,
-    izanami_service::{MakeService, Service},
+    crate::{input::localmap::local_key, uri::Uri},
     std::{fmt, sync::Arc},
 };
 
+local_key! {
+    pub const REMOTE_ADDR: std::net::SocketAddr;
+}
+
 /// The main type representing an HTTP application.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AppBase<C: Concurrency = self::config::ThreadSafe> {
     inner: Arc<AppInner<C>>,
 }
 
-impl<C, Ctx, Bd> MakeService<Ctx, Request<Bd>> for AppBase<C>
-where
-    C: Concurrency,
-    RequestBody: From<Bd>,
-{
-    type Response = <AppService<C> as Service<Request<Bd>>>::Response;
-    type Error = <AppService<C> as Service<Request<Bd>>>::Error;
-    type Service = AppService<C>;
-    type MakeError = Never;
-    type Future = futures01::future::FutureResult<Self::Service, Self::MakeError>;
-
-    fn make_service(&self, _: Ctx) -> Self::Future {
-        futures01::future::ok(AppService {
+impl<C: Concurrency> Clone for AppBase<C> {
+    fn clone(&self) -> Self {
+        Self {
             inner: self.inner.clone(),
-        })
+        }
+    }
+}
+
+impl<C: Concurrency> AppBase<C> {
+    pub fn new_service(&self) -> AppService<C> {
+        AppService::new(self.inner.clone())
     }
 }
 

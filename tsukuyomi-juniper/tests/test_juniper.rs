@@ -1,10 +1,13 @@
 use {
-    http::{Request, Response},
-    izanami::test::{Output as TestOutput, Server as TestServer},
+    http::Request,
     juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
-    tsukuyomi::{config::prelude::*, App},
+    tsukuyomi::{
+        config::prelude::*,
+        test::{self, TestResponse, TestServer},
+        App,
+    },
     tsukuyomi_juniper::GraphQLRequest,
 };
 
@@ -14,7 +17,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn integration_test() -> izanami::Result<()> {
+fn integration_test() -> test::Result {
     let database = Arc::new(Database::new());
     let schema = Arc::new(RootNode::new(
         Database::new(),
@@ -34,7 +37,7 @@ fn integration_test() -> izanami::Result<()> {
             .modify(tsukuyomi_juniper::capture_errors())
     })?;
 
-    let test_server = izanami::test::server(app)?;
+    let test_server = TestServer::new(app)?;
 
     let integration = TestTsukuyomiIntegration {
         local_server: RefCell::new(test_server),
@@ -46,42 +49,27 @@ fn integration_test() -> izanami::Result<()> {
 }
 
 struct TestTsukuyomiIntegration {
-    local_server: RefCell<TestServer<tsukuyomi::app::App>>,
+    local_server: RefCell<TestServer>,
 }
 
 impl http_tests::HTTPIntegration for TestTsukuyomiIntegration {
     fn get(&self, url: &str) -> http_tests::TestResponse {
-        eprintln!("GET {:?}", url);
-        let response = self
-            .local_server
-            .borrow_mut()
-            .perform(Request::get(custom_url_encode(url)))
-            .unwrap();
-        eprintln!(
-            "-> {} {:?}",
-            response.status(),
-            response.body().to_utf8().unwrap()
-        );
-        make_test_response(&response)
+        let mut server = self.local_server.borrow_mut();
+        let mut client = server.connect();
+        let response = client.request(Request::get(custom_url_encode(url)).body("").unwrap());
+        make_test_response(response)
     }
 
     fn post(&self, url: &str, body: &str) -> http_tests::TestResponse {
-        eprintln!("POST {:?} ({:?})", url, body);
-        let response = self
-            .local_server
-            .borrow_mut()
-            .perform(
-                Request::post(custom_url_encode(url))
-                    .header("content-type", "application/json")
-                    .body(body.as_bytes()),
-            )
-            .unwrap();
-        eprintln!(
-            "-> {} {:?}",
-            response.status(),
-            response.body().to_utf8().unwrap()
+        let mut server = self.local_server.borrow_mut();
+        let mut client = server.connect();
+        let response = client.request(
+            Request::post(custom_url_encode(url))
+                .header("content-type", "application/json")
+                .body(body.as_bytes())
+                .unwrap(),
         );
-        make_test_response(&response)
+        make_test_response(response)
     }
 }
 
@@ -93,7 +81,7 @@ fn custom_url_encode(url: &str) -> String {
 }
 
 #[allow(clippy::cast_lossless)]
-fn make_test_response(response: &Response<TestOutput>) -> http_tests::TestResponse {
+fn make_test_response(response: TestResponse<'_>) -> http_tests::TestResponse {
     let status_code = response.status().as_u16() as i32;
     let content_type = response
         .headers()
@@ -102,11 +90,8 @@ fn make_test_response(response: &Response<TestOutput>) -> http_tests::TestRespon
         .to_str()
         .expect("Content-type should be a valid UTF-8 string")
         .to_owned();
-    let body = response
-        .body()
-        .to_utf8()
-        .expect("The response body should be a valid UTF-8 string")
-        .into_owned();
+    let body = String::from_utf8(response.into_bytes().unwrap())
+        .expect("The response body should be a valid UTF-8 string");
     http_tests::TestResponse {
         status_code,
         content_type,

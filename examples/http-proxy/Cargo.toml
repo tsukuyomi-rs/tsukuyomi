@@ -12,9 +12,8 @@ doc = false
 
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
-izanami = "0.1.0-preview.1"
-izanami-service = "0.1.0-preview.1"
 
+exitfailure = "0.5"
 futures = "0.1"
 http = "0.1"
 reqwest = { version = "0.9", default-features = false, features = ["rustls-tls"] }

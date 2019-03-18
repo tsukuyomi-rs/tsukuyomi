@@ -216,44 +216,47 @@ where
             schema,
             context,
         } = self;
-        let handle = izanami_util::rt::spawn_fn(move || -> tsukuyomi::Result<_> {
-            use self::GraphQLRequestKind::*;
-            match request.0 {
-                Single(request) => {
-                    let response = request.execute(schema.as_root_node(), context.as_ref());
-                    let status = if response.is_ok() {
-                        StatusCode::OK
-                    } else {
-                        StatusCode::BAD_REQUEST
-                    };
-                    let body = serde_json::to_vec(&response)
-                        .map_err(tsukuyomi::error::internal_server_error)?;
-                    Ok(Response::builder()
-                        .status(status)
-                        .header("content-type", "application/json")
-                        .body(body)
-                        .expect("should be a valid response"))
+        let handle = futures::sync::oneshot::spawn(
+            izanami::rt::blocking_section(move || -> tsukuyomi::Result<_> {
+                use self::GraphQLRequestKind::*;
+                match request.0 {
+                    Single(request) => {
+                        let response = request.execute(schema.as_root_node(), context.as_ref());
+                        let status = if response.is_ok() {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        };
+                        let body = serde_json::to_vec(&response)
+                            .map_err(tsukuyomi::error::internal_server_error)?;
+                        Ok(Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(body)
+                            .expect("should be a valid response"))
+                    }
+                    Batch(requests) => {
+                        let responses: Vec<_> = requests
+                            .iter()
+                            .map(|request| request.execute(schema.as_root_node(), context.as_ref()))
+                            .collect();
+                        let status = if responses.iter().all(|response| response.is_ok()) {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        };
+                        let body = serde_json::to_vec(&responses)
+                            .map_err(tsukuyomi::error::internal_server_error)?;
+                        Ok(Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(body)
+                            .expect("should be a valid response"))
+                    }
                 }
-                Batch(requests) => {
-                    let responses: Vec<_> = requests
-                        .iter()
-                        .map(|request| request.execute(schema.as_root_node(), context.as_ref()))
-                        .collect();
-                    let status = if responses.iter().all(|response| response.is_ok()) {
-                        StatusCode::OK
-                    } else {
-                        StatusCode::BAD_REQUEST
-                    };
-                    let body = serde_json::to_vec(&responses)
-                        .map_err(tsukuyomi::error::internal_server_error)?;
-                    Ok(Response::builder()
-                        .status(status)
-                        .header("content-type", "application/json")
-                        .body(body)
-                        .expect("should be a valid response"))
-                }
-            }
-        });
+            }),
+            &tokio_executor::DefaultExecutor::current(),
+        );
 
         GraphQLRespond { handle }
     }
@@ -262,9 +265,9 @@ where
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
 pub struct GraphQLRespond {
-    handle: izanami_util::rt::SpawnHandle<
+    handle: futures::sync::oneshot::SpawnHandle<
         tsukuyomi::Result<Response<Vec<u8>>>, //
-        izanami_util::rt::BlockingError,
+        izanami::rt::BlockingError,
     >,
 }
 

@@ -27,20 +27,24 @@ use {
     tsukuyomi::{
         App,
         config::prelude::*,
+        server::Server,
     },
-    izanami::Server,
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app = App::create(
         path!("/")
             .to(endpoint::reply("Hello, world.\n"))
     )?;
 
+    let mut server = Server::new(app)?;
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
     println!("Listening on http://{}", addr);
+    server.bind(addr)?;
 
-    Server::bind_tcp(&addr)?.start(app)
+    server.run_forever();
+    Ok(())
 }
 ```
 

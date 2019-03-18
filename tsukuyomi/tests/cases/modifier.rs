@@ -3,6 +3,7 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         handler::{metadata::Metadata, Handler, ModifyHandler},
+        test::{self, TestServer},
         App,
     },
 };
@@ -52,7 +53,7 @@ where
 }
 
 #[test]
-fn global_modifier() -> izanami::Result<()> {
+fn global_modifier() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
@@ -64,20 +65,21 @@ fn global_modifier() -> izanami::Result<()> {
             }),
     )?;
 
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let _ = server.perform("/")?;
+    client.get("/");
     assert_eq!(*marker.lock().unwrap(), vec!["M"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.perform("/noroute")?;
+    client.get("/noroute");
     assert!(marker.lock().unwrap().is_empty());
 
     Ok(())
 }
 
 #[test]
-fn global_modifiers() -> izanami::Result<()> {
+fn global_modifiers() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
@@ -94,16 +96,18 @@ fn global_modifiers() -> izanami::Result<()> {
                 }
             ]),
     )?;
-    let mut server = izanami::test::server(app)?;
 
-    let _ = server.perform("/")?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
+
+    client.get("/");
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
 
     Ok(())
 }
 
 #[test]
-fn scoped_modifier() -> izanami::Result<()> {
+fn scoped_modifier() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create(
@@ -123,20 +127,22 @@ fn scoped_modifier() -> izanami::Result<()> {
             name: "M1",
         }),
     )?;
-    let mut server = izanami::test::server(app)?;
 
-    let _ = server.perform("/path1")?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
+
+    client.get("/path1");
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.perform("/path2")?;
+    client.get("/path2");
     assert_eq!(*marker.lock().unwrap(), vec!["M1"]);
 
     Ok(())
 }
 
 #[test]
-fn nested_modifiers() -> izanami::Result<()> {
+fn nested_modifiers() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
     let app = App::create({
@@ -165,13 +171,15 @@ fn nested_modifiers() -> izanami::Result<()> {
                 })
         })
     })?;
-    let mut server = izanami::test::server(app)?;
 
-    let _ = server.perform("/path/to")?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
+
+    client.get("/path/to");
     assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
 
     marker.lock().unwrap().clear();
-    let _ = server.perform("/path/to/a")?;
+    client.get("/path/to/a");
     assert_eq!(*marker.lock().unwrap(), vec!["M3", "M2", "M1"]);
 
     Ok(())
