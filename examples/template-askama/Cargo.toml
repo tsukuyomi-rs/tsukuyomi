@@ -12,6 +12,6 @@ doc = false
 
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
-izanami = "0.1.0-preview.1"
 tsukuyomi-askama = { path = "../../tsukuyomi-askama" }
 askama = "0.7.2"
+exitfailure = "0.5"

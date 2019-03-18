@@ -12,6 +12,6 @@ doc = false
 
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
-izanami = "0.1.0-preview.1"
 log = "0.4"
 pretty_env_logger = "0.2"
+exitfailure = "0.5"

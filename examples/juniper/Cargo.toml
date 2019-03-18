@@ -12,6 +12,6 @@ doc = false
 
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
-izanami = "0.1.0-preview.1"
 tsukuyomi-juniper = { path = "../../tsukuyomi-juniper" }
 juniper = "0.11.1"
+exitfailure = "0.5"

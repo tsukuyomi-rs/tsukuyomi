@@ -1,10 +1,10 @@
 use {
     futures::prelude::*,
     http::header::{Entry, HeaderMap},
-    izanami::RemoteAddr,
     reqwest::IntoUrl,
-    std::mem,
+    std::{mem, net::SocketAddr},
     tsukuyomi::{
+        app::REMOTE_ADDR,
         chain,
         extractor::{self, ExtractorExt}, //
         future::TryFuture,
@@ -19,7 +19,7 @@ use {
 pub struct Client {
     client: reqwest::r#async::Client,
     headers: HeaderMap,
-    remote_addr: RemoteAddr,
+    remote_addr: Option<SocketAddr>,
 }
 
 impl Client {
@@ -40,7 +40,7 @@ impl Client {
             .expect("should be a valid header name")
         {
             Entry::Occupied(mut entry) => {
-                let addrs = match remote_addr.as_tcp() {
+                let addrs = match remote_addr {
                     Some(remote_addr) => {
                         format!("{}, {}", entry.get().to_str().unwrap(), remote_addr)
                             .parse()
@@ -51,7 +51,7 @@ impl Client {
                 entry.insert(addrs);
             }
             Entry::Vacant(entry) => {
-                if let Some(remote_addr) = remote_addr.as_tcp() {
+                if let Some(remote_addr) = remote_addr {
                     entry.insert(remote_addr.to_string().parse().unwrap());
                 }
             }
@@ -120,7 +120,7 @@ pub fn proxy_client(
     Extract = impl TryFuture<Ok = (Client,), Error = tsukuyomi::Error> + Send + 'static,
 > {
     chain![
-        extractor::extension(),
+        extractor::local::clone(&REMOTE_ADDR).optional(),
         extractor::header::headers(),
         extractor::value(client),
     ]

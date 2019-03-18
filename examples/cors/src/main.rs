@@ -1,10 +1,11 @@
 use {
-    izanami::Server,
+    exitfailure::ExitFailure,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
         config::prelude::*, //
         extractor,
         output::IntoResponse,
+        server::Server,
         App,
     },
     tsukuyomi_cors::CORS,
@@ -19,7 +20,7 @@ struct UserInfo {
     confirm_password: String,
 }
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), ExitFailure> {
     let cors = CORS::builder()
         .allow_origin("http://127.0.0.1:5000")?
         .allow_methods(vec!["GET", "POST"])?
@@ -43,6 +44,9 @@ fn main() -> izanami::Result<()> {
             .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
     ])?;
 
-    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
-        .start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }

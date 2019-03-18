@@ -8,22 +8,20 @@ use {
         handler::{Handler, ModifyHandler},
         util::{Chain, Never},
     },
-    failure::Fail,
-    std::{marker::PhantomData, rc::Rc, sync::Arc},
+    std::{error, fmt, marker::PhantomData, rc::Rc, sync::Arc},
 };
 
 /// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An error type which will be thrown from `AppBuilder`.
-#[derive(Debug, Fail)]
-#[fail(display = "{}", cause)]
+#[derive(Debug)]
 pub struct Error {
-    cause: failure::Error,
+    cause: failure::Compat<failure::Error>,
 }
 
-impl From<crate::util::Never> for Error {
-    fn from(never: crate::util::Never) -> Self {
+impl From<Never> for Error {
+    fn from(never: Never) -> Self {
         match never {}
     }
 }
@@ -34,8 +32,20 @@ impl Error {
         E: Into<failure::Error>,
     {
         Self {
-            cause: cause.into(),
+            cause: cause.into().compat(),
         }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.cause.fmt(f)
+    }
+}
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        Some(&self.cause)
     }
 }
 

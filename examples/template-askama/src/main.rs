@@ -1,8 +1,9 @@
 use {
     askama::Template,
-    izanami::Server,
+    exitfailure::ExitFailure,
     tsukuyomi::{
         config::prelude::*, //
+        server::Server,
         App,
         IntoResponse,
     },
@@ -15,12 +16,15 @@ struct Index {
     name: String,
 }
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), ExitFailure> {
     let app = App::create(
         path!("/:name") //
             .to(endpoint::call(|name| Index { name })),
     )?;
 
-    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
-        .start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }

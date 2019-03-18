@@ -1,8 +1,9 @@
 use {
     askama::Template,
-    izanami::test::ResponseExt,
+    http::{header::CONTENT_TYPE, StatusCode},
     tsukuyomi::{
         config::prelude::*, //
+        test::{self, loc, TestServer},
         App,
         IntoResponse,
     },
@@ -14,7 +15,7 @@ fn test_version_sync() {
 }
 
 #[test]
-fn test_template_derivation() -> izanami::Result<()> {
+fn test_template_derivation() -> test::Result {
     #[derive(Template, IntoResponse)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     #[response(preset = "tsukuyomi_askama::Askama")]
@@ -27,18 +28,21 @@ fn test_template_derivation() -> izanami::Result<()> {
             .to(endpoint::get() //
                 .call(|| Index { name: "Alice" })),
     )?;
-    let mut server = izanami::test::server(app)?;
 
-    let response = server.perform("/")?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.header("content-type")?, "text/html");
-    assert_eq!(response.body().to_utf8()?, "Hello, Alice.");
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
+
+    client
+        .get("/")
+        .assert(loc!(), StatusCode::OK)?
+        .assert(loc!(), test::header::eq(CONTENT_TYPE, "text/html"))?
+        .assert(loc!(), test::body::eq("Hello, Alice."))?;
 
     Ok(())
 }
 
 #[test]
-fn test_template_with_modifier() -> izanami::Result<()> {
+fn test_template_with_modifier() -> test::Result {
     #[derive(Template)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     struct Index {
@@ -51,12 +55,15 @@ fn test_template_with_modifier() -> izanami::Result<()> {
                 .call(|| Index { name: "Alice" }))
             .modify(tsukuyomi_askama::renderer()),
     )?;
-    let mut server = izanami::test::server(app)?;
 
-    let response = server.perform("/")?;
-    assert_eq!(response.status(), 200);
-    assert_eq!(response.header("content-type")?, "text/html");
-    assert_eq!(response.body().to_utf8()?, "Hello, Alice.");
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
+
+    client
+        .get("/")
+        .assert(loc!(), StatusCode::OK)?
+        .assert(loc!(), test::header::eq(CONTENT_TYPE, "text/html"))?
+        .assert(loc!(), test::body::eq("Hello, Alice."))?;
 
     Ok(())
 }

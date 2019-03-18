@@ -1,13 +1,14 @@
 use {
-    izanami::Server,
+    exitfailure::ExitFailure,
     std::path::PathBuf,
     tsukuyomi::{
         config::prelude::*, //
+        server::Server,
         App,
     },
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), ExitFailure> {
     let app = App::create(chain![
         // a route that matches the root path.
         path!("/") //
@@ -55,8 +56,9 @@ fn main() -> izanami::Result<()> {
             .to(endpoint::reply("default route"))
     ])?;
 
-    let addr: std::net::SocketAddr = ([127, 0, 0, 1], 4000).into();
-    let server = Server::bind_tcp(&addr)?;
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
 
-    server.start(app)
+    Ok(())
 }

@@ -5,13 +5,12 @@ mod schema;
 
 use {
     crate::context::{Context, Database},
-    izanami::Server,
     std::sync::{Arc, RwLock},
-    tsukuyomi::{config::prelude::*, App},
+    tsukuyomi::{config::prelude::*, server::Server, App},
     tsukuyomi_juniper::{capture_errors, GraphQLRequest},
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), exitfailure::ExitFailure> {
     // A GraphQL schema.
     let schema = Arc::new(crate::schema::create_schema());
 
@@ -42,6 +41,9 @@ fn main() -> izanami::Result<()> {
             .modify(capture_errors()) // <-- modifies all errors that this route throws into GraphQL errors.
     ])?;
 
-    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
-        .start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }

@@ -1,24 +1,20 @@
-use {
-    izanami::Server,
-    std::net::SocketAddr,
-    tsukuyomi::{
-        config::prelude::*, //
-        App,
-    },
+use tsukuyomi::{
+    config::prelude::*, //
+    server::Server,
+    App,
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), exitfailure::ExitFailure> {
     let app = App::create(
         path!("/") //
             .to(endpoint::reply("Hello, world!\n")),
     )?;
 
-    let addr: SocketAddr = ([127, 0, 0, 1], 4000).into();
-    let mut server = Server::bind_tcp(&addr)?;
+    let mut server = Server::new(app)?;
 
-    println!(
-        "Listening on http://{}",
-        server.transport().get_ref().0.local_addr()?
-    );
-    server.start(app)
+    println!("Listening on http://127.0.0.1:4000/");
+    server.bind("127.0.0.1:4000")?;
+
+    server.run_forever();
+    Ok(())
 }

@@ -1,13 +1,11 @@
-use {
-    izanami::Server,
-    tsukuyomi::{
-        config::prelude::*, //
-        vendor::http::StatusCode,
-        App,
-    },
+use tsukuyomi::{
+    config::prelude::*, //
+    server::Server,
+    vendor::http::StatusCode,
+    App,
 };
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), exitfailure::ExitFailure> {
     std::env::set_var("RUST_LOG", "info");
     pretty_env_logger::try_init()?;
 
@@ -21,14 +19,12 @@ fn main() -> izanami::Result<()> {
         .modify(log),
     )?;
 
-    let addr: std::net::SocketAddr = "127.0.0.1:4000".parse()?;
-    let mut server = Server::bind_tcp(&addr)?;
+    let mut server = Server::new(app)?;
+    log::info!("Listening on http://127.0.0.1:4000");
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
 
-    log::info!(
-        "Listening on http://{}",
-        server.transport().get_ref().0.local_addr()?
-    );
-    server.start(app)
+    Ok(())
 }
 
 mod logging {
