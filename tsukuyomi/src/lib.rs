@@ -31,6 +31,7 @@ pub mod output;
 pub mod responder;
 pub mod server;
 pub mod test;
+pub mod upgrade;
 
 #[doc(inline)]
 pub use crate::{

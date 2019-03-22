@@ -85,7 +85,7 @@ impl<'a> TestClient<'a> {
         let (parts, body) = response.into_parts();
         TestResponse {
             response: Response::from_parts(parts, ()),
-            body: Some(body),
+            body: Some(body.into_response_body()),
             server: &mut *self.server,
         }
     }

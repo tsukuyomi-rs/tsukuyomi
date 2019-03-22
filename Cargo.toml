@@ -34,7 +34,7 @@ members = [
   "tsukuyomi-cors",
   "tsukuyomi-juniper",
   # "tsukuyomi-session",
-  # "tsukuyomi-tungstenite",
+  "tsukuyomi-tungstenite",
 
   "examples/basic",
   "examples/cors",
@@ -49,7 +49,7 @@ members = [
   "examples/staticfile",
   "examples/template-askama",
   "examples/template-tera",
-  # "examples/websocket",
+  "examples/websocket",
 ]
 
 [patch.crates-io]

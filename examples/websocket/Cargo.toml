@@ -12,6 +12,6 @@ doc = false
 
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
-izanami = "0.1.0-preview.1"
 tsukuyomi-tungstenite = { path = "../../tsukuyomi-tungstenite" }
 futures = "0.1.21"
+exitfailure = "0.5"

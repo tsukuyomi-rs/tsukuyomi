@@ -1,5 +1,9 @@
 use {
-    super::{config::Concurrency, recognizer::Captures, AppInner, Endpoint},
+    super::{
+        config::{Concurrency, IntoStream},
+        recognizer::Captures,
+        AppInner, Endpoint,
+    },
     crate::{
         input::{
             body::RequestBody,
@@ -16,8 +20,12 @@ use {
         header::{self, HeaderMap},
         Request, Response,
     },
-    izanami::service::Service,
+    izanami::{
+        http::{HttpBody, HttpUpgrade},
+        service::Service,
+    },
     std::{fmt, marker::PhantomData, net::SocketAddr, sync::Arc},
+    tokio_buf::BufStream,
 };
 
 macro_rules! ready {
@@ -58,7 +66,7 @@ where
     C: Concurrency,
     RequestBody: From<Bd>,
 {
-    type Response = Response<ResponseBody>;
+    type Response = Response<AppBody<C>>;
     type Error = Never;
     type Future = AppFuture<C>;
 
@@ -185,7 +193,7 @@ impl<C: Concurrency> AppFuture<C> {
 }
 
 impl<C: Concurrency> Future for AppFuture<C> {
-    type Item = Response<ResponseBody>;
+    type Item = Response<AppBody<C>>;
     type Error = Never;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -203,13 +211,69 @@ impl<C: Concurrency> Future for AppFuture<C> {
         };
         self.state = AppFutureState::Done;
 
-        let mut output = match polled {
+        let (mut output, upgrade) = match polled {
             Ok(output) => output,
-            Err(err) => err.into_response(&self.request)?,
+            Err(err) => {
+                let response = err.into_response(&self.request)?;
+                (response, None)
+            }
         };
 
         self.process_before_reply(&mut output);
 
-        Ok(Async::Ready(output))
+        Ok(Async::Ready(
+            output.map(move |data| AppBody { data, upgrade }),
+        ))
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub struct AppBody<C: Concurrency> {
+    data: ResponseBody,
+    upgrade: Option<C::Upgrade>,
+}
+
+impl<C: Concurrency> AppBody<C> {
+    pub(crate) fn into_response_body(self) -> ResponseBody {
+        self.data
+    }
+}
+
+impl<C: Concurrency> HttpBody for AppBody<C> {
+    type Data = <ResponseBody as BufStream>::Item;
+    type Error = <ResponseBody as BufStream>::Error;
+
+    fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
+        self.data.poll_buf()
+    }
+}
+
+impl<C: Concurrency, S> HttpUpgrade<S> for AppBody<C>
+where
+    S: IntoStream<C::BiStream>,
+{
+    type Upgraded = AppConnection<C>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    fn upgrade(self, stream: S) -> Result<Self::Upgraded, S> {
+        match self.upgrade {
+            Some(upgrade) => Ok(AppConnection(C::upgrade(upgrade, stream.into_stream()))),
+            None => Err(stream),
+        }
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub struct AppConnection<C: Concurrency>(C::Connection);
+
+impl<C: Concurrency> izanami::http::Connection for AppConnection<C> {
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    fn poll_close(&mut self) -> Poll<(), Self::Error> {
+        C::connection_poll_close(&mut self.0)
+    }
+
+    fn graceful_shutdown(&mut self) {
+        C::connection_shutdown(&mut self.0)
     }
 }
