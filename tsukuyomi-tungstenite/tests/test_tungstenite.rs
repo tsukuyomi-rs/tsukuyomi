@@ -1,23 +1,20 @@
-extern crate http;
-extern crate tsukuyomi;
-extern crate tsukuyomi_tungstenite;
-extern crate version_sync;
-
 use {
     http::{
         header::{
             CONNECTION, //
+            CONTENT_LENGTH,
             HOST,
             SEC_WEBSOCKET_ACCEPT,
             SEC_WEBSOCKET_KEY,
             SEC_WEBSOCKET_VERSION,
+            TRANSFER_ENCODING,
             UPGRADE,
         },
-        Request,
+        Request, StatusCode,
     },
-    izanami::test::ResponseExt,
     tsukuyomi::{
         config::prelude::*, //
+        test::{self, loc, TestServer},
         App,
     },
     tsukuyomi_tungstenite::Ws,
@@ -29,28 +26,33 @@ fn test_version_sync() {
 }
 
 #[test]
-fn test_handshake() -> izanami::Result<()> {
+fn test_handshake() -> test::Result {
     let app = App::create(
         path!("/ws") //
-            .to(endpoint::get().reply(Ws::new(|_| Ok(())))),
+            .to(endpoint::get().call(|| Ws::new(|_| Ok::<(), std::io::Error>(())))),
     )?;
-    let mut server = izanami::test::server(app)?;
+    let mut server = TestServer::new(app)?;
+    let mut client = server.connect();
 
-    let response = server.perform(
-        Request::get("/ws")
-            .header(HOST, "localhost:4000")
-            .header(CONNECTION, "upgrade")
-            .header(UPGRADE, "websocket")
-            .header(SEC_WEBSOCKET_VERSION, "13")
-            .header(SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ=="),
-    )?;
-    assert_eq!(response.status(), 101);
-    assert_eq!(response.header(CONNECTION)?, "upgrade");
-    assert_eq!(response.header(UPGRADE)?, "websocket");
-    assert_eq!(
-        response.header(SEC_WEBSOCKET_ACCEPT)?,
-        "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
-    );
+    client
+        .request(
+            Request::get("/ws")
+                .header(HOST, "localhost:4000")
+                .header(CONNECTION, "upgrade")
+                .header(UPGRADE, "websocket")
+                .header(SEC_WEBSOCKET_VERSION, "13")
+                .header(SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==")
+                .body("")?,
+        )
+        .assert(loc!(), StatusCode::SWITCHING_PROTOCOLS)?
+        .assert(loc!(), test::header::not_exists(CONTENT_LENGTH))?
+        .assert(loc!(), test::header::not_exists(TRANSFER_ENCODING))?
+        .assert(loc!(), test::header::eq(CONNECTION, "upgrade"))?
+        .assert(loc!(), test::header::eq(UPGRADE, "websocket"))?
+        .assert(
+            loc!(),
+            test::header::eq(SEC_WEBSOCKET_ACCEPT, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="),
+        )?;
 
     Ok(())
 }

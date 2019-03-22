@@ -52,6 +52,10 @@ impl error::Error for Error {
 /// A trait to specify the concurrency of trait objects inside of `AppBase`.
 pub trait Concurrency: self::imp::ConcurrencyImpl {}
 
+pub trait IntoStream<S> {
+    fn into_stream(self) -> S;
+}
+
 mod imp {
     use {
         crate::{input::Input, output::ResponseBody},
@@ -63,11 +67,21 @@ mod imp {
         type Handler;
         type Handle;
 
+        type BiStream;
+        type Upgrade;
+        type Connection;
+
         fn handle(handler: &Self::Handler) -> Self::Handle;
         fn poll_ready(
             handle: &mut Self::Handle,
             input: &mut Input<'_>,
-        ) -> Poll<Response<ResponseBody>, crate::error::Error>;
+        ) -> Poll<(Response<ResponseBody>, Option<Self::Upgrade>), crate::error::Error>;
+
+        fn upgrade(upgrade: Self::Upgrade, stream: Self::BiStream) -> Self::Connection;
+        fn connection_poll_close(
+            conn: &mut Self::Connection,
+        ) -> Poll<(), Box<dyn std::error::Error + Send + Sync>>;
+        fn connection_shutdown(conn: &mut Self::Connection);
     }
 }
 
@@ -84,9 +98,11 @@ mod thread_safe {
             input::Input,
             output::{IntoResponse, ResponseBody},
             responder::Responder,
+            upgrade::{Connection, Upgrade},
         },
         http::Response,
-        std::fmt,
+        std::{fmt, io},
+        tokio_io::{AsyncRead, AsyncWrite},
     };
 
     impl super::Concurrency for super::ThreadSafe {}
@@ -95,6 +111,10 @@ mod thread_safe {
         type Handler = BoxedHandler;
         type Handle = Box<BoxedHandle>;
 
+        type BiStream = BiStream;
+        type Upgrade = BoxedUpgrade;
+        type Connection = Box<dyn BoxedConnection>;
+
         fn handle(handler: &Self::Handler) -> Self::Handle {
             (handler.0)()
         }
@@ -102,15 +122,32 @@ mod thread_safe {
         fn poll_ready(
             handle: &mut Self::Handle,
             input: &mut Input<'_>,
-        ) -> Poll<Response<ResponseBody>, Error> {
+        ) -> Poll<(Response<ResponseBody>, Option<Self::Upgrade>), Error> {
             (handle)(input)
+        }
+
+        fn upgrade(upgrade: Self::Upgrade, stream: Self::BiStream) -> Self::Connection {
+            upgrade.upgrade(stream)
+        }
+
+        fn connection_poll_close(
+            conn: &mut Self::Connection,
+        ) -> Poll<(), Box<dyn std::error::Error + Send + Sync>> {
+            conn.poll_close()
+        }
+
+        fn connection_shutdown(conn: &mut Self::Connection) {
+            conn.shutdown();
         }
     }
 
-    type BoxedHandle =
-        dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error>
-            + Send
-            + 'static;
+    type BoxedHandle = dyn FnMut(
+            &mut Input<'_>,
+        ) -> Poll<
+            (Response<ResponseBody>, Option<BoxedUpgrade>),
+            crate::error::Error,
+        > + Send
+        + 'static;
 
     pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + Send + Sync + 'static>);
 
@@ -120,12 +157,14 @@ mod thread_safe {
         }
     }
 
-    impl<H> From<H> for BoxedHandler
+    impl<H, U> From<H> for BoxedHandler
     where
         H: Handler + Send + Sync + 'static,
-        H::Output: Responder,
+        H::Output: Responder<Upgrade = U>,
         <H::Output as Responder>::Respond: Send + 'static,
         H::Handle: Send + 'static,
+        U: Upgrade<BiStream> + Send + 'static,
+        U::Connection: Send + 'static,
     {
         fn from(handler: H) -> Self {
             BoxedHandler(Box::new(move || {
@@ -145,18 +184,102 @@ mod thread_safe {
                             State::Second(x.respond())
                         }
                         State::Second(ref mut respond) => {
-                            return Ok(Async::Ready(
-                                futures01::try_ready!(respond
-                                    .poll_ready(input)
-                                    .map_err(Into::into))
+                            let (res, up) = futures01::try_ready!(respond
+                                .poll_ready(input)
+                                .map_err(Into::into));
+
+                            let res = res
                                 .into_response(input.request)
                                 .map_err(Into::into)?
-                                .map(Into::into),
-                            ));
+                                .map(Into::into);
+
+                            let up = up.map(Into::into);
+
+                            return Ok(Async::Ready((res, up)));
                         }
                     };
                 })
             }))
+        }
+    }
+
+    pub trait Io: AsyncRead + AsyncWrite + Send + 'static {}
+    impl<I: AsyncRead + AsyncWrite + Send + 'static> Io for I {}
+
+    #[allow(missing_debug_implementations)]
+    pub struct BiStream(Box<dyn Io>);
+
+    impl<I> super::IntoStream<BiStream> for I
+    where
+        I: AsyncRead + AsyncWrite + Send + 'static,
+    {
+        fn into_stream(self) -> BiStream {
+            BiStream(Box::new(self))
+        }
+    }
+
+    impl io::Read for BiStream {
+        fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
+            self.0.read(dst)
+        }
+    }
+
+    impl io::Write for BiStream {
+        fn write(&mut self, src: &[u8]) -> io::Result<usize> {
+            self.0.write(src)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.0.flush()
+        }
+    }
+
+    impl AsyncRead for BiStream {}
+
+    impl AsyncWrite for BiStream {
+        fn shutdown(&mut self) -> Poll<(), io::Error> {
+            self.0.shutdown()
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct BoxedUpgrade(Box<dyn FnMut(BiStream) -> Box<dyn BoxedConnection> + Send + 'static>);
+
+    impl<T> From<T> for BoxedUpgrade
+    where
+        T: Upgrade<BiStream> + Send + 'static,
+        T::Connection: Send + 'static,
+    {
+        fn from(upgrade: T) -> Self {
+            let mut upgrade = Some(upgrade);
+            BoxedUpgrade(Box::new(move |stream| {
+                let upgrade = upgrade.take().unwrap();
+                Box::new(upgrade.upgrade(stream))
+            }))
+        }
+    }
+
+    impl BoxedUpgrade {
+        fn upgrade(mut self, stream: BiStream) -> Box<dyn BoxedConnection> {
+            (self.0)(stream)
+        }
+    }
+
+    pub trait BoxedConnection: Send + 'static {
+        fn poll_close(&mut self) -> Poll<(), Box<dyn std::error::Error + Send + Sync>>;
+        fn shutdown(&mut self);
+    }
+
+    impl<C> BoxedConnection for C
+    where
+        C: Connection + Send + 'static,
+    {
+        fn poll_close(&mut self) -> Poll<(), Box<dyn std::error::Error + Send + Sync>> {
+            Connection::poll_close(self).map_err(Into::into)
+        }
+
+        fn shutdown(&mut self) {
+            Connection::shutdown(self)
         }
     }
 }
@@ -174,9 +297,11 @@ mod current_thread {
             input::Input,
             output::{IntoResponse, ResponseBody},
             responder::Responder,
+            upgrade::{Connection, Upgrade},
         },
         http::Response,
-        std::fmt,
+        std::{fmt, io},
+        tokio_io::{AsyncRead, AsyncWrite},
     };
 
     impl super::Concurrency for super::CurrentThread {}
@@ -184,6 +309,9 @@ mod current_thread {
     impl super::imp::ConcurrencyImpl for super::CurrentThread {
         type Handler = BoxedHandler;
         type Handle = Box<BoxedHandle>;
+        type BiStream = BiStream;
+        type Upgrade = BoxedUpgrade;
+        type Connection = Box<dyn BoxedConnection>;
 
         fn handle(handler: &Self::Handler) -> Self::Handle {
             (handler.0)()
@@ -192,13 +320,31 @@ mod current_thread {
         fn poll_ready(
             handle: &mut Self::Handle,
             input: &mut Input<'_>,
-        ) -> Poll<Response<ResponseBody>, Error> {
+        ) -> Poll<(Response<ResponseBody>, Option<Self::Upgrade>), Error> {
             (handle)(input)
+        }
+
+        fn upgrade(upgrade: Self::Upgrade, stream: Self::BiStream) -> Self::Connection {
+            upgrade.upgrade(stream)
+        }
+
+        fn connection_poll_close(
+            conn: &mut Self::Connection,
+        ) -> Poll<(), Box<dyn std::error::Error + Send + Sync>> {
+            conn.poll_close()
+        }
+
+        fn connection_shutdown(conn: &mut Self::Connection) {
+            conn.shutdown();
         }
     }
 
-    type BoxedHandle =
-        dyn FnMut(&mut Input<'_>) -> Poll<Response<ResponseBody>, crate::error::Error> + 'static;
+    type BoxedHandle = dyn FnMut(
+            &mut Input<'_>,
+        ) -> Poll<
+            (Response<ResponseBody>, Option<BoxedUpgrade>),
+            crate::error::Error,
+        > + 'static;
 
     pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + 'static>);
 
@@ -208,12 +354,14 @@ mod current_thread {
         }
     }
 
-    impl<H> From<H> for BoxedHandler
+    impl<H, U> From<H> for BoxedHandler
     where
         H: Handler + 'static,
-        H::Output: Responder,
+        H::Output: Responder<Upgrade = U>,
         <H::Output as Responder>::Respond: 'static,
         H::Handle: 'static,
+        U: Upgrade<BiStream> + 'static,
+        U::Connection: 'static,
     {
         fn from(handler: H) -> Self {
             BoxedHandler(Box::new(move || {
@@ -233,18 +381,101 @@ mod current_thread {
                             State::Second(x.respond())
                         }
                         State::Second(ref mut respond) => {
-                            return Ok(Async::Ready(
-                                futures01::try_ready!(respond
-                                    .poll_ready(input)
-                                    .map_err(Into::into))
+                            let (res, up) = futures01::try_ready!(respond
+                                .poll_ready(input)
+                                .map_err(Into::into));
+
+                            let res = res
                                 .into_response(input.request)
                                 .map_err(Into::into)?
-                                .map(Into::into),
-                            ));
+                                .map(Into::into);
+                            let up = up.map(Into::into);
+
+                            return Ok(Async::Ready((res, up)));
                         }
                     };
                 })
             }))
+        }
+    }
+
+    pub trait Io: AsyncRead + AsyncWrite + 'static {}
+    impl<I: AsyncRead + AsyncWrite + 'static> Io for I {}
+
+    #[allow(missing_debug_implementations)]
+    pub struct BiStream(Box<dyn Io>);
+
+    impl<I> super::IntoStream<BiStream> for I
+    where
+        I: AsyncRead + AsyncWrite + 'static,
+    {
+        fn into_stream(self) -> BiStream {
+            BiStream(Box::new(self))
+        }
+    }
+
+    impl io::Read for BiStream {
+        fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
+            self.0.read(dst)
+        }
+    }
+
+    impl io::Write for BiStream {
+        fn write(&mut self, src: &[u8]) -> io::Result<usize> {
+            self.0.write(src)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.0.flush()
+        }
+    }
+
+    impl AsyncRead for BiStream {}
+
+    impl AsyncWrite for BiStream {
+        fn shutdown(&mut self) -> Poll<(), io::Error> {
+            self.0.shutdown()
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct BoxedUpgrade(Box<dyn FnMut(BiStream) -> Box<dyn BoxedConnection> + 'static>);
+
+    impl<T> From<T> for BoxedUpgrade
+    where
+        T: Upgrade<BiStream> + 'static,
+        T::Connection: 'static,
+    {
+        fn from(upgrade: T) -> Self {
+            let mut upgrade = Some(upgrade);
+            BoxedUpgrade(Box::new(move |stream| {
+                let upgrade = upgrade.take().unwrap();
+                Box::new(upgrade.upgrade(stream))
+            }))
+        }
+    }
+
+    impl BoxedUpgrade {
+        fn upgrade(mut self, stream: BiStream) -> Box<dyn BoxedConnection> {
+            (self.0)(stream)
+        }
+    }
+
+    pub trait BoxedConnection: 'static {
+        fn poll_close(&mut self) -> Poll<(), Box<dyn std::error::Error + Send + Sync>>;
+        fn shutdown(&mut self);
+    }
+
+    impl<C> BoxedConnection for C
+    where
+        C: Connection + 'static,
+    {
+        fn poll_close(&mut self) -> Poll<(), Box<dyn std::error::Error + Send + Sync>> {
+            Connection::poll_close(self).map_err(Into::into)
+        }
+
+        fn shutdown(&mut self) {
+            Connection::shutdown(self)
         }
     }
 }

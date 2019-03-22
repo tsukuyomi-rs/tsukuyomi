@@ -15,33 +15,38 @@
 use {
     futures::IntoFuture,
     http::Response,
-    tsukuyomi::{error::Error, input::body::UpgradedIo, responder::Responder},
+    std::marker::PhantomData,
+    tokio_io::{AsyncRead, AsyncWrite},
+    tsukuyomi::{error::Error, responder::Responder},
 };
 
 #[doc(no_inline)]
-pub use tungstenite::protocol::{Message, WebSocketConfig};
-
-/// A transport for exchanging data frames with the peer.
-pub type WebSocketStream = tokio_tungstenite::WebSocketStream<UpgradedIo>;
+pub use {
+    tokio_tungstenite::WebSocketStream,
+    tungstenite::protocol::{Message, WebSocketConfig}, //
+};
 
 /// A `Responder` that handles an WebSocket connection.
 #[derive(Debug, Clone)]
-pub struct Ws<F> {
+pub struct Ws<F, I> {
     on_upgrade: F,
     config: Option<WebSocketConfig>,
+    _marker: PhantomData<fn(I)>,
 }
 
-impl<F, R> Ws<F>
+impl<F, I, R> Ws<F, I>
 where
-    F: Fn(WebSocketStream) -> R + Send + 'static,
-    R: IntoFuture<Item = (), Error = ()>,
-    R::Future: Send + 'static,
+    F: Fn(WebSocketStream<I>) -> R,
+    I: AsyncRead + AsyncWrite,
+    R: IntoFuture<Item = ()>,
+    R::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     /// Crates a `Ws` with the specified closure.
     pub fn new(on_upgrade: F) -> Self {
         Self {
             on_upgrade,
             config: None,
+            _marker: PhantomData,
         }
     }
 
@@ -54,15 +59,17 @@ where
     }
 }
 
-impl<F, R> Responder for Ws<F>
+impl<F, I, R> Responder for Ws<F, I>
 where
-    F: Fn(WebSocketStream) -> R + Send + 'static,
-    R: IntoFuture<Item = (), Error = ()>,
-    R::Future: Send + 'static,
+    F: Fn(WebSocketStream<I>) -> R,
+    I: AsyncRead + AsyncWrite,
+    R: IntoFuture<Item = ()>,
+    R::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     type Response = Response<()>;
+    type Upgrade = self::imp::WsUpgrade<F, I>; // private
     type Error = Error;
-    type Respond = self::imp::WsRespond<F>; // private
+    type Respond = self::imp::WsRespond<F, I>; // private
 
     fn respond(self) -> Self::Respond {
         self::imp::WsRespond(Some(self))
@@ -71,8 +78,8 @@ where
 
 mod imp {
     use {
-        super::{WebSocketStream, Ws},
-        futures::{Future, IntoFuture},
+        super::{WebSocketConfig, WebSocketStream, Ws},
+        futures::IntoFuture,
         http::{
             header::{
                 CONNECTION, //
@@ -83,65 +90,75 @@ mod imp {
             },
             Response, StatusCode,
         },
-        izanami_util::rt::{DefaultExecutor, Executor},
         sha1::{Digest, Sha1},
+        std::marker::PhantomData,
+        tokio_io::{AsyncRead, AsyncWrite},
         tsukuyomi::{
             error::HttpError,
             future::{Poll, TryFuture},
-            input::{
-                body::{RequestBody, UpgradedIo},
-                localmap::LocalData,
-                Input,
-            },
+            input::Input,
+            upgrade::Upgrade,
         },
         tungstenite::protocol::Role,
     };
 
     #[allow(missing_debug_implementations)]
-    pub struct WsRespond<F>(pub(super) Option<Ws<F>>);
+    pub struct WsRespond<F, I>(pub(super) Option<Ws<F, I>>);
 
-    impl<F, R> TryFuture for WsRespond<F>
+    impl<F, I, R> TryFuture for WsRespond<F, I>
     where
-        F: FnOnce(WebSocketStream) -> R + Send + 'static,
-        R: IntoFuture<Item = (), Error = ()>,
-        R::Future: Send + 'static,
+        F: FnOnce(WebSocketStream<I>) -> R,
+        I: AsyncRead + AsyncWrite,
+        R: IntoFuture<Item = ()>,
+        R::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        type Ok = Response<()>;
+        type Ok = (Response<()>, Option<WsUpgrade<F, I>>);
         type Error = tsukuyomi::Error;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            let Ws { on_upgrade, config } =
-                self.0.take().expect("the future has already been polled");
+            let Ws {
+                on_upgrade, config, ..
+            } = self.0.take().expect("the future has already been polled");
 
             let accept_hash = handshake(input)?;
 
-            let body = RequestBody::take_from(input.locals) //
-                .ok_or_else(|| {
-                    tsukuyomi::error::internal_server_error(
-                        "the request body has already been stolen by someone",
-                    )
-                })?;
-
-            let task = body
-                .on_upgrade()
-                .map_err(|e| log::error!("failed to upgrade the request: {}", e))
-                .and_then(move |io: UpgradedIo| {
-                    let transport = WebSocketStream::from_raw_socket(io, Role::Server, config);
-                    on_upgrade(transport).into_future()
-                });
-
-            DefaultExecutor::current()
-                .spawn(Box::new(task))
-                .map_err(tsukuyomi::error::internal_server_error)?;
-
-            Ok(Response::builder()
+            let response = Response::builder()
                 .status(StatusCode::SWITCHING_PROTOCOLS)
                 .header(UPGRADE, "websocket")
                 .header(CONNECTION, "upgrade")
                 .header(SEC_WEBSOCKET_ACCEPT, &*accept_hash)
                 .body(())
-                .expect("should be a valid response")
-                .into())
+                .expect("should be a valid response");
+
+            let upgrade = WsUpgrade {
+                on_upgrade,
+                config,
+                _marker: PhantomData,
+            };
+
+            Ok((response, Some(upgrade)).into())
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct WsUpgrade<F, I> {
+        on_upgrade: F,
+        config: Option<WebSocketConfig>,
+        _marker: PhantomData<fn(I)>,
+    }
+
+    impl<F, I, R> Upgrade<I> for WsUpgrade<F, I>
+    where
+        F: FnOnce(WebSocketStream<I>) -> R,
+        I: AsyncRead + AsyncWrite,
+        R: IntoFuture<Item = ()>,
+        R::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        type Connection = R::Future;
+
+        fn upgrade(self, stream: I) -> Self::Connection {
+            let ws_stream = WebSocketStream::from_raw_socket(stream, Role::Server, self.config);
+            (self.on_upgrade)(ws_stream).into_future()
         }
     }
 

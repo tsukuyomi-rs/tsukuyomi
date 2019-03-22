@@ -1,10 +1,10 @@
 use {
     futures::prelude::*,
-    izanami::Server,
     tsukuyomi::{
         config::prelude::*, //
         fs::Staticfiles,
         output::redirect,
+        server::Server,
         App,
     },
     tsukuyomi_tungstenite::{Message, Ws},
@@ -12,10 +12,10 @@ use {
 
 const STATIC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
-fn main() -> izanami::Result<()> {
+fn main() -> Result<(), exitfailure::ExitFailure> {
     let app = App::create(chain![
         path!("/ws") //
-            .to(endpoint::get().reply(Ws::new(|stream| {
+            .to(endpoint::get().call(|| Ws::new(|stream| {
                 let (tx, rx) = stream.split();
                 rx.filter_map(|m| {
                     println!("Message from client: {:?}", m);
@@ -26,13 +26,16 @@ fn main() -> izanami::Result<()> {
                     }
                 }) //
                 .forward(tx)
-                .then(|_| Ok(()))
+                .map(|_| ())
             }))),
         path!("/") //
             .to(endpoint::reply(redirect::to("/index.html"))),
         Staticfiles::new(STATIC_PATH)
     ])?;
 
-    Server::bind_tcp(&"127.0.0.1:4000".parse()?)? //
-        .start(app)
+    let mut server = Server::new(app)?;
+    server.bind("127.0.0.1:4000")?;
+    server.run_forever();
+
+    Ok(())
 }
