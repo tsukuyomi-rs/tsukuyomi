@@ -23,7 +23,7 @@ pub mod prelude {
 pub use crate::app::config::{Config, Error, IsConfig, Result, Scope};
 
 use crate::{
-    app::config::Concurrency,
+    app::concurrency::Concurrency,
     handler::{Handler, ModifyHandler},
     util::Chain,
 };

@@ -1,5 +1,6 @@
 //! Components for constructing HTTP applications.
 
+pub mod concurrency;
 pub mod config;
 mod recognizer;
 mod scope;
@@ -11,12 +12,12 @@ mod tests;
 pub(crate) use self::recognizer::Captures;
 pub use self::{
     config::{Error, Result},
-    service::AppService,
+    service::{AppBody, AppService},
 };
 
 use {
     self::{
-        config::Concurrency,
+        concurrency::{Concurrency, DefaultConcurrency},
         recognizer::{RecognizeError, Recognizer},
         scope::{Scope, ScopeId, Scopes},
     },
@@ -30,11 +31,11 @@ local_key! {
 
 /// The main type representing an HTTP application.
 #[derive(Debug)]
-pub struct AppBase<C: Concurrency = self::config::ThreadSafe> {
+pub struct App<C: Concurrency = DefaultConcurrency> {
     inner: Arc<AppInner<C>>,
 }
 
-impl<C: Concurrency> Clone for AppBase<C> {
+impl<C: Concurrency> Clone for App<C> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -42,14 +43,12 @@ impl<C: Concurrency> Clone for AppBase<C> {
     }
 }
 
-impl<C: Concurrency> AppBase<C> {
+impl<C: Concurrency> App<C> {
+    /// Creates a new instance of `AppService` associated with this `App`.
     pub fn new_service(&self) -> AppService<C> {
         AppService::new(self.inner.clone())
     }
 }
-
-pub type App = AppBase<self::config::ThreadSafe>;
-pub type LocalApp = AppBase<self::config::CurrentThread>;
 
 #[derive(Debug)]
 struct AppInner<C: Concurrency> {

@@ -6,7 +6,7 @@
 
 use {
     crate::{
-        app::{config::ThreadSafe, App, AppService},
+        app::{App, AppService},
         input::body::RequestBody,
         output::body::ResponseBody,
     },
@@ -67,7 +67,7 @@ impl TestServer {
 }
 
 pub struct TestClient<'a> {
-    service: AppService<ThreadSafe>,
+    service: AppService,
     server: &'a mut TestServer,
 }
 

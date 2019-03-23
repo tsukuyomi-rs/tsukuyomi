@@ -84,3 +84,7 @@ pub enum Either<L, R> {
     Left(L),
     Right(R),
 }
+
+pub trait IntoStream<S> {
+    fn into_stream(self) -> S;
+}

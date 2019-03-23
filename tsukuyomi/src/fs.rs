@@ -2,6 +2,7 @@
 
 use {
     crate::{
+        app::concurrency::Concurrency,
         error::Error,
         future::TryFuture,
         handler::{metadata::Uri, ModifyHandler},
@@ -549,7 +550,7 @@ where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
     M::Handler: Into<C::Handler>,
-    C: crate::app::config::Concurrency,
+    C: Concurrency,
 {
     type Error = crate::config::Error;
 
