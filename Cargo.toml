@@ -15,8 +15,6 @@ izanami = "0.1.0-preview.1"
 askama = "0.7.2"
 failure = "0.1.3"
 juniper = "0.11.1"
-tokio-rustls = "0.8"
-tokio-tungstenite = { version = "0.6", default-features = false }
 tungstenite = { version = "0.6", default-features = false }
 walkdir = "2"
 
@@ -56,3 +54,5 @@ members = [
 izanami = { git = "https://github.com/ubnt-intrepid/izanami.git" }
 izanami-service = { git = "https://github.com/ubnt-intrepid/izanami.git" }
 izanami-util = { git = "https://github.com/ubnt-intrepid/izanami.git" }
+
+tungstenite = { git = "https://github.com/ubnt-intrepid/tungstenite-rs", branch = "websocket-context" }

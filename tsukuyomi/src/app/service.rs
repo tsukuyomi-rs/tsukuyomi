@@ -12,7 +12,7 @@ use {
             Cookies, Input,
         },
         output::{IntoResponse, ResponseBody},
-        util::{IntoStream, Never},
+        util::Never,
     },
     cookie::CookieJar,
     futures01::{Async, Future, Poll},
@@ -26,6 +26,7 @@ use {
     },
     std::{fmt, marker::PhantomData, net::SocketAddr, sync::Arc},
     tokio_buf::BufStream,
+    tokio_io::{AsyncRead, AsyncWrite},
 };
 
 macro_rules! ready {
@@ -251,35 +252,40 @@ impl<C: Concurrency> HttpBody for AppBody<C> {
     }
 }
 
-impl<C: Concurrency, S> HttpUpgrade<S> for AppBody<C>
+impl<C: Concurrency, I> HttpUpgrade<I> for AppBody<C>
 where
-    S: IntoStream<C::BiStream>,
+    C: Concurrency,
+    I: AsyncRead + AsyncWrite + 'static,
 {
-    type Upgraded = AppConnection<C>;
+    type Upgraded = AppConnection<C, I>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
-    fn upgrade(self, stream: S) -> Result<Self::Upgraded, S> {
+    fn upgrade(self, stream: I) -> Result<Self::Upgraded, I> {
         match self.upgrade {
-            Some(upgrade) => Ok(AppConnection(<C::Impl as ConcurrencyImpl>::upgrade(
-                upgrade,
-                stream.into_stream(),
-            ))),
+            Some(upgrade) => Ok(AppConnection { upgrade, stream }),
             None => Err(stream),
         }
     }
 }
 
 #[allow(missing_debug_implementations)]
-pub struct AppConnection<C: Concurrency>(<C::Impl as ConcurrencyImpl>::Connection);
+pub struct AppConnection<C: Concurrency, I> {
+    upgrade: <C::Impl as ConcurrencyImpl>::Upgrade,
+    stream: I,
+}
 
-impl<C: Concurrency> izanami::http::Connection for AppConnection<C> {
+impl<C, I> izanami::http::Connection for AppConnection<C, I>
+where
+    C: Concurrency,
+    I: AsyncRead + AsyncWrite + 'static,
+{
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn poll_close(&mut self) -> Poll<(), Self::Error> {
-        <C::Impl as ConcurrencyImpl>::poll_close_connection(&mut self.0)
+        <C::Impl as ConcurrencyImpl>::poll_close_connection(&mut self.upgrade, &mut self.stream)
     }
 
     fn graceful_shutdown(&mut self) {
-        <C::Impl as ConcurrencyImpl>::shutdown_connection(&mut self.0)
+        <C::Impl as ConcurrencyImpl>::shutdown_connection(&mut self.upgrade)
     }
 }

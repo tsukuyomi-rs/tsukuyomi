@@ -106,22 +106,22 @@ jobs:
       env:
         GH_TOKEN: $(myGitHubToken)
 
-  # - job: tarpaulin
-  #   dependsOn: RegistryIndex
-  #   condition: succeeded()
-  #   pool:
-  #     vmImage: 'ubuntu-16.04'
-  #   variables:
-  #     CARGO_TERM_VERBOSE: true
-  #   container: tarpaulin
-  #   steps:
-  #   - template: .ci/templates/steps/sync-registry-index.yml
-  #   - script: |
-  #       cargo --version
-  #       rustc --version
-  #       cargo tarpaulin --version
-  #     displayName: show tool versions
-  #   - script: bash .ci/run_coverage_test.sh
-  #     displayName: 'run coverage test'
-  #     env:
-  #       CODECOV_TOKEN: $(myCodecovToken)
+  - job: tarpaulin
+    dependsOn: RegistryIndex
+    condition: succeeded()
+    pool:
+      vmImage: 'ubuntu-16.04'
+    variables:
+      CARGO_TERM_VERBOSE: true
+    container: tarpaulin
+    steps:
+    - template: .ci/templates/steps/sync-registry-index.yml
+    - script: |
+        cargo --version
+        rustc --version
+        cargo tarpaulin --version
+      displayName: show tool versions
+    - script: bash .ci/run_coverage_test.sh
+      displayName: 'run coverage test'
+      env:
+        CODECOV_TOKEN: $(myCodecovToken)

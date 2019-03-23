@@ -5,6 +5,7 @@ use crate::{
     future::TryFuture,
     input::Input,
     output::IntoResponse,
+    upgrade::Upgrade,
     util::Never,
 };
 
@@ -15,7 +16,7 @@ pub trait Responder {
     /// The type of response
     type Response: IntoResponse;
 
-    type Upgrade;
+    type Upgrade: Upgrade;
 
     /// The error type which will be returned from `respond_to`.
     type Error: Into<Error>;
@@ -72,6 +73,7 @@ mod impl_responder_for_either {
             error::Error,
             future::{Poll, TryFuture},
             input::Input,
+            upgrade::Upgrade,
             util::Either,
         },
     };
@@ -106,6 +108,8 @@ mod impl_responder_for_either {
         R: TryFuture<Ok = (RR, Option<RU>)>,
         LR: IntoResponse,
         RR: IntoResponse,
+        LU: Upgrade,
+        RU: Upgrade,
     {
         type Ok = (either::Either<LR, RR>, Option<crate::util::Either<LU, RU>>);
         type Error = Error;
@@ -151,6 +155,7 @@ impl<R, Res, U> Responder for ResponderFn<R>
 where
     R: TryFuture<Ok = (Res, Option<U>)>,
     Res: IntoResponse,
+    U: Upgrade,
 {
     type Response = Res;
     type Upgrade = U;
