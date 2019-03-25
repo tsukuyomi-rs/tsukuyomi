@@ -1,34 +1,61 @@
 use {
     bytes::{Buf, Bytes, IntoBuf},
-    either::Either,
-    futures01::{Poll, Stream},
-    std::{fmt, io},
-    tokio_buf::{BufStream, SizeHint},
+    futures01::{Async, Poll, Stream},
+    izanami::http::HttpBody,
+    std::fmt,
+    tokio_buf::SizeHint,
 };
 
-pub type Chunk = Box<dyn Buf + Send + 'static>;
-pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+// ===== Data =====
 
-trait BoxedBufStream {
-    fn poll_buf_boxed(&mut self) -> Poll<Option<Chunk>, Error>;
-    fn size_hint_boxed(&self) -> SizeHint;
+/// A chunk of bytes produced by `ResponseBody`.
+#[derive(Debug)]
+pub struct Data(DataInner);
+
+enum DataInner {
+    Bytes(Bytes),
+    Boxed(Box<dyn Buf + Send + 'static>),
 }
 
-impl<T> BoxedBufStream for T
-where
-    T: BufStream,
-    T::Item: Send + 'static,
-    T::Error: Into<Error>,
-{
-    fn poll_buf_boxed(&mut self) -> Poll<Option<Chunk>, Error> {
-        self.poll_buf()
-            .map(|x| x.map(|opt| opt.map(|chunk| Box::new(chunk) as Chunk)))
-            .map_err(Into::into)
+impl fmt::Debug for DataInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DataInner::Bytes(..) => f.debug_struct("Bytes").finish(),
+            DataInner::Boxed(..) => f.debug_struct("Boxed").finish(),
+        }
+    }
+}
+
+impl Buf for Data {
+    fn remaining(&self) -> usize {
+        match self.0 {
+            DataInner::Bytes(ref data) => data.len(),
+            DataInner::Boxed(ref data) => data.remaining(),
+        }
     }
 
-    fn size_hint_boxed(&self) -> SizeHint {
-        self.size_hint()
+    fn bytes(&self) -> &[u8] {
+        match self.0 {
+            DataInner::Bytes(ref data) => data.as_ref(),
+            DataInner::Boxed(ref data) => data.bytes(),
+        }
     }
+
+    fn advance(&mut self, cnt: usize) {
+        match self.0 {
+            DataInner::Bytes(ref mut data) => data.advance(cnt),
+            DataInner::Boxed(ref mut data) => data.advance(cnt),
+        }
+    }
+}
+
+pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+// ===== ResponseBody =====
+
+trait BoxedBufStream: Send + 'static {
+    fn poll_buf(&mut self) -> Poll<Option<Data>, Error>;
+    fn size_hint(&self) -> SizeHint;
 }
 
 /// A type representing the message body in an HTTP response.
@@ -36,13 +63,15 @@ where
 pub struct ResponseBody(Inner);
 
 enum Inner {
-    Sized(Bytes),
-    Chunked(Box<dyn BoxedBufStream + Send + 'static>),
+    Empty,
+    Sized(Option<Bytes>),
+    Chunked(Box<dyn BoxedBufStream>),
 }
 
 impl fmt::Debug for Inner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Inner::Empty => f.debug_struct("Empty").finish(),
             Inner::Sized(..) => f.debug_struct("Sized").finish(),
             Inner::Chunked(..) => f.debug_struct("Chunked").finish(),
         }
@@ -59,7 +88,7 @@ impl ResponseBody {
     /// Creates an empty `ResponseBody`.
     #[inline]
     pub fn empty() -> Self {
-        ResponseBody(Inner::Sized(Bytes::new()))
+        ResponseBody(Inner::Empty)
     }
 
     /// Wraps a `Stream` into a `ResponseBody`.
@@ -79,13 +108,16 @@ impl ResponseBody {
             <S::Item as IntoBuf>::Buf: Send + 'static,
             S::Error: Into<Error>,
         {
-            fn poll_buf_boxed(&mut self) -> Poll<Option<Chunk>, Error> {
+            fn poll_buf(&mut self) -> Poll<Option<Data>, Error> {
                 self.0
                     .poll()
-                    .map(|x| x.map(|opt| opt.map(|buf| Box::new(buf.into_buf()) as Chunk)))
+                    .map(|x| {
+                        x.map(|opt| opt.map(|buf| Data(DataInner::Boxed(Box::new(buf.into_buf())))))
+                    })
                     .map_err(Into::into)
             }
-            fn size_hint_boxed(&self) -> SizeHint {
+
+            fn size_hint(&self) -> SizeHint {
                 SizeHint::new()
             }
         }
@@ -104,7 +136,7 @@ macro_rules! impl_response_body {
     ($($t:ty,)*) => {$(
         impl From<$t> for ResponseBody {
             fn from(body: $t) -> Self {
-                ResponseBody(Inner::Sized(body.into()))
+                ResponseBody(Inner::Sized(Some(body.into())))
             }
         }
     )*};
@@ -120,20 +152,45 @@ impl_response_body! {
     //std::borrow::Cow<'static, [u8]>,
 }
 
-// FIXME: switch to HttpBody
-impl BufStream for ResponseBody {
-    type Item = Either<io::Cursor<Bytes>, Chunk>;
+impl HttpBody for ResponseBody {
+    type Data = Data;
     type Error = Error;
 
-    fn poll_buf(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        match &mut self.0 {
-            Inner::Sized(chunk) => chunk
-                .poll_buf()
-                .map(|x| x.map(|opt| opt.map(Either::Left)))
-                .map_err(Into::into),
-            Inner::Chunked(chunks) => chunks
-                .poll_buf_boxed()
-                .map(|x| x.map(|opt| opt.map(Either::Right))),
+    fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
+        match self.0 {
+            Inner::Empty => Ok(Async::Ready(None)),
+            Inner::Sized(ref mut chunk) => {
+                let res = chunk.take().map(|data| Data(DataInner::Bytes(data)));
+                Ok(Async::Ready(res))
+            }
+            Inner::Chunked(ref mut chunks) => chunks.poll_buf(),
+        }
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        let mut hint = SizeHint::new();
+        match self.0 {
+            Inner::Empty => hint.set_upper(0),
+            Inner::Sized(Some(ref data)) => hint.set_upper(data.len() as u64),
+            Inner::Sized(..) => (),
+            Inner::Chunked(..) => (),
+        }
+        hint
+    }
+
+    fn is_end_stream(&self) -> bool {
+        match self.0 {
+            Inner::Empty => true,
+            Inner::Sized(ref data) => data.as_ref().map_or(true, |data| data.is_empty()),
+            Inner::Chunked(..) => false,
+        }
+    }
+
+    fn content_length(&self) -> Option<u64> {
+        match self.0 {
+            Inner::Empty => None,
+            Inner::Sized(Some(ref data)) => Some(data.len() as u64),
+            _ => None,
         }
     }
 }
