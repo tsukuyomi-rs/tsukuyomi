@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use {
-    crate::{handshake::handshake, websocket::WebSocket},
+    crate::{handshake::Handshake, websocket::WebSocket},
     futures::{Async, AsyncSink, Future, IntoFuture, Poll, Sink, StartSend, Stream},
     http::Response,
     std::fmt,
@@ -16,23 +16,16 @@ use {
     tungstenite::protocol::{Message, Role, WebSocketConfig, WebSocketContext},
 };
 
-/// A `Responder` that handles an WebSocket connection.
-#[derive(Debug, Clone)]
-pub struct Ws<F> {
-    on_upgrade: F,
+#[derive(Debug)]
+pub struct Ws {
+    handshake: Handshake,
     config: Option<WebSocketConfig>,
 }
 
-impl<F, R> Ws<F>
-where
-    F: FnOnce(WebSocketStream) -> R,
-    R: IntoFuture<Item = ()>,
-    R::Error: Into<tsukuyomi::upgrade::Error>,
-{
-    /// Crates a `Ws` with the specified closure.
-    pub fn new(on_upgrade: F) -> Self {
+impl Ws {
+    pub(crate) fn new(handshake: Handshake) -> Self {
         Self {
-            on_upgrade,
+            handshake,
             config: None,
         }
     }
@@ -44,9 +37,30 @@ where
             ..self
         }
     }
+
+    pub fn finish<F, R>(self, on_upgrade: F) -> WsResponder<F>
+    where
+        F: FnOnce(WebSocketStream) -> R,
+        R: IntoFuture<Item = ()>,
+        R::Error: Into<tsukuyomi::upgrade::Error>,
+    {
+        WsResponder {
+            on_upgrade,
+            handshake: self.handshake,
+            config: self.config,
+        }
+    }
 }
 
-impl<F, R> Responder for Ws<F>
+/// A `Responder` that handles an WebSocket connection.
+#[derive(Debug)]
+pub struct WsResponder<F> {
+    on_upgrade: F,
+    handshake: Handshake,
+    config: Option<WebSocketConfig>,
+}
+
+impl<F, R> Responder for WsResponder<F>
 where
     F: FnOnce(WebSocketStream) -> R,
     R: IntoFuture<Item = ()>,
@@ -58,12 +72,14 @@ where
     type Respond = WsRespond<F>; // private
 
     fn respond(self) -> Self::Respond {
-        WsRespond(Some(self))
+        WsRespond { inner: Some(self) }
     }
 }
 
 #[allow(missing_debug_implementations)]
-pub struct WsRespond<F>(pub(super) Option<Ws<F>>);
+pub struct WsRespond<F> {
+    inner: Option<WsResponder<F>>,
+}
 
 impl<F, R> TryFuture for WsRespond<F>
 where
@@ -74,12 +90,18 @@ where
     type Ok = (Response<()>, Option<WsConnection<R::Future>>);
     type Error = tsukuyomi::Error;
 
-    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-        let Ws {
-            on_upgrade, config, ..
-        } = self.0.take().expect("the future has already been polled");
+    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+        let WsResponder {
+            on_upgrade,
+            config,
+            handshake,
+            ..
+        } = self
+            .inner
+            .take()
+            .expect("the future has already been polled");
 
-        let response = handshake(input.request)?.to_response();
+        let response = handshake.to_response();
 
         let (tx_recv, rx_recv) = mpsc::unbounded_channel();
         let (tx_send, rx_send) = mpsc::unbounded_channel();
@@ -134,18 +156,20 @@ where
     Fut: Future<Item = ()>,
     Fut::Error: Into<tsukuyomi::upgrade::Error>,
 {
-    fn poll_close(&mut self, stream: &mut dyn Upgraded) -> Poll<(), tsukuyomi::upgrade::Error> {
+    fn poll_upgrade(&mut self, io: &mut Upgraded<'_>) -> Poll<(), tsukuyomi::upgrade::Error> {
         let foreground = self
             .foreground
             .poll_fuse(|fut| fut.poll().map_err(Into::into))?;
-        let background = self.background.poll_fuse(|fut| fut.poll(stream))?;
+        let background = self.background.poll_fuse(|fut| fut.poll(io))?;
         match (foreground, background) {
             (Async::Ready(()), Async::Ready(())) => Ok(Async::Ready(())),
             _ => Ok(Async::NotReady),
         }
     }
 
-    fn shutdown(&mut self) {}
+    fn close(&mut self) {
+        // TODO: shutdown background
+    }
 }
 
 #[allow(dead_code)]
@@ -157,8 +181,8 @@ struct Background {
 }
 
 impl Background {
-    fn poll(&mut self, stream: &mut dyn Upgraded) -> Poll<(), tsukuyomi::upgrade::Error> {
-        let mut socket = WebSocket::new(stream, &mut self.protocol);
+    fn poll(&mut self, io: &mut Upgraded<'_>) -> Poll<(), tsukuyomi::upgrade::Error> {
+        let mut socket = WebSocket::new(io, &mut self.protocol);
 
         if let Async::Ready(()) = self.recv.poll_close(&mut socket)? {
             self.send.rx.close();
@@ -177,7 +201,10 @@ struct Recv {
 }
 
 impl Recv {
-    fn poll_close(&mut self, socket: &mut WebSocket<'_>) -> Poll<(), tsukuyomi::upgrade::Error> {
+    fn poll_close(
+        &mut self,
+        socket: &mut WebSocket<'_, Upgraded<'_>>,
+    ) -> Poll<(), tsukuyomi::upgrade::Error> {
         if let Some(msg) = self.buf.take() {
             futures::try_ready!(self.try_start_send(msg));
         }
@@ -212,7 +239,10 @@ struct Send {
 }
 
 impl Send {
-    fn poll(&mut self, socket: &mut WebSocket<'_>) -> Poll<(), tsukuyomi::upgrade::Error> {
+    fn poll(
+        &mut self,
+        socket: &mut WebSocket<'_, Upgraded<'_>>,
+    ) -> Poll<(), tsukuyomi::upgrade::Error> {
         if let Some(msg) = self.buf.take() {
             futures::try_ready!(self.try_start_send(socket, msg));
         }
@@ -234,7 +264,7 @@ impl Send {
 
     fn try_start_send(
         &mut self,
-        socket: &mut WebSocket<'_>,
+        socket: &mut WebSocket<'_, Upgraded<'_>>,
         msg: Message,
     ) -> Poll<(), tsukuyomi::upgrade::Error> {
         debug_assert!(self.buf.is_none());
@@ -248,33 +278,7 @@ impl Send {
     }
 }
 
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub struct StreamError(StreamErrorKind);
-
-#[derive(Debug)]
-enum StreamErrorKind {
-    Send(mpsc::error::UnboundedSendError),
-    Recv(mpsc::error::UnboundedRecvError),
-}
-
-impl fmt::Display for StreamError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0 {
-            StreamErrorKind::Send(ref e) => e.fmt(f),
-            StreamErrorKind::Recv(ref e) => e.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for StreamError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self.0 {
-            StreamErrorKind::Send(ref e) => Some(e),
-            StreamErrorKind::Recv(ref e) => Some(e),
-        }
-    }
-}
+// ==== WebSocketStream ====
 
 #[allow(missing_docs)]
 #[derive(Debug)]
@@ -314,5 +318,33 @@ impl Sink for WebSocketStream {
         self.tx_send
             .close()
             .map_err(|e| StreamError(StreamErrorKind::Send(e)))
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug)]
+pub struct StreamError(StreamErrorKind);
+
+#[derive(Debug)]
+enum StreamErrorKind {
+    Send(mpsc::error::UnboundedSendError),
+    Recv(mpsc::error::UnboundedRecvError),
+}
+
+impl fmt::Display for StreamError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            StreamErrorKind::Send(ref e) => e.fmt(f),
+            StreamErrorKind::Recv(ref e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for StreamError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self.0 {
+            StreamErrorKind::Send(ref e) => Some(e),
+            StreamErrorKind::Recv(ref e) => Some(e),
+        }
     }
 }

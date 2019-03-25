@@ -7,7 +7,7 @@ use {
         input::Input,
         output::{IntoResponse, ResponseBody},
         responder::Responder,
-        upgrade::{Upgrade, Upgraded},
+        upgrade::{Error as UpgradeError, Upgrade, Upgraded},
         util::Never,
     },
     http::Response,
@@ -19,6 +19,7 @@ use {
 pub struct CurrentThread(Never);
 
 impl Concurrency for CurrentThread {
+    #[doc(hidden)]
     type Impl = Self;
     type Handler = BoxedHandler;
 }
@@ -39,15 +40,12 @@ impl super::imp::ConcurrencyImpl for CurrentThread {
         (handle)(input)
     }
 
-    fn poll_close_connection(
-        conn: &mut Self::Upgrade,
-        stream: &mut dyn Upgraded,
-    ) -> Poll<(), Box<dyn std::error::Error + Send + Sync>> {
-        conn.poll_close(stream)
+    fn poll_upgrade(conn: &mut Self::Upgrade, io: &mut Upgraded<'_>) -> Poll<(), UpgradeError> {
+        conn.poll_upgrade(io)
     }
 
-    fn shutdown_connection(conn: &mut Self::Upgrade) {
-        conn.shutdown();
+    fn close_upgrade(conn: &mut Self::Upgrade) {
+        conn.close();
     }
 }
 

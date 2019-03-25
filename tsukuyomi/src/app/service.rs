@@ -12,6 +12,7 @@ use {
             Cookies, Input,
         },
         output::{IntoResponse, ResponseBody},
+        upgrade::Upgraded,
         util::Never,
     },
     cookie::CookieJar,
@@ -260,10 +261,10 @@ where
     type Upgraded = AppConnection<C, I>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
-    fn upgrade(self, stream: I) -> Result<Self::Upgraded, I> {
+    fn upgrade(self, io: I) -> Result<Self::Upgraded, I> {
         match self.upgrade {
-            Some(upgrade) => Ok(AppConnection { upgrade, stream }),
-            None => Err(stream),
+            Some(upgrade) => Ok(AppConnection { upgrade, io }),
+            None => Err(io),
         }
     }
 }
@@ -271,7 +272,7 @@ where
 #[allow(missing_debug_implementations)]
 pub struct AppConnection<C: Concurrency, I> {
     upgrade: <C::Impl as ConcurrencyImpl>::Upgrade,
-    stream: I,
+    io: I,
 }
 
 impl<C, I> izanami::http::Connection for AppConnection<C, I>
@@ -282,10 +283,13 @@ where
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn poll_close(&mut self) -> Poll<(), Self::Error> {
-        <C::Impl as ConcurrencyImpl>::poll_close_connection(&mut self.upgrade, &mut self.stream)
+        <C::Impl as ConcurrencyImpl>::poll_upgrade(
+            &mut self.upgrade,
+            &mut Upgraded::new(&mut self.io),
+        )
     }
 
     fn graceful_shutdown(&mut self) {
-        <C::Impl as ConcurrencyImpl>::shutdown_connection(&mut self.upgrade)
+        <C::Impl as ConcurrencyImpl>::close_upgrade(&mut self.upgrade)
     }
 }

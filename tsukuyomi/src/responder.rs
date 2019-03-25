@@ -11,23 +11,24 @@ use crate::{
 
 pub use self::oneshot::Oneshot;
 
-/// A trait that abstracts replies to clients.
+/// A trait that abstracts asynchronous tasks involving a reply to the client.
 pub trait Responder {
-    /// The type of response
+    /// The type of response to be send to the client.
     type Response: IntoResponse;
 
+    /// The type of asynchronous object to be ran after upgrading the protocol.
     type Upgrade: Upgrade;
 
-    /// The error type which will be returned from `respond_to`.
+    /// The error type that will be thrown by this responder.
     type Error: Into<Error>;
 
-    /// The type of `Future` which will be returned from `respond`.
+    /// The `TryFuture` that represents the actual process of this responder.
     type Respond: TryFuture<
         Ok = (Self::Response, Option<Self::Upgrade>), //
         Error = Self::Error,
     >;
 
-    /// Converts itself into a `TryFuture` that will be resolved as a `Response`.
+    /// Converts itself into a `Respond`.
     fn respond(self) -> Self::Respond;
 }
 

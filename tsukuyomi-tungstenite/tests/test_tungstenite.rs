@@ -29,7 +29,9 @@ fn test_version_sync() {
 fn test_handshake() -> test::Result {
     let app = App::create(
         path!("/ws") //
-            .to(endpoint::get().call(|| Ws::new(|_| Ok::<(), std::io::Error>(())))),
+            .to(endpoint::get()
+                .extract(tsukuyomi_tungstenite::ws())
+                .call(|ws: Ws| ws.finish(|_| Ok::<(), std::io::Error>(())))),
     )?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

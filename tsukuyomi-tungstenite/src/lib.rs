@@ -20,3 +20,16 @@ mod ws;
 pub use tungstenite::protocol::{Message, WebSocketConfig};
 
 pub use crate::ws::{StreamError, WebSocketStream, Ws};
+
+#[allow(missing_docs)]
+pub fn ws() -> impl tsukuyomi::Extractor<
+    Output = (Ws,),
+    Error = tsukuyomi::Error,
+    Extract = impl tsukuyomi::future::TryFuture<Ok = (Ws,), Error = tsukuyomi::Error> + Send + 'static,
+> {
+    tsukuyomi::extractor::ready(|input| {
+        crate::handshake::handshake(input.request) //
+            .map(|handshake| (Ws::new(handshake),))
+            .map_err(Into::into)
+    })
+}

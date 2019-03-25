@@ -10,7 +10,7 @@ use {
         input::Input,
         output::{IntoResponse, ResponseBody},
         responder::Responder,
-        upgrade::{Upgrade, Upgraded},
+        upgrade::{Error as UpgradeError, Upgrade, Upgraded},
         util::Never,
     },
     http::Response,
@@ -28,7 +28,11 @@ pub trait Concurrency: Sized + 'static {
 pub(super) mod imp {
     use {
         super::Concurrency,
-        crate::{input::Input, output::ResponseBody, upgrade::Upgraded},
+        crate::{
+            input::Input,
+            output::ResponseBody,
+            upgrade::{Error as UpgradeError, Upgraded},
+        },
         futures01::Poll,
         http::Response,
     };
@@ -45,12 +49,8 @@ pub(super) mod imp {
             input: &mut Input<'_>,
         ) -> Poll<(Response<ResponseBody>, Option<Self::Upgrade>), crate::error::Error>;
 
-        fn poll_close_connection(
-            conn: &mut Self::Upgrade,
-            stream: &mut dyn Upgraded,
-        ) -> Poll<(), Box<dyn std::error::Error + Send + Sync>>;
-
-        fn shutdown_connection(conn: &mut Self::Upgrade);
+        fn poll_upgrade(conn: &mut Self::Upgrade, io: &mut Upgraded<'_>) -> Poll<(), UpgradeError>;
+        fn close_upgrade(conn: &mut Self::Upgrade);
     }
 }
 
@@ -59,6 +59,7 @@ pub(super) mod imp {
 pub struct DefaultConcurrency(Never);
 
 impl Concurrency for DefaultConcurrency {
+    #[doc(hidden)]
     type Impl = Self;
     type Handler = BoxedHandler;
 }
@@ -79,15 +80,12 @@ impl self::imp::ConcurrencyImpl for DefaultConcurrency {
         (handle)(input)
     }
 
-    fn poll_close_connection(
-        conn: &mut Self::Upgrade,
-        stream: &mut dyn Upgraded,
-    ) -> Poll<(), Box<dyn std::error::Error + Send + Sync>> {
-        conn.poll_close(stream)
+    fn poll_upgrade(conn: &mut Self::Upgrade, io: &mut Upgraded<'_>) -> Poll<(), UpgradeError> {
+        conn.poll_upgrade(io)
     }
 
-    fn shutdown_connection(conn: &mut Self::Upgrade) {
-        conn.shutdown();
+    fn close_upgrade(conn: &mut Self::Upgrade) {
+        conn.close();
     }
 }
 
