@@ -10,6 +10,7 @@ use {
         error::Error,
         future::TryFuture,
         input::Input,
+        output::body::ResponseBody,
         responder::Responder,
         upgrade::{Upgrade, Upgraded},
     },
@@ -66,7 +67,6 @@ where
     R: IntoFuture<Item = ()>,
     R::Error: Into<tsukuyomi::upgrade::Error>,
 {
-    type Response = Response<()>;
     type Upgrade = WsConnection<R::Future>; // private
     type Error = Error;
     type Respond = WsRespond<F>; // private
@@ -87,7 +87,7 @@ where
     R: IntoFuture<Item = ()>,
     R::Error: Into<tsukuyomi::upgrade::Error>,
 {
-    type Ok = (Response<()>, Option<WsConnection<R::Future>>);
+    type Ok = (Response<ResponseBody>, Option<WsConnection<R::Future>>);
     type Error = tsukuyomi::Error;
 
     fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
@@ -101,7 +101,9 @@ where
             .take()
             .expect("the future has already been polled");
 
-        let response = handshake.to_response();
+        let response = handshake
+            .to_response() //
+            .map(|_| ResponseBody::empty());
 
         let (tx_recv, rx_recv) = mpsc::unbounded_channel();
         let (tx_send, rx_send) = mpsc::unbounded_channel();

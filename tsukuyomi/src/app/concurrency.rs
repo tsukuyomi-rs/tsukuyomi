@@ -8,7 +8,7 @@ use {
         future::{Async, Poll, TryFuture},
         handler::Handler,
         input::Input,
-        output::{IntoResponse, ResponseBody},
+        output::ResponseBody,
         responder::Responder,
         upgrade::{Error as UpgradeError, Upgrade, Upgraded},
         util::Never,
@@ -132,11 +132,6 @@ where
                     State::Second(ref mut respond) => {
                         let (res, up) =
                             futures01::try_ready!(respond.poll_ready(input).map_err(Into::into));
-
-                        let res = res
-                            .into_response(input.request)
-                            .map_err(Into::into)?
-                            .map(Into::into);
 
                         let up = up.map(|up| Box::new(up) as Box<dyn Upgrade + Send>);
 

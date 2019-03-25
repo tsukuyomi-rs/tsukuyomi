@@ -7,7 +7,7 @@ use {
         future::TryFuture,
         handler::{metadata::Uri, ModifyHandler},
         input::Input,
-        output::{IntoResponse, ResponseBody},
+        output::ResponseBody,
         responder::Responder,
     },
     bytes::{BufMut, Bytes, BytesMut},
@@ -159,7 +159,6 @@ impl<P> Responder for NamedFile<P>
 where
     P: AsRef<Path> + Send + 'static,
 {
-    type Response = Response<ResponseBody>;
     type Upgrade = crate::upgrade::NeverUpgrade;
     type Error = crate::Error;
     type Respond = OpenNamedFile<P>;
@@ -283,14 +282,9 @@ impl NamedFileResponse {
         ));
         time::strftime("%c", &tm)
     }
-}
 
-impl IntoResponse for NamedFileResponse {
-    type Body = ResponseBody;
-    type Error = Error;
-
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        trace!("NamedFile::respond_to");
+    fn into_response(self, request: &Request<()>) -> Result<Response<ResponseBody>, Error> {
+        trace!("NamedFileResponse::into_response");
 
         if !self.is_modified(request.headers())? {
             return Ok(Response::builder()

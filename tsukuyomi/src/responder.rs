@@ -1,21 +1,20 @@
 //! Definition of `Responder`.
 
-use crate::{
-    error::Error, //
-    future::TryFuture,
-    input::Input,
-    output::IntoResponse,
-    upgrade::Upgrade,
-    util::Never,
+use {
+    crate::{
+        error::Error, //
+        future::TryFuture,
+        input::Input,
+        output::{body::ResponseBody, IntoResponse},
+        upgrade::Upgrade,
+    },
+    http::Response,
 };
 
 pub use self::oneshot::Oneshot;
 
 /// A trait that abstracts asynchronous tasks involving a reply to the client.
 pub trait Responder {
-    /// The type of response to be send to the client.
-    type Response: IntoResponse;
-
     /// The type of asynchronous object to be ran after upgrading the protocol.
     type Upgrade: Upgrade;
 
@@ -24,7 +23,7 @@ pub trait Responder {
 
     /// The `TryFuture` that represents the actual process of this responder.
     type Respond: TryFuture<
-        Ok = (Self::Response, Option<Self::Upgrade>), //
+        Ok = (Response<ResponseBody>, Option<Self::Upgrade>), //
         Error = Self::Error,
     >;
 
@@ -37,9 +36,8 @@ impl<T> Responder for T
 where
     T: IntoResponse,
 {
-    type Response = T;
     type Upgrade = crate::upgrade::NeverUpgrade;
-    type Error = Never;
+    type Error = T::Error;
     type Respond = self::impl_responder_for_T::IntoResponseRespond<T>;
 
     #[inline]
@@ -55,28 +53,37 @@ mod impl_responder_for_T {
     #[allow(missing_debug_implementations)]
     pub struct IntoResponseRespond<T>(pub(super) Option<T>);
 
-    impl<T> TryFuture for IntoResponseRespond<T> {
-        type Ok = (T, Option<crate::upgrade::NeverUpgrade>);
-        type Error = Never;
+    impl<T> TryFuture for IntoResponseRespond<T>
+    where
+        T: IntoResponse,
+    {
+        type Ok = (Response<ResponseBody>, Option<crate::upgrade::NeverUpgrade>);
+        type Error = T::Error;
 
         #[inline]
-        fn poll_ready(&mut self, _: &mut Input<'_>) -> crate::future::Poll<Self::Ok, Self::Error> {
+        fn poll_ready(
+            &mut self,
+            input: &mut Input<'_>,
+        ) -> crate::future::Poll<Self::Ok, Self::Error> {
             let output = self.0.take().expect("the future has already been polled.");
-            Ok((output, None).into())
+            let response = output.into_response(input.request)?.map(Into::into);
+            Ok((response, None).into())
         }
     }
 }
 
 mod impl_responder_for_either {
     use {
-        super::{IntoResponse, Responder},
+        super::Responder,
         crate::{
             error::Error,
             future::{Poll, TryFuture},
             input::Input,
+            output::body::ResponseBody,
             upgrade::Upgrade,
             util::Either,
         },
+        http::Response,
     };
 
     impl<L, R> Responder for Either<L, R>
@@ -84,7 +91,6 @@ mod impl_responder_for_either {
         L: Responder,
         R: Responder,
     {
-        type Response = either::Either<L::Response, R::Response>;
         type Upgrade = crate::util::Either<L::Upgrade, R::Upgrade>;
         type Error = Error;
         type Respond = EitherRespond<L::Respond, R::Respond>;
@@ -103,16 +109,14 @@ mod impl_responder_for_either {
         Right(R),
     }
 
-    impl<L, R, LR, RR, LU, RU> TryFuture for EitherRespond<L, R>
+    impl<L, R, LU, RU> TryFuture for EitherRespond<L, R>
     where
-        L: TryFuture<Ok = (LR, Option<LU>)>,
-        R: TryFuture<Ok = (RR, Option<RU>)>,
-        LR: IntoResponse,
-        RR: IntoResponse,
+        L: TryFuture<Ok = (Response<ResponseBody>, Option<LU>)>,
+        R: TryFuture<Ok = (Response<ResponseBody>, Option<RU>)>,
         LU: Upgrade,
         RU: Upgrade,
     {
-        type Ok = (either::Either<LR, RR>, Option<crate::util::Either<LU, RU>>);
+        type Ok = (Response<ResponseBody>, Option<crate::util::Either<LU, RU>>);
         type Error = Error;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
@@ -120,20 +124,12 @@ mod impl_responder_for_either {
                 EitherRespond::Left(l) => {
                     let (res, upgrade) =
                         futures01::try_ready!(l.poll_ready(input).map_err(Into::into));
-                    Ok((
-                        either::Either::Left(res),
-                        upgrade.map(crate::util::Either::Left),
-                    )
-                        .into())
+                    Ok((res, upgrade.map(crate::util::Either::Left)).into())
                 }
                 EitherRespond::Right(r) => {
                     let (res, upgrade) =
                         futures01::try_ready!(r.poll_ready(input).map_err(Into::into));
-                    Ok((
-                        either::Either::Right(res),
-                        upgrade.map(crate::util::Either::Right),
-                    )
-                        .into())
+                    Ok((res, upgrade.map(crate::util::Either::Right)).into())
                 }
             }
         }
@@ -141,10 +137,9 @@ mod impl_responder_for_either {
 }
 
 /// A function to create a `Responder` using the specified `TryFuture`.
-pub fn respond<R, Res, U>(future: R) -> ResponderFn<R>
+pub fn respond<R, U>(future: R) -> ResponderFn<R>
 where
-    R: TryFuture<Ok = (Res, Option<U>)>,
-    Res: IntoResponse,
+    R: TryFuture<Ok = (Response<ResponseBody>, Option<U>)>,
 {
     ResponderFn(future)
 }
@@ -152,13 +147,11 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct ResponderFn<R>(R);
 
-impl<R, Res, U> Responder for ResponderFn<R>
+impl<R, U> Responder for ResponderFn<R>
 where
-    R: TryFuture<Ok = (Res, Option<U>)>,
-    Res: IntoResponse,
+    R: TryFuture<Ok = (Response<ResponseBody>, Option<U>)>,
     U: Upgrade,
 {
-    type Response = Res;
     type Upgrade = U;
     type Error = R::Error;
     type Respond = R;
@@ -183,7 +176,7 @@ where
 
 mod oneshot {
     use {
-        super::{Error, Input, IntoResponse, Responder},
+        super::{Error, Input, IntoResponse, Responder, Response, ResponseBody},
         crate::future::{Poll, TryFuture},
     };
 
@@ -196,9 +189,8 @@ mod oneshot {
         T: IntoResponse,
         E: Into<Error>,
     {
-        type Response = T;
         type Upgrade = crate::upgrade::NeverUpgrade;
-        type Error = E;
+        type Error = Error;
         type Respond = OneshotRespond<F>;
 
         #[inline]
@@ -213,14 +205,20 @@ mod oneshot {
     impl<F, T, E> TryFuture for OneshotRespond<F>
     where
         F: FnOnce(&mut Input<'_>) -> Result<T, E>,
+        T: IntoResponse,
         E: Into<Error>,
     {
-        type Ok = (T, Option<crate::upgrade::NeverUpgrade>);
-        type Error = E;
+        type Ok = (Response<ResponseBody>, Option<crate::upgrade::NeverUpgrade>);
+        type Error = Error;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let f = self.0.take().expect("the future has already polled");
-            f(input).map(|res| (res, None).into())
+            let output = f(input).map_err(Into::into)?;
+            let response = output
+                .into_response(input.request)
+                .map_err(Into::into)?
+                .map(Into::into);
+            Ok((response, None).into())
         }
     }
 }
