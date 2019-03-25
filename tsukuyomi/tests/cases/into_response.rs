@@ -83,9 +83,9 @@ fn compiletest_enum() {
 #[test]
 fn test_into_response_preset() -> test::Result {
     use {
-        http::{Request, Response},
+        http::Response,
         std::fmt,
-        tsukuyomi::output::preset::Preset,
+        tsukuyomi::output::{body::ResponseBody, preset::Preset},
     };
 
     struct Display;
@@ -94,14 +94,11 @@ fn test_into_response_preset() -> test::Result {
     where
         T: std::fmt::Display,
     {
-        type Body = String;
-        type Error = tsukuyomi::util::Never;
-
-        fn into_response(this: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(Response::builder()
+        fn into_response(this: T) -> Response<ResponseBody> {
+            Response::builder()
                 .header("content-type", "text/plain; charset=utf-8")
-                .body(this.to_string())
-                .unwrap())
+                .body(this.to_string().into())
+                .unwrap()
         }
     }
 

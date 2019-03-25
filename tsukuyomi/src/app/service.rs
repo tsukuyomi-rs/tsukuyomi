@@ -218,10 +218,7 @@ impl<C: Concurrency> Future for AppFuture<C> {
 
         let (mut output, upgrade) = match polled {
             Ok(output) => output,
-            Err(err) => {
-                let response = err.into_response(&self.request)?;
-                (response, None)
-            }
+            Err(err) => (err.into_response(), None),
         };
 
         self.process_before_reply(&mut output);

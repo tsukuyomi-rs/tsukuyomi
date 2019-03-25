@@ -11,7 +11,7 @@ use {
         util::Never,
     },
     failure::{AsFail, Fail},
-    http::{Request, Response, StatusCode},
+    http::{Response, StatusCode},
     std::{any::TypeId, fmt, io},
 };
 
@@ -287,15 +287,9 @@ impl AsFail for Error {
 }
 
 impl IntoResponse for Error {
-    type Body = ResponseBody;
-    type Error = Never;
-
-    fn into_response(
-        self,
-        _: &Request<()>,
-    ) -> std::result::Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self) -> Response<ResponseBody> {
         let (mut parts, ()) = self.inner.to_response().into_parts();
         parts.extensions.insert(self);
-        Ok(Response::from_parts(parts, ResponseBody::empty()))
+        Response::from_parts(parts, ResponseBody::empty())
     }
 }

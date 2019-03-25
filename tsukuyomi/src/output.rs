@@ -6,8 +6,7 @@ pub mod redirect;
 pub use {self::body::ResponseBody, tsukuyomi_macros::IntoResponse};
 
 use {
-    crate::{error::Error, util::Never},
-    http::{Request, Response, StatusCode},
+    http::{Response, StatusCode},
     serde::Serialize,
 };
 
@@ -72,7 +71,7 @@ pub mod internal {
 ///    # use tsukuyomi::IntoResponse;
 ///    #[derive(IntoResponse)]
 ///    struct Foo(String);
-///   
+///
 ///    #[derive(IntoResponse)]
 ///    struct Bar {
 ///        inner: String,
@@ -124,77 +123,22 @@ pub mod internal {
 ///
 /// [`Preset`]: https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/output/preset/trait.Preset.html
 pub trait IntoResponse {
-    type Body: Into<ResponseBody>;
-    type Error: Into<Error>;
-
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error>;
+    fn into_response(self) -> Response<ResponseBody>;
 }
 
 impl IntoResponse for () {
-    type Body = ();
-    type Error = Never;
-
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        let mut response = Response::new(());
+    fn into_response(self) -> Response<ResponseBody> {
+        let mut response = Response::new(ResponseBody::empty());
         *response.status_mut() = StatusCode::NO_CONTENT;
-        Ok(response)
+        response
     }
 }
 
-impl<T> IntoResponse for Option<T>
-where
-    T: IntoResponse,
-{
-    type Body = ResponseBody;
-    type Error = Error;
-
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        let x = self.ok_or_else(|| crate::error::not_found("None"))?;
-        x.into_response(request)
-            .map(|response| response.map(Into::into))
-            .map_err(Into::into)
-    }
-}
-
-impl<T, E> IntoResponse for Result<T, E>
-where
-    T: IntoResponse,
-    E: Into<Error>,
-{
-    type Body = ResponseBody;
-    type Error = Error;
-
-    fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        self.map_err(Into::into)?
-            .into_response(request)
-            .map(|response| response.map(Into::into))
-            .map_err(Into::into)
-    }
-}
-
-mod impl_into_response_for_either {
-    use {super::*, either::Either};
-
-    impl<L, R> IntoResponse for Either<L, R>
-    where
-        L: IntoResponse,
-        R: IntoResponse,
-    {
-        type Body = ResponseBody;
-        type Error = Error;
-
-        fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            match self {
-                Either::Left(l) => l
-                    .into_response(request)
-                    .map(|response| response.map(Into::into))
-                    .map_err(Into::into),
-                Either::Right(r) => r
-                    .into_response(request)
-                    .map(|response| response.map(Into::into))
-                    .map_err(Into::into),
-            }
-        }
+impl IntoResponse for StatusCode {
+    fn into_response(self) -> Response<ResponseBody> {
+        let mut response = Response::new(ResponseBody::empty());
+        *response.status_mut() = self;
+        response
     }
 }
 
@@ -202,127 +146,63 @@ impl<T> IntoResponse for Response<T>
 where
     T: Into<ResponseBody>,
 {
-    type Body = T;
-    type Error = Never;
-
     #[inline]
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(self)
+    fn into_response(self) -> Response<ResponseBody> {
+        self.map(Into::into)
     }
 }
 
 impl IntoResponse for &'static str {
-    type Body = Self;
-    type Error = Never;
-
     #[inline]
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self) -> Response<ResponseBody> {
         let len = self.len() as u64;
-        Ok(self::make_response(
-            self,
-            "text/plain; charset=utf-8",
-            Some(len),
-        ))
+        self::make_response(self.into(), "text/plain; charset=utf-8", Some(len))
     }
 }
 
 impl IntoResponse for String {
-    type Body = Self;
-    type Error = Never;
-
     #[inline]
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self) -> Response<ResponseBody> {
         let len = self.len() as u64;
-        Ok(self::make_response(
-            self,
-            "text/plain; charset=utf-8",
-            Some(len),
-        ))
+        self::make_response(self.into(), "text/plain; charset=utf-8", Some(len))
     }
 }
 
 impl IntoResponse for serde_json::Value {
-    type Body = String;
-    type Error = Never;
-
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
+    fn into_response(self) -> Response<ResponseBody> {
         let body = self.to_string();
         let len = body.len() as u64;
-        Ok(self::make_response(body, "application/json", Some(len)))
+        self::make_response(body.into(), "application/json", Some(len))
     }
-}
-
-/// A function to create a `IntoResponse` using the specified function.
-pub fn into_response<T, E>(
-    f: impl FnOnce(&Request<()>) -> Result<Response<T>, E>,
-) -> impl IntoResponse<
-    Body = T, //
-    Error = E,
->
-where
-    T: Into<ResponseBody>,
-    E: Into<Error>,
-{
-    #[allow(missing_debug_implementations)]
-    pub struct IntoResponseFn<F>(F);
-
-    impl<F, T, E> IntoResponse for IntoResponseFn<F>
-    where
-        F: FnOnce(&Request<()>) -> Result<Response<T>, E>,
-        T: Into<ResponseBody>,
-        E: Into<Error>,
-    {
-        type Body = T;
-        type Error = E;
-
-        #[inline]
-        fn into_response(self, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            (self.0)(request)
-        }
-    }
-
-    IntoResponseFn(f)
 }
 
 /// Creates a JSON responder from the specified data.
 #[inline]
-pub fn json<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
+pub fn json<T>(data: T) -> Response<ResponseBody>
 where
     T: Serialize,
 {
-    self::into_response(move |_| {
-        serde_json::to_vec(&data)
-            .map(|body| {
-                let len = body.len() as u64;
-                self::make_response(body, "application/json", Some(len))
-            })
-            .map_err(crate::error::internal_server_error)
-    })
+    use self::preset::Preset;
+    self::preset::Json::into_response(data)
 }
 
-/// Creates a JSON responder with pretty output from the specified data.
+/// Creates a JSON response with pretty output from the specified data.
 #[inline]
-pub fn json_pretty<T>(data: T) -> impl IntoResponse<Body = Vec<u8>, Error = Error>
+pub fn json_pretty<T>(data: T) -> Response<ResponseBody>
 where
     T: Serialize,
 {
-    self::into_response(move |_| {
-        serde_json::to_vec_pretty(&data)
-            .map(|body| {
-                let len = body.len() as u64;
-                self::make_response(body, "application/json", Some(len))
-            })
-            .map_err(crate::error::internal_server_error)
-    })
+    use self::preset::Preset;
+    self::preset::JsonPretty::into_response(data)
 }
 
-/// Creates an HTML responder with the specified response body.
+/// Creates an HTML response using the specified data.
 #[inline]
-pub fn html<T>(body: T) -> impl IntoResponse<Body = T, Error = Never>
+pub fn html<T>(body: T) -> Response<T>
 where
     T: Into<ResponseBody>,
 {
-    self::into_response(move |_| Ok(self::make_response(body, "text/html", None)))
+    self::make_response(body, "text/html", None)
 }
 
 /// Create an instance of `Response<T>` with the provided body and content type.
@@ -346,17 +226,13 @@ fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Re
 pub mod preset {
     use {
         super::ResponseBody,
-        crate::{error::Error, util::Never},
-        http::{Request, Response},
+        http::{Response, StatusCode},
         serde::Serialize,
     };
 
     /// A trait representing the *preset* for deriving the implementation of `IntoResponse`.
     pub trait Preset<T> {
-        type Body: Into<ResponseBody>;
-        type Error: Into<Error>;
-
-        fn into_response(t: T, request: &Request<()>) -> Result<Response<Self::Body>, Self::Error>;
+        fn into_response(t: T) -> Response<ResponseBody>;
     }
 
     #[allow(missing_debug_implementations)]
@@ -366,16 +242,18 @@ pub mod preset {
     where
         T: Serialize,
     {
-        type Body = Vec<u8>;
-        type Error = Error;
-
-        fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            serde_json::to_vec(&data)
-                .map(|body| {
+        fn into_response(data: T) -> Response<ResponseBody> {
+            match serde_json::to_vec(&data) {
+                Ok(body) => {
                     let len = body.len() as u64;
-                    super::make_response(body, "application/json", Some(len))
-                })
-                .map_err(crate::error::internal_server_error)
+                    super::make_response(body.into(), "application/json", Some(len))
+                }
+                Err(_e) => {
+                    let mut res = Response::new(ResponseBody::empty());
+                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                    res
+                }
+            }
         }
     }
 
@@ -386,16 +264,18 @@ pub mod preset {
     where
         T: Serialize,
     {
-        type Body = Vec<u8>;
-        type Error = Error;
-
-        fn into_response(data: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            serde_json::to_vec_pretty(&data)
-                .map(|body| {
+        fn into_response(data: T) -> Response<ResponseBody> {
+            match serde_json::to_vec_pretty(&data) {
+                Ok(body) => {
                     let len = body.len() as u64;
-                    super::make_response(body, "application/json", Some(len))
-                })
-                .map_err(crate::error::internal_server_error)
+                    super::make_response(body.into(), "application/json", Some(len))
+                }
+                Err(_e) => {
+                    let mut res = Response::new(ResponseBody::empty());
+                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                    res
+                }
+            }
         }
     }
 
@@ -406,11 +286,8 @@ pub mod preset {
     where
         T: Into<ResponseBody>,
     {
-        type Body = T;
-        type Error = Never;
-
-        fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(super::make_response(body, "text/html", None))
+        fn into_response(body: T) -> Response<ResponseBody> {
+            super::make_response(body.into(), "text/html", None)
         }
     }
 
@@ -421,15 +298,8 @@ pub mod preset {
     where
         T: Into<ResponseBody>,
     {
-        type Body = T;
-        type Error = Never;
-
-        fn into_response(body: T, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-            Ok(super::make_response(
-                body,
-                "text/plain; charset=utf-8",
-                None,
-            ))
+        fn into_response(body: T) -> Response<ResponseBody> {
+            super::make_response(body.into(), "text/plain; charset=utf-8", None)
         }
     }
 }

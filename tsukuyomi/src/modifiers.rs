@@ -13,8 +13,8 @@ mod default_options {
             future::{Poll, TryFuture},
             handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
+            util::Either,
         },
-        either::Either,
         http::{header::HeaderValue, Method, Response},
     };
 

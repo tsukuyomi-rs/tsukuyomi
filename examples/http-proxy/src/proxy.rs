@@ -8,8 +8,7 @@ use {
         chain,
         extractor::{self, ExtractorExt}, //
         future::TryFuture,
-        output::IntoResponse,
-        util::Never,
+        output::{body::ResponseBody, IntoResponse},
         Error,
         Extractor,
     },
@@ -95,20 +94,14 @@ impl ProxyResponse {
 }
 
 impl IntoResponse for ProxyResponse {
-    type Body = tsukuyomi::output::ResponseBody;
-    type Error = Never;
-
-    fn into_response(
-        mut self,
-        _: &http::Request<()>,
-    ) -> Result<http::Response<Self::Body>, Self::Error> {
+    fn into_response(mut self) -> http::Response<ResponseBody> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
 
-        let body_stream = tsukuyomi::output::ResponseBody::wrap_stream(self.resp.into_body());
+        let body_stream = ResponseBody::wrap_stream(self.resp.into_body());
 
-        Ok(response.map(|_| body_stream))
+        response.map(|_| body_stream)
     }
 }
 
