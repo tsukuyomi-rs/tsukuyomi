@@ -183,7 +183,7 @@ impl<P> TryFuture for OpenNamedFile<P>
 where
     P: AsRef<Path>,
 {
-    type Ok = (Response<ResponseBody>, Option<crate::upgrade::NeverUpgrade>);
+    type Ok = Response<ResponseBody>;
     type Error = crate::Error;
 
     fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
@@ -210,7 +210,7 @@ where
         }
         .into_response(input.request)?;
 
-        Ok(Async::Ready((response, None)))
+        Ok(Async::Ready(response))
     }
 }
 

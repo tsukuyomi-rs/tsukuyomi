@@ -15,7 +15,6 @@ use {
             localmap::LocalData,
             Input,
         },
-        output::ResponseBody,
         responder::Responder,
         upgrade::NeverUpgrade,
     },
@@ -274,7 +273,7 @@ pub struct GraphQLRespond {
 }
 
 impl TryFuture for GraphQLRespond {
-    type Ok = (Response<ResponseBody>, Option<NeverUpgrade>);
+    type Ok = Response<Vec<u8>>;
     type Error = Error;
 
     #[inline]
@@ -283,6 +282,6 @@ impl TryFuture for GraphQLRespond {
             .handle
             .poll()
             .map_err(tsukuyomi::error::internal_server_error))
-        .map(|res| (res.map(Into::into), None).into())
+        .map(Into::into)
     }
 }

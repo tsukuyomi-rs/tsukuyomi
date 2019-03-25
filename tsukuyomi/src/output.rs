@@ -5,10 +5,7 @@ pub mod redirect;
 
 pub use {self::body::ResponseBody, tsukuyomi_macros::IntoResponse};
 
-use {
-    http::{Response, StatusCode},
-    serde::Serialize,
-};
+use {http::StatusCode, serde::Serialize};
 
 // the private API for custom derive.
 #[doc(hidden)]
@@ -21,6 +18,9 @@ pub mod internal {
         http::{Request, Response},
     };
 }
+
+/// Type alias of `http::Response<T>` that fixed the body type to `ResponseBody.
+pub type Response = http::Response<ResponseBody>;
 
 /// A trait representing the conversion into an HTTP response.
 ///
@@ -123,11 +123,11 @@ pub mod internal {
 ///
 /// [`Preset`]: https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/output/preset/trait.Preset.html
 pub trait IntoResponse {
-    fn into_response(self) -> Response<ResponseBody>;
+    fn into_response(self) -> Response;
 }
 
 impl IntoResponse for () {
-    fn into_response(self) -> Response<ResponseBody> {
+    fn into_response(self) -> Response {
         let mut response = Response::new(ResponseBody::empty());
         *response.status_mut() = StatusCode::NO_CONTENT;
         response
@@ -135,26 +135,26 @@ impl IntoResponse for () {
 }
 
 impl IntoResponse for StatusCode {
-    fn into_response(self) -> Response<ResponseBody> {
+    fn into_response(self) -> Response {
         let mut response = Response::new(ResponseBody::empty());
         *response.status_mut() = self;
         response
     }
 }
 
-impl<T> IntoResponse for Response<T>
+impl<T> IntoResponse for http::Response<T>
 where
     T: Into<ResponseBody>,
 {
     #[inline]
-    fn into_response(self) -> Response<ResponseBody> {
+    fn into_response(self) -> Response {
         self.map(Into::into)
     }
 }
 
 impl IntoResponse for &'static str {
     #[inline]
-    fn into_response(self) -> Response<ResponseBody> {
+    fn into_response(self) -> Response {
         let len = self.len() as u64;
         self::make_response(self.into(), "text/plain; charset=utf-8", Some(len))
     }
@@ -162,14 +162,14 @@ impl IntoResponse for &'static str {
 
 impl IntoResponse for String {
     #[inline]
-    fn into_response(self) -> Response<ResponseBody> {
+    fn into_response(self) -> Response {
         let len = self.len() as u64;
         self::make_response(self.into(), "text/plain; charset=utf-8", Some(len))
     }
 }
 
 impl IntoResponse for serde_json::Value {
-    fn into_response(self) -> Response<ResponseBody> {
+    fn into_response(self) -> Response {
         let body = self.to_string();
         let len = body.len() as u64;
         self::make_response(body.into(), "application/json", Some(len))
@@ -178,7 +178,7 @@ impl IntoResponse for serde_json::Value {
 
 /// Creates a JSON responder from the specified data.
 #[inline]
-pub fn json<T>(data: T) -> Response<ResponseBody>
+pub fn json<T>(data: T) -> Response
 where
     T: Serialize,
 {
@@ -188,7 +188,7 @@ where
 
 /// Creates a JSON response with pretty output from the specified data.
 #[inline]
-pub fn json_pretty<T>(data: T) -> Response<ResponseBody>
+pub fn json_pretty<T>(data: T) -> Response
 where
     T: Serialize,
 {
@@ -198,16 +198,16 @@ where
 
 /// Creates an HTML response using the specified data.
 #[inline]
-pub fn html<T>(body: T) -> Response<T>
+pub fn html<T>(body: T) -> Response
 where
     T: Into<ResponseBody>,
 {
-    self::make_response(body, "text/html", None)
+    self::make_response(body.into(), "text/html", None)
 }
 
 /// Create an instance of `Response<T>` with the provided body and content type.
-fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Response<T> {
-    let mut response = Response::new(body);
+fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> http::Response<T> {
+    let mut response = http::Response::new(body);
     response.headers_mut().insert(
         http::header::CONTENT_TYPE,
         http::header::HeaderValue::from_static(content_type),
@@ -225,14 +225,14 @@ fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Re
 
 pub mod preset {
     use {
-        super::ResponseBody,
-        http::{Response, StatusCode},
+        super::{Response, ResponseBody},
+        http::StatusCode,
         serde::Serialize,
     };
 
     /// A trait representing the *preset* for deriving the implementation of `IntoResponse`.
     pub trait Preset<T> {
-        fn into_response(t: T) -> Response<ResponseBody>;
+        fn into_response(t: T) -> Response;
     }
 
     #[allow(missing_debug_implementations)]
@@ -242,7 +242,7 @@ pub mod preset {
     where
         T: Serialize,
     {
-        fn into_response(data: T) -> Response<ResponseBody> {
+        fn into_response(data: T) -> Response {
             match serde_json::to_vec(&data) {
                 Ok(body) => {
                     let len = body.len() as u64;
@@ -264,7 +264,7 @@ pub mod preset {
     where
         T: Serialize,
     {
-        fn into_response(data: T) -> Response<ResponseBody> {
+        fn into_response(data: T) -> Response {
             match serde_json::to_vec_pretty(&data) {
                 Ok(body) => {
                     let len = body.len() as u64;
@@ -286,7 +286,7 @@ pub mod preset {
     where
         T: Into<ResponseBody>,
     {
-        fn into_response(body: T) -> Response<ResponseBody> {
+        fn into_response(body: T) -> Response {
             super::make_response(body.into(), "text/html", None)
         }
     }
@@ -298,7 +298,7 @@ pub mod preset {
     where
         T: Into<ResponseBody>,
     {
-        fn into_response(body: T) -> Response<ResponseBody> {
+        fn into_response(body: T) -> Response {
             super::make_response(body.into(), "text/plain; charset=utf-8", None)
         }
     }

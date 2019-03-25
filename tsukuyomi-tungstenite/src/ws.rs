@@ -3,15 +3,13 @@
 use {
     crate::{handshake::Handshake, websocket::WebSocket},
     futures::{Async, AsyncSink, Future, IntoFuture, Poll, Sink, StartSend, Stream},
-    http::Response,
     std::fmt,
     tokio_sync::mpsc,
     tsukuyomi::{
         error::Error,
-        future::TryFuture,
         input::Input,
-        output::body::ResponseBody,
-        responder::Responder,
+        output::{Response, ResponseBody},
+        responder::{Respond, Responder},
         upgrade::{Upgrade, Upgraded},
     },
     tungstenite::protocol::{Message, Role, WebSocketConfig, WebSocketContext},
@@ -81,16 +79,19 @@ pub struct WsRespond<F> {
     inner: Option<WsResponder<F>>,
 }
 
-impl<F, R> TryFuture for WsRespond<F>
+impl<F, R> Respond for WsRespond<F>
 where
     F: FnOnce(WebSocketStream) -> R,
     R: IntoFuture<Item = ()>,
     R::Error: Into<tsukuyomi::upgrade::Error>,
 {
-    type Ok = (Response<ResponseBody>, Option<WsConnection<R::Future>>);
+    type Upgrade = WsConnection<R::Future>;
     type Error = tsukuyomi::Error;
 
-    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+    fn poll_respond(
+        &mut self,
+        _: &mut Input<'_>,
+    ) -> Poll<(Response, Option<Self::Upgrade>), Self::Error> {
         let WsResponder {
             on_upgrade,
             config,
