@@ -24,7 +24,7 @@ use {
 };
 
 /// Create an instance of `Response<T>` with the provided body and content type.
-fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Response
+fn make_response<T>(body: T, content_type: &'static str) -> Response
 where
     T: Into<ResponseBody>,
 {
@@ -33,18 +33,10 @@ where
         http::header::CONTENT_TYPE,
         http::header::HeaderValue::from_static(content_type),
     );
-    if let Some(len) = len {
-        response.headers_mut().insert(
-            http::header::CONTENT_LENGTH,
-            len.to_string()
-                .parse()
-                .expect("should be a valid header value"),
-        );
-    }
     response
 }
 
-/// A trait that abstracts asynchronous tasks involving a reply to the client.
+/// A trait that abstracts the "reply" to the client.
 ///
 /// # Derivation
 ///
@@ -94,13 +86,14 @@ pub trait Responder {
     /// The error type that will be thrown by this responder.
     type Error: Into<Error>;
 
-    /// The `TryFuture` that represents the actual process of this responder.
+    /// The asynchronous task converted from this responder.
     type Respond: Respond<Upgrade = Self::Upgrade, Error = Self::Error>;
 
     /// Converts itself into a `Respond`.
     fn respond(self) -> Self::Respond;
 }
 
+/// The asynchronous task that generates a reply to client.
 pub trait Respond {
     type Upgrade: Upgrade;
     type Error: Into<Error>;
@@ -117,15 +110,14 @@ where
     T::Ok: IntoResponse,
 {
     type Upgrade = NeverUpgrade;
-    type Error = Error;
+    type Error = T::Error;
 
     fn poll_respond(
         &mut self,
         input: &mut Input<'_>,
     ) -> Poll<(Response, Option<Self::Upgrade>), Self::Error> {
-        let output = futures01::try_ready!(self.poll_ready(input).map_err(Into::into));
-        let response = output.into_response();
-        Ok((response, None).into())
+        let output = futures01::try_ready!(self.poll_ready(input));
+        Ok((output.into_response(), None).into())
     }
 }
 
@@ -135,7 +127,7 @@ where
     T: IntoResponse,
 {
     type Upgrade = crate::upgrade::NeverUpgrade;
-    type Error = Error;
+    type Error = Never;
     type Respond = self::impl_responder_for_T::IntoResponseRespond<T>;
 
     #[inline]
@@ -274,7 +266,7 @@ mod oneshot {
         E: Into<Error>,
     {
         type Upgrade = crate::upgrade::NeverUpgrade;
-        type Error = Error;
+        type Error = E;
         type Respond = OneshotRespond<F>;
 
         #[inline]

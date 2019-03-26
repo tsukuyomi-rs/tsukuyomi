@@ -1,12 +1,12 @@
 use {super::*, std::marker::PhantomData};
 
-/// A trait representing the *preset* for deriving the implementation of `IntoResponse`.
+/// A trait representing the *preset* for deriving the implementation of `Responder`.
 pub trait Preset<T> {
     type Upgrade: Upgrade;
     type Error: Into<Error>;
     type Respond: Respond<Upgrade = Self::Upgrade, Error = Self::Error>;
 
-    fn respond(t: T) -> Self::Respond;
+    fn respond(this: T) -> Self::Respond;
 }
 
 #[allow(missing_debug_implementations)]
@@ -72,8 +72,7 @@ mod json {
 
         fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let body = serde_json::to_vec(&self.0).map_err(crate::error::internal_server_error)?;
-            let len = body.len() as u64;
-            Ok(crate::output::make_response(body, "application/json", Some(len)).into())
+            Ok(crate::output::make_response(body, "application/json").into())
         }
     }
 }
@@ -117,8 +116,7 @@ mod json_pretty {
         fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let body = serde_json::to_vec_pretty(&self.0) //
                 .map_err(crate::error::internal_server_error)?;
-            let len = body.len() as u64;
-            Ok(crate::output::make_response(body, "application/json", Some(len)).into())
+            Ok(crate::output::make_response(body, "application/json").into())
         }
     }
 }
@@ -155,7 +153,7 @@ mod html {
 
         fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let body = self.0.take().expect("the future has already been polled.");
-            Ok(crate::output::make_response(body, "text/html", None).into())
+            Ok(crate::output::make_response(body, "text/html").into())
         }
     }
 }
