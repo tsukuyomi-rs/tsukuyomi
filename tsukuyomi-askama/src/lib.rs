@@ -45,18 +45,20 @@ where
     T: Template,
 {
     #[inline]
-    fn into_response(ctx: T, _: &Request<()>) -> tsukuyomi::output::Result {
+    fn into_response(ctx: T, _: &Request<()>) -> tsukuyomi::Result<tsukuyomi::output::Response> {
         Ok(self::into_response(ctx)?.map(Into::into))
     }
 }
 
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
-fn into_response<T>(t: T) -> tsukuyomi::output::Result<Response<String>>
+fn into_response<T>(t: T) -> tsukuyomi::Result<Response<String>>
 where
     T: Template,
 {
-    let body = t.render()?;
+    let body = t
+        .render()
+        .map_err(tsukuyomi::error::internal_server_error)?;
     let len = body.len();
 
     let mut response = Response::new(body);
@@ -70,9 +72,10 @@ where
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
 
-    response
-        .headers_mut()
-        .insert(CONTENT_LENGTH, len.to_string().parse()?);
+    response.headers_mut().insert(
+        CONTENT_LENGTH,
+        len.to_string().parse().expect("valid header value"),
+    );
 
     Ok(response)
 }

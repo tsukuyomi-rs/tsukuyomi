@@ -18,7 +18,7 @@ struct GraphiQLSource {
 
 impl IntoResponse for GraphiQLSource {
     #[inline]
-    fn into_response(self, _: &Request<()>) -> tsukuyomi::output::Result {
+    fn into_response(self, _: &Request<()>) -> tsukuyomi::Result<tsukuyomi::output::Response> {
         Ok(Response::builder()
             .header("content-type", "text/html; charset=utf-8")
             .body(self.source.into())

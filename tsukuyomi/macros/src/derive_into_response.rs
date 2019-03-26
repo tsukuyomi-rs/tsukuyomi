@@ -11,7 +11,7 @@ pub fn derive(input: TokenStream) -> syn::parse::Result<TokenStream> {
         ident: &input.ident,
         generics: &input.generics,
         bounds: &input.bounds,
-        kind: &input.kind,
+        preset_path: &input.preset_path,
     };
 
     Ok(ctx.to_tokens())
@@ -22,32 +22,12 @@ struct Input {
     ident: syn::Ident,
     generics: syn::Generics,
     bounds: Option<Vec<syn::WherePredicate>>,
-    kind: InputKind,
-}
-
-#[derive(Debug)]
-enum InputKind {
-    Struct(Target),
-    Enum(Vec<Variant>),
-    UsePreset(syn::Path),
-}
-
-#[derive(Debug)]
-enum Target {
-    NamedField(Option<syn::Field>),
-    UnnamedField(Option<syn::Field>),
-    Unit,
-}
-
-#[derive(Debug)]
-struct Variant {
-    ident: syn::Ident,
-    target: Target,
+    preset_path: syn::Path,
 }
 
 mod parsing {
     use {
-        super::{Input, InputKind, Target, Variant},
+        super::Input,
         proc_macro2::Span,
         std::fmt::Display,
         syn::{
@@ -82,13 +62,7 @@ mod parsing {
         fn parse(input: parse::ParseStream<'_>) -> parse::Result<Self> {
             let input: syn::DeriveInput = input.parse()?;
 
-            // The kind when specifying the path to `into_response` explicitly.
-            enum ExplicitKind {
-                // New style - a type that implements Preset<T>
-                Preset(syn::Path),
-            }
-
-            let mut explicit_path: Option<ExplicitKind> = None;
+            let mut preset_path: Option<syn::Path> = None;
             let mut bounds: Option<Vec<syn::WherePredicate>> = None;
 
             for attr in &input.attrs {
@@ -111,14 +85,14 @@ mod parsing {
                     if let syn::NestedMeta::Meta(syn::Meta::NameValue(ref pair)) = nm_item {
                         match pair.ident.to_string().as_ref() {
                             "preset" => {
-                                if explicit_path.is_some() {
+                                if preset_path.is_some() {
                                     return Err(parse_error_at(
                                         &pair,
                                         "the parameter 'preset' has already been provided",
                                     ));
                                 }
                                 let path = parse_literal(&pair.lit)?;
-                                explicit_path = Some(ExplicitKind::Preset(path));
+                                preset_path = Some(path);
                             }
                             "bound" => {
                                 let bound = parse_literal(&pair.lit)?;
@@ -135,85 +109,14 @@ mod parsing {
                 }
             }
 
-            let kind = match explicit_path {
-                Some(ExplicitKind::Preset(path)) => InputKind::UsePreset(path),
-                None => match input.data {
-                    syn::Data::Struct(data) => {
-                        let field = match data.fields {
-                            syn::Fields::Unit => Target::Unit,
-                            syn::Fields::Unnamed(fields) => {
-                                if fields.unnamed.len() > 1 {
-                                    return Err(parse_error_at(
-                                        &fields,
-                                        "multiple fields is not supported.",
-                                    ));
-                                }
-                                let field = fields.unnamed.into_iter().next();
-                                Target::UnnamedField(field)
-                            }
-                            syn::Fields::Named(fields) => {
-                                if fields.named.len() > 1 {
-                                    return Err(parse_error_at(
-                                        &fields,
-                                        "multiple fields is not supported.",
-                                    ));
-                                }
-                                let field = fields.named.into_iter().next();
-                                Target::NamedField(field)
-                            }
-                        };
-                        InputKind::Struct(field)
-                    }
-                    syn::Data::Enum(data) => {
-                        let mut variants = vec![];
-                        for variant in data.variants {
-                            match variant.fields {
-                                syn::Fields::Unit => variants.push(Variant {
-                                    ident: variant.ident,
-                                    target: Target::Unit,
-                                }),
-                                syn::Fields::Unnamed(fields) => {
-                                    if fields.unnamed.len() > 1 {
-                                        return Err(parse_error_at(
-                                            &fields,
-                                            "multiple fields is not supported.",
-                                        ));
-                                    }
-                                    let field = fields.unnamed.into_iter().next();
-                                    variants.push(Variant {
-                                        ident: variant.ident,
-                                        target: Target::UnnamedField(field),
-                                    });
-                                }
-
-                                syn::Fields::Named(fields) => {
-                                    if fields.named.len() > 1 {
-                                        return Err(parse_error_at(
-                                            &fields,
-                                            "multiple fields is not supported.",
-                                        ));
-                                    }
-                                    let field = fields.named.into_iter().next();
-                                    variants.push(Variant {
-                                        ident: variant.ident,
-                                        target: Target::NamedField(field),
-                                    });
-                                }
-                            }
-                        }
-                        InputKind::Enum(variants)
-                    }
-                    syn::Data::Union(..) => {
-                        return Err(parse_error("tagged union is not supported."));
-                    }
-                },
-            };
+            let preset_path =
+                preset_path.ok_or_else(|| parse_error("missing parameter `preset`"))?;
 
             Ok(Self {
                 ident: input.ident,
                 generics: input.generics,
                 bounds,
-                kind,
+                preset_path,
             })
         }
     }
@@ -224,7 +127,7 @@ struct Context<'a> {
     ident: &'a syn::Ident,
     generics: &'a syn::Generics,
     bounds: &'a Option<Vec<syn::WherePredicate>>,
-    kind: &'a InputKind,
+    preset_path: &'a syn::Path,
 }
 
 impl<'a> Context<'a> {
@@ -234,6 +137,7 @@ impl<'a> Context<'a> {
         let Self_ = self.ident;
         let IntoResponse: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::IntoResponse);
         let Result: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Result);
+        let Response: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Response);
         let Request: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Request);
         let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Preset);
 
@@ -252,101 +156,15 @@ impl<'a> Context<'a> {
         }
 
         // The path of types drawn at the position of the associated type.
-        let body: TokenStream;
-        match &self.kind {
-            InputKind::UsePreset(path) => {
-                where_clause
-                    .get_or_insert_with(|| syn::WhereClause {
-                        where_token: Default::default(),
-                        predicates: Default::default(),
-                    })
-                    .predicates
-                    .push(syn::parse_quote!(#path: #Preset<Self>));
-
-                body = quote!(< #path as #Preset<Self> >::into_response(self, request));
-            }
-
-            InputKind::Struct(target) => match target {
-                Target::Unit | Target::UnnamedField(None) | Target::NamedField(None) => {
-                    body = quote!(#IntoResponse::into_response((), request));
-                }
-
-                Target::UnnamedField(Some(field)) => {
-                    let bounded_ty = &field.ty;
-                    where_clause
-                        .get_or_insert_with(|| syn::WhereClause {
-                            where_token: Default::default(),
-                            predicates: Default::default(),
-                        })
-                        .predicates
-                        .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
-                    body = quote!(match self {
-                        #Self_(__arg_0) => #IntoResponse::into_response(__arg_0, request),
-                    });
-                }
-
-                Target::NamedField(Some(field)) => {
-                    let bounded_ty = &field.ty;
-                    let field_ident = &field.ident;
-                    where_clause
-                        .get_or_insert_with(|| syn::WhereClause {
-                            where_token: Default::default(),
-                            predicates: Default::default(),
-                        })
-                        .predicates
-                        .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
-                    body = quote!(match self {
-                        #Self_ { #field_ident: __arg_0, } => #IntoResponse::into_response(__arg_0, request),
-                    });
-                }
-            },
-
-            InputKind::Enum(variants) => {
-                let variants = variants.iter().map(|variant| {
-                    let Variant = &variant.ident;
-                    match &variant.target {
-                        Target::Unit => quote!(
-                            #Self_ :: #Variant => #IntoResponse::into_response((), request)
-                        ),
-
-                        Target::UnnamedField(None) => {
-                            quote!(#Self_ :: #Variant () => #IntoResponse::into_response((), request))
-                        }
-                        Target::UnnamedField(Some(field)) => {
-                            let bounded_ty = &field.ty;
-                            where_clause
-                                .get_or_insert_with(|| syn::WhereClause {
-                                    where_token: Default::default(),
-                                    predicates: Default::default(),
-                                })
-                                .predicates
-                                .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
-                            quote!(#Self_ :: #Variant (__arg_0) => #IntoResponse::into_response(__arg_0, request))
-                        }
-
-                        Target::NamedField(None) => {
-                            quote!(#Self_ :: #Variant {} => #IntoResponse::into_response((), request))
-                        }
-                        Target::NamedField(Some(field)) => {
-                            let bounded_ty = &field.ty;
-                            where_clause
-                                .get_or_insert_with(|| syn::WhereClause {
-                                    where_token: Default::default(),
-                                    predicates: Default::default(),
-                                })
-                                .predicates
-                                .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
-                            let field = &field.ident;
-                            quote!(#Self_ :: #Variant { #field: __arg_0, } => #IntoResponse::into_response(__arg_0, request))
-                        }
-                    }
-                });
-
-                body = quote!(match self {
-                    #( #variants, )*
-                });
-            }
-        };
+        let preset_path = &self.preset_path;
+        where_clause
+            .get_or_insert_with(|| syn::WhereClause {
+                where_token: Default::default(),
+                predicates: Default::default(),
+            })
+            .predicates
+            .push(syn::parse_quote!(#preset_path: #Preset<Self>));
+        let body = quote!(< #preset_path as #Preset<Self> >::into_response(self, request));
 
         // appends the trailing comma if not exist.
         if let Some(where_clause) = &mut where_clause {
@@ -360,7 +178,7 @@ impl<'a> Context<'a> {
             #where_clause
             {
                 #[inline]
-                fn into_response(self, request: &#Request<()>) -> #Result {
+                fn into_response(self, request: &#Request<()>) -> #Result<#Response> {
                     #body
                 }
             }
@@ -404,147 +222,6 @@ mod tests {
     }
 
     t! {
-        name: implicit_unit_struct,
-        source: { struct A; },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A {
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
-                    tsukuyomi::output::internal::IntoResponse::into_response((), request)
-                }
-            }
-        },
-    }
-
-    t! {
-        name: implicit_unnamed_struct,
-        source: {
-            struct A(String);
-        },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A
-            where
-                String: tsukuyomi::output::internal::IntoResponse,
-            {
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
-                    match self {
-                        A(__arg_0) =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
-                    }
-                }
-            }
-        },
-    }
-
-    t! {
-        name: implicit_unnamed_struct_with_empty_fields,
-        source: {
-            struct A();
-        },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A {
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
-                    tsukuyomi::output::internal::IntoResponse::into_response((), request)
-                }
-            }
-        },
-    }
-
-    t! {
-        name: implicit_named_struct,
-        source: {
-            struct A {
-                b: B,
-            }
-        },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A
-            where
-                B: tsukuyomi::output::internal::IntoResponse,
-            {
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
-                    match self {
-                        A { b: __arg_0, } =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
-                    }
-                }
-            }
-        },
-    }
-
-    t! {
-        name: implicit_named_struct_with_empty_fields,
-        source: {
-            struct A {}
-        },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A {
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
-                    tsukuyomi::output::internal::IntoResponse::into_response((), request)
-                }
-            }
-        },
-    }
-
-    t! {
-        name: implicit_enum,
-        source: {
-            enum Either {
-                A(A),
-                B { b: B },
-                C,
-                D(),
-                E {},
-            }
-        },
-        expected: {
-            impl tsukuyomi::output::internal::IntoResponse for Either
-            where
-                A: tsukuyomi::output::internal::IntoResponse,
-                B: tsukuyomi::output::internal::IntoResponse,
-            {
-                #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
-                    match self {
-                        Either::A(__arg_0) =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
-                        Either::B { b: __arg_0, } =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
-                        Either::C =>
-                            tsukuyomi::output::internal::IntoResponse::into_response((), request),
-                        Either::D() =>
-                            tsukuyomi::output::internal::IntoResponse::into_response((), request),
-                        Either::E {} =>
-                            tsukuyomi::output::internal::IntoResponse::into_response((), request),
-                    }
-                }
-            }
-        },
-    }
-
-    t! {
         name: explicit_preset,
         source: {
             #[response(preset = "my::Preset")]
@@ -562,7 +239,9 @@ mod tests {
                 fn into_response(
                     self,
                     request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
+                ) -> tsukuyomi::output::internal::Result<
+                    tsukuyomi::output::internal::Response
+                > {
                     <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
                 }
             }
@@ -593,7 +272,9 @@ mod tests {
                 fn into_response(
                     self,
                     request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result {
+                ) -> tsukuyomi::output::internal::Result<
+                    tsukuyomi::output::internal::Response
+                > {
                     <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
                 }
             }
@@ -601,52 +282,10 @@ mod tests {
     }
 
     t! {
-        name: failcase_unsupported_union,
-        source: {
-            union A {}
-        },
-        error: "tagged union is not supported.",
-    }
-
-    t! {
-        name: failcase_unnamed_struct_with_multiple_fields,
+        name: failcase_missing_preset,
         source: {
             struct A(B, C);
         },
-        error: "multiple fields is not supported.",
-    }
-
-    t! {
-        name: failcase_named_struct_with_multiple_fields,
-        source: {
-            struct A {
-                b: B,
-                c: C,
-            }
-        },
-        error: "multiple fields is not supported.",
-    }
-
-    t! {
-        name: failcase_enum_contains_unnamed_multiple_fields,
-        source: {
-            enum A {
-                B(C, D),
-            }
-        },
-        error: "multiple fields is not supported.",
-    }
-
-    t! {
-        name: failcase_enum_contains_named_multiple_fields,
-        source: {
-            enum A {
-                B {
-                    c: C,
-                    d: D,
-                },
-            }
-        },
-        error: "multiple fields is not supported.",
+        error: "missing parameter `preset`",
     }
 }

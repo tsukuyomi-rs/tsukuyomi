@@ -24,7 +24,7 @@ impl Redirect {
 
 impl IntoResponse for Redirect {
     #[inline]
-    fn into_response(self, _: &Request<()>) -> super::Result {
+    fn into_response(self, _: &Request<()>) -> crate::Result<Response<ResponseBody>> {
         Ok(Response::builder()
             .status(self.status)
             .header("location", &*self.location)

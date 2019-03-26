@@ -293,7 +293,7 @@ impl AsFail for Error {
 }
 
 impl IntoResponse for Error {
-    fn into_response(self, _: &Request<()>) -> crate::output::Result {
+    fn into_response(self, _: &Request<()>) -> Result<crate::output::Response> {
         Ok(self.into_response())
     }
 }

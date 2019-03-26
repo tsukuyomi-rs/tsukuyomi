@@ -97,7 +97,7 @@ impl ProxyResponse {
 }
 
 impl IntoResponse for ProxyResponse {
-    fn into_response(mut self, _: &Request<()>) -> tsukuyomi::output::Result {
+    fn into_response(mut self, _: &Request<()>) -> tsukuyomi::Result<tsukuyomi::output::Response> {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
