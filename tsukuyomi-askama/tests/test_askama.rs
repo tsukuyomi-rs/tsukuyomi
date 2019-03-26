@@ -5,7 +5,7 @@ use {
         config::prelude::*, //
         test::{self, loc, TestServer},
         App,
-        IntoResponse,
+        Responder,
     },
 };
 
@@ -16,7 +16,7 @@ fn test_version_sync() {
 
 #[test]
 fn test_template_derivation() -> test::Result {
-    #[derive(Template, IntoResponse)]
+    #[derive(Template, Responder)]
     #[template(source = "Hello, {{ name }}.", ext = "html")]
     #[response(preset = "tsukuyomi_askama::Askama")]
     struct Index {

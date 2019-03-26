@@ -14,10 +14,9 @@ use {
     askama::Template,
     http::{
         header::{HeaderValue, CONTENT_LENGTH, CONTENT_TYPE},
-        Request, Response,
+        Response,
     },
     mime_guess::get_mime_type_str,
-    tsukuyomi::output::preset::Preset,
 };
 
 /// An implementor of `Preset` for deriving the implementation of `IntoResponse`
@@ -27,9 +26,9 @@ use {
 ///
 /// ```
 /// use askama::Template;
-/// use tsukuyomi::IntoResponse;
+/// use tsukuyomi::Responder;
 ///
-/// #[derive(Template, IntoResponse)]
+/// #[derive(Template, Responder)]
 /// #[template(source = "Hello, {{name}}!", ext = "html")]
 /// #[response(preset = "tsukuyomi_askama::Askama")]
 /// struct Index {
@@ -40,19 +39,48 @@ use {
 #[allow(missing_debug_implementations)]
 pub struct Askama(());
 
-impl<T> Preset<T> for Askama
-where
-    T: Template,
-{
-    #[inline]
-    fn into_response(ctx: T, _: &Request<()>) -> tsukuyomi::Result<tsukuyomi::output::Response> {
-        Ok(self::into_response(ctx)?.map(Into::into))
+mod preset {
+    use super::*;
+    use tsukuyomi::{
+        future::{Poll, TryFuture},
+        input::Input,
+        output::preset::Preset,
+        upgrade::NeverUpgrade,
+    };
+
+    impl<T> Preset<T> for Askama
+    where
+        T: Template,
+    {
+        type Upgrade = NeverUpgrade;
+        type Error = tsukuyomi::Error;
+        type Respond = AskamaRespond<T>;
+
+        fn respond(this: T) -> AskamaRespond<T> {
+            AskamaRespond(this)
+        }
+    }
+
+    #[allow(missing_debug_implementations)]
+    pub struct AskamaRespond<T>(T);
+
+    impl<T> TryFuture for AskamaRespond<T>
+    where
+        T: Template,
+    {
+        type Ok = Response<String>;
+        type Error = tsukuyomi::Error;
+
+        #[inline]
+        fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            Ok(to_response(&self.0)?.into())
+        }
     }
 }
 
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
-fn into_response<T>(t: T) -> tsukuyomi::Result<Response<String>>
+fn to_response<T>(t: &T) -> tsukuyomi::Result<Response<String>>
 where
     T: Template,
 {
@@ -152,7 +180,7 @@ mod renderer {
         #[inline]
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let ctx = tsukuyomi::future::try_ready!(self.0.poll_ready(input).map_err(Into::into));
-            let response = super::into_response(ctx)?;
+            let response = super::to_response(&ctx)?;
             Ok(response.into())
         }
     }

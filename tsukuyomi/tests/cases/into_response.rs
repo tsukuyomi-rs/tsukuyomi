@@ -10,29 +10,49 @@ use {
 #[test]
 fn test_into_response_preset() -> test::Result {
     use {
-        http::{Request, Response},
         std::fmt,
-        tsukuyomi::output::preset::Preset,
+        tsukuyomi::{
+            future::{Poll, TryFuture},
+            input::Input,
+            output::{preset::Preset, Response},
+            upgrade::NeverUpgrade,
+        },
     };
 
     struct Display;
 
     impl<T> Preset<T> for Display
     where
-        T: std::fmt::Display,
+        T: fmt::Display,
     {
-        fn into_response(
-            this: T,
-            _: &Request<()>,
-        ) -> tsukuyomi::Result<tsukuyomi::output::Response> {
-            Ok(Response::builder()
-                .header("content-type", "text/plain; charset=utf-8")
-                .body(this.to_string().into())
-                .unwrap())
+        type Upgrade = NeverUpgrade;
+        type Error = tsukuyomi::Error;
+        type Respond = DisplayRespond<T>;
+
+        fn respond(this: T) -> Self::Respond {
+            DisplayRespond(this)
         }
     }
 
-    #[derive(tsukuyomi::output::IntoResponse)]
+    struct DisplayRespond<T>(T);
+
+    impl<T> TryFuture for DisplayRespond<T>
+    where
+        T: fmt::Display,
+    {
+        type Ok = Response;
+        type Error = tsukuyomi::Error;
+
+        fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            Ok(http::Response::builder()
+                .header("content-type", "text/plain; charset=utf-8")
+                .body(self.0.to_string().into())
+                .unwrap()
+                .into())
+        }
+    }
+
+    #[derive(tsukuyomi::output::Responder)]
     #[response(preset = "Display")]
     struct Foo(String);
 
@@ -42,7 +62,7 @@ fn test_into_response_preset() -> test::Result {
         }
     }
 
-    #[derive(tsukuyomi::output::IntoResponse)]
+    #[derive(tsukuyomi::output::Responder)]
     #[response(preset = "Display", bound = "T: fmt::Display")]
     struct Bar<T>(T);
 

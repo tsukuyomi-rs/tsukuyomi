@@ -6,11 +6,11 @@ use {
         extractor,
         server::Server,
         App,
-        IntoResponse,
+        Responder,
     },
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize, IntoResponse)]
+#[derive(Clone, Debug, Serialize, Deserialize, Responder)]
 #[response(preset = "tsukuyomi::output::preset::Json")]
 struct User {
     name: String,

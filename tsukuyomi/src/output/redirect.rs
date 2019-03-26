@@ -1,6 +1,6 @@
 use {
     super::*,
-    http::{Request, Response, StatusCode},
+    http::{Response, StatusCode},
     std::borrow::Cow,
 };
 
@@ -24,12 +24,12 @@ impl Redirect {
 
 impl IntoResponse for Redirect {
     #[inline]
-    fn into_response(self, _: &Request<()>) -> crate::Result<Response<ResponseBody>> {
-        Ok(Response::builder()
+    fn into_response(self) -> Response<ResponseBody> {
+        Response::builder()
             .status(self.status)
             .header("location", &*self.location)
             .body(ResponseBody::empty())
-            .expect("should be a valid response"))
+            .expect("should be a valid response")
     }
 }
 

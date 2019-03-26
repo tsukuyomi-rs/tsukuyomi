@@ -5,11 +5,11 @@ use {
         config::prelude::*, //
         server::Server,
         App,
-        IntoResponse,
+        Responder,
     },
 };
 
-#[derive(Template, IntoResponse)]
+#[derive(Template, Responder)]
 #[template(path = "index.html")]
 #[response(preset = "tsukuyomi_askama::Askama")]
 struct Index {

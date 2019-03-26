@@ -8,7 +8,7 @@
 
 extern crate proc_macro;
 
-mod derive_into_response;
+mod derive_responder;
 mod path_impl;
 
 use proc_macro::TokenStream;
@@ -16,11 +16,11 @@ use proc_macro::TokenStream;
 /// A procedural macro for deriving the implementation of `IntoResponse`.
 ///
 /// See the documentation of the trait `IntoResponse` for details.
-#[proc_macro_derive(IntoResponse, attributes(response))]
+#[proc_macro_derive(Responder, attributes(response))]
 #[allow(nonstandard_style)]
 #[cfg_attr(tarpaulin, skip)]
 pub fn IntoResponse(input: TokenStream) -> TokenStream {
-    crate::derive_into_response::derive(input.into())
+    crate::derive_responder::derive(input.into())
         .unwrap_or_else(|err| err.to_compile_error())
         .into()
 }

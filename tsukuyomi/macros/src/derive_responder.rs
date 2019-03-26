@@ -135,11 +135,8 @@ impl<'a> Context<'a> {
     pub fn to_tokens(&self) -> TokenStream {
         // The path of items used in the derived impl.
         let Self_ = self.ident;
-        let IntoResponse: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::IntoResponse);
-        let Result: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Result);
-        let Response: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Response);
-        let Request: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Request);
-        let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Preset);
+        let Responder: syn::Path = syn::parse_quote!(tsukuyomi::output::Responder);
+        let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::preset::Preset);
 
         let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
 
@@ -164,7 +161,6 @@ impl<'a> Context<'a> {
             })
             .predicates
             .push(syn::parse_quote!(#preset_path: #Preset<Self>));
-        let body = quote!(< #preset_path as #Preset<Self> >::into_response(self, request));
 
         // appends the trailing comma if not exist.
         if let Some(where_clause) = &mut where_clause {
@@ -174,12 +170,16 @@ impl<'a> Context<'a> {
         }
 
         quote!(
-            impl #impl_generics #IntoResponse for #Self_ #ty_generics
+            impl #impl_generics #Responder for #Self_ #ty_generics
             #where_clause
             {
+                type Upgrade = < #preset_path as #Preset<Self> >::Upgrade;
+                type Error = < #preset_path as #Preset<Self> >::Error;
+                type Respond = < #preset_path as #Preset<Self> >::Respond;
+
                 #[inline]
-                fn into_response(self, request: &#Request<()>) -> #Result<#Response> {
-                    #body
+                fn respond(self) -> Self::Respond {
+                    < #preset_path as #Preset<Self> >::respond(self)
                 }
             }
         )
@@ -231,18 +231,17 @@ mod tests {
             }
         },
         expected: {
-            impl tsukuyomi::output::internal::IntoResponse for A
+            impl tsukuyomi::output::Responder for A
             where
-                my::Preset: tsukuyomi::output::internal::Preset<Self>,
+                my::Preset: tsukuyomi::output::preset::Preset<Self>,
             {
+                type Upgrade = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Upgrade;
+                type Error = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Error;
+                type Respond = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Respond;
+
                 #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result<
-                    tsukuyomi::output::internal::Response
-                > {
-                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
+                fn respond(self) -> Self::Respond {
+                    <my::Preset as tsukuyomi::output::preset::Preset<Self> >::respond(self)
                 }
             }
         },
@@ -262,20 +261,19 @@ mod tests {
             }
         },
         expected: {
-            impl<X, Y> tsukuyomi::output::internal::IntoResponse for A<X, Y>
+            impl<X, Y> tsukuyomi::output::Responder for A<X, Y>
             where
                 X: Foo,
                 Y: Foo,
-                my::Preset: tsukuyomi::output::internal::Preset<Self>,
+                my::Preset: tsukuyomi::output::preset::Preset<Self>,
             {
+                type Upgrade = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Upgrade;
+                type Error = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Error;
+                type Respond = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Respond;
+
                 #[inline]
-                fn into_response(
-                    self,
-                    request: &tsukuyomi::output::internal::Request<()>
-                ) -> tsukuyomi::output::internal::Result<
-                    tsukuyomi::output::internal::Response
-                > {
-                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
+                fn respond(self) -> Self::Respond {
+                    <my::Preset as tsukuyomi::output::preset::Preset<Self> >::respond(self)
                 }
             }
         },

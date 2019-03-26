@@ -101,7 +101,7 @@ mod logging {
     impl<H> TryFuture for HandleWithLogging<H>
     where
         H: TryFuture,
-        H::Ok: IntoResponse,
+        H::Ok: IntoResponse, // FIXME: switch to Responder
     {
         type Ok = Response<ResponseBody>;
         type Error = Never;
@@ -109,14 +109,14 @@ mod logging {
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let result: tsukuyomi::Result<_> = match self.inner.poll_ready(input) {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Ok(Async::Ready(output)) => output.into_response(input.request).map_err(Into::into),
+                Ok(Async::Ready(output)) => Ok(output.into_response()),
                 Err(err) => Err(err.into()),
             };
 
             //
             let response = result
                 .map(|response| response.map(Into::into))
-                .unwrap_or_else(|e| e.into_response(input.request).expect("never fail"));
+                .unwrap_or_else(|e| e.into_response());
 
             let log_level = match response.status().as_u16() {
                 400...599 => log::Level::Error,

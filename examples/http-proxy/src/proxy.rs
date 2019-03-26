@@ -1,9 +1,6 @@
 use {
     futures::prelude::*,
-    http::{
-        header::{Entry, HeaderMap},
-        Request,
-    },
+    http::header::{Entry, HeaderMap},
     reqwest::IntoUrl,
     std::{mem, net::SocketAddr},
     tsukuyomi::{
@@ -97,14 +94,14 @@ impl ProxyResponse {
 }
 
 impl IntoResponse for ProxyResponse {
-    fn into_response(mut self, _: &Request<()>) -> tsukuyomi::Result<tsukuyomi::output::Response> {
+    fn into_response(mut self) -> tsukuyomi::output::Response {
         let mut response = http::Response::new(());
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
 
         let body_stream = ResponseBody::wrap_stream(self.resp.into_body());
 
-        Ok(response.map(|_| body_stream))
+        response.map(|_| body_stream)
     }
 }
 

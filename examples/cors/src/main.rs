@@ -4,14 +4,14 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         extractor,
-        output::IntoResponse,
         server::Server,
         App,
+        Responder,
     },
     tsukuyomi_cors::CORS,
 };
 
-#[derive(Debug, Deserialize, Serialize, IntoResponse)]
+#[derive(Debug, Deserialize, Serialize, Responder)]
 #[response(preset = "tsukuyomi::output::preset::Json")]
 struct UserInfo {
     username: String,
