@@ -14,7 +14,7 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
     let app = App::create(
         chain![
             path!("/").to(endpoint::get().reply("Hello.")),
-            path!("*").to(endpoint::reply(Err::<(), _>(StatusCode::NOT_FOUND)))
+            path!("*").to(endpoint::reply(StatusCode::NOT_FOUND))
         ]
         .modify(log),
     )?;
@@ -109,18 +109,14 @@ mod logging {
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let result = match self.inner.poll_ready(input) {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Ok(Async::Ready(output)) => output.into_response(input.request).map_err(Into::into),
+                Ok(Async::Ready(output)) => Ok(output.into_response()),
                 Err(err) => Err(err.into()),
             };
 
             //
             let response = result
                 .map(|response| response.map(Into::into))
-                .unwrap_or_else(|e| {
-                    e.into_response(input.request)
-                        .expect("never fails")
-                        .map(Into::into)
-                });
+                .unwrap_or_else(|e| e.into_response());
 
             let log_level = match response.status().as_u16() {
                 400...599 => log::Level::Error,

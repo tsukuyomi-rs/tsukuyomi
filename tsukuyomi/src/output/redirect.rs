@@ -23,16 +23,13 @@ impl Redirect {
 }
 
 impl IntoResponse for Redirect {
-    type Body = ();
-    type Error = Never;
-
     #[inline]
-    fn into_response(self, _: &Request<()>) -> Result<Response<Self::Body>, Self::Error> {
-        Ok(Response::builder()
+    fn into_response(self) -> Response<ResponseBody> {
+        Response::builder()
             .status(self.status)
             .header("location", &*self.location)
-            .body(())
-            .expect("should be a valid response"))
+            .body(ResponseBody::empty())
+            .expect("should be a valid response")
     }
 }
 

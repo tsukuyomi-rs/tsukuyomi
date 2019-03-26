@@ -207,7 +207,6 @@ where
     S: ScalarValue + Send + 'static,
     for<'a> &'a S: ScalarRefValue<'a>,
 {
-    type Response = Response<Vec<u8>>;
     type Upgrade = NeverUpgrade;
     type Error = Error;
     type Respond = GraphQLRespond;
@@ -274,7 +273,7 @@ pub struct GraphQLRespond {
 }
 
 impl TryFuture for GraphQLRespond {
-    type Ok = (Response<Vec<u8>>, Option<NeverUpgrade>);
+    type Ok = Response<Vec<u8>>;
     type Error = Error;
 
     #[inline]
@@ -283,6 +282,6 @@ impl TryFuture for GraphQLRespond {
             .handle
             .poll()
             .map_err(tsukuyomi::error::internal_server_error))
-        .map(|res| (res, None).into())
+        .map(Into::into)
     }
 }

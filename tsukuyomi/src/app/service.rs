@@ -26,7 +26,7 @@ use {
         service::Service,
     },
     std::{fmt, marker::PhantomData, net::SocketAddr, sync::Arc},
-    tokio_buf::BufStream,
+    tokio_buf::SizeHint,
     tokio_io::{AsyncRead, AsyncWrite},
 };
 
@@ -218,10 +218,7 @@ impl<C: Concurrency> Future for AppFuture<C> {
 
         let (mut output, upgrade) = match polled {
             Ok(output) => output,
-            Err(err) => {
-                let response = err.into_response(&self.request)?;
-                (response, None)
-            }
+            Err(err) => (err.into_response(), None),
         };
 
         self.process_before_reply(&mut output);
@@ -245,11 +242,32 @@ impl<C: Concurrency> AppBody<C> {
 }
 
 impl<C: Concurrency> HttpBody for AppBody<C> {
-    type Data = <ResponseBody as BufStream>::Item;
-    type Error = <ResponseBody as BufStream>::Error;
+    type Data = <ResponseBody as HttpBody>::Data;
+    type Error = <ResponseBody as HttpBody>::Error;
 
+    #[inline]
     fn poll_data(&mut self) -> Poll<Option<Self::Data>, Self::Error> {
-        self.data.poll_buf()
+        self.data.poll_data()
+    }
+
+    #[inline]
+    fn poll_trailers(&mut self) -> Poll<Option<HeaderMap>, Self::Error> {
+        self.data.poll_trailers()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> SizeHint {
+        self.data.size_hint()
+    }
+
+    #[inline]
+    fn is_end_stream(&self) -> bool {
+        self.data.is_end_stream()
+    }
+
+    #[inline]
+    fn content_length(&self) -> Option<u64> {
+        self.data.content_length()
     }
 }
 

@@ -3,14 +3,13 @@
 use {
     crate::{handshake::Handshake, websocket::WebSocket},
     futures::{Async, AsyncSink, Future, IntoFuture, Poll, Sink, StartSend, Stream},
-    http::Response,
     std::fmt,
     tokio_sync::mpsc,
     tsukuyomi::{
         error::Error,
-        future::TryFuture,
         input::Input,
-        responder::Responder,
+        output::{Response, ResponseBody},
+        responder::{Respond, Responder},
         upgrade::{Upgrade, Upgraded},
     },
     tungstenite::protocol::{Message, Role, WebSocketConfig, WebSocketContext},
@@ -66,7 +65,6 @@ where
     R: IntoFuture<Item = ()>,
     R::Error: Into<tsukuyomi::upgrade::Error>,
 {
-    type Response = Response<()>;
     type Upgrade = WsConnection<R::Future>; // private
     type Error = Error;
     type Respond = WsRespond<F>; // private
@@ -81,16 +79,19 @@ pub struct WsRespond<F> {
     inner: Option<WsResponder<F>>,
 }
 
-impl<F, R> TryFuture for WsRespond<F>
+impl<F, R> Respond for WsRespond<F>
 where
     F: FnOnce(WebSocketStream) -> R,
     R: IntoFuture<Item = ()>,
     R::Error: Into<tsukuyomi::upgrade::Error>,
 {
-    type Ok = (Response<()>, Option<WsConnection<R::Future>>);
+    type Upgrade = WsConnection<R::Future>;
     type Error = tsukuyomi::Error;
 
-    fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+    fn poll_respond(
+        &mut self,
+        _: &mut Input<'_>,
+    ) -> Poll<(Response, Option<Self::Upgrade>), Self::Error> {
         let WsResponder {
             on_upgrade,
             config,
@@ -101,7 +102,9 @@ where
             .take()
             .expect("the future has already been polled");
 
-        let response = handshake.to_response();
+        let response = handshake
+            .to_response() //
+            .map(|_| ResponseBody::empty());
 
         let (tx_recv, rx_recv) = mpsc::unbounded_channel();
         let (tx_send, rx_send) = mpsc::unbounded_channel();

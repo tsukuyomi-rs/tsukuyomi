@@ -284,13 +284,13 @@ mod impl_endpoint_for_cors {
 mod impl_modify_handler_for_cors {
     use {
         super::CORS,
-        either::Either,
         http::{Method, Response},
         tsukuyomi::{
             error::Error,
             future::{Async, Poll, TryFuture},
             handler::{metadata::Metadata, Handler, ModifyHandler},
             input::Input,
+            util::Either,
         },
     };
 

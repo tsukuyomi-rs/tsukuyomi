@@ -8,12 +8,11 @@ use {
         future::{Async, Poll, TryFuture},
         handler::Handler,
         input::Input,
-        output::{IntoResponse, ResponseBody},
-        responder::Responder,
+        output::Response,
+        responder::{Respond, Responder},
         upgrade::{Error as UpgradeError, Upgrade, Upgraded},
         util::Never,
     },
-    http::Response,
     std::fmt,
 };
 
@@ -30,11 +29,10 @@ pub(super) mod imp {
         super::Concurrency,
         crate::{
             input::Input,
-            output::ResponseBody,
+            output::Response,
             upgrade::{Error as UpgradeError, Upgraded},
         },
         futures01::Poll,
-        http::Response,
     };
 
     pub trait ConcurrencyImpl: Sized + 'static {
@@ -47,7 +45,7 @@ pub(super) mod imp {
         fn poll_ready_handle(
             handle: &mut Self::Handle,
             input: &mut Input<'_>,
-        ) -> Poll<(Response<ResponseBody>, Option<Self::Upgrade>), crate::error::Error>;
+        ) -> Poll<(Response, Option<Self::Upgrade>), crate::error::Error>;
 
         fn poll_upgrade(conn: &mut Self::Upgrade, io: &mut Upgraded<'_>) -> Poll<(), UpgradeError>;
         fn close_upgrade(conn: &mut Self::Upgrade);
@@ -76,7 +74,7 @@ impl self::imp::ConcurrencyImpl for DefaultConcurrency {
     fn poll_ready_handle(
         handle: &mut Self::Handle,
         input: &mut Input<'_>,
-    ) -> Poll<(Response<ResponseBody>, Option<Self::Upgrade>), Error> {
+    ) -> Poll<(Response, Option<Self::Upgrade>), Error> {
         (handle)(input)
     }
 
@@ -89,13 +87,12 @@ impl self::imp::ConcurrencyImpl for DefaultConcurrency {
     }
 }
 
-type BoxedHandle = dyn FnMut(
-        &mut Input<'_>,
-    ) -> Poll<
-        (Response<ResponseBody>, Option<Box<dyn Upgrade + Send>>),
-        crate::error::Error,
-    > + Send
-    + 'static;
+type BoxedHandle =
+    dyn FnMut(
+            &mut Input<'_>,
+        ) -> Poll<(Response, Option<Box<dyn Upgrade + Send>>), crate::error::Error>
+        + Send
+        + 'static;
 
 pub struct BoxedHandler(Box<dyn Fn() -> Box<BoxedHandle> + Send + Sync + 'static>);
 
@@ -131,12 +128,7 @@ where
                     }
                     State::Second(ref mut respond) => {
                         let (res, up) =
-                            futures01::try_ready!(respond.poll_ready(input).map_err(Into::into));
-
-                        let res = res
-                            .into_response(input.request)
-                            .map_err(Into::into)?
-                            .map(Into::into);
+                            futures01::try_ready!(respond.poll_respond(input).map_err(Into::into));
 
                         let up = up.map(|up| Box::new(up) as Box<dyn Upgrade + Send>);
 

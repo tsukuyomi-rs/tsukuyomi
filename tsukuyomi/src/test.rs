@@ -245,7 +245,7 @@ pub mod header {
 
 pub mod body {
     use super::*;
-    use tokio_buf::BufStreamExt;
+    use {izanami::http::body::HttpBodyExt, tokio_buf::BufStreamExt};
 
     pub fn eq<T>(expected: T) -> EqBody<T>
     where
@@ -265,7 +265,7 @@ pub mod body {
             let actual = res
                 .server
                 .runtime
-                .block_on(body.collect::<Vec<u8>>())
+                .block_on(body.into_buf_stream().collect::<Vec<u8>>())
                 .expect("TODO: return error value");
 
             if self.0.as_ref() == &*actual {
