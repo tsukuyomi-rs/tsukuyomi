@@ -8,7 +8,7 @@ use {
     crate::{
         app::{App, AppService},
         input::body::RequestBody,
-        output::body::ResponseBody,
+        output::ResponseBody,
     },
     bytes::Bytes,
     http::{Request, Response},

@@ -377,7 +377,7 @@ fn optional() -> test::Result {
             .to({
                 endpoint::post() //
                     .extract(extractor)
-                    .call(|params: Option<Params>| {
+                    .call_async(|params: Option<Params>| {
                         if let Some(params) = params {
                             Ok(format!("{},{}", params.id, params.name))
                         } else {

@@ -1,4 +1,5 @@
 use {
+    bytes::{Buf, Bytes},
     futures::prelude::*,
     http::header::{Entry, HeaderMap},
     reqwest::IntoUrl,
@@ -8,7 +9,7 @@ use {
         chain,
         extractor::{self, ExtractorExt}, //
         future::TryFuture,
-        output::{body::ResponseBody, IntoResponse},
+        output::{IntoResponse, ResponseBody},
         Error,
         Extractor,
     },
@@ -99,7 +100,11 @@ impl IntoResponse for ProxyResponse {
         *response.status_mut() = self.resp.status();
         mem::swap(response.headers_mut(), self.resp.headers_mut());
 
-        let body_stream = ResponseBody::wrap_stream(self.resp.into_body());
+        let body_stream = ResponseBody::wrap_stream(
+            self.resp
+                .into_body()
+                .map(|chunk| chunk.collect::<Bytes>().into()),
+        );
 
         response.map(|_| body_stream)
     }

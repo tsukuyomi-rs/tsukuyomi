@@ -191,6 +191,20 @@ impl<C: Concurrency> AppFuture<C> {
                 output.headers_mut().extend(v.map(|v| (k.clone(), v)));
             }
         }
+
+        // TODO: optimize
+        if let Some(len) = output.body().content_length() {
+            output
+                .headers_mut()
+                .entry(header::CONTENT_LENGTH)
+                .expect("valid header name")
+                .or_insert_with(|| {
+                    len.to_string()
+                        .parse()
+                        .expect("integers is valid header value")
+                });
+            output.headers_mut().remove(header::TRANSFER_ENCODING);
+        }
     }
 }
 

@@ -33,7 +33,7 @@ fn main() -> Result<(), ExitFailure> {
         path!("/user/info") //
             .to(endpoint::post() //
                 .extract(extractor::body::json())
-                .call(|info: UserInfo| -> tsukuyomi::Result<_> {
+                .call_async(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
                         return Err(tsukuyomi::error::bad_request(
                             "the field confirm_password is not matched to password.",

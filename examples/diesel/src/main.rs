@@ -93,9 +93,10 @@ fn main() -> failure::Fallible<()> {
                             .filter(dsl::id.eq(id))
                             .get_result::<Post>(&*conn)
                             .optional()
-                            .map_err(tsukuyomi::error::internal_server_error)
+                            .map_err(tsukuyomi::error::internal_server_error)?
+                            .ok_or_else(|| tsukuyomi::error::not_found("missing post"))
                     })
-                    .map(|post_opt| post_opt.map(tsukuyomi::output::json))))
+                    .map(tsukuyomi::output::json)))
         ])
     })?;
 

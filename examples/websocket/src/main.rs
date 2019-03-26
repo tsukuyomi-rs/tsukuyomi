@@ -1,9 +1,9 @@
 use {
     futures::prelude::*,
+    izanami::http::response::Redirect,
     tsukuyomi::{
         config::prelude::*, //
         fs::Staticfiles,
-        output::redirect,
         server::Server,
         App,
     },
@@ -39,7 +39,9 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
                     })
                 })),
         path!("/") //
-            .to(endpoint::reply(redirect::to("/index.html"))),
+            .to(endpoint::reply(Redirect::moved_permanently(
+                "/index.html".parse().expect("valid URI")
+            ))),
         Staticfiles::new(STATIC_PATH)
     ])?;
 

@@ -1,12 +1,14 @@
 //! Components for constructing HTTP responses.
 
-pub mod body;
 pub mod preset;
-pub mod redirect;
 
-pub use {
-    self::body::ResponseBody, //
-    tsukuyomi_macros::Responder,
+pub use tsukuyomi_macros::Responder;
+
+// re-export from izanami.
+#[doc(no_inline)]
+pub use izanami::http::{
+    body::Body as ResponseBody,
+    response::{IntoResponse, Response},
 };
 
 use {
@@ -18,68 +20,8 @@ use {
         upgrade::{NeverUpgrade, Upgrade},
         util::Never,
     },
-    http::StatusCode,
     serde::Serialize,
 };
-
-/// Type alias of `http::Response<T>` that fixed the body type to `ResponseBody.
-pub type Response = http::Response<ResponseBody>;
-
-/// A trait representing the conversion into an HTTP response.
-pub trait IntoResponse {
-    /// Converts itself into an HTTP response.
-    fn into_response(self) -> Response;
-}
-
-impl IntoResponse for () {
-    fn into_response(self) -> Response {
-        let mut response = Response::new(ResponseBody::empty());
-        *response.status_mut() = StatusCode::NO_CONTENT;
-        response
-    }
-}
-
-impl IntoResponse for StatusCode {
-    fn into_response(self) -> Response {
-        let mut response = Response::new(ResponseBody::empty());
-        *response.status_mut() = self;
-        response
-    }
-}
-
-impl<T> IntoResponse for http::Response<T>
-where
-    T: Into<ResponseBody>,
-{
-    #[inline]
-    fn into_response(self) -> Response {
-        self.map(Into::into)
-    }
-}
-
-impl IntoResponse for &'static str {
-    #[inline]
-    fn into_response(self) -> Response {
-        let len = self.len() as u64;
-        self::make_response(self, "text/plain; charset=utf-8", Some(len))
-    }
-}
-
-impl IntoResponse for String {
-    #[inline]
-    fn into_response(self) -> Response {
-        let len = self.len() as u64;
-        self::make_response(self, "text/plain; charset=utf-8", Some(len))
-    }
-}
-
-impl IntoResponse for serde_json::Value {
-    fn into_response(self) -> Response {
-        let body = self.to_string();
-        let len = body.len() as u64;
-        self::make_response(body, "application/json", Some(len))
-    }
-}
 
 /// Create an instance of `Response<T>` with the provided body and content type.
 fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Response
@@ -217,91 +159,6 @@ mod impl_responder_for_T {
         fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let output = self.0.take().expect("the future has already been polled.");
             Ok(output.into())
-        }
-    }
-}
-
-impl<T> Responder for Option<T>
-where
-    T: Responder,
-{
-    type Upgrade = T::Upgrade;
-    type Error = Error;
-    type Respond = self::impl_responder_for_option::OptionRespond<T::Respond>;
-
-    fn respond(self) -> Self::Respond {
-        self::impl_responder_for_option::OptionRespond(self.map(Responder::respond))
-    }
-}
-
-#[allow(nonstandard_style)]
-mod impl_responder_for_option {
-    use super::*;
-
-    #[allow(missing_debug_implementations)]
-    pub struct OptionRespond<R>(pub(super) Option<R>);
-
-    impl<R> Respond for OptionRespond<R>
-    where
-        R: Respond,
-    {
-        type Upgrade = R::Upgrade;
-        type Error = Error;
-
-        #[inline]
-        fn poll_respond(
-            &mut self,
-            input: &mut Input<'_>,
-        ) -> Poll<(Response, Option<Self::Upgrade>), Self::Error> {
-            match self.0 {
-                Some(ref mut res) => res.poll_respond(input).map_err(Into::into),
-                None => Err(crate::error::not_found("None")),
-            }
-        }
-    }
-}
-
-impl<T, E> Responder for Result<T, E>
-where
-    T: Responder,
-    E: Into<Error>,
-{
-    type Upgrade = T::Upgrade;
-    type Error = Error;
-    type Respond = self::impl_responder_for_result::ResultRespond<T::Respond, E>;
-
-    fn respond(self) -> Self::Respond {
-        self::impl_responder_for_result::ResultRespond(self.map(Responder::respond).map_err(Some))
-    }
-}
-
-#[allow(nonstandard_style)]
-mod impl_responder_for_result {
-    use super::*;
-
-    #[allow(missing_debug_implementations)]
-    pub struct ResultRespond<R, E>(pub(super) Result<R, Option<E>>);
-
-    impl<R, E> Respond for ResultRespond<R, E>
-    where
-        R: Respond,
-        E: Into<Error>,
-    {
-        type Upgrade = R::Upgrade;
-        type Error = Error;
-
-        #[inline]
-        fn poll_respond(
-            &mut self,
-            input: &mut Input<'_>,
-        ) -> Poll<(Response, Option<Self::Upgrade>), Self::Error> {
-            match self.0 {
-                Ok(ref mut res) => res.poll_respond(input).map_err(Into::into),
-                Err(ref mut e) => Err(e
-                    .take()
-                    .expect("the future has already been polled.")
-                    .into()),
-            }
         }
     }
 }

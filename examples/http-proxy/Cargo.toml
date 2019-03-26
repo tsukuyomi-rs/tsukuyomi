@@ -13,6 +13,7 @@ doc = false
 [dependencies]
 tsukuyomi = { path = "../../tsukuyomi" }
 
+bytes = "0.4"
 exitfailure = "0.5"
 futures = "0.1"
 http = "0.1"

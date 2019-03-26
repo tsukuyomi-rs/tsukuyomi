@@ -9,7 +9,7 @@ use {
         input::Input,
         output::{Responder, ResponseBody},
     },
-    bytes::{BufMut, Bytes, BytesMut},
+    bytes::{BufMut, BytesMut},
     filetime::FileTime,
     futures01::{Async, Poll, Stream},
     http::{
@@ -31,7 +31,6 @@ use {
         time::Duration,
     },
     time::Timespec,
-    tokio_buf::BufStream,
     tokio_threadpool::blocking as poll_blocking,
 };
 
@@ -330,17 +329,8 @@ impl ReadStream {
     }
 }
 
-impl BufStream for ReadStream {
-    type Item = io::Cursor<Bytes>;
-    type Error = io::Error;
-
-    fn poll_buf(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        self.poll().map(|x| x.map(|opt| opt.map(io::Cursor::new)))
-    }
-}
-
 impl Stream for ReadStream {
-    type Item = Bytes;
+    type Item = izanami::http::body::Data;
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -366,7 +356,7 @@ impl Stream for ReadStream {
                     }));
 
                     if !buf.is_empty() {
-                        return Ok(Async::Ready(Some(buf.freeze())));
+                        return Ok(Async::Ready(Some(buf.freeze().into())));
                     }
                 }
                 State::Eof => {
