@@ -28,7 +28,6 @@ pub mod handler;
 pub mod input;
 pub mod modifiers;
 pub mod output;
-pub mod responder;
 pub mod server;
 pub mod test;
 pub mod upgrade;
@@ -45,8 +44,7 @@ pub use crate::{
     extractor::Extractor,
     handler::{Handler, ModifyHandler},
     input::Input,
-    output::IntoResponse,
-    responder::Responder,
+    output::{IntoResponse, Responder},
 };
 
 /// Re-export of crates used within the framework and frequently used on the user side.

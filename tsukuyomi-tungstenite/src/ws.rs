@@ -8,8 +8,7 @@ use {
     tsukuyomi::{
         error::Error,
         input::Input,
-        output::{Response, ResponseBody},
-        responder::{Respond, Responder},
+        output::{Respond, Responder, Response, ResponseBody},
         upgrade::{Upgrade, Upgraded},
     },
     tungstenite::protocol::{Message, Role, WebSocketConfig, WebSocketContext},

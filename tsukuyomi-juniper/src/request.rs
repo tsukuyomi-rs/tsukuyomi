@@ -15,7 +15,7 @@ use {
             localmap::LocalData,
             Input,
         },
-        responder::Responder,
+        output::Responder,
         upgrade::NeverUpgrade,
     },
 };
