@@ -1,7 +1,7 @@
 use {
     bytes::Bytes,
-    http::Response,
-    tsukuyomi::output::{body::ResponseBody, IntoResponse},
+    http::{Request, Response},
+    tsukuyomi::output::IntoResponse,
 };
 
 /// Creates a handler function which returns a GraphiQL source.
@@ -18,10 +18,10 @@ struct GraphiQLSource {
 
 impl IntoResponse for GraphiQLSource {
     #[inline]
-    fn into_response(self) -> Response<ResponseBody> {
-        Response::builder()
+    fn into_response(self, _: &Request<()>) -> tsukuyomi::output::Result {
+        Ok(Response::builder()
             .header("content-type", "text/html; charset=utf-8")
             .body(self.source.into())
-            .expect("should be a valid response")
+            .expect("should be a valid response"))
     }
 }

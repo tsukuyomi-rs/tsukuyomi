@@ -233,8 +233,8 @@ impl<'a> Context<'a> {
         // The path of items used in the derived impl.
         let Self_ = self.ident;
         let IntoResponse: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::IntoResponse);
-        let Response: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Response);
-        let ResponseBody: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::ResponseBody);
+        let Result: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Result);
+        let Request: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Request);
         let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::internal::Preset);
 
         let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
@@ -263,12 +263,12 @@ impl<'a> Context<'a> {
                     .predicates
                     .push(syn::parse_quote!(#path: #Preset<Self>));
 
-                body = quote!(< #path as #Preset<Self> >::into_response(self));
+                body = quote!(< #path as #Preset<Self> >::into_response(self, request));
             }
 
             InputKind::Struct(target) => match target {
                 Target::Unit | Target::UnnamedField(None) | Target::NamedField(None) => {
-                    body = quote!(#IntoResponse::into_response(()));
+                    body = quote!(#IntoResponse::into_response((), request));
                 }
 
                 Target::UnnamedField(Some(field)) => {
@@ -281,7 +281,7 @@ impl<'a> Context<'a> {
                         .predicates
                         .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                     body = quote!(match self {
-                        #Self_(__arg_0) => #IntoResponse::into_response(__arg_0),
+                        #Self_(__arg_0) => #IntoResponse::into_response(__arg_0, request),
                     });
                 }
 
@@ -296,7 +296,7 @@ impl<'a> Context<'a> {
                         .predicates
                         .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                     body = quote!(match self {
-                        #Self_ { #field_ident: __arg_0, } => #IntoResponse::into_response(__arg_0),
+                        #Self_ { #field_ident: __arg_0, } => #IntoResponse::into_response(__arg_0, request),
                     });
                 }
             },
@@ -306,11 +306,11 @@ impl<'a> Context<'a> {
                     let Variant = &variant.ident;
                     match &variant.target {
                         Target::Unit => quote!(
-                            #Self_ :: #Variant => #IntoResponse::into_response(())
+                            #Self_ :: #Variant => #IntoResponse::into_response((), request)
                         ),
 
                         Target::UnnamedField(None) => {
-                            quote!(#Self_ :: #Variant () => #IntoResponse::into_response(()))
+                            quote!(#Self_ :: #Variant () => #IntoResponse::into_response((), request))
                         }
                         Target::UnnamedField(Some(field)) => {
                             let bounded_ty = &field.ty;
@@ -321,11 +321,11 @@ impl<'a> Context<'a> {
                                 })
                                 .predicates
                                 .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
-                            quote!(#Self_ :: #Variant (__arg_0) => #IntoResponse::into_response(__arg_0))
+                            quote!(#Self_ :: #Variant (__arg_0) => #IntoResponse::into_response(__arg_0, request))
                         }
 
                         Target::NamedField(None) => {
-                            quote!(#Self_ :: #Variant {} => #IntoResponse::into_response(()))
+                            quote!(#Self_ :: #Variant {} => #IntoResponse::into_response((), request))
                         }
                         Target::NamedField(Some(field)) => {
                             let bounded_ty = &field.ty;
@@ -337,7 +337,7 @@ impl<'a> Context<'a> {
                                 .predicates
                                 .push(syn::parse_quote!(#bounded_ty: #IntoResponse));
                             let field = &field.ident;
-                            quote!(#Self_ :: #Variant { #field: __arg_0, } => #IntoResponse::into_response(__arg_0))
+                            quote!(#Self_ :: #Variant { #field: __arg_0, } => #IntoResponse::into_response(__arg_0, request))
                         }
                     }
                 });
@@ -360,7 +360,7 @@ impl<'a> Context<'a> {
             #where_clause
             {
                 #[inline]
-                fn into_response(self) -> #Response<#ResponseBody> {
+                fn into_response(self, request: &#Request<()>) -> #Result {
                     #body
                 }
             }
@@ -410,11 +410,10 @@ mod tests {
             impl tsukuyomi::output::internal::IntoResponse for A {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
-                    tsukuyomi::output::internal::IntoResponse::into_response(())
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
+                    tsukuyomi::output::internal::IntoResponse::into_response((), request)
                 }
             }
         },
@@ -432,13 +431,12 @@ mod tests {
             {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
                     match self {
                         A(__arg_0) =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0),
+                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
                     }
                 }
             }
@@ -454,11 +452,10 @@ mod tests {
             impl tsukuyomi::output::internal::IntoResponse for A {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
-                    tsukuyomi::output::internal::IntoResponse::into_response(())
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
+                    tsukuyomi::output::internal::IntoResponse::into_response((), request)
                 }
             }
         },
@@ -478,13 +475,12 @@ mod tests {
             {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
                     match self {
                         A { b: __arg_0, } =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0),
+                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
                     }
                 }
             }
@@ -500,11 +496,10 @@ mod tests {
             impl tsukuyomi::output::internal::IntoResponse for A {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
-                    tsukuyomi::output::internal::IntoResponse::into_response(())
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
+                    tsukuyomi::output::internal::IntoResponse::into_response((), request)
                 }
             }
         },
@@ -529,21 +524,20 @@ mod tests {
             {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
                     match self {
                         Either::A(__arg_0) =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0),
+                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
                         Either::B { b: __arg_0, } =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0),
+                            tsukuyomi::output::internal::IntoResponse::into_response(__arg_0, request),
                         Either::C =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(()),
+                            tsukuyomi::output::internal::IntoResponse::into_response((), request),
                         Either::D() =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(()),
+                            tsukuyomi::output::internal::IntoResponse::into_response((), request),
                         Either::E {} =>
-                            tsukuyomi::output::internal::IntoResponse::into_response(()),
+                            tsukuyomi::output::internal::IntoResponse::into_response((), request),
                     }
                 }
             }
@@ -566,11 +560,10 @@ mod tests {
             {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
-                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self)
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
+                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
                 }
             }
         },
@@ -598,11 +591,10 @@ mod tests {
             {
                 #[inline]
                 fn into_response(
-                    self
-                ) -> tsukuyomi::output::internal::Response<
-                    tsukuyomi::output::internal::ResponseBody
-                > {
-                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self)
+                    self,
+                    request: &tsukuyomi::output::internal::Request<()>
+                ) -> tsukuyomi::output::internal::Result {
+                    <my::Preset as tsukuyomi::output::internal::Preset<Self> >::into_response(self, request)
                 }
             }
         },

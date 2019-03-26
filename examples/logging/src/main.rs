@@ -107,16 +107,16 @@ mod logging {
         type Error = Never;
 
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            let result = match self.inner.poll_ready(input) {
+            let result: tsukuyomi::Result<_> = match self.inner.poll_ready(input) {
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Ok(Async::Ready(output)) => Ok(output.into_response()),
+                Ok(Async::Ready(output)) => output.into_response(input.request).map_err(Into::into),
                 Err(err) => Err(err.into()),
             };
 
             //
             let response = result
                 .map(|response| response.map(Into::into))
-                .unwrap_or_else(|e| e.into_response());
+                .unwrap_or_else(|e| e.into_response(input.request).expect("never fail"));
 
             let log_level = match response.status().as_u16() {
                 400...599 => log::Level::Error,

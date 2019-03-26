@@ -42,14 +42,15 @@ where
     T::Ok: IntoResponse,
 {
     type Upgrade = NeverUpgrade;
-    type Error = T::Error;
+    type Error = Error;
 
     fn poll_respond(
         &mut self,
         input: &mut Input<'_>,
     ) -> Poll<(Response, Option<Self::Upgrade>), Self::Error> {
-        self.poll_ready(input)
-            .map(|x| x.map(|output| (output.into_response(), None)))
+        let output = futures01::try_ready!(self.poll_ready(input).map_err(Into::into));
+        let response = output.into_response(input.request)?;
+        Ok((response, None).into())
     }
 }
 
@@ -59,7 +60,7 @@ where
     T: IntoResponse,
 {
     type Upgrade = crate::upgrade::NeverUpgrade;
-    type Error = Never;
+    type Error = Error;
     type Respond = self::impl_responder_for_T::IntoResponseRespond<T>;
 
     #[inline]
@@ -283,7 +284,7 @@ mod oneshot {
         E: Into<Error>,
     {
         type Upgrade = crate::upgrade::NeverUpgrade;
-        type Error = E;
+        type Error = Error;
         type Respond = OneshotRespond<F>;
 
         #[inline]

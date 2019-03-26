@@ -110,7 +110,7 @@ where
                 })
                 .to_string();
 
-                let mut response = err.into_response().map(|_| body.into());
+                let mut response = err.into_response(input.request)?.map(|_| body.into());
                 response.headers_mut().insert(
                     http::header::CONTENT_TYPE,
                     http::header::HeaderValue::from_static("application/json"),

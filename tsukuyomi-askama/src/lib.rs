@@ -13,11 +13,11 @@
 use {
     askama::Template,
     http::{
-        header::{HeaderValue, CONTENT_TYPE},
-        Response, StatusCode,
+        header::{HeaderValue, CONTENT_LENGTH, CONTENT_TYPE},
+        Request, Response,
     },
     mime_guess::get_mime_type_str,
-    tsukuyomi::output::{body::ResponseBody, preset::Preset},
+    tsukuyomi::output::preset::Preset,
 };
 
 /// An implementor of `Preset` for deriving the implementation of `IntoResponse`
@@ -45,35 +45,36 @@ where
     T: Template,
 {
     #[inline]
-    fn into_response(ctx: T) -> Response<ResponseBody> {
-        self::into_response(ctx).map(Into::into)
+    fn into_response(ctx: T, _: &Request<()>) -> tsukuyomi::output::Result {
+        Ok(self::into_response(ctx)?.map(Into::into))
     }
 }
 
 #[inline]
 #[allow(clippy::needless_pass_by_value)]
-fn into_response<T>(t: T) -> Response<String>
+fn into_response<T>(t: T) -> tsukuyomi::output::Result<Response<String>>
 where
     T: Template,
 {
-    match t.render() {
-        Ok(body) => {
-            let mut response = Response::new(body);
-            let content_type = t
-                .extension()
-                .and_then(get_mime_type_str)
-                .unwrap_or("text/html; charset=utf-8");
-            response
-                .headers_mut()
-                .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-            response
-        }
-        Err(e) => {
-            let mut response = Response::new(e.to_string());
-            *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-            response
-        }
-    }
+    let body = t.render()?;
+    let len = body.len();
+
+    let mut response = Response::new(body);
+
+    let content_type = t
+        .extension()
+        .and_then(get_mime_type_str)
+        .unwrap_or("text/html; charset=utf-8");
+
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+
+    response
+        .headers_mut()
+        .insert(CONTENT_LENGTH, len.to_string().parse()?);
+
+    Ok(response)
 }
 
 /// Creates a `ModifyHandler` that renders the outputs of handlers as Askama template.
@@ -148,7 +149,8 @@ mod renderer {
         #[inline]
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             let ctx = tsukuyomi::future::try_ready!(self.0.poll_ready(input).map_err(Into::into));
-            Ok(super::into_response(ctx).into())
+            let response = super::into_response(ctx)?;
+            Ok(response.into())
         }
     }
 }

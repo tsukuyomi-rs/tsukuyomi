@@ -11,7 +11,7 @@ use {
             param::Params,
             Cookies, Input,
         },
-        output::{IntoResponse, ResponseBody},
+        output::ResponseBody,
         upgrade::Upgraded,
         util::Never,
     },

@@ -11,7 +11,7 @@ use {
         util::Never,
     },
     failure::{AsFail, Fail},
-    http::{Response, StatusCode},
+    http::{Request, Response, StatusCode},
     std::{any::TypeId, fmt, io},
 };
 
@@ -260,6 +260,12 @@ impl Error {
         self.inner.to_response()
     }
 
+    pub(crate) fn into_response(self) -> crate::output::Response {
+        let (mut parts, ()) = self.inner.to_response().into_parts();
+        parts.extensions.insert(self);
+        Response::from_parts(parts, ResponseBody::empty())
+    }
+
     /// Attempts to downcast the underlying error value into the specified concrete type.
     pub fn downcast<T: HttpError>(self) -> Result<T> {
         match self.inner.downcast::<T>() {
@@ -287,9 +293,7 @@ impl AsFail for Error {
 }
 
 impl IntoResponse for Error {
-    fn into_response(self) -> Response<ResponseBody> {
-        let (mut parts, ()) = self.inner.to_response().into_parts();
-        parts.extensions.insert(self);
-        Response::from_parts(parts, ResponseBody::empty())
+    fn into_response(self, _: &Request<()>) -> crate::output::Result {
+        Ok(self.into_response())
     }
 }

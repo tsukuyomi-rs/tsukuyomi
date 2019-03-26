@@ -3,30 +3,81 @@
 pub mod body;
 pub mod redirect;
 
-pub use {self::body::ResponseBody, tsukuyomi_macros::IntoResponse};
+pub use {
+    self::body::ResponseBody, //
+    tsukuyomi_macros::IntoResponse,
+};
 
-use {http::StatusCode, serde::Serialize};
+use {
+    crate::error::HttpError, //
+    failure::{AsFail, Fail},
+    http::{Request, StatusCode},
+    serde::Serialize,
+    std::fmt,
+};
 
 // the private API for custom derive.
 #[doc(hidden)]
 pub mod internal {
     pub use {
-        crate::{
-            error::Error,
-            output::{preset::Preset, IntoResponse, ResponseBody},
-        },
-        http::{Request, Response},
+        crate::output::{preset::Preset, Error, IntoResponse, Response, Result},
+        http::Request,
     };
 }
 
 /// Type alias of `http::Response<T>` that fixed the body type to `ResponseBody.
 pub type Response = http::Response<ResponseBody>;
 
+/// The error type which occurs during creating HTTP responses.
+#[derive(Debug)]
+pub struct Error(failure::Error);
+
+impl<E> From<E> for Error
+where
+    E: Into<failure::Error>,
+{
+    fn from(err: E) -> Self {
+        Error(err.into())
+    }
+}
+
+impl std::ops::Deref for Error {
+    type Target = failure::Error;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "output error: {}", self.0)
+    }
+}
+
+impl AsFail for Error {
+    fn as_fail(&self) -> &dyn Fail {
+        self.0.as_fail()
+    }
+}
+
+impl HttpError for Error {
+    fn status_code(&self) -> StatusCode {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+/// The type alias of return value from `IntoResponse::into_response`.
+pub type Result<T = Response> = std::result::Result<T, Error>;
+
 /// A trait representing the conversion into an HTTP response.
 ///
-/// # Examples
+/// # Derivation
 ///
-/// This macro has a parameter `#[response(preset = "..")]`, which specifies
+/// The custom derive `IntoResponse` is provided for reduce boilerplates around
+/// trait implementations.
+///
+/// The macro has a parameter `#[response(preset = "..")]`, which specifies
 /// the path to a type that implements a trait [`Preset`]:
 ///
 /// ```
@@ -61,7 +112,7 @@ pub type Response = http::Response<ResponseBody>;
 /// # fn main() {}
 /// ```
 ///
-/// # Notes
+/// ## Notes
 /// 1. When `preset = ".."` is omitted for struct, a field in the specified
 ///    struct is chosen and the the implementation of `IntoResponse` for its
 ///    type is used. For example, the impls derived to the following types
@@ -121,24 +172,27 @@ pub type Response = http::Response<ResponseBody>;
 ///    }
 ///    ```
 ///
-/// [`Preset`]: https://tsukuyomi-rs.github.io/tsukuyomi/tsukuyomi/output/preset/trait.Preset.html
+/// [`Preset`]: ./preset/trait.Preset.html
 pub trait IntoResponse {
-    fn into_response(self) -> Response;
+    /// Converts itself into an HTTP response.
+    ///
+    /// The generated response will change based of the request information.
+    fn into_response(self, request: &Request<()>) -> Result;
 }
 
 impl IntoResponse for () {
-    fn into_response(self) -> Response {
+    fn into_response(self, _: &Request<()>) -> Result {
         let mut response = Response::new(ResponseBody::empty());
         *response.status_mut() = StatusCode::NO_CONTENT;
-        response
+        Ok(response)
     }
 }
 
 impl IntoResponse for StatusCode {
-    fn into_response(self) -> Response {
+    fn into_response(self, _: &Request<()>) -> Result {
         let mut response = Response::new(ResponseBody::empty());
         *response.status_mut() = self;
-        response
+        Ok(response)
     }
 }
 
@@ -147,67 +201,76 @@ where
     T: Into<ResponseBody>,
 {
     #[inline]
-    fn into_response(self) -> Response {
-        self.map(Into::into)
+    fn into_response(self, _: &Request<()>) -> Result {
+        Ok(self.map(Into::into))
     }
 }
 
 impl IntoResponse for &'static str {
     #[inline]
-    fn into_response(self) -> Response {
+    fn into_response(self, _: &Request<()>) -> Result {
         let len = self.len() as u64;
-        self::make_response(self.into(), "text/plain; charset=utf-8", Some(len))
+        Ok(self::make_response(
+            self,
+            "text/plain; charset=utf-8",
+            Some(len),
+        ))
     }
 }
 
 impl IntoResponse for String {
     #[inline]
-    fn into_response(self) -> Response {
+    fn into_response(self, _: &Request<()>) -> Result {
         let len = self.len() as u64;
-        self::make_response(self.into(), "text/plain; charset=utf-8", Some(len))
+        Ok(self::make_response(
+            self,
+            "text/plain; charset=utf-8",
+            Some(len),
+        ))
     }
 }
 
 impl IntoResponse for serde_json::Value {
-    fn into_response(self) -> Response {
+    fn into_response(self, _: &Request<()>) -> Result {
         let body = self.to_string();
         let len = body.len() as u64;
-        self::make_response(body.into(), "application/json", Some(len))
+        Ok(self::make_response(body, "application/json", Some(len)))
     }
 }
 
 /// Creates a JSON responder from the specified data.
 #[inline]
-pub fn json<T>(data: T) -> Response
+pub fn json<T>(data: T) -> impl IntoResponse
 where
     T: Serialize,
 {
-    use self::preset::Preset;
-    self::preset::Json::into_response(data)
+    self::preset::render::<_, self::preset::Json>(data)
 }
 
 /// Creates a JSON response with pretty output from the specified data.
 #[inline]
-pub fn json_pretty<T>(data: T) -> Response
+pub fn json_pretty<T>(data: T) -> impl IntoResponse
 where
     T: Serialize,
 {
-    use self::preset::Preset;
-    self::preset::JsonPretty::into_response(data)
+    self::preset::render::<_, self::preset::JsonPretty>(data)
 }
 
 /// Creates an HTML response using the specified data.
 #[inline]
-pub fn html<T>(body: T) -> Response
+pub fn html<T>(data: T) -> impl IntoResponse
 where
     T: Into<ResponseBody>,
 {
-    self::make_response(body.into(), "text/html", None)
+    self::preset::render::<_, self::preset::Html>(data)
 }
 
 /// Create an instance of `Response<T>` with the provided body and content type.
-fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> http::Response<T> {
-    let mut response = http::Response::new(body);
+fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> Response
+where
+    T: Into<ResponseBody>,
+{
+    let mut response = Response::new(body.into());
     response.headers_mut().insert(
         http::header::CONTENT_TYPE,
         http::header::HeaderValue::from_static(content_type),
@@ -225,14 +288,33 @@ fn make_response<T>(body: T, content_type: &'static str, len: Option<u64>) -> ht
 
 pub mod preset {
     use {
-        super::{Response, ResponseBody},
-        http::StatusCode,
+        super::{IntoResponse, ResponseBody, Result},
+        http::Request,
         serde::Serialize,
+        std::marker::PhantomData,
     };
+
+    pub fn render<T, P>(t: T) -> impl IntoResponse
+    where
+        P: Preset<T>,
+    {
+        struct Render<T, P>(T, PhantomData<P>);
+
+        impl<T, P> IntoResponse for Render<T, P>
+        where
+            P: Preset<T>,
+        {
+            fn into_response(self, request: &Request<()>) -> Result {
+                P::into_response(self.0, request)
+            }
+        }
+
+        Render(t, PhantomData::<P>)
+    }
 
     /// A trait representing the *preset* for deriving the implementation of `IntoResponse`.
     pub trait Preset<T> {
-        fn into_response(t: T) -> Response;
+        fn into_response(t: T, request: &Request<()>) -> Result;
     }
 
     #[allow(missing_debug_implementations)]
@@ -242,18 +324,10 @@ pub mod preset {
     where
         T: Serialize,
     {
-        fn into_response(data: T) -> Response {
-            match serde_json::to_vec(&data) {
-                Ok(body) => {
-                    let len = body.len() as u64;
-                    super::make_response(body.into(), "application/json", Some(len))
-                }
-                Err(_e) => {
-                    let mut res = Response::new(ResponseBody::empty());
-                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                    res
-                }
-            }
+        fn into_response(data: T, _: &Request<()>) -> Result {
+            let body = serde_json::to_vec(&data)?;
+            let len = body.len() as u64;
+            Ok(super::make_response(body, "application/json", Some(len)))
         }
     }
 
@@ -264,18 +338,10 @@ pub mod preset {
     where
         T: Serialize,
     {
-        fn into_response(data: T) -> Response {
-            match serde_json::to_vec_pretty(&data) {
-                Ok(body) => {
-                    let len = body.len() as u64;
-                    super::make_response(body.into(), "application/json", Some(len))
-                }
-                Err(_e) => {
-                    let mut res = Response::new(ResponseBody::empty());
-                    *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                    res
-                }
-            }
+        fn into_response(data: T, _: &Request<()>) -> Result {
+            let body = serde_json::to_vec_pretty(&data)?;
+            let len = body.len() as u64;
+            Ok(super::make_response(body, "application/json", Some(len)))
         }
     }
 
@@ -286,8 +352,8 @@ pub mod preset {
     where
         T: Into<ResponseBody>,
     {
-        fn into_response(body: T) -> Response {
-            super::make_response(body.into(), "text/html", None)
+        fn into_response(body: T, _: &Request<()>) -> Result {
+            Ok(super::make_response(body, "text/html", None))
         }
     }
 
@@ -298,8 +364,12 @@ pub mod preset {
     where
         T: Into<ResponseBody>,
     {
-        fn into_response(body: T) -> Response {
-            super::make_response(body.into(), "text/plain; charset=utf-8", None)
+        fn into_response(body: T, _: &Request<()>) -> Result {
+            Ok(super::make_response(
+                body,
+                "text/plain; charset=utf-8",
+                None,
+            ))
         }
     }
 }
