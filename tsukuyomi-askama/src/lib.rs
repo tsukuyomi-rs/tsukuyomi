@@ -44,7 +44,7 @@ mod preset {
     use tsukuyomi::{
         future::{Poll, TryFuture},
         input::Input,
-        output::preset::Preset,
+        output::Preset,
         upgrade::NeverUpgrade,
     };
 

@@ -14,7 +14,7 @@ fn test_into_response_preset() -> test::Result {
         tsukuyomi::{
             future::{Poll, TryFuture},
             input::Input,
-            output::{preset::Preset, Response},
+            output::{Preset, Response},
             upgrade::NeverUpgrade,
         },
     };

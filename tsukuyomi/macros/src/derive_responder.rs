@@ -136,7 +136,7 @@ impl<'a> Context<'a> {
         // The path of items used in the derived impl.
         let Self_ = self.ident;
         let Responder: syn::Path = syn::parse_quote!(tsukuyomi::output::Responder);
-        let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::preset::Preset);
+        let Preset: syn::Path = syn::parse_quote!(tsukuyomi::output::Preset);
 
         let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
 
@@ -233,15 +233,15 @@ mod tests {
         expected: {
             impl tsukuyomi::output::Responder for A
             where
-                my::Preset: tsukuyomi::output::preset::Preset<Self>,
+                my::Preset: tsukuyomi::output::Preset<Self>,
             {
-                type Upgrade = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Upgrade;
-                type Error = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Error;
-                type Respond = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Respond;
+                type Upgrade = < my::Preset as tsukuyomi::output::Preset<Self> >::Upgrade;
+                type Error = < my::Preset as tsukuyomi::output::Preset<Self> >::Error;
+                type Respond = < my::Preset as tsukuyomi::output::Preset<Self> >::Respond;
 
                 #[inline]
                 fn respond(self) -> Self::Respond {
-                    <my::Preset as tsukuyomi::output::preset::Preset<Self> >::respond(self)
+                    <my::Preset as tsukuyomi::output::Preset<Self> >::respond(self)
                 }
             }
         },
@@ -265,15 +265,15 @@ mod tests {
             where
                 X: Foo,
                 Y: Foo,
-                my::Preset: tsukuyomi::output::preset::Preset<Self>,
+                my::Preset: tsukuyomi::output::Preset<Self>,
             {
-                type Upgrade = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Upgrade;
-                type Error = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Error;
-                type Respond = < my::Preset as tsukuyomi::output::preset::Preset<Self> >::Respond;
+                type Upgrade = < my::Preset as tsukuyomi::output::Preset<Self> >::Upgrade;
+                type Error = < my::Preset as tsukuyomi::output::Preset<Self> >::Error;
+                type Respond = < my::Preset as tsukuyomi::output::Preset<Self> >::Respond;
 
                 #[inline]
                 fn respond(self) -> Self::Respond {
-                    <my::Preset as tsukuyomi::output::preset::Preset<Self> >::respond(self)
+                    <my::Preset as tsukuyomi::output::Preset<Self> >::respond(self)
                 }
             }
         },

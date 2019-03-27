@@ -4,14 +4,14 @@ use {
     tsukuyomi::{
         config::prelude::*, //
         extractor,
+        output::{Json, Responder},
         server::Server,
         App,
-        Responder,
     },
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Responder)]
-#[response(preset = "tsukuyomi::output::preset::Json")]
+#[response(preset = "Json")]
 struct User {
     name: String,
     age: u32,
