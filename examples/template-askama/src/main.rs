@@ -1,12 +1,7 @@
 use {
     askama::Template,
     exitfailure::ExitFailure,
-    tsukuyomi::{
-        config::prelude::*, //
-        server::Server,
-        App,
-        Responder,
-    },
+    tsukuyomi::{endpoint::builder as endpoint, path, server::Server, App, Responder},
 };
 
 #[derive(Template, Responder)]
@@ -17,10 +12,11 @@ struct Index {
 }
 
 fn main() -> Result<(), ExitFailure> {
-    let app = App::create(
-        path!("/:name") //
-            .to(endpoint::call(|name| Index { name })),
-    )?;
+    let app = App::build(|s| {
+        s.at(path!("/:name"), (), {
+            endpoint::call(|name| Index { name }) //
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

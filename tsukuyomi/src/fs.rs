@@ -558,7 +558,7 @@ where
 
             let file_type = entry.file_type().map_err(crate::config::Error::custom)?;
             if file_type.is_file() {
-                scope.route(ServeFile {
+                scope.route2(ServeFile {
                     inner: Arc::new(ServeFileInner {
                         path,
                         config: config.clone(),
@@ -569,7 +569,7 @@ where
                     }),
                 })?;
             } else if file_type.is_dir() {
-                scope.route(ServeFile {
+                scope.route2(ServeFile {
                     inner: Arc::new(ServeFileInner {
                         path,
                         config: config.clone(),

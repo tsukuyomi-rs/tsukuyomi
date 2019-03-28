@@ -1,5 +1,4 @@
 use {
-    super::Route,
     crate::{
         endpoint::Endpoint, //
         error::Error,
@@ -9,6 +8,9 @@ use {
     },
     std::{marker::PhantomData, sync::Arc},
 };
+
+#[allow(deprecated)]
+use crate::config::Route;
 
 #[doc(hidden)]
 pub use tsukuyomi_macros::path_impl;
@@ -62,10 +64,10 @@ where
 #[macro_export]
 macro_rules! path {
     ($path:expr) => {{
-        use $crate::config::path::internal as __path_internal;
+        use $crate::app::path::internal as __path_internal;
         enum __Dummy {}
         impl __Dummy {
-            $crate::config::path::path_impl!(__path_internal, $path);
+            $crate::app::path::path_impl!(__path_internal, $path);
         }
         __Dummy::call()
     }};
@@ -101,6 +103,8 @@ where
     }
 
     /// Creates a `Route` with this path configuration and the specified `Endpoint`.
+    #[deprecated]
+    #[allow(deprecated)]
     pub fn to<T>(
         self,
         endpoint: T,

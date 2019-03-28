@@ -6,7 +6,7 @@ mod schema;
 use {
     crate::context::{Context, Database},
     std::sync::{Arc, RwLock},
-    tsukuyomi::{config::prelude::*, server::Server, App},
+    tsukuyomi::{endpoint::builder as endpoint, server::Server, App},
     tsukuyomi_juniper::{capture_errors, GraphQLRequest},
 };
 
@@ -24,22 +24,27 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
         })
     };
 
-    let app = App::create(chain![
+    let app = App::build(|s| {
         // renders the source of GraphiQL.
-        path!("/") //
-            .to(endpoint::get() //
-                .reply(tsukuyomi_juniper::graphiql_source("/graphql"))),
+        s.at("/", (), {
+            endpoint::get() //
+                .reply(tsukuyomi_juniper::graphiql_source("/graphql"))
+        })?;
+
+        // modifies all errors that this route throws into GraphQL errors.
+        let capture_errors = capture_errors();
+
         // a route which handles GraphQL requests over HTTP.
-        path!("/graphql")
-            .to(endpoint::allow_only("GET, POST")?
+        s.at("/graphql", capture_errors, {
+            endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request()) // <-- parses the incoming GraphQL request.
                 .extract(fetch_graphql_context) // <-- fetches a GraphQL context.
                 .call(move |request: GraphQLRequest, context: Context| {
                     // creates a `Responder` that executes a GraphQL request with the specified schema and context.
                     request.execute(schema.clone(), context)
-                }))
-            .modify(capture_errors()) // <-- modifies all errors that this route throws into GraphQL errors.
-    ])?;
+                })
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

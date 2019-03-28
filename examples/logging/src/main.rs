@@ -1,5 +1,5 @@
 use tsukuyomi::{
-    config::prelude::*, //
+    endpoint::builder as endpoint, //
     server::Server,
     vendor::http::StatusCode,
     App,
@@ -11,13 +11,17 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
 
     let log = logging::log("request_logging");
 
-    let app = App::create(
-        chain![
-            path!("/").to(endpoint::get().reply("Hello.")),
-            path!("*").to(endpoint::reply(StatusCode::NOT_FOUND))
-        ]
-        .modify(log),
-    )?;
+    let app = App::build(|s| {
+        s.with(&log, |s| {
+            s.at("/", (), {
+                endpoint::get() //
+                    .reply("Hello.")
+            })?;
+            s.default((), {
+                endpoint::reply(StatusCode::NOT_FOUND) //
+            })
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     log::info!("Listening on http://127.0.0.1:4000");

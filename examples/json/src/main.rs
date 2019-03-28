@@ -2,7 +2,8 @@ use {
     exitfailure::ExitFailure,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
-        config::prelude::*, //
+        chain,
+        endpoint::builder as endpoint,
         extractor,
         output::{Json, Responder},
         server::Server,
@@ -18,9 +19,9 @@ struct User {
 }
 
 fn main() -> Result<(), ExitFailure> {
-    let app = App::create(
-        path!("/") //
-            .to(chain![
+    let app = App::build(|s| {
+        s.at("/", (), {
+            chain![
                 endpoint::get().reply(User {
                     name: "Sakura Kinomoto".into(),
                     age: 13,
@@ -28,8 +29,9 @@ fn main() -> Result<(), ExitFailure> {
                 endpoint::post()
                     .extract(extractor::body::json())
                     .call(|user: User| user),
-            ]),
-    )?;
+            ]
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

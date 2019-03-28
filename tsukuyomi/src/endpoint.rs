@@ -1,5 +1,7 @@
 //! Definition of `Endpoint`.
 
+pub mod builder;
+
 use {
     crate::{error::Error, future::TryFuture, handler::metadata::AllowedMethods, input::Input},
     http::{Method, StatusCode},

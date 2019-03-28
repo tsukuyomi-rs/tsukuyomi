@@ -1,12 +1,7 @@
 use {
     futures::prelude::*,
     izanami::http::response::Redirect,
-    tsukuyomi::{
-        config::prelude::*, //
-        fs::Staticfiles,
-        server::Server,
-        App,
-    },
+    tsukuyomi::{endpoint::builder as endpoint, fs::Staticfiles, server::Server, App},
     tsukuyomi_tungstenite::{Message, Ws},
     uuid::Uuid,
 };
@@ -14,9 +9,9 @@ use {
 const STATIC_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
 
 fn main() -> Result<(), exitfailure::ExitFailure> {
-    let app = App::create(chain![
-        path!("/ws") //
-            .to(endpoint::get()
+    let app = App::build(|s| {
+        s.at("/ws", (), {
+            endpoint::get()
                 .extract(tsukuyomi_tungstenite::ws())
                 .call(|ws: Ws| {
                     let conn_id = Uuid::new_v4();
@@ -37,13 +32,17 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
                             Ok::<_, tsukuyomi::util::Never>(())
                         })
                     })
-                })),
-        path!("/") //
-            .to(endpoint::reply(Redirect::moved_permanently(
-                "/index.html".parse().expect("valid URI")
-            ))),
-        Staticfiles::new(STATIC_PATH)
-    ])?;
+                })
+        })?;
+
+        let redirect_to_index =
+            Redirect::moved_permanently("/index.html".parse().expect("invalid URI"));
+        s.at("/", (), {
+            endpoint::reply(redirect_to_index) //
+        })?;
+
+        s.add(Staticfiles::new(STATIC_PATH))
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

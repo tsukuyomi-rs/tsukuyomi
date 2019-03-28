@@ -1,5 +1,5 @@
 use tsukuyomi::{
-    config::prelude::*, //
+    endpoint::builder as endpoint,
     fs::{NamedFile, Staticfiles},
     App,
 };
@@ -7,16 +7,20 @@ use tsukuyomi::{
 #[test]
 #[ignore]
 fn compiletest() -> tsukuyomi::app::Result<()> {
-    App::create({
-        path!("/index.html") //
-            .to(endpoint::get() //
-                .reply(NamedFile::open("/path/to/index.html")))
+    App::build(|s| {
+        s.at("/index.html", (), {
+            endpoint::get() //
+                .reply(NamedFile::open("/path/to/index.html"))
+        })
     })
-    .map(drop)
+    .map(|_: App| ())
 }
 
 #[test]
 #[ignore]
 fn compiletest_staticfiles() -> tsukuyomi::app::Result<()> {
-    App::create(Staticfiles::new("./public")).map(drop)
+    App::build(|s| {
+        s.add(Staticfiles::new("./public")) //
+    })
+    .map(|_: App| ())
 }

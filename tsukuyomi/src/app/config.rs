@@ -1,12 +1,12 @@
 use {
     super::{
         concurrency::{current_thread::CurrentThread, Concurrency, DefaultConcurrency},
+        path::{IntoPath, Path, RouteHandler},
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
         App, AppInner, Endpoint, ScopeData, Uri,
     },
     crate::{
-        config::path::{IntoPath, Path, RouteHandler},
         handler::{Handler, ModifyHandler},
         util::{Chain, Never},
     },
@@ -53,6 +53,7 @@ impl error::Error for Error {
 
 impl App {
     /// Creates a new `App` from the provided configuration.
+    #[deprecated]
     pub fn create(config: impl Config<()>) -> Result<Self> {
         App::create_imp(config)
     }
@@ -60,6 +61,7 @@ impl App {
 
 impl App<CurrentThread> {
     /// Creates a new `App` from the provided configuration, without guarantees of thread safety.
+    #[deprecated]
     pub fn create_local(config: impl Config<(), CurrentThread>) -> Result<Self> {
         App::create_imp(config)
     }
@@ -115,7 +117,17 @@ where
     C: Concurrency,
 {
     /// Adds a route onto the current scope.
+    #[deprecated]
     pub fn route<H>(&mut self, handler: H) -> Result<()>
+    where
+        H: Handler,
+        M: ModifyHandler<H>,
+        M::Handler: Into<C::Handler>,
+    {
+        self.route2(handler)
+    }
+
+    pub(crate) fn route2<H>(&mut self, handler: H) -> Result<()>
     where
         H: Handler,
         M: ModifyHandler<H>,
@@ -155,6 +167,7 @@ where
     }
 
     /// Creates a sub-scope with the provided prefix onto the current scope.
+    #[deprecated]
     pub fn mount(&mut self, prefix: impl AsRef<str>, config: impl Config<M, C>) -> Result<()> {
         let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
 
@@ -183,6 +196,7 @@ where
     }
 
     /// Applies the specified configuration with a `ModifyHandler` on the current scope.
+    #[deprecated]
     pub fn modify<M2>(
         &mut self,
         modifier: M2,
@@ -223,7 +237,7 @@ where
         M::Handler: Into<C::Handler>,
     {
         let handler = RouteHandler::new(path.into_path(), endpoint);
-        self.route(modifier.modify(handler))
+        self.route2(modifier.modify(handler))
     }
 
     /// Adds a default route onto the current scope.

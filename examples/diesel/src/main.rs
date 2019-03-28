@@ -16,9 +16,11 @@ use {
     futures::Future,
     std::{env, sync::Arc},
     tsukuyomi::{
-        config::prelude::*, //
+        chain,
+        endpoint::builder as endpoint,
         error::Error,
         extractor::{self, ExtractorExt},
+        path,
         server::Server,
         App,
     },
@@ -31,10 +33,10 @@ fn main() -> failure::Fallible<()> {
     let database_url = env::var("DATABASE_URL")?;
     let db_conn = crate::conn::extractor(database_url).map(Arc::new)?;
 
-    let app = App::create({
-        mount("/api/v1/posts").with(chain![
-            path!("/") //
-                .to(chain![
+    let app = App::build(|s| {
+        s.nest("/api/v1/posts", (), |s| {
+            s.at("/", (), {
+                chain![
                     endpoint::get()
                         .extract(db_conn.clone())
                         .extract(extractor::query().optional())
@@ -82,22 +84,27 @@ fn main() -> failure::Fallible<()> {
                                 .map(|_| ())
                             }
                         }),
-                ]),
-            path!("/:id") //
-                .to(endpoint::get() //
+                ]
+            })?;
+
+            s.at(path!("/:id"), (), {
+                endpoint::get() //
                     .extract(db_conn)
-                    .call_async(|id: i32, conn: Conn| blocking_section(move || {
-                        use crate::schema::posts::dsl;
-                        use diesel::prelude::*;
-                        dsl::posts
-                            .filter(dsl::id.eq(id))
-                            .get_result::<Post>(&*conn)
-                            .optional()
-                            .map_err(tsukuyomi::error::internal_server_error)?
-                            .ok_or_else(|| tsukuyomi::error::not_found("missing post"))
+                    .call_async(|id: i32, conn: Conn| {
+                        blocking_section(move || {
+                            use crate::schema::posts::dsl;
+                            use diesel::prelude::*;
+                            dsl::posts
+                                .filter(dsl::id.eq(id))
+                                .get_result::<Post>(&*conn)
+                                .optional()
+                                .map_err(tsukuyomi::error::internal_server_error)?
+                                .ok_or_else(|| tsukuyomi::error::not_found("missing post"))
+                        })
+                        .map(tsukuyomi::output::json)
                     })
-                    .map(tsukuyomi::output::json)))
-        ])
+            })
+        })
     })?;
 
     let mut server = Server::new(app)?;

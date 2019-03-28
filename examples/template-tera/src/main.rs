@@ -2,11 +2,7 @@ use {
     crate::support_tera::{Template, WithTera},
     exitfailure::ExitFailure,
     serde::Serialize,
-    tsukuyomi::{
-        config::prelude::*, //
-        server::Server,
-        App,
-    },
+    tsukuyomi::{endpoint::builder as endpoint, path, server::Server, App},
 };
 
 #[derive(Debug, Serialize)]
@@ -23,11 +19,11 @@ impl Template for Index {
 fn main() -> Result<(), ExitFailure> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    let app = App::create(
-        path!("/:name")
-            .to(endpoint::call(|name| Index { name }))
-            .modify(WithTera::from(engine)),
-    )?; //
+    let app = App::build(|s| {
+        s.at(path!("/:name"), WithTera::from(engine), {
+            endpoint::call(|name| Index { name }) //
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;
