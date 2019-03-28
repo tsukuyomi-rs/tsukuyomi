@@ -6,6 +6,7 @@ use {
         App, AppInner, Endpoint, ScopeData, Uri,
     },
     crate::{
+        config::path::{IntoPath, Path, RouteHandler},
         handler::{Handler, ModifyHandler},
         util::{Chain, Never},
     },
@@ -68,6 +69,14 @@ impl<C> App<C>
 where
     C: Concurrency,
 {
+    /// Construct an `App` using the provided function.
+    pub fn build<F>(f: F) -> Result<Self>
+    where
+        F: FnOnce(&mut Scope<'_, (), C>) -> Result<()>,
+    {
+        Self::create_imp(ConfigFn(f))
+    }
+
     /// Creates a new `App` from the provided configuration.
     fn create_imp(config: impl Config<(), C>) -> Result<Self> {
         let mut recognizer = Recognizer::default();
@@ -191,6 +200,94 @@ where
     }
 }
 
+/// The experimental API for the next version.
+impl<'a, M, C> Scope<'a, M, C>
+where
+    C: Concurrency,
+{
+    /// Appends a `Config` onto the current scope.
+    pub fn add<T>(&mut self, config: T) -> Result<()>
+    where
+        T: Config<M, C>,
+    {
+        config.configure(self).map_err(Into::into)
+    }
+
+    /// Adds a route onto the current scope.
+    pub fn at<P, M2, T>(&mut self, path: P, modifier: M2, endpoint: T) -> Result<()>
+    where
+        P: IntoPath,
+        T: crate::endpoint::Endpoint<P::Output>,
+        M2: ModifyHandler<RouteHandler<P::Extractor, T>>,
+        M: ModifyHandler<M2::Handler>,
+        M::Handler: Into<C::Handler>,
+    {
+        let handler = RouteHandler::new(path.into_path(), endpoint);
+        self.route(modifier.modify(handler))
+    }
+
+    /// Adds a default route onto the current scope.
+    ///
+    /// The default route is used when the incoming request URI matches the prefix
+    /// of the current scope and there are no route that exactly matches.
+    pub fn default<M2, T>(&mut self, modifier: M2, endpoint: T) -> Result<()>
+    where
+        T: crate::endpoint::Endpoint<()>,
+        M2: ModifyHandler<RouteHandler<(), T>>,
+        M: ModifyHandler<M2::Handler>,
+        M::Handler: Into<C::Handler>,
+    {
+        self.at(Path::<()>::new("*"), modifier, endpoint)
+    }
+
+    /// Creates a sub-scope onto the current scope.
+    ///
+    /// Calling `nest` constructs a scope and allows to set a *default* route
+    /// that partially matches up to the prefix.
+    pub fn nest<P, M2, F>(&mut self, prefix: P, modifier: M2, f: F) -> Result<()>
+    where
+        P: AsRef<str>,
+        F: FnOnce(&mut Scope<'_, Chain<M2, &'a M>, C>) -> Result<()>,
+    {
+        let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
+
+        let scope_id = self
+            .scopes
+            .add_node(self.scope_id, {
+                let parent = &self.scopes[self.scope_id].data;
+                ScopeData {
+                    prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
+                    default_handler: None,
+                }
+            })
+            .map_err(Error::custom)?;
+
+        f(&mut Scope {
+            recognizer: &mut *self.recognizer,
+            scopes: &mut *self.scopes,
+            scope_id,
+            modifier: &Chain::new(modifier, self.modifier),
+            _marker: PhantomData,
+        })
+    }
+
+    /// Adds the provided `ModifyHandler` to the stack and executes a configuration.
+    ///
+    /// Unlike `nest`, this method does not create a scope.
+    pub fn with<M2, F>(&mut self, modifier: M2, f: F) -> Result<()>
+    where
+        F: FnOnce(&mut Scope<'_, Chain<M2, &'a M>, C>) -> Result<()>,
+    {
+        f(&mut Scope {
+            recognizer: &mut *self.recognizer,
+            scopes: &mut *self.scopes,
+            scope_id: self.scope_id,
+            modifier: &Chain::new(modifier, self.modifier),
+            _marker: PhantomData,
+        })
+    }
+}
+
 /// A marker trait annotating that the implementator has an implementation of `Config<M, C>`
 /// for a certain `M` and `C`.
 pub trait IsConfig {}
@@ -272,5 +369,22 @@ where
 
     fn configure(self, _: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+#[allow(missing_debug_implementations)]
+struct ConfigFn<F>(F);
+
+impl<F> IsConfig for ConfigFn<F> {}
+
+impl<F, C, M> Config<M, C> for ConfigFn<F>
+where
+    C: Concurrency,
+    F: FnOnce(&mut Scope<'_, M, C>) -> Result<()>,
+{
+    type Error = Error;
+
+    fn configure(self, scope: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
+        (self.0)(scope)
     }
 }

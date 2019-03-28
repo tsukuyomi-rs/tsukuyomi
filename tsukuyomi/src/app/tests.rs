@@ -152,3 +152,22 @@ fn current_thread() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn experimental_api() -> Result<()> {
+    let _app: App = App::build(|scope| {
+        scope.at("/", (), {
+            endpoint::reply("hello") //
+        })?;
+
+        scope.nest("/foo", (), |scope| {
+            scope.at(path!("/:id"), (), {
+                endpoint::call(|_id: u32| "got id") //
+            })
+        })?;
+
+        scope.default((), endpoint::reply("default")) //
+    })?;
+
+    Ok(())
+}
