@@ -1,7 +1,8 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        config::prelude::*, //
+        chain,
+        endpoint::builder as endpoint,
         handler::{metadata::Metadata, Handler, ModifyHandler},
         test::{self, TestServer},
         App,
@@ -56,15 +57,13 @@ where
 fn global_modifier() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::reply(""))
-            .modify(MockModifier {
-                marker: marker.clone(),
-                name: "M",
-            }),
-    )?;
-
+    let app = App::build(|s| {
+        let m = MockModifier {
+            marker: marker.clone(),
+            name: "M",
+        };
+        s.at("/", m, endpoint::reply("")) //
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -82,21 +81,19 @@ fn global_modifier() -> test::Result {
 fn global_modifiers() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::reply(""))
-            .modify(chain![
-                MockModifier {
-                    marker: marker.clone(),
-                    name: "M1",
-                },
-                MockModifier {
-                    marker: marker.clone(),
-                    name: "M2",
-                }
-            ]),
-    )?;
+    let m1 = MockModifier {
+        marker: marker.clone(),
+        name: "M1",
+    };
+    let m2 = MockModifier {
+        marker: marker.clone(),
+        name: "M2",
+    };
+    let m = chain!(m1, m2);
 
+    let app = App::build(|s| {
+        s.at("/", m, endpoint::reply("")) //
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -110,29 +107,28 @@ fn global_modifiers() -> test::Result {
 fn scoped_modifier() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::create(
-        chain![
-            mount("/path1").with({
-                path!("/") //
-                    .to(endpoint::reply(""))
-                    .modify(MockModifier {
-                        marker: marker.clone(),
-                        name: "M2",
-                    })
-            }), //
-            path!("/path2").to(endpoint::reply("")),
-        ]
-        .modify(MockModifier {
-            marker: marker.clone(),
-            name: "M1",
-        }),
-    )?;
+    let m1 = MockModifier {
+        marker: marker.clone(),
+        name: "M1",
+    };
+    let m2 = MockModifier {
+        marker: marker.clone(),
+        name: "M2",
+    };
 
+    let app = App::build(|s| {
+        s.with(&m1, |s| {
+            s.nest("/path1", &(), |s| {
+                s.at("/", m2, endpoint::reply("")) //
+            })?;
+            s.at("/path2", (), endpoint::reply(""))
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client.get("/path1");
-    assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2"]);
 
     marker.lock().unwrap().clear();
     client.get("/path2");
@@ -144,43 +140,40 @@ fn scoped_modifier() -> test::Result {
 #[test]
 fn nested_modifiers() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
+    let m1 = MockModifier {
+        marker: marker.clone(),
+        name: "M1",
+    };
+    let m2 = MockModifier {
+        marker: marker.clone(),
+        name: "M2",
+    };
+    let m3 = MockModifier {
+        marker: marker.clone(),
+        name: "M3",
+    };
 
-    let app = App::create({
-        mount("/path").with({
-            mount("/to")
-                .with(
-                    chain![
-                        path!("/").to(endpoint::reply("")),
-                        mount("/a").with({
-                            path!("/") //
-                                .to(endpoint::reply(""))
-                                .modify(MockModifier {
-                                    marker: marker.clone(),
-                                    name: "M3",
-                                })
-                        })
-                    ]
-                    .modify(MockModifier {
-                        marker: marker.clone(),
-                        name: "M2",
-                    }),
-                )
-                .modify(MockModifier {
-                    marker: marker.clone(),
-                    name: "M1",
+    let app = App::build(|s| {
+        s.nest("/path", (), |s| {
+            s.nest("/to", m1, |s| {
+                s.with(m2, |s| {
+                    s.at("/", (), endpoint::reply(""))?;
+                    s.nest("/a", (), |s| {
+                        s.at("/", m3, endpoint::reply("")) //
+                    })
                 })
+            })
         })
     })?;
-
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client.get("/path/to");
-    assert_eq!(*marker.lock().unwrap(), vec!["M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2"]);
 
     marker.lock().unwrap().clear();
     client.get("/path/to/a");
-    assert_eq!(*marker.lock().unwrap(), vec!["M3", "M2", "M1"]);
+    assert_eq!(*marker.lock().unwrap(), vec!["M1", "M2", "M3"]);
 
     Ok(())
 }

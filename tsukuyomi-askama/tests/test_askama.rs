@@ -2,10 +2,9 @@ use {
     askama::Template,
     http::{header::CONTENT_TYPE, StatusCode},
     tsukuyomi::{
-        config::prelude::*, //
+        endpoint::builder as endpoint,
         test::{self, loc, TestServer},
-        App,
-        Responder,
+        App, Responder,
     },
 };
 
@@ -23,12 +22,12 @@ fn test_template_derivation() -> test::Result {
         name: &'static str,
     }
 
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::get() //
-                .call(|| Index { name: "Alice" })),
-    )?;
-
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::get() //
+                .call(|| Index { name: "Alice" })
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -49,12 +48,12 @@ fn test_template_with_modifier() -> test::Result {
         name: &'static str,
     }
 
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::get() //
-                .call(|| Index { name: "Alice" }))
-            .modify(tsukuyomi_askama::renderer()),
-    )?;
+    let app = App::build(|s| {
+        s.at("/", tsukuyomi_askama::renderer(), {
+            endpoint::get() //
+                .call(|| Index { name: "Alice" })
+        })
+    })?;
 
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

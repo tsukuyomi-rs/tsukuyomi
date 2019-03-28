@@ -2,6 +2,8 @@
 
 pub mod concurrency;
 pub mod config;
+pub mod path;
+
 mod recognizer;
 mod scope;
 mod service;

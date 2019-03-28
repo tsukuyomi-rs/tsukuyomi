@@ -1,60 +1,63 @@
 use {
     exitfailure::ExitFailure,
     std::path::PathBuf,
-    tsukuyomi::{
-        config::prelude::*, //
-        server::Server,
-        App,
-    },
+    tsukuyomi::{chain, endpoint::builder as endpoint, path, server::Server, App},
 };
 
 fn main() -> Result<(), ExitFailure> {
-    let app = App::create(chain![
+    let app = App::build(|scope| {
         // a route that matches the root path.
-        path!("/") //
-            .to({
-                // an endpoint that matches *all* methods with the root path.
-                endpoint::reply("Hello, world\n") // replies by cloning a `Responder`.
-            }),
+        scope.at("/", (), {
+            // an endpoint that matches *all* methods with the root path.
+            endpoint::reply("Hello, world\n") // replies by cloning a `Responder`.
+        })?;
+
         // a sub-scope with the prefix `/api/v1/`.
-        mount("/api/v1/").with(chain![
+        scope.nest("/api/v1/", (), |scope| {
             // scopes can be nested.
-            mount("/posts").with(chain![
+            scope.nest("/posts", (), |scope| {
                 // a route with the path `/api/v1/posts`.
-                path!("/") //
-                    .to(chain![
+                scope.at("/", (), {
+                    chain![
                         // A route can take multiple endpoints by using the `chain!()`.
                         //
                         // If there are multiple endpoint matching the same method, the one specified earlier will be chosen.
                         endpoint::get().reply("list_posts"), // <-- GET /api/v1/posts
                         endpoint::post().reply("add_post"),  // <-- POST /api/v1/posts
                         endpoint::reply("other methods"),    // <-- {PUT, DELETE, ...} /api/v1/posts
-                    ]),
+                    ]
+                })?;
+
                 // A route that captures a parameter from the path.
-                path!("/:id") //
-                    .to(endpoint::call(|id: i32| {
+                scope.at(path!("/:id"), (), {
+                    endpoint::call(|id: i32| {
                         // returns a `Responder`.
                         format!("get_post(id = {})", id)
-                    })),
-            ]),
-            mount("/user").with({
-                path!("/auth") //
-                    .to(endpoint::reply("Authentication"))
-            }),
-        ]),
-        // a route that captures a *catch-all* parameter.
-        path!("/static/*path") //
-            .to({
-                endpoint::get() //
-                    .call(|path: PathBuf| {
-                        // returns a `Future` which will return a `Responder`.
-                        tsukuyomi::fs::NamedFile::open(path)
                     })
-            }),
+                })
+            })?;
+
+            scope.nest("/user", (), |scope| {
+                scope.at("/auth", (), {
+                    endpoint::reply("Authentication") //
+                })
+            })
+        })?;
+
+        // a route that captures a *catch-all* parameter.
+        scope.at(path!("/static/*path"), (), {
+            endpoint::get() //
+                .call(|path: PathBuf| {
+                    // returns a `Future` which will return a `Responder`.
+                    tsukuyomi::fs::NamedFile::open(path)
+                })
+        })?;
+
         // A route that matches any path.
-        path!("*") //
-            .to(endpoint::reply("default route"))
-    ])?;
+        scope.default((), {
+            endpoint::reply("default route") //
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

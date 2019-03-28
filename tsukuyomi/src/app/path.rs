@@ -1,5 +1,4 @@
 use {
-    super::Route,
     crate::{
         endpoint::Endpoint, //
         error::Error,
@@ -9,6 +8,9 @@ use {
     },
     std::{marker::PhantomData, sync::Arc},
 };
+
+#[allow(deprecated)]
+use crate::config::Route;
 
 #[doc(hidden)]
 pub use tsukuyomi_macros::path_impl;
@@ -28,16 +30,44 @@ impl PathExtractor for () {
     }
 }
 
+pub trait IntoPath {
+    type Output: Tuple;
+    type Extractor: PathExtractor<Output = Self::Output>;
+
+    fn into_path(self) -> Path<Self::Extractor>;
+}
+
+impl IntoPath for &'static str {
+    type Output = ();
+    type Extractor = ();
+
+    fn into_path(self) -> Path<Self::Extractor> {
+        Path::new(self)
+    }
+}
+
+impl<T> IntoPath for Path<T>
+where
+    T: PathExtractor,
+{
+    type Output = T::Output;
+    type Extractor = T;
+
+    fn into_path(self) -> Path<Self::Extractor> {
+        self
+    }
+}
+
 /// A macro for generating the code that creates a [`Path`] from the provided tokens.
 ///
 /// [`Path`]: ./app/config/route/struct.Path.html
 #[macro_export]
 macro_rules! path {
     ($path:expr) => {{
-        use $crate::config::path::internal as __path_internal;
+        use $crate::app::path::internal as __path_internal;
         enum __Dummy {}
         impl __Dummy {
-            $crate::config::path::path_impl!(__path_internal, $path);
+            $crate::app::path::path_impl!(__path_internal, $path);
         }
         __Dummy::call()
     }};
@@ -73,6 +103,8 @@ where
     }
 
     /// Creates a `Route` with this path configuration and the specified `Endpoint`.
+    #[deprecated]
+    #[allow(deprecated)]
     pub fn to<T>(
         self,
         endpoint: T,
@@ -86,7 +118,27 @@ where
     where
         T: Endpoint<E::Output>,
     {
-        let Self { path, .. } = self;
+        Route {
+            handler: RouteHandler::new(self, endpoint),
+        }
+    }
+}
+
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct RouteHandler<E, T> {
+    endpoint: Arc<T>,
+    metadata: Metadata,
+    _marker: PhantomData<E>,
+}
+
+impl<E, T> RouteHandler<E, T>
+where
+    E: PathExtractor,
+    T: Endpoint<E::Output>,
+{
+    pub(crate) fn new(path: Path<E>, endpoint: T) -> Self {
+        let Path { path, .. } = path;
         let endpoint = Arc::new(endpoint);
 
         let mut metadata = match path {
@@ -95,26 +147,47 @@ where
         };
         *metadata.allowed_methods_mut() = endpoint.allowed_methods();
 
-        Route {
-            handler: crate::handler::handler(
-                move || self::handle::RouteHandle::new(endpoint.clone()),
-                metadata,
-            ),
+        Self {
+            endpoint,
+            metadata,
+            _marker: PhantomData,
         }
     }
 }
 
 mod handle {
     use {
-        super::PathExtractor,
+        super::{PathExtractor, RouteHandler},
         crate::{
             endpoint::{ApplyContext, Endpoint},
             error::Error,
             future::{Poll, TryFuture},
+            handler::{metadata::Metadata, Handler},
             input::Input,
         },
         std::{marker::PhantomData, sync::Arc},
     };
+
+    impl<E, T> Handler for RouteHandler<E, T>
+    where
+        E: PathExtractor,
+        T: Endpoint<E::Output>,
+    {
+        type Output = T::Output;
+        type Error = Error;
+        type Handle = RouteHandle<E, T>;
+
+        fn handle(&self) -> Self::Handle {
+            RouteHandle {
+                state: RouteHandleState::Init(self.endpoint.clone()),
+                _marker: PhantomData,
+            }
+        }
+
+        fn metadata(&self) -> Metadata {
+            self.metadata.clone()
+        }
+    }
 
     #[doc(hidden)]
     #[allow(missing_debug_implementations)]
@@ -125,19 +198,6 @@ mod handle {
     {
         state: RouteHandleState<T, T::Future>,
         _marker: PhantomData<E>,
-    }
-
-    impl<E, T> RouteHandle<E, T>
-    where
-        E: PathExtractor,
-        T: Endpoint<E::Output>,
-    {
-        pub fn new(endpoint: Arc<T>) -> Self {
-            Self {
-                state: RouteHandleState::Init(endpoint),
-                _marker: PhantomData,
-            }
-        }
     }
 
     #[allow(missing_debug_implementations)]

@@ -15,7 +15,7 @@ pub fn any() -> Builder {
     Builder::allow_any()
 }
 
-pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Builder> {
+pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> crate::app::config::Result<Builder> {
     Builder::allow_only(methods)
 }
 
@@ -67,10 +67,12 @@ impl Builder {
     }
 
     /// Creates a `Builder` that accepts only the specified HTTP methods.
-    pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> super::Result<Self> {
+    pub fn allow_only(methods: impl TryInto<AllowedMethods>) -> crate::app::config::Result<Self> {
         Ok(Self {
             extractor: (),
-            allowed_methods: methods.try_into().map_err(super::Error::custom)?,
+            allowed_methods: methods
+                .try_into()
+                .map_err(crate::app::config::Error::custom)?,
         })
     }
 }

@@ -1,9 +1,10 @@
 use {
     http::{Request, StatusCode},
     tsukuyomi::{
-        config::prelude::*, //
+        endpoint::builder as endpoint,
         extractor,
         extractor::ExtractorExt,
+        path,
         test::{self, loc, TestServer},
         App,
     },
@@ -11,9 +12,10 @@ use {
 
 #[test]
 fn unit_input() -> test::Result {
-    let app = App::create({
-        path!("/") //
-            .to(endpoint::call(|| "dummy"))
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::call(|| "dummy") //
+        })
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -25,10 +27,13 @@ fn unit_input() -> test::Result {
 
 #[test]
 fn params() -> test::Result {
-    let app = App::create(path!("/:id/:name/*path").to(endpoint::call(
-        |id: u32, name: String, path: String| format!("{},{},{}", id, name, path),
-    )))?;
-
+    let app = App::build(|s| {
+        s.at(path!("/:id/:name/*path"), (), {
+            endpoint::call(|id: u32, name: String, path: String| {
+                format!("{},{},{}", id, name, path)
+            })
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -45,27 +50,22 @@ fn params() -> test::Result {
 
 #[test]
 fn route_macros() -> test::Result {
-    let app = App::create(chain![
-        path!("/root") //
-            .to(endpoint::call(|| "root")),
-        path!("/params/:id/:name") //
-            .to(endpoint::call(|id: i32, name: String| format!(
-                "params(id={}, name={})",
-                id, name
-            ))),
-        path!("/posts/:id/edit") //
-            .to({
-                endpoint::put()
-                    .extract(extractor::body::plain::<String>())
-                    .call(|id: u32, body: String| format!("posts(id={}, body={})", id, body))
-            }),
-        path!("/static/*path") //
-            .to(endpoint::call(|path: String| format!(
-                "static(path={})",
-                path
-            ))),
-    ])?;
-
+    let app = App::build(|s| {
+        s.at("/root", (), {
+            endpoint::call(|| "root") //
+        })?;
+        s.at(path!("/params/:id/:name"), (), {
+            endpoint::call(|id: i32, name: String| format!("params(id={}, name={})", id, name))
+        })?;
+        s.at(path!("/posts/:id/edit"), (), {
+            endpoint::put()
+                .extract(extractor::body::plain::<String>())
+                .call(|id: u32, body: String| format!("posts(id={}, body={})", id, body))
+        })?;
+        s.at(path!("/static/*path"), (), {
+            endpoint::call(|path: String| format!("static(path={})", path))
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -92,13 +92,13 @@ fn route_macros() -> test::Result {
 
 #[test]
 fn plain_body() -> test::Result {
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::post()
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::post()
                 .extract(extractor::body::plain())
-                .call(|body: String| body)),
-    )?;
-
+                .call(|body: String| body)
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -146,13 +146,13 @@ fn json_body() -> test::Result {
         name: String,
     }
 
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::post()
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::post()
                 .extract(extractor::body::json())
-                .call(|params: Params| format!("{},{}", params.id, params.name))),
-    )?;
-
+                .call(|params: Params| format!("{},{}", params.id, params.name))
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -199,13 +199,13 @@ fn urlencoded_body() -> test::Result {
         name: String,
     }
 
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::post()
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::post()
                 .extract(extractor::body::urlencoded())
-                .call(|params: Params| format!("{},{}", params.id, params.name))),
-    )?;
-
+                .call(|params: Params| format!("{},{}", params.id, params.name))
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -314,16 +314,13 @@ fn local_data() -> test::Result {
         }
     }
 
-    let app = App::create(
-        path!("/") //
-            .to({
-                endpoint::any()
-                    .extract(extractor::local::remove(&MyData::KEY))
-                    .call(|x: MyData| x.0)
-            })
-            .modify(InsertMyData::default()),
-    )?;
-
+    let app = App::build(|s| {
+        s.at("/", InsertMyData::default(), {
+            endpoint::any()
+                .extract(extractor::local::remove(&MyData::KEY))
+                .call(|x: MyData| x.0)
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -345,13 +342,13 @@ fn missing_local_data() -> test::Result {
         }
     }
 
-    let app = App::create({
-        path!("/") //
-            .to(endpoint::any()
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::any()
                 .extract(extractor::local::remove(&MyData::KEY))
-                .call(|x: MyData| x.0))
+                .call(|x: MyData| x.0)
+        })
     })?;
-
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -372,21 +369,19 @@ fn optional() -> test::Result {
 
     let extractor = extractor::body::json().optional();
 
-    let app = App::create(
-        path!("/") //
-            .to({
-                endpoint::post() //
-                    .extract(extractor)
-                    .call_async(|params: Option<Params>| {
-                        if let Some(params) = params {
-                            Ok(format!("{},{}", params.id, params.name))
-                        } else {
-                            Err(tsukuyomi::error::internal_server_error("####none####"))
-                        }
-                    })
-            }),
-    )?;
-
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::post() //
+                .extract(extractor)
+                .call_async(|params: Option<Params>| {
+                    if let Some(params) = params {
+                        Ok(format!("{},{}", params.id, params.name))
+                    } else {
+                        Err(tsukuyomi::error::internal_server_error("####none####"))
+                    }
+                })
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -422,14 +417,13 @@ fn either_or() -> test::Result {
         .or(extractor::method::post().and(extractor::body::json()))
         .or(extractor::method::post().and(extractor::body::urlencoded()));
 
-    let app = App::create(
-        path!("/") //
-            .to({
-                endpoint::allow_only("GET, POST")?
-                    .extract(params_extractor)
-                    .call(|params: Params| format!("{},{}", params.id, params.name))
-            }),
-    )?;
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::allow_only("GET, POST")?
+                .extract(params_extractor)
+                .call(|params: Params| format!("{},{}", params.id, params.name))
+        })
+    })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 

@@ -4,7 +4,7 @@ use {
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{
-        config::prelude::*,
+        endpoint::builder as endpoint,
         test::{self, TestResponse, TestServer},
         App,
     },
@@ -24,17 +24,17 @@ fn integration_test() -> test::Result {
         EmptyMutation::<Database>::new(),
     ));
 
-    let app = App::create({
+    let app = App::build(|s| {
         let database = database.clone();
-        path!("/")
-            .to(endpoint::allow_only("GET, POST")?
+        s.at("/", tsukuyomi_juniper::capture_errors(), {
+            endpoint::allow_only("GET, POST")?
                 .extract(tsukuyomi_juniper::request())
                 .extract(tsukuyomi::extractor::value(schema))
                 .call(move |request: GraphQLRequest, schema: Arc<_>| {
                     let database = database.clone();
                     request.execute(schema, database)
-                }))
-            .modify(tsukuyomi_juniper::capture_errors())
+                })
+        })
     })?;
 
     let test_server = TestServer::new(app)?;

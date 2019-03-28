@@ -4,7 +4,7 @@ use {
         Request, StatusCode,
     },
     tsukuyomi::{
-        config::prelude::*, //
+        endpoint::builder as endpoint,
         test::{self, loc, TestServer},
         App,
     },
@@ -12,7 +12,8 @@ use {
 
 #[test]
 fn empty_routes() -> test::Result {
-    let mut server = TestServer::new(App::create(())?)?;
+    let app = App::build(|_| Ok(()))?;
+    let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client
@@ -24,10 +25,12 @@ fn empty_routes() -> test::Result {
 
 #[test]
 fn single_route() -> test::Result {
-    let mut server = TestServer::new(App::create(
-        path!("/hello") //
-            .to(endpoint::call(|| "Tsukuyomi")),
-    )?)?;
+    let app = App::build(|s| {
+        s.at("/hello", (), {
+            endpoint::call(|| "Tsukuyomi") //
+        })
+    })?;
+    let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client
@@ -45,12 +48,14 @@ fn single_route() -> test::Result {
 
 #[test]
 fn post_body() -> test::Result {
-    let mut server = TestServer::new(App::create(
-        path!("/hello") //
-            .to(endpoint::post()
+    let app = App::build(|s| {
+        s.at("/hello", (), {
+            endpoint::post()
                 .extract(tsukuyomi::extractor::body::plain())
-                .call(|body: String| body)),
-    )?)?;
+                .call(|body: String| body)
+        })
+    })?;
+    let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client
@@ -127,11 +132,14 @@ fn post_body() -> test::Result {
 
 #[test]
 fn default_options() -> test::Result {
-    let mut server = TestServer::new(App::create(
-        path!("/path")
-            .to(endpoint::allow_only("GET, POST")?.call(|| "reply"))
-            .modify(tsukuyomi::modifiers::default_options()),
-    )?)?;
+    let default_options = tsukuyomi::modifiers::default_options();
+    let app = App::build(|s| {
+        s.at("/path", default_options, {
+            endpoint::allow_only("GET, POST")? //
+                .call(|| "reply")
+        })
+    })?;
+    let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client
@@ -152,11 +160,13 @@ fn default_options() -> test::Result {
 
 #[test]
 fn map_output() -> test::Result {
-    let mut server = TestServer::new(App::create(
-        path!("/")
-            .to(endpoint::reply(42))
-            .modify(tsukuyomi::modifiers::map_output(|num: u32| num.to_string())),
-    )?)?;
+    let map_output = tsukuyomi::modifiers::map_output(|num: u32| num.to_string());
+    let app = App::build(|s| {
+        s.at("/", map_output, {
+            endpoint::reply(42) //
+        })
+    })?;
+    let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client
@@ -173,32 +183,42 @@ fn scoped_fallback() -> test::Result {
 
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let mut server = TestServer::new(App::create(chain![
-        path!("*") //
-            .to(endpoint::call({
+    let app = App::build(|s| {
+        s.default(
+            (),
+            endpoint::call({
                 let marker = marker.clone();
                 move || {
                     marker.lock().unwrap().push("F1");
                     "f1"
                 }
-            })),
-        mount("/api/v1/").with(chain![
-            path!("*") //
-                .to(endpoint::call({
+            }),
+        )?;
+
+        s.nest("/api/v1/", (), |s| {
+            s.default(
+                (),
+                endpoint::call({
                     let marker = marker.clone();
                     move || {
                         marker.lock().unwrap().push("F2");
                         "f2"
                     }
-                })),
-            path!("/posts") //
-                .to(endpoint::post().reply("posts")),
-            mount("/events").with(
-                path!("/new") //
-                    .to(endpoint::post().reply("new_event")),
-            ),
-        ]),
-    ])?)?;
+                }),
+            )?;
+            s.at("/posts", (), {
+                endpoint::post() //
+                    .reply("posts")
+            })?;
+            s.nest("/events", (), |s| {
+                s.at("/new", (), {
+                    endpoint::post() //
+                        .reply("new_event")
+                })
+            })
+        })
+    })?;
+    let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
     client.get("/");

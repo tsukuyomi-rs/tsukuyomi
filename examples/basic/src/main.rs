@@ -1,14 +1,15 @@
 use tsukuyomi::{
-    config::prelude::*, //
+    endpoint::builder as endpoint, //
     server::Server,
     App,
 };
 
 fn main() -> Result<(), exitfailure::ExitFailure> {
-    let app = App::create(
-        path!("/") //
-            .to(endpoint::reply("Hello, world!\n")),
-    )?;
+    let app = App::build(|s| {
+        s.at("/", (), {
+            endpoint::reply("Hello, world!\n") //
+        })
+    })?;
 
     let mut server = Server::new(app)?;
 

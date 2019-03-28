@@ -2,7 +2,7 @@ use {
     exitfailure::ExitFailure,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
-        config::prelude::*, //
+        endpoint::builder as endpoint,
         extractor,
         output::{Json, Responder},
         server::Server,
@@ -28,10 +28,13 @@ fn main() -> Result<(), ExitFailure> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    let app = App::create(chain![
-        path!("*").to(cors.clone()), // handle OPTIONS *
-        path!("/user/info") //
-            .to(endpoint::post() //
+    let app = App::build(|s| {
+        // handle OPTIONS *
+        s.default((), cors.clone())?;
+
+        // handle CORS simple/preflight requests
+        s.at("/user/info", cors, {
+            endpoint::post() //
                 .extract(extractor::body::json())
                 .call_async(|info: UserInfo| -> tsukuyomi::Result<_> {
                     if info.password != info.confirm_password {
@@ -40,9 +43,9 @@ fn main() -> Result<(), ExitFailure> {
                         ));
                     }
                     Ok(info)
-                },))
-            .modify(cors), // <-- handle CORS simple/preflight request to `/user/info`
-    ])?;
+                })
+        })
+    })?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;
