@@ -1,13 +1,13 @@
 use {
     super::{
-        concurrency::{current_thread::CurrentThread, Concurrency, DefaultConcurrency},
-        path::{IntoPath, Path, RouteHandler},
+        concurrency::{Concurrency, DefaultConcurrency},
+        path::{IntoPath, Path, PathExtractor},
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
         App, AppInner, Endpoint, ScopeData, Uri,
     },
     crate::{
-        handler::{Handler, ModifyHandler},
+        handler::{metadata::Metadata, Handler, ModifyHandler},
         util::{Chain, Never},
     },
     std::{error, fmt, marker::PhantomData, rc::Rc, sync::Arc},
@@ -51,22 +51,6 @@ impl error::Error for Error {
     }
 }
 
-impl App {
-    /// Creates a new `App` from the provided configuration.
-    #[deprecated]
-    pub fn create(config: impl Config<()>) -> Result<Self> {
-        App::create_imp(config)
-    }
-}
-
-impl App<CurrentThread> {
-    /// Creates a new `App` from the provided configuration, without guarantees of thread safety.
-    #[deprecated]
-    pub fn create_local(config: impl Config<(), CurrentThread>) -> Result<Self> {
-        App::create_imp(config)
-    }
-}
-
 impl<C> App<C>
 where
     C: Concurrency,
@@ -76,25 +60,19 @@ where
     where
         F: FnOnce(&mut Scope<'_, (), C>) -> Result<()>,
     {
-        Self::create_imp(ConfigFn(f))
-    }
-
-    /// Creates a new `App` from the provided configuration.
-    fn create_imp(config: impl Config<(), C>) -> Result<Self> {
         let mut recognizer = Recognizer::default();
         let mut scopes = Scopes::new(ScopeData {
             prefix: Uri::root(),
             default_handler: None,
         });
-        config
-            .configure(&mut Scope {
-                recognizer: &mut recognizer,
-                scopes: &mut scopes,
-                scope_id: ScopeId::root(),
-                modifier: &(),
-                _marker: PhantomData,
-            })
-            .map_err(Into::into)?;
+
+        f(&mut Scope {
+            recognizer: &mut recognizer,
+            scopes: &mut scopes,
+            scope_id: ScopeId::root(),
+            modifier: &(),
+            _marker: PhantomData,
+        })?;
 
         Ok(Self {
             inner: Arc::new(AppInner { recognizer, scopes }),
@@ -102,7 +80,7 @@ where
     }
 }
 
-/// A type representing the contextual information in `Config::configure`.
+/// A type representing the "scope" in Web application.
 #[derive(Debug)]
 pub struct Scope<'a, M, C: Concurrency = DefaultConcurrency> {
     recognizer: &'a mut Recognizer<Arc<Endpoint<C>>>,
@@ -116,17 +94,6 @@ impl<'a, M, C> Scope<'a, M, C>
 where
     C: Concurrency,
 {
-    /// Adds a route onto the current scope.
-    #[deprecated]
-    pub fn route<H>(&mut self, handler: H) -> Result<()>
-    where
-        H: Handler,
-        M: ModifyHandler<H>,
-        M::Handler: Into<C::Handler>,
-    {
-        self.route2(handler)
-    }
-
     pub(crate) fn route2<H>(&mut self, handler: H) -> Result<()>
     where
         H: Handler,
@@ -165,53 +132,6 @@ where
 
         Ok(())
     }
-
-    /// Creates a sub-scope with the provided prefix onto the current scope.
-    #[deprecated]
-    pub fn mount(&mut self, prefix: impl AsRef<str>, config: impl Config<M, C>) -> Result<()> {
-        let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
-
-        let scope_id = self
-            .scopes
-            .add_node(self.scope_id, {
-                let parent = &self.scopes[self.scope_id].data;
-                ScopeData {
-                    prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
-                    default_handler: None,
-                }
-            })
-            .map_err(Error::custom)?;
-
-        config
-            .configure(&mut Scope {
-                recognizer: &mut *self.recognizer,
-                scopes: &mut *self.scopes,
-                scope_id,
-                modifier: &*self.modifier,
-                _marker: PhantomData,
-            })
-            .map_err(Into::into)?;
-
-        Ok(())
-    }
-
-    /// Applies the specified configuration with a `ModifyHandler` on the current scope.
-    #[deprecated]
-    pub fn modify<M2>(
-        &mut self,
-        modifier: M2,
-        config: impl Config<Chain<&'a M, M2>, C>,
-    ) -> Result<()> {
-        config
-            .configure(&mut Scope {
-                recognizer: &mut *self.recognizer,
-                scopes: &mut *self.scopes,
-                scope_id: self.scope_id,
-                modifier: &Chain::new(self.modifier, modifier),
-                _marker: PhantomData,
-            })
-            .map_err(Into::into)
-    }
 }
 
 /// The experimental API for the next version.
@@ -219,14 +139,6 @@ impl<'a, M, C> Scope<'a, M, C>
 where
     C: Concurrency,
 {
-    /// Appends a `Config` onto the current scope.
-    pub fn add<T>(&mut self, config: T) -> Result<()>
-    where
-        T: Config<M, C>,
-    {
-        config.configure(self).map_err(Into::into)
-    }
-
     /// Adds a route onto the current scope.
     pub fn at<P, M2, T>(&mut self, path: P, modifier: M2, endpoint: T) -> Result<()>
     where
@@ -302,103 +214,113 @@ where
     }
 }
 
-/// A marker trait annotating that the implementator has an implementation of `Config<M, C>`
-/// for a certain `M` and `C`.
-pub trait IsConfig {}
-
-/// A trait that abstracts the configuring for constructing an instance of `App`.
-pub trait Config<M, C: Concurrency = DefaultConcurrency>: IsConfig {
-    type Error: Into<Error>;
-
-    /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error>;
-}
-
-impl<T1, T2> IsConfig for Chain<T1, T2>
-where
-    T1: IsConfig,
-    T2: IsConfig,
-{
-}
-
-impl<S1, S2, M, C> Config<M, C> for Chain<S1, S2>
-where
-    S1: Config<M, C>,
-    S2: Config<M, C>,
-    C: Concurrency,
-{
-    type Error = Error;
-
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        self.left.configure(cx).map_err(Into::into)?;
-        self.right.configure(cx).map_err(Into::into)?;
-        Ok(())
-    }
-}
-
-impl<T> IsConfig for Option<T> where T: IsConfig {}
-
-impl<M, S, C> Config<M, C> for Option<S>
-where
-    S: Config<M, C>,
-    C: Concurrency,
-{
-    type Error = S::Error;
-
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        if let Some(scope) = self {
-            scope.configure(cx)?;
-        }
-        Ok(())
-    }
-}
-
-impl<T, E> IsConfig for std::result::Result<T, E>
-where
-    T: IsConfig,
-    E: Into<Error>,
-{
-}
-
-impl<M, S, E, C> Config<M, C> for std::result::Result<S, E>
-where
-    S: Config<M, C>,
-    E: Into<Error>,
-    C: Concurrency,
-{
-    type Error = Error;
-
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        self.map_err(Into::into)?.configure(cx).map_err(Into::into)
-    }
-}
-
-impl IsConfig for () {}
-
-impl<M, C> Config<M, C> for ()
-where
-    C: Concurrency,
-{
-    type Error = Never;
-
-    fn configure(self, _: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
+#[doc(hidden)]
 #[allow(missing_debug_implementations)]
-struct ConfigFn<F>(F);
+pub struct RouteHandler<E, T> {
+    endpoint: Arc<T>,
+    metadata: Metadata,
+    _marker: PhantomData<E>,
+}
 
-impl<F> IsConfig for ConfigFn<F> {}
-
-impl<F, C, M> Config<M, C> for ConfigFn<F>
+impl<E, T> RouteHandler<E, T>
 where
-    C: Concurrency,
-    F: FnOnce(&mut Scope<'_, M, C>) -> Result<()>,
+    E: PathExtractor,
+    T: crate::endpoint::Endpoint<E::Output>,
 {
-    type Error = Error;
+    pub(crate) fn new(path: Path<E>, endpoint: T) -> Self {
+        let path = path.uri_str();
+        let endpoint = Arc::new(endpoint);
 
-    fn configure(self, scope: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        (self.0)(scope)
+        let mut metadata = match path {
+            "*" => Metadata::without_suffix(),
+            path => Metadata::new(path.parse().expect("this is a bug")),
+        };
+        *metadata.allowed_methods_mut() = endpoint.allowed_methods();
+
+        Self {
+            endpoint,
+            metadata,
+            _marker: PhantomData,
+        }
+    }
+}
+
+mod handle {
+    use {
+        super::{PathExtractor, RouteHandler},
+        crate::{
+            endpoint::{ApplyContext, Endpoint},
+            error::Error,
+            future::{Poll, TryFuture},
+            handler::{metadata::Metadata, Handler},
+            input::Input,
+        },
+        std::{marker::PhantomData, sync::Arc},
+    };
+
+    impl<E, T> Handler for RouteHandler<E, T>
+    where
+        E: PathExtractor,
+        T: Endpoint<E::Output>,
+    {
+        type Output = T::Output;
+        type Error = Error;
+        type Handle = RouteHandle<E, T>;
+
+        fn handle(&self) -> Self::Handle {
+            RouteHandle {
+                state: RouteHandleState::Init(self.endpoint.clone()),
+                _marker: PhantomData,
+            }
+        }
+
+        fn metadata(&self) -> Metadata {
+            self.metadata.clone()
+        }
+    }
+
+    #[doc(hidden)]
+    #[allow(missing_debug_implementations)]
+    pub struct RouteHandle<E, T>
+    where
+        E: PathExtractor,
+        T: Endpoint<E::Output>,
+    {
+        state: RouteHandleState<T, T::Future>,
+        _marker: PhantomData<E>,
+    }
+
+    #[allow(missing_debug_implementations)]
+    enum RouteHandleState<T, Fut> {
+        Init(Arc<T>),
+        InFlight(Fut),
+    }
+
+    impl<E, T> TryFuture for RouteHandle<E, T>
+    where
+        E: PathExtractor,
+        T: Endpoint<E::Output>,
+    {
+        type Ok = T::Output;
+        type Error = Error;
+
+        #[inline]
+        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            loop {
+                self.state = match self.state {
+                    RouteHandleState::Init(ref endpoint) => {
+                        let args = E::extract(input.params.as_ref())?;
+                        RouteHandleState::InFlight(
+                            endpoint
+                                .apply(args, &mut ApplyContext::new(input))
+                                .map_err(|(_args, err)| err)?,
+                        )
+                    }
+                    RouteHandleState::InFlight(ref mut in_flight) => {
+                        return in_flight.poll_ready(input).map_err(Into::into);
+                    }
+                };
+            }
+        }
     }
 }

@@ -1,16 +1,7 @@
 use {
-    crate::{
-        endpoint::Endpoint, //
-        error::Error,
-        generic::Tuple,
-        handler::{metadata::Metadata, Handler},
-        input::param::Params,
-    },
-    std::{marker::PhantomData, sync::Arc},
+    crate::{error::Error, generic::Tuple, input::param::Params},
+    std::marker::PhantomData,
 };
-
-#[allow(deprecated)]
-use crate::config::Route;
 
 #[doc(hidden)]
 pub use tsukuyomi_macros::path_impl;
@@ -102,135 +93,7 @@ where
         }
     }
 
-    /// Creates a `Route` with this path configuration and the specified `Endpoint`.
-    #[deprecated]
-    #[allow(deprecated)]
-    pub fn to<T>(
-        self,
-        endpoint: T,
-    ) -> Route<
-        impl Handler<
-            Output = T::Output,
-            Error = Error,
-            Handle = self::handle::RouteHandle<E, T>, // private
-        >,
-    >
-    where
-        T: Endpoint<E::Output>,
-    {
-        Route {
-            handler: RouteHandler::new(self, endpoint),
-        }
-    }
-}
-
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-pub struct RouteHandler<E, T> {
-    endpoint: Arc<T>,
-    metadata: Metadata,
-    _marker: PhantomData<E>,
-}
-
-impl<E, T> RouteHandler<E, T>
-where
-    E: PathExtractor,
-    T: Endpoint<E::Output>,
-{
-    pub(crate) fn new(path: Path<E>, endpoint: T) -> Self {
-        let Path { path, .. } = path;
-        let endpoint = Arc::new(endpoint);
-
-        let mut metadata = match path {
-            "*" => Metadata::without_suffix(),
-            path => Metadata::new(path.parse().expect("this is a bug")),
-        };
-        *metadata.allowed_methods_mut() = endpoint.allowed_methods();
-
-        Self {
-            endpoint,
-            metadata,
-            _marker: PhantomData,
-        }
-    }
-}
-
-mod handle {
-    use {
-        super::{PathExtractor, RouteHandler},
-        crate::{
-            endpoint::{ApplyContext, Endpoint},
-            error::Error,
-            future::{Poll, TryFuture},
-            handler::{metadata::Metadata, Handler},
-            input::Input,
-        },
-        std::{marker::PhantomData, sync::Arc},
-    };
-
-    impl<E, T> Handler for RouteHandler<E, T>
-    where
-        E: PathExtractor,
-        T: Endpoint<E::Output>,
-    {
-        type Output = T::Output;
-        type Error = Error;
-        type Handle = RouteHandle<E, T>;
-
-        fn handle(&self) -> Self::Handle {
-            RouteHandle {
-                state: RouteHandleState::Init(self.endpoint.clone()),
-                _marker: PhantomData,
-            }
-        }
-
-        fn metadata(&self) -> Metadata {
-            self.metadata.clone()
-        }
-    }
-
-    #[doc(hidden)]
-    #[allow(missing_debug_implementations)]
-    pub struct RouteHandle<E, T>
-    where
-        E: PathExtractor,
-        T: Endpoint<E::Output>,
-    {
-        state: RouteHandleState<T, T::Future>,
-        _marker: PhantomData<E>,
-    }
-
-    #[allow(missing_debug_implementations)]
-    enum RouteHandleState<T, Fut> {
-        Init(Arc<T>),
-        InFlight(Fut),
-    }
-
-    impl<E, T> TryFuture for RouteHandle<E, T>
-    where
-        E: PathExtractor,
-        T: Endpoint<E::Output>,
-    {
-        type Ok = T::Output;
-        type Error = Error;
-
-        #[inline]
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            loop {
-                self.state = match self.state {
-                    RouteHandleState::Init(ref endpoint) => {
-                        let args = E::extract(input.params.as_ref())?;
-                        RouteHandleState::InFlight(
-                            endpoint
-                                .apply(args, &mut ApplyContext::new(input))
-                                .map_err(|(_args, err)| err)?,
-                        )
-                    }
-                    RouteHandleState::InFlight(ref mut in_flight) => {
-                        return in_flight.poll_ready(input).map_err(Into::into);
-                    }
-                };
-            }
-        }
+    pub(crate) fn uri_str(&self) -> &'static str {
+        self.path
     }
 }
