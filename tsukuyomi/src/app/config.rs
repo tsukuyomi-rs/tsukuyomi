@@ -60,25 +60,19 @@ where
     where
         F: FnOnce(&mut Scope<'_, (), C>) -> Result<()>,
     {
-        Self::create_imp(ConfigFn(f))
-    }
-
-    /// Creates a new `App` from the provided configuration.
-    fn create_imp(config: impl Config<(), C>) -> Result<Self> {
         let mut recognizer = Recognizer::default();
         let mut scopes = Scopes::new(ScopeData {
             prefix: Uri::root(),
             default_handler: None,
         });
-        config
-            .configure(&mut Scope {
-                recognizer: &mut recognizer,
-                scopes: &mut scopes,
-                scope_id: ScopeId::root(),
-                modifier: &(),
-                _marker: PhantomData,
-            })
-            .map_err(Into::into)?;
+
+        f(&mut Scope {
+            recognizer: &mut recognizer,
+            scopes: &mut scopes,
+            scope_id: ScopeId::root(),
+            modifier: &(),
+            _marker: PhantomData,
+        })?;
 
         Ok(Self {
             inner: Arc::new(AppInner { recognizer, scopes }),
@@ -86,7 +80,7 @@ where
     }
 }
 
-/// A type representing the contextual information in `Config::configure`.
+/// A type representing the "scope" in Web application.
 #[derive(Debug)]
 pub struct Scope<'a, M, C: Concurrency = DefaultConcurrency> {
     recognizer: &'a mut Recognizer<Arc<Endpoint<C>>>,
@@ -145,14 +139,6 @@ impl<'a, M, C> Scope<'a, M, C>
 where
     C: Concurrency,
 {
-    /// Appends a `Config` onto the current scope.
-    pub fn add<T>(&mut self, config: T) -> Result<()>
-    where
-        T: Config<M, C>,
-    {
-        config.configure(self).map_err(Into::into)
-    }
-
     /// Adds a route onto the current scope.
     pub fn at<P, M2, T>(&mut self, path: P, modifier: M2, endpoint: T) -> Result<()>
     where
@@ -225,107 +211,6 @@ where
             modifier: &Chain::new(modifier, self.modifier),
             _marker: PhantomData,
         })
-    }
-}
-
-/// A marker trait annotating that the implementator has an implementation of `Config<M, C>`
-/// for a certain `M` and `C`.
-pub trait IsConfig {}
-
-/// A trait that abstracts the configuring for constructing an instance of `App`.
-pub trait Config<M, C: Concurrency = DefaultConcurrency>: IsConfig {
-    type Error: Into<Error>;
-
-    /// Applies this configuration to the specified context.
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error>;
-}
-
-impl<T1, T2> IsConfig for Chain<T1, T2>
-where
-    T1: IsConfig,
-    T2: IsConfig,
-{
-}
-
-impl<S1, S2, M, C> Config<M, C> for Chain<S1, S2>
-where
-    S1: Config<M, C>,
-    S2: Config<M, C>,
-    C: Concurrency,
-{
-    type Error = Error;
-
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        self.left.configure(cx).map_err(Into::into)?;
-        self.right.configure(cx).map_err(Into::into)?;
-        Ok(())
-    }
-}
-
-impl<T> IsConfig for Option<T> where T: IsConfig {}
-
-impl<M, S, C> Config<M, C> for Option<S>
-where
-    S: Config<M, C>,
-    C: Concurrency,
-{
-    type Error = S::Error;
-
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        if let Some(scope) = self {
-            scope.configure(cx)?;
-        }
-        Ok(())
-    }
-}
-
-impl<T, E> IsConfig for std::result::Result<T, E>
-where
-    T: IsConfig,
-    E: Into<Error>,
-{
-}
-
-impl<M, S, E, C> Config<M, C> for std::result::Result<S, E>
-where
-    S: Config<M, C>,
-    E: Into<Error>,
-    C: Concurrency,
-{
-    type Error = Error;
-
-    fn configure(self, cx: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        self.map_err(Into::into)?.configure(cx).map_err(Into::into)
-    }
-}
-
-impl IsConfig for () {}
-
-impl<M, C> Config<M, C> for ()
-where
-    C: Concurrency,
-{
-    type Error = Never;
-
-    fn configure(self, _: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-#[allow(missing_debug_implementations)]
-struct ConfigFn<F>(F);
-
-impl<F> IsConfig for ConfigFn<F> {}
-
-impl<F, C, M> Config<M, C> for ConfigFn<F>
-where
-    C: Concurrency,
-    F: FnOnce(&mut Scope<'_, M, C>) -> Result<()>,
-{
-    type Error = Error;
-
-    fn configure(self, scope: &mut Scope<'_, M, C>) -> std::result::Result<(), Self::Error> {
-        (self.0)(scope)
     }
 }
 

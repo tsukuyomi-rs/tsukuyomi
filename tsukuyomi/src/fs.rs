@@ -524,20 +524,17 @@ where
             ..self
         }
     }
-}
 
-impl<P> crate::app::config::IsConfig for Staticfiles<P> where P: AsRef<Path> {}
-
-impl<P, M, C> crate::app::config::Config<M, C> for Staticfiles<P>
-where
-    P: AsRef<Path>,
-    M: ModifyHandler<ServeFile>,
-    M::Handler: Into<C::Handler>,
-    C: Concurrency,
-{
-    type Error = crate::app::config::Error;
-
-    fn configure(self, scope: &mut crate::app::config::Scope<'_, M, C>) -> crate::app::Result<()> {
+    /// Registers the static file handlers onto the provided scope.
+    pub fn register<M, C>(
+        self,
+        scope: &mut crate::app::config::Scope<'_, M, C>,
+    ) -> crate::app::Result<()>
+    where
+        M: ModifyHandler<ServeFile>,
+        M::Handler: Into<C::Handler>,
+        C: Concurrency,
+    {
         let Self { root_dir, config } = self;
 
         for entry in std::fs::read_dir(root_dir).map_err(crate::app::config::Error::custom)? {

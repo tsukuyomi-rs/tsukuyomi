@@ -41,7 +41,7 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
             endpoint::reply(redirect_to_index) //
         })?;
 
-        s.add(Staticfiles::new(STATIC_PATH))
+        Staticfiles::new(STATIC_PATH).register(s)
     })?;
 
     let mut server = Server::new(app)?;

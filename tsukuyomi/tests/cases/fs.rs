@@ -19,8 +19,5 @@ fn compiletest() -> tsukuyomi::app::Result<()> {
 #[test]
 #[ignore]
 fn compiletest_staticfiles() -> tsukuyomi::app::Result<()> {
-    App::build(|s| {
-        s.add(Staticfiles::new("./public")) //
-    })
-    .map(|_: App| ())
+    App::build(|s| Staticfiles::new("./public").register(s)).map(|_: App| ())
 }

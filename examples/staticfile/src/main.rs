@@ -17,7 +17,7 @@ fn main() -> Result<(), ExitFailure> {
                 .reply(NamedFile::open(manifest_dir.join("static/index.html")))
         })?;
 
-        s.add(Staticfiles::new(manifest_dir.join("static")))
+        Staticfiles::new(manifest_dir.join("static")).register(s)
     })?;
 
     let mut server = Server::new(app)?;
