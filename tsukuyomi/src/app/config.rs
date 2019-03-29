@@ -4,9 +4,10 @@ use {
         path::{IntoPath, Path, PathExtractor},
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
-        App, AppInner, Endpoint, ScopeData, Uri,
+        App, AppInner, ResourceData, ScopeData, Uri,
     },
     crate::{
+        endpoint::Endpoint,
         handler::{metadata::Metadata, Handler, ModifyHandler},
         util::{Chain, Never},
     },
@@ -60,22 +61,23 @@ where
     where
         F: FnOnce(&mut Scope<'_, (), C>) -> Result<()>,
     {
-        let mut recognizer = Recognizer::default();
-        let mut scopes = Scopes::new(ScopeData {
-            prefix: Uri::root(),
-            default_handler: None,
-        });
+        let mut app = AppInner {
+            recognizer: Recognizer::default(),
+            scopes: Scopes::new(ScopeData {
+                prefix: Uri::root(),
+                default_handler: None,
+            }),
+        };
 
         f(&mut Scope {
-            recognizer: &mut recognizer,
-            scopes: &mut scopes,
+            app: &mut app,
             scope_id: ScopeId::root(),
             modifier: &(),
             _marker: PhantomData,
         })?;
 
         Ok(Self {
-            inner: Arc::new(AppInner { recognizer, scopes }),
+            inner: Arc::new(app),
         })
     }
 }
@@ -83,8 +85,7 @@ where
 /// A type representing the "scope" in Web application.
 #[derive(Debug)]
 pub struct Scope<'a, M, C: Concurrency = DefaultConcurrency> {
-    recognizer: &'a mut Recognizer<Arc<Endpoint<C>>>,
-    scopes: &'a mut Scopes<ScopeData<C>>,
+    app: &'a mut AppInner<C>,
     modifier: &'a M,
     scope_id: ScopeId,
     _marker: PhantomData<Rc<()>>,
@@ -103,17 +104,18 @@ where
         let handler = self.modifier.modify(handler);
 
         if let Some(path) = handler.metadata().path().cloned() {
-            let uri = self.scopes[self.scope_id]
+            let uri = self.app.scopes[self.scope_id]
                 .data
                 .prefix
                 .join(&path)
                 .map_err(Error::custom)?;
 
-            let scope = &self.scopes[self.scope_id];
-            self.recognizer
+            let scope = &self.app.scopes[self.scope_id];
+            self.app
+                .recognizer
                 .insert(
                     uri.as_str(),
-                    Arc::new(Endpoint {
+                    Arc::new(ResourceData {
                         scope: scope.id(),
                         ancestors: scope
                             .ancestors()
@@ -127,7 +129,7 @@ where
                 )
                 .map_err(Error::custom)?;
         } else {
-            self.scopes[self.scope_id].data.default_handler = Some(handler.into());
+            self.app.scopes[self.scope_id].data.default_handler = Some(handler.into());
         }
 
         Ok(())
@@ -143,7 +145,7 @@ where
     pub fn at<P, M2, T>(&mut self, path: P, modifier: M2, endpoint: T) -> Result<()>
     where
         P: IntoPath,
-        T: crate::endpoint::Endpoint<P::Output>,
+        T: Endpoint<P::Output>,
         M2: ModifyHandler<RouteHandler<P::Extractor, T>>,
         M: ModifyHandler<M2::Handler>,
         M::Handler: Into<C::Handler>,
@@ -158,7 +160,7 @@ where
     /// of the current scope and there are no route that exactly matches.
     pub fn default<M2, T>(&mut self, modifier: M2, endpoint: T) -> Result<()>
     where
-        T: crate::endpoint::Endpoint<()>,
+        T: Endpoint<()>,
         M2: ModifyHandler<RouteHandler<(), T>>,
         M: ModifyHandler<M2::Handler>,
         M::Handler: Into<C::Handler>,
@@ -178,9 +180,10 @@ where
         let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
 
         let scope_id = self
+            .app
             .scopes
             .add_node(self.scope_id, {
-                let parent = &self.scopes[self.scope_id].data;
+                let parent = &self.app.scopes[self.scope_id].data;
                 ScopeData {
                     prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
                     default_handler: None,
@@ -189,8 +192,7 @@ where
             .map_err(Error::custom)?;
 
         f(&mut Scope {
-            recognizer: &mut *self.recognizer,
-            scopes: &mut *self.scopes,
+            app: &mut *self.app,
             scope_id,
             modifier: &Chain::new(modifier, self.modifier),
             _marker: PhantomData,
@@ -205,8 +207,7 @@ where
         F: FnOnce(&mut Scope<'_, Chain<M2, &'a M>, C>) -> Result<()>,
     {
         f(&mut Scope {
-            recognizer: &mut *self.recognizer,
-            scopes: &mut *self.scopes,
+            app: &mut *self.app,
             scope_id: self.scope_id,
             modifier: &Chain::new(modifier, self.modifier),
             _marker: PhantomData,
@@ -225,7 +226,7 @@ pub struct RouteHandler<E, T> {
 impl<E, T> RouteHandler<E, T>
 where
     E: PathExtractor,
-    T: crate::endpoint::Endpoint<E::Output>,
+    T: Endpoint<E::Output>,
 {
     pub(crate) fn new(path: Path<E>, endpoint: T) -> Self {
         let path = path.uri_str();

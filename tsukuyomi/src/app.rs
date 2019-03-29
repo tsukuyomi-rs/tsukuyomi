@@ -54,7 +54,7 @@ impl<C: Concurrency> App<C> {
 
 #[derive(Debug)]
 struct AppInner<C: Concurrency> {
-    recognizer: Recognizer<Arc<Endpoint<C>>>,
+    recognizer: Recognizer<Arc<ResourceData<C>>>,
     scopes: Scopes<ScopeData<C>>,
 }
 
@@ -67,18 +67,18 @@ impl<C: Concurrency> AppInner<C> {
     fn infer_scope<'a>(
         &self,
         path: &str,
-        endpoints: impl IntoIterator<Item = &'a Endpoint<C>>,
+        resources: impl IntoIterator<Item = &'a ResourceData<C>>,
     ) -> &Scope<ScopeData<C>> {
         // First, extract a series of common ancestors of candidates.
         let ancestors = {
             let mut ancestors: Option<&[ScopeId]> = None;
-            for endpoint in endpoints {
-                let ancestors = ancestors.get_or_insert(&endpoint.ancestors);
+            for resource in resources {
+                let ancestors = ancestors.get_or_insert(&resource.ancestors);
                 let n = (*ancestors)
                     .iter()
-                    .zip(&endpoint.ancestors)
+                    .zip(&resource.ancestors)
                     .position(|(a, b)| a != b)
-                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), endpoint.ancestors.len()));
+                    .unwrap_or_else(|| std::cmp::min(ancestors.len(), resource.ancestors.len()));
                 *ancestors = &ancestors[..n];
             }
             ancestors
@@ -111,13 +111,13 @@ impl<C: Concurrency> AppInner<C> {
             .next()
     }
 
-    fn find_endpoint(
+    fn find_resource(
         &self,
         path: &str,
         captures: &mut Option<Captures>,
-    ) -> std::result::Result<&Arc<Endpoint<C>>, &Scope<ScopeData<C>>> {
+    ) -> std::result::Result<&Arc<ResourceData<C>>, &Scope<ScopeData<C>>> {
         match self.recognizer.recognize(path, captures) {
-            Ok(endpoint) => Ok(endpoint),
+            Ok(resource) => Ok(resource),
             Err(RecognizeError::NotMatched) => Err(self.scope(ScopeId::root())),
             Err(RecognizeError::PartiallyMatched(candidates)) => Err(self.infer_scope(
                 path,
@@ -147,14 +147,14 @@ impl<C: Concurrency> fmt::Debug for ScopeData<C> {
 }
 
 /// A type representing a set of endpoints with the same HTTP path.
-struct Endpoint<C: Concurrency> {
+struct ResourceData<C: Concurrency> {
     scope: ScopeId,
     ancestors: Vec<ScopeId>,
     uri: Uri,
     handler: C::Handler,
 }
 
-impl<C: Concurrency> fmt::Debug for Endpoint<C> {
+impl<C: Concurrency> fmt::Debug for ResourceData<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Endpoint")
             .field("scope", &self.scope)

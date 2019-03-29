@@ -8,7 +8,7 @@ use {
 #[test]
 fn new_empty() -> Result<()> {
     let app: App = App::build(|_s| Ok(()))?;
-    assert_matches!(app.inner.find_endpoint("/", &mut None), Err(..));
+    assert_matches!(app.inner.find_resource("/", &mut None), Err(..));
     Ok(())
 }
 
@@ -20,14 +20,14 @@ fn route_single_method() -> Result<()> {
     })?;
 
     assert_matches!(
-        app.inner.find_endpoint("/", &mut None),
+        app.inner.find_resource("/", &mut None),
         Ok(endpoint) if endpoint.uri == "/"
     );
 
-    assert_matches!(app.inner.find_endpoint("/path/to", &mut None), Err(..));
+    assert_matches!(app.inner.find_resource("/path/to", &mut None), Err(..));
 
     assert_matches!(
-        app.inner.find_endpoint("/", &mut None),
+        app.inner.find_resource("/", &mut None),
         Ok(endpoint) if endpoint.uri == "/"
     );
 
@@ -48,19 +48,19 @@ fn scope_simple() -> Result<()> {
     })?;
 
     assert_matches!(
-        app.inner.find_endpoint("/a", &mut None),
+        app.inner.find_resource("/a", &mut None),
         Ok(endpoint) if endpoint.uri == "/a"
     );
     assert_matches!(
-        app.inner.find_endpoint("/b", &mut None),
+        app.inner.find_resource("/b", &mut None),
         Ok(endpoint) if endpoint.uri == "/b"
     );
     assert_matches!(
-        app.inner.find_endpoint("/foo", &mut None),
+        app.inner.find_resource("/foo", &mut None),
         Ok(endpoint) if endpoint.uri == "/foo"
     );
     assert_matches!(
-        app.inner.find_endpoint("/c/d", &mut None),
+        app.inner.find_resource("/c/d", &mut None),
         Ok(endpoint) if endpoint.uri == "/c/d"
     );
 
@@ -90,31 +90,31 @@ fn scope_nested() -> Result<()> {
     })?;
 
     assert_matches!(
-        app.inner.find_endpoint("/foo", &mut None),
+        app.inner.find_resource("/foo", &mut None),
         Ok(endpoint) if endpoint.uri == "/foo"
     );
     assert_matches!(
-        app.inner.find_endpoint("/bar", &mut None),
+        app.inner.find_resource("/bar", &mut None),
         Ok(endpoint) if endpoint.uri == "/bar"
     );
     assert_matches!(
-        app.inner.find_endpoint("/foo", &mut None),
+        app.inner.find_resource("/foo", &mut None),
         Ok(endpoint) if endpoint.uri == "/foo"
     );
     assert_matches!(
-        app.inner.find_endpoint("/baz", &mut None),
+        app.inner.find_resource("/baz", &mut None),
         Ok(endpoint) if endpoint.uri == "/baz"
     );
     assert_matches!(
-        app.inner.find_endpoint("/baz/foobar", &mut None),
+        app.inner.find_resource("/baz/foobar", &mut None),
         Ok(endpoint) if endpoint.uri == "/baz/foobar"
     );
     assert_matches!(
-        app.inner.find_endpoint("/hoge", &mut None),
+        app.inner.find_resource("/hoge", &mut None),
         Ok(endpoint) if endpoint.uri == "/hoge"
     );
 
-    assert_matches!(app.inner.find_endpoint("/baz/", &mut None), Err(..));
+    assert_matches!(app.inner.find_resource("/baz/", &mut None), Err(..));
 
     Ok(())
 }

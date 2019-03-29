@@ -2,7 +2,7 @@ use {
     super::{
         concurrency::{imp::ConcurrencyImpl, Concurrency, DefaultConcurrency},
         recognizer::Captures,
-        AppInner, Endpoint,
+        AppInner, ResourceData,
     },
     crate::{
         input::{
@@ -94,7 +94,7 @@ where
             cookie_jar: None,
             response_headers: None,
             locals,
-            endpoint: None,
+            resource: None,
             captures: None,
             state: AppFutureState::Init,
         }
@@ -110,7 +110,7 @@ pub struct AppFuture<C: Concurrency> {
     cookie_jar: Option<CookieJar>,
     response_headers: Option<HeaderMap>,
     locals: LocalMap,
-    endpoint: Option<Arc<Endpoint<C>>>,
+    resource: Option<Arc<ResourceData<C>>>,
     captures: Option<Captures>,
     state: AppFutureState<C>,
 }
@@ -136,10 +136,10 @@ macro_rules! input {
         &mut Input {
             request: &$self.request,
             params: {
-                &if let Some(ref endpoint) = $self.endpoint {
+                &if let Some(ref resource) = $self.resource {
                     Some(Params {
                         path: $self.request.uri().path(),
-                        names: endpoint.uri.capture_names(),
+                        names: resource.uri.capture_names(),
                         captures: $self.captures.as_ref(),
                     })
                 } else {
@@ -156,16 +156,16 @@ macro_rules! input {
 
 impl<C: Concurrency> AppFuture<C> {
     fn process_recognize(&mut self) -> Result<<C::Impl as ConcurrencyImpl>::Handle, crate::Error> {
-        self.endpoint = None;
+        self.resource = None;
         self.captures = None;
 
         match self
             .inner
-            .find_endpoint(self.request.uri().path(), &mut self.captures)
+            .find_resource(self.request.uri().path(), &mut self.captures)
         {
-            Ok(endpoint) => {
-                self.endpoint = Some(endpoint.clone());
-                Ok(<C::Impl as ConcurrencyImpl>::handle(&endpoint.handler))
+            Ok(resource) => {
+                self.resource = Some(resource.clone());
+                Ok(<C::Impl as ConcurrencyImpl>::handle(&resource.handler))
             }
             Err(scope) => match self.inner.find_default_handler(scope.id()) {
                 Some(fallback) => Ok(<C::Impl as ConcurrencyImpl>::handle(fallback)),
