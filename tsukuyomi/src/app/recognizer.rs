@@ -2,7 +2,7 @@
 
 use {
     failure::Error,
-    indexmap::{indexset, IndexMap, IndexSet},
+    indexmap::{indexset, map::Entry, IndexMap, IndexSet},
     std::{
         cmp::{self, Ordering},
         fmt, mem,
@@ -57,7 +57,7 @@ impl<T> Default for Recognizer<T> {
 }
 
 impl<T> Recognizer<T> {
-    pub fn insert(&mut self, path: &str, data: T) -> Result<(), Error> {
+    pub fn insert(&mut self, path: &str, data: T) -> Result<&mut T, Error> {
         if !path.is_ascii() {
             failure::bail!("The path must be a sequence of ASCII characters");
         }
@@ -75,9 +75,10 @@ impl<T> Recognizer<T> {
             .visit_tree(&mut self.tree)?;
         }
 
-        self.inner.insert(path.into(), data);
-
-        Ok(())
+        match self.inner.entry(path.into()) {
+            Entry::Occupied(..) => failure::bail!("the resource has already been registered"),
+            Entry::Vacant(e) => Ok(e.insert(data)),
+        }
     }
 
     /// Traverses the given path and returns a reference to registered value of "T" if matched.

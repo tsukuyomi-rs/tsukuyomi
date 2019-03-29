@@ -1,9 +1,8 @@
 use {
     std::sync::{Arc, Mutex},
     tsukuyomi::{
-        chain,
-        endpoint::builder as endpoint,
-        handler::{metadata::Metadata, Handler, ModifyHandler},
+        chain, endpoint,
+        handler::{Handler, ModifyHandler},
         test::{self, TestServer},
         App,
     },
@@ -43,10 +42,6 @@ where
     type Error = H::Error;
     type Handle = H::Handle;
 
-    fn metadata(&self) -> Metadata {
-        self.inner.metadata()
-    }
-
     fn handle(&self) -> Self::Handle {
         self.marker.lock().unwrap().push(self.name);
         self.inner.handle()
@@ -57,12 +52,12 @@ where
 fn global_modifier() -> test::Result {
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::build(|s| {
+    let app = App::build(|mut s| {
         let m = MockModifier {
             marker: marker.clone(),
             name: "M",
         };
-        s.at("/", m, endpoint::reply("")) //
+        s.at("/")?.with(m).to(endpoint::call(|| "")) //
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -91,8 +86,8 @@ fn global_modifiers() -> test::Result {
     };
     let m = chain!(m1, m2);
 
-    let app = App::build(|s| {
-        s.at("/", m, endpoint::reply("")) //
+    let app = App::build(|mut s| {
+        s.at("/")?.with(m).to(endpoint::call(|| "")) //
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -116,12 +111,14 @@ fn scoped_modifier() -> test::Result {
         name: "M2",
     };
 
-    let app = App::build(|s| {
-        s.with(&m1, |s| {
-            s.nest("/path1", &(), |s| {
-                s.at("/", m2, endpoint::reply("")) //
-            })?;
-            s.at("/path2", (), endpoint::reply(""))
+    let app = App::build(|mut s| {
+        s.with(&m1).done(|mut s| {
+            s.mount("/path1")?
+                .at("/")?
+                .with(m2)
+                .to(endpoint::call(|| ""))?;
+
+            s.at("/path2")?.to(endpoint::call(|| ""))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -153,17 +150,15 @@ fn nested_modifiers() -> test::Result {
         name: "M3",
     };
 
-    let app = App::build(|s| {
-        s.nest("/path", (), |s| {
-            s.nest("/to", m1, |s| {
-                s.with(m2, |s| {
-                    s.at("/", (), endpoint::reply(""))?;
-                    s.nest("/a", (), |s| {
-                        s.at("/", m3, endpoint::reply("")) //
-                    })
-                })
+    let app = App::build(|mut s| {
+        s.mount("/path")?
+            .mount("/to")?
+            .with(m1)
+            .with(m2)
+            .done(|mut s| {
+                s.at("/")?.to(endpoint::call(|| ""))?;
+                s.mount("/a")?.at("/")?.with(m3).to(endpoint::call(|| "")) //
             })
-        })
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

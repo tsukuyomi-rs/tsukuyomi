@@ -108,7 +108,6 @@ impl<'a> ToTokens for PathImplOutput<'a> {
         let module = &self.module;
 
         let Path = quote!(#module::Path);
-        let PathExtractor = quote!(#module::PathExtractor);
         let Params = quote!(#module::Params);
         let PercentEncoded = quote!(#module::PercentEncoded);
         let FromPercentEncoded = quote!(#module::FromPercentEncoded);
@@ -116,8 +115,8 @@ impl<'a> ToTokens for PathImplOutput<'a> {
 
         if self.params.is_empty() {
             tokens.append_all(quote!(
-                fn call() -> #Path<()> {
-                    #Path::new(#path)
+                fn call() -> &'static str {
+                    #path
                 }
             ));
             return;
@@ -154,7 +153,7 @@ impl<'a> ToTokens for PathImplOutput<'a> {
         });
 
         tokens.append_all(quote! {
-            fn call<#(#type_idents),*>() -> #Path<impl #PathExtractor<Output = (#(#type_idents,)*)>>
+            fn call<#(#type_idents),*>() -> impl #Path<Output = (#(#type_idents,)*)>
             #where_clause
             {
                 #[allow(missing_debug_implementations)]
@@ -162,10 +161,14 @@ impl<'a> ToTokens for PathImplOutput<'a> {
                     _marker: std::marker::PhantomData<fn() -> (#(#type_idents,)*)>,
                 }
 
-                impl<#(#type_idents),*> #PathExtractor for __Extractor<#(#type_idents),*>
+                impl<#(#type_idents),*> #Path for __Extractor<#(#type_idents),*>
                 #where_clause
                 {
                     type Output = (#(#type_idents,)*);
+
+                    fn as_str(&self) -> &str {
+                        #path
+                    }
 
                     #[allow(nonstandard_style)]
                     fn extract(params: Option<&#Params<'_>>)
@@ -177,7 +180,9 @@ impl<'a> ToTokens for PathImplOutput<'a> {
                     }
                 }
 
-                #Path::<__Extractor<#(#type_idents),*>>::new(#path)
+                __Extractor::<#(#type_idents),*> {
+                    _marker: std::marker::PhantomData,
+                }
             }
         });
     }

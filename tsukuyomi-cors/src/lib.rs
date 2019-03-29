@@ -229,12 +229,11 @@ impl CORS {
 mod impl_endpoint_for_cors {
     use {
         super::CORS,
-        http::{Method, Response, StatusCode},
+        http::{Response, StatusCode},
         tsukuyomi::{
-            endpoint::{ApplyContext, ApplyError, ApplyResult, Endpoint},
+            endpoint::Endpoint,
             error::Error,
             future::{Poll, TryFuture},
-            handler::metadata::AllowedMethods,
             input::Input,
         },
     };
@@ -244,16 +243,8 @@ mod impl_endpoint_for_cors {
         type Error = Error;
         type Future = CORSEndpointFuture;
 
-        fn apply(&self, _: (), cx: &mut ApplyContext<'_, '_>) -> ApplyResult<(), Self> {
-            if cx.method() == Method::OPTIONS {
-                Ok(CORSEndpointFuture { cors: self.clone() })
-            } else {
-                Err(((), ApplyError::method_not_allowed()))
-            }
-        }
-
-        fn allowed_methods(&self) -> AllowedMethods {
-            AllowedMethods::from(Method::OPTIONS)
+        fn apply(&self, _: ()) -> Self::Future {
+            CORSEndpointFuture { cors: self.clone() }
         }
     }
 
@@ -284,11 +275,11 @@ mod impl_endpoint_for_cors {
 mod impl_modify_handler_for_cors {
     use {
         super::CORS,
-        http::{Method, Response},
+        http::Response,
         tsukuyomi::{
             error::Error,
             future::{Async, Poll, TryFuture},
-            handler::{metadata::Metadata, Handler, ModifyHandler},
+            handler::{Handler, ModifyHandler},
             input::Input,
             util::Either,
         },
@@ -308,12 +299,8 @@ mod impl_modify_handler_for_cors {
         type Handler = CORSHandler<H>;
 
         fn modify(&self, handler: H) -> Self::Handler {
-            let mut metadata = handler.metadata().clone();
-            metadata.allowed_methods_mut().extend(Some(Method::OPTIONS));
-
             CORSHandler {
                 handler,
-                metadata,
                 cors: self.clone(),
             }
         }
@@ -322,7 +309,6 @@ mod impl_modify_handler_for_cors {
     #[derive(Debug)]
     pub struct CORSHandler<H> {
         handler: H,
-        metadata: Metadata,
         cors: CORS,
     }
 
@@ -331,10 +317,6 @@ mod impl_modify_handler_for_cors {
         type Output = Either<Response<()>, H::Output>;
         type Error = Error;
         type Handle = CORSHandle<H::Handle>;
-
-        fn metadata(&self) -> Metadata {
-            self.metadata.clone()
-        }
 
         #[inline]
         fn handle(&self) -> Self::Handle {

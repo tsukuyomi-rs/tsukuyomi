@@ -1,9 +1,4 @@
-use tsukuyomi::{
-    endpoint::builder as endpoint, //
-    server::Server,
-    vendor::http::StatusCode,
-    App,
-};
+use tsukuyomi::{endpoint, server::Server, vendor::http::StatusCode, App};
 
 fn main() -> Result<(), exitfailure::ExitFailure> {
     std::env::set_var("RUST_LOG", "info");
@@ -11,15 +6,11 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
 
     let log = logging::log("request_logging");
 
-    let app = App::build(|s| {
-        s.with(&log, |s| {
-            s.at("/", (), {
-                endpoint::get() //
-                    .reply("Hello.")
-            })?;
-            s.default((), {
-                endpoint::reply(StatusCode::NOT_FOUND) //
-            })
+    let app = App::build(|mut scope| {
+        scope.with(&log).done(|mut scope| {
+            scope.at("/")?.get().to(endpoint::call(|| "Hello."))?;
+
+            scope.fallback(endpoint::call(|| StatusCode::NOT_FOUND))
         })
     })?;
 
@@ -36,7 +27,7 @@ mod logging {
         std::time::Instant,
         tsukuyomi::{
             future::{Async, Poll, TryFuture},
-            handler::{metadata::Metadata, Handler, ModifyHandler},
+            handler::{Handler, ModifyHandler},
             input::Input,
             output::{IntoResponse, ResponseBody},
             util::Never,
@@ -89,10 +80,6 @@ mod logging {
                 target: self.target,
                 start: Instant::now(),
             }
-        }
-
-        fn metadata(&self) -> Metadata {
-            self.inner.metadata()
         }
     }
 

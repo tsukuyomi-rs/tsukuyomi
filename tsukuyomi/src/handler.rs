@@ -1,9 +1,6 @@
 //! Definition of `Handler`.
 
-pub mod metadata;
-
 use {
-    self::metadata::Metadata,
     crate::{
         error::Error,
         future::TryFuture,
@@ -20,9 +17,6 @@ pub trait Handler {
 
     /// Creates an instance of `Handle` to handle an incoming request.
     fn handle(&self) -> Self::Handle;
-
-    /// Returns the value of `Metadata` associated with this handler.
-    fn metadata(&self) -> Metadata;
 }
 
 impl<H> Handler for Rc<H>
@@ -36,11 +30,6 @@ where
     #[inline]
     fn handle(&self) -> Self::Handle {
         (**self).handle()
-    }
-
-    #[inline]
-    fn metadata(&self) -> Metadata {
-        (**self).metadata()
     }
 }
 
@@ -56,16 +45,10 @@ where
     fn handle(&self) -> Self::Handle {
         (**self).handle()
     }
-
-    #[inline]
-    fn metadata(&self) -> Metadata {
-        (**self).metadata()
-    }
 }
 
 pub fn handler<T>(
     handle_fn: impl Fn() -> T,
-    metadata: Metadata,
 ) -> impl Handler<
     Output = T::Ok, //
     Error = T::Error,
@@ -77,7 +60,6 @@ where
     #[allow(missing_debug_implementations)]
     struct HandlerFn<F> {
         handle_fn: F,
-        metadata: Metadata,
     }
 
     impl<F, T> Handler for HandlerFn<F>
@@ -93,17 +75,9 @@ where
         fn handle(&self) -> Self::Handle {
             (self.handle_fn)()
         }
-
-        #[inline]
-        fn metadata(&self) -> Metadata {
-            self.metadata.clone()
-        }
     }
 
-    HandlerFn {
-        handle_fn,
-        metadata,
-    }
+    HandlerFn { handle_fn }
 }
 
 /// A trait representing a type for modifying the instance of `Handler`.

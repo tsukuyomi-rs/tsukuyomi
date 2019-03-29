@@ -24,6 +24,8 @@ use {
         scope::{Scope, ScopeId, Scopes},
     },
     crate::{input::localmap::local_key, uri::Uri},
+    http::Method,
+    indexmap::IndexMap,
     std::{fmt, sync::Arc},
 };
 
@@ -98,16 +100,16 @@ impl<C: Concurrency> AppInner<C> {
         self.scope(node_id)
     }
 
-    fn find_default_handler(&self, start: ScopeId) -> Option<&C::Handler> {
+    fn find_fallback(&self, start: ScopeId) -> Option<&C::Handler> {
         let scope = self.scope(start);
-        if let Some(ref f) = scope.data.default_handler {
-            return Some(f);
+        if let Some(ref fallback) = scope.data.fallback {
+            return Some(fallback);
         }
         scope
             .ancestors()
             .iter()
             .rev()
-            .filter_map(|&id| self.scope(id).data.default_handler.as_ref())
+            .filter_map(|&id| self.scope(id).data.fallback.as_ref())
             .next()
     }
 
@@ -131,17 +133,14 @@ impl<C: Concurrency> AppInner<C> {
 
 struct ScopeData<C: Concurrency> {
     prefix: Uri,
-    default_handler: Option<C::Handler>,
+    fallback: Option<C::Handler>,
 }
 
 impl<C: Concurrency> fmt::Debug for ScopeData<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopeData")
             .field("prefix", &self.prefix)
-            .field(
-                "default_handler",
-                &self.default_handler.as_ref().map(|_| "<default handler>"),
-            )
+            .field("fallback", &self.fallback.as_ref().map(|_| "<fallback>"))
             .finish()
     }
 }
@@ -151,15 +150,40 @@ struct ResourceData<C: Concurrency> {
     scope: ScopeId,
     ancestors: Vec<ScopeId>,
     uri: Uri,
-    handler: C::Handler,
+    routes: Vec<RouteData<C>>,
+    default_route: Option<RouteData<C>>,
+    verbs: IndexMap<Method, usize>,
 }
 
 impl<C: Concurrency> fmt::Debug for ResourceData<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Endpoint")
+        f.debug_struct("ResourceData")
             .field("scope", &self.scope)
             .field("ancestors", &self.ancestors)
             .field("uri", &self.uri)
+            .field("verbs", &self.verbs)
             .finish()
+    }
+}
+
+impl<C> ResourceData<C>
+where
+    C: Concurrency,
+{
+    fn find_route(&self, method: &Method) -> Option<&RouteData<C>> {
+        self.verbs
+            .get(method)
+            .map(|&i| &self.routes[i])
+            .or_else(|| self.default_route.as_ref())
+    }
+}
+
+struct RouteData<C: Concurrency> {
+    handler: C::Handler,
+}
+
+impl<C: Concurrency> fmt::Debug for RouteData<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RouteData").finish()
     }
 }

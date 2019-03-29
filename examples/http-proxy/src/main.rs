@@ -6,34 +6,31 @@ mod proxy;
 use {
     crate::proxy::Client, //
     futures::prelude::*,
-    tsukuyomi::{
-        endpoint::builder as endpoint, //
-        server::Server,
-        App,
-    },
+    tsukuyomi::{endpoint, server::Server, App},
 };
 
 fn main() -> Result<(), exitfailure::ExitFailure> {
     let proxy_client =
         std::sync::Arc::new(crate::proxy::proxy_client(reqwest::r#async::Client::new()));
 
-    let app = App::build(|s| {
-        s.at("/", (), {
-            endpoint::any()
-                .extract(proxy_client.clone())
-                .call_async(|client: Client| {
-                    client
-                        .send_forwarded_request("http://www.example.com")
-                        .and_then(|resp| resp.receive_all())
-                })
-        })?;
-        s.at("/streaming", (), {
-            endpoint::any()
-                .extract(proxy_client)
-                .call_async(|client: Client| {
-                    client.send_forwarded_request("https://www.rust-lang.org/en-US/")
-                })
-        })
+    let app = App::build(|mut scope| {
+        scope
+            .at("/")?
+            .any()
+            .extract(proxy_client.clone())
+            .to(endpoint::call_async(|client: Client| {
+                client
+                    .send_forwarded_request("http://www.example.com")
+                    .and_then(|resp| resp.receive_all())
+            }))?;
+
+        scope
+            .at("/streaming")?
+            .any()
+            .extract(proxy_client)
+            .to(endpoint::call_async(|client: Client| {
+                client.send_forwarded_request("https://www.rust-lang.org/en-US/")
+            }))
     })?;
 
     let mut server = Server::new(app)?;

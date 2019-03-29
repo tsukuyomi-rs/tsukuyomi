@@ -2,9 +2,7 @@ use {
     exitfailure::ExitFailure,
     serde::{Deserialize, Serialize},
     tsukuyomi::{
-        chain,
-        endpoint::builder as endpoint,
-        extractor,
+        endpoint, extractor,
         output::{Json, Responder},
         server::Server,
         App,
@@ -19,17 +17,18 @@ struct User {
 }
 
 fn main() -> Result<(), ExitFailure> {
-    let app = App::build(|s| {
-        s.at("/", (), {
-            chain![
-                endpoint::get().reply(User {
+    let app = App::build(|mut scope| {
+        scope.at("/")?.done(|mut resource| {
+            resource.get().to({
+                endpoint::call(|| User {
                     name: "Sakura Kinomoto".into(),
                     age: 13,
-                }),
-                endpoint::post()
-                    .extract(extractor::body::json())
-                    .call(|user: User| user),
-            ]
+                })
+            })?;
+            resource
+                .post()
+                .extract(extractor::body::json())
+                .to(endpoint::call(|user: User| user))
         })
     })?;
 

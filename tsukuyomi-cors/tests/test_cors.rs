@@ -15,7 +15,7 @@ use {
         Method, Request, StatusCode,
     },
     tsukuyomi::{
-        endpoint::builder as endpoint,
+        endpoint,
         test::{self, loc, TestServer},
         App,
     },
@@ -31,11 +31,9 @@ fn test_version_sync() {
 fn simple_request_with_default_configuration() -> test::Result {
     let cors = CORS::new();
 
-    let app = App::build(|s| {
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
-        })
+    let app = App::build(|mut s| {
+        s.with(cors)
+            .done(|mut s| s.at("/")?.get().to(endpoint::call(|| "hello")))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -72,10 +70,11 @@ fn simple_request_with_default_configuration() -> test::Result {
 fn simple_request_with_allow_origin() -> test::Result {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
-    let app = App::build(|s| {
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -114,10 +113,11 @@ fn simple_request_with_allow_method() -> test::Result {
         .allow_method(Method::GET)?
         .build();
 
-    let app = App::build(|s| {
-        s.at("/", cors, {
-            endpoint::allow_only("GET, DELETE")? //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.with(cors).done(|mut s| {
+            s.at("/")?
+                .route(&[Method::GET, Method::DELETE])
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -153,10 +153,11 @@ fn simple_request_with_allow_credentials() -> test::Result {
         .allow_credentials(true)
         .build();
 
-    let app = App::build(|s| {
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -212,13 +213,12 @@ macro_rules! assert_headers {
 fn preflight_with_default_configuration() -> test::Result {
     let cors = CORS::new();
 
-    let app = App::build(|s| {
-        s.default((), cors.clone())?; // OPTIONS *
-
-        // OPTIONS /
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.fallback(cors.clone())?;
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -249,13 +249,12 @@ fn preflight_with_default_configuration() -> test::Result {
 fn preflight_with_allow_origin() -> test::Result {
     let cors = CORS::builder().allow_origin("http://example.com")?.build();
 
-    let app = App::build(|s| {
-        // OPTIONS *
-        s.default((), cors.clone())?;
-
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.fallback(cors.clone())?;
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -290,11 +289,12 @@ fn preflight_with_allow_method() -> test::Result {
         .allow_method(Method::GET)?
         .build();
 
-    let app = App::build(|s| {
-        s.default((), cors.clone())?; // OPTIONS *
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.fallback(cors.clone())?;
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -331,11 +331,12 @@ fn preflight_with_allow_headers() -> test::Result {
         .allow_header(X_API_KEY)?
         .build();
 
-    let app = App::build(|s| {
-        s.default((), cors.clone())?; // OPTIONS *
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.fallback(cors.clone())?;
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -382,11 +383,12 @@ fn preflight_max_age() -> test::Result {
         .max_age(std::time::Duration::from_secs(SECS_PER_DAY as u64))
         .build();
 
-    let app = App::build(|s| {
-        s.default((), cors.clone())?;
-        s.at("/", cors, {
-            endpoint::get() //
-                .call(|| "hello")
+    let app = App::build(|mut s| {
+        s.fallback(cors.clone())?;
+        s.with(cors).done(|mut s| {
+            s.at("/")? //
+                .get()
+                .to(endpoint::call(|| "hello"))
         })
     })?;
     let mut server = TestServer::new(app)?;
@@ -413,17 +415,12 @@ fn preflight_max_age() -> test::Result {
 fn as_route_modifier() -> test::Result {
     let cors = CORS::new();
 
-    let app = App::build(|s| {
-        s.at("/cors", &cors, {
-            endpoint::get() //
-                .call(|| "cors")
-        })?;
+    let app = App::build(|mut s| {
+        s.at("/cors")?.with(&cors).to(endpoint::call(|| "cors"))?;
 
-        s.at("/nocors", (), {
-            endpoint::get().call(|| "nocors") //
-        })?;
-
-        s.default((), cors)
+        s.at("/nocors")? //
+            .get()
+            .to(endpoint::call(|| "nocors"))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -449,16 +446,6 @@ fn as_route_modifier() -> test::Result {
 
     client
         .request(
-            Request::options("*")
-                .header(ORIGIN, "http://example.com")
-                .header(ACCESS_CONTROL_REQUEST_METHOD, "GET")
-                .body("")?,
-        )
-        .assert(loc!(), StatusCode::NO_CONTENT)?
-        .assert(loc!(), test::header::eq(ACCESS_CONTROL_ALLOW_ORIGIN, "*"))?;
-
-    client
-        .request(
             Request::get("/nocors") //
                 .header(ORIGIN, "http://example.com")
                 .body("")?,
@@ -475,18 +462,15 @@ fn as_route_modifier() -> test::Result {
 fn as_scope_modifier() -> test::Result {
     let cors = CORS::new();
 
-    let app = App::build(|s| {
-        s.nest("/cors", &cors, |s| {
-            s.at("/resource", (), {
-                endpoint::get() //
-                    .call(|| "cors")
-            })
+    let app = App::build(|mut s| {
+        s.mount("/cors")?.with(&cors).done(|mut s| {
+            s.at("/resource")? //
+                .to(endpoint::call(|| "cors"))
         })?;
 
-        s.at("/nocors", (), {
-            endpoint::get() //
-                .call(|| "nocors")
-        })
+        s.at("/nocors")? //
+            .get()
+            .to(endpoint::call(|| "nocors"))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

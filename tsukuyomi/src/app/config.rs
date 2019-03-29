@@ -1,16 +1,20 @@
 use {
     super::{
         concurrency::{Concurrency, DefaultConcurrency},
-        path::{IntoPath, Path, PathExtractor},
+        path::{Path, PathExtractor},
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
-        App, AppInner, ResourceData, ScopeData, Uri,
+        App, AppInner, ResourceData, RouteData, ScopeData, Uri,
     },
     crate::{
         endpoint::Endpoint,
-        handler::{metadata::Metadata, Handler, ModifyHandler},
+        extractor::Extractor,
+        generic::Combine,
+        handler::ModifyHandler,
         util::{Chain, Never},
     },
+    http::Method,
+    indexmap::map::{Entry, IndexMap},
     std::{error, fmt, marker::PhantomData, rc::Rc, sync::Arc},
 };
 
@@ -59,20 +63,20 @@ where
     /// Construct an `App` using the provided function.
     pub fn build<F>(f: F) -> Result<Self>
     where
-        F: FnOnce(&mut Scope<'_, (), C>) -> Result<()>,
+        F: FnOnce(Scope<'_, (), C>) -> Result<()>,
     {
         let mut app = AppInner {
             recognizer: Recognizer::default(),
             scopes: Scopes::new(ScopeData {
                 prefix: Uri::root(),
-                default_handler: None,
+                fallback: None,
             }),
         };
 
-        f(&mut Scope {
+        f(Scope {
             app: &mut app,
             scope_id: ScopeId::root(),
-            modifier: &(),
+            modifier: (),
             _marker: PhantomData,
         })?;
 
@@ -86,54 +90,9 @@ where
 #[derive(Debug)]
 pub struct Scope<'a, M, C: Concurrency = DefaultConcurrency> {
     app: &'a mut AppInner<C>,
-    modifier: &'a M,
+    modifier: M,
     scope_id: ScopeId,
     _marker: PhantomData<Rc<()>>,
-}
-
-impl<'a, M, C> Scope<'a, M, C>
-where
-    C: Concurrency,
-{
-    pub(crate) fn route2<H>(&mut self, handler: H) -> Result<()>
-    where
-        H: Handler,
-        M: ModifyHandler<H>,
-        M::Handler: Into<C::Handler>,
-    {
-        let handler = self.modifier.modify(handler);
-
-        if let Some(path) = handler.metadata().path().cloned() {
-            let uri = self.app.scopes[self.scope_id]
-                .data
-                .prefix
-                .join(&path)
-                .map_err(Error::custom)?;
-
-            let scope = &self.app.scopes[self.scope_id];
-            self.app
-                .recognizer
-                .insert(
-                    uri.as_str(),
-                    Arc::new(ResourceData {
-                        scope: scope.id(),
-                        ancestors: scope
-                            .ancestors()
-                            .iter()
-                            .cloned()
-                            .chain(Some(scope.id()))
-                            .collect(),
-                        uri: uri.clone(),
-                        handler: handler.into(),
-                    }),
-                )
-                .map_err(Error::custom)?;
-        } else {
-            self.app.scopes[self.scope_id].data.default_handler = Some(handler.into());
-        }
-
-        Ok(())
-    }
 }
 
 /// The experimental API for the next version.
@@ -141,41 +100,68 @@ impl<'a, M, C> Scope<'a, M, C>
 where
     C: Concurrency,
 {
-    /// Adds a route onto the current scope.
-    pub fn at<P, M2, T>(&mut self, path: P, modifier: M2, endpoint: T) -> Result<()>
+    /// Creates a resource that has the provided path.
+    pub fn at<P>(&mut self, path: P) -> Result<Resource<'_, P, &M, C>>
     where
-        P: IntoPath,
-        T: Endpoint<P::Output>,
-        M2: ModifyHandler<RouteHandler<P::Extractor, T>>,
-        M: ModifyHandler<M2::Handler>,
-        M::Handler: Into<C::Handler>,
+        P: Path,
     {
-        let handler = RouteHandler::new(path.into_path(), endpoint);
-        self.route2(modifier.modify(handler))
+        let uri: Uri = path.as_str().parse().map_err(Error::custom)?;
+        let uri = self.app.scopes[self.scope_id]
+            .data
+            .prefix
+            .join(&uri)
+            .map_err(Error::custom)?;
+
+        let scope = &self.app.scopes[self.scope_id];
+
+        let resource = self
+            .app
+            .recognizer
+            .insert(
+                uri.as_str(),
+                Arc::new(ResourceData {
+                    scope: scope.id(),
+                    ancestors: scope
+                        .ancestors()
+                        .iter()
+                        .cloned()
+                        .chain(Some(scope.id()))
+                        .collect(),
+                    uri: uri.clone(),
+                    routes: vec![],
+                    default_route: None,
+                    verbs: IndexMap::default(),
+                }),
+            )
+            .map_err(Error::custom)?;
+
+        Ok(Resource {
+            resource: Arc::get_mut(resource).expect("the instance has already been shared"),
+            modifier: &self.modifier,
+            path,
+        })
     }
 
-    /// Adds a default route onto the current scope.
+    /// Registers the scope-level fallback handler onto the current scope.
     ///
-    /// The default route is used when the incoming request URI matches the prefix
-    /// of the current scope and there are no route that exactly matches.
-    pub fn default<M2, T>(&mut self, modifier: M2, endpoint: T) -> Result<()>
+    /// The fallback handler is called when there are no resources that exactly
+    /// matches to the incoming request.
+    pub fn fallback<T>(&mut self, endpoint: T) -> Result<()>
     where
         T: Endpoint<()>,
-        M2: ModifyHandler<RouteHandler<(), T>>,
-        M: ModifyHandler<M2::Handler>,
+        M: ModifyHandler<EndpointHandler<(), T>>,
         M::Handler: Into<C::Handler>,
     {
-        self.at(Path::<()>::new("*"), modifier, endpoint)
+        let handler = EndpointHandler::new(endpoint, ());
+        let handler = self.modifier.modify(handler);
+        self.app.scopes[self.scope_id].data.fallback = Some(handler.into());
+        Ok(())
     }
 
     /// Creates a sub-scope onto the current scope.
-    ///
-    /// Calling `nest` constructs a scope and allows to set a *default* route
-    /// that partially matches up to the prefix.
-    pub fn nest<P, M2, F>(&mut self, prefix: P, modifier: M2, f: F) -> Result<()>
+    pub fn mount<P>(&mut self, prefix: P) -> Result<Scope<'_, &M, C>>
     where
         P: AsRef<str>,
-        F: FnOnce(&mut Scope<'_, Chain<M2, &'a M>, C>) -> Result<()>,
     {
         let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
 
@@ -186,15 +172,15 @@ where
                 let parent = &self.app.scopes[self.scope_id].data;
                 ScopeData {
                     prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
-                    default_handler: None,
+                    fallback: None,
                 }
             })
             .map_err(Error::custom)?;
 
-        f(&mut Scope {
+        Ok(Scope {
             app: &mut *self.app,
             scope_id,
-            modifier: &Chain::new(modifier, self.modifier),
+            modifier: &self.modifier,
             _marker: PhantomData,
         })
     }
@@ -202,104 +188,265 @@ where
     /// Adds the provided `ModifyHandler` to the stack and executes a configuration.
     ///
     /// Unlike `nest`, this method does not create a scope.
-    pub fn with<M2, F>(&mut self, modifier: M2, f: F) -> Result<()>
-    where
-        F: FnOnce(&mut Scope<'_, Chain<M2, &'a M>, C>) -> Result<()>,
-    {
-        f(&mut Scope {
+    pub fn with<M2>(&mut self, modifier: M2) -> Scope<'_, Chain<M2, &M>, C> {
+        Scope {
             app: &mut *self.app,
             scope_id: self.scope_id,
-            modifier: &Chain::new(modifier, self.modifier),
+            modifier: Chain::new(modifier, &self.modifier),
             _marker: PhantomData,
-        })
+        }
+    }
+
+    /// Applies itself to the provided function.
+    pub fn done<F, T>(self, f: F) -> Result<T>
+    where
+        F: FnOnce(Self) -> Result<T>,
+    {
+        f(self)
     }
 }
 
-#[doc(hidden)]
-#[allow(missing_debug_implementations)]
-pub struct RouteHandler<E, T> {
-    endpoint: Arc<T>,
-    metadata: Metadata,
-    _marker: PhantomData<E>,
+/// A resource associated with a specific HTTP path.
+#[derive(Debug)]
+pub struct Resource<'s, P, M, C>
+where
+    P: Path,
+    C: Concurrency,
+{
+    resource: &'s mut ResourceData<C>,
+    path: P,
+    modifier: M,
 }
 
-impl<E, T> RouteHandler<E, T>
+impl<'s, P, M, C> Resource<'s, P, M, C>
 where
-    E: PathExtractor,
+    P: Path,
+    C: Concurrency,
+{
+    /// Creates a `Route` that matches to the specified HTTP methods.
+    pub fn route(
+        &mut self,
+        methods: impl IntoIterator<Item = impl Into<Method>>,
+    ) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route2(Some(methods.into_iter().map(Into::into).collect()))
+    }
+
+    fn route2(&mut self, methods: Option<Vec<Method>>) -> Route<'_, PathExtractor<P>, &M, C> {
+        Route {
+            resource: &mut *self.resource,
+            methods,
+            modifier: &self.modifier,
+            extractor: PathExtractor::<P>::new(),
+        }
+    }
+
+    pub fn get(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route(Some(Method::GET))
+    }
+
+    pub fn post(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route(Some(Method::POST))
+    }
+
+    pub fn put(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route(Some(Method::PUT))
+    }
+
+    pub fn head(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route(Some(Method::HEAD))
+    }
+
+    pub fn delete(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route(Some(Method::DELETE))
+    }
+
+    pub fn patch(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route(Some(Method::PATCH))
+    }
+
+    /// Start building of a `Route` that matches any HTTP method.
+    pub fn any(&mut self) -> Route<'_, PathExtractor<P>, &M, C> {
+        self.route2(None)
+    }
+
+    pub fn to<T>(&mut self, endpoint: T) -> Result<()>
+    where
+        T: Endpoint<P::Output>,
+        M: ModifyHandler<EndpointHandler<PathExtractor<P>, T>>,
+        M::Handler: Into<C::Handler>,
+    {
+        self.any().to(endpoint)
+    }
+
+    /// Appends a `ModifyHandler` to the stack applied to the all handlers on this resource.
+    pub fn with<M2>(self, modifier: M2) -> Resource<'s, P, Chain<M2, M>, C> {
+        Resource {
+            resource: self.resource,
+            path: self.path,
+            modifier: Chain::new(modifier, self.modifier),
+        }
+    }
+
+    /// Applies itself to the specified function.
+    pub fn done<F, T>(self, f: F) -> Result<T>
+    where
+        F: FnOnce(Self) -> Result<T>,
+    {
+        f(self)
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub struct Route<'a, E, M, C>
+where
+    E: Extractor,
+    C: Concurrency,
+{
+    resource: &'a mut ResourceData<C>,
+    methods: Option<Vec<Method>>,
+    extractor: E,
+    modifier: M,
+}
+
+impl<'a, E, M, C> Route<'a, E, M, C>
+where
+    E: Extractor,
+    C: Concurrency,
+{
+    pub fn with<M2>(self, modifier: M2) -> Route<'a, E, Chain<M2, M>, C> {
+        Route {
+            resource: self.resource,
+            methods: self.methods,
+            modifier: Chain::new(modifier, self.modifier),
+            extractor: self.extractor,
+        }
+    }
+
+    pub fn extract<E2>(self, extractor: E2) -> Route<'a, Chain<E, E2>, M, C>
+    where
+        E2: Extractor,
+        E::Output: Combine<E2::Output>,
+    {
+        Route {
+            resource: self.resource,
+            methods: self.methods,
+            modifier: self.modifier,
+            extractor: Chain::new(self.extractor, extractor),
+        }
+    }
+
+    pub fn to<T>(self, endpoint: T) -> Result<()>
+    where
+        T: Endpoint<E::Output>,
+        M: ModifyHandler<EndpointHandler<E, T>>,
+        M::Handler: Into<C::Handler>,
+    {
+        let handler = self
+            .modifier
+            .modify(EndpointHandler::new(endpoint, self.extractor));
+        let route = RouteData {
+            handler: handler.into(),
+        };
+
+        if let Some(methods) = self.methods {
+            let index = self.resource.routes.len();
+            self.resource.routes.push(route);
+
+            for method in methods {
+                match self.resource.verbs.entry(method) {
+                    Entry::Occupied(..) => {
+                        return Err(Error::custom(failure::format_err!("duplicated method")));
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(index);
+                    }
+                }
+            }
+        } else {
+            if self.resource.default_route.is_some() {
+                return Err(Error::custom(failure::format_err!(
+                    "the default route handler has already been set"
+                )));
+            }
+            self.resource.default_route = Some(route);
+        }
+        Ok(())
+    }
+}
+
+/// A `Handler` that uses on an endpoint tied to a specific HTTP path.
+#[allow(missing_debug_implementations)]
+pub struct EndpointHandler<E, T> {
+    endpoint: Arc<T>,
+    extractor: E,
+}
+
+impl<E, T> EndpointHandler<E, T>
+where
+    E: Extractor,
     T: Endpoint<E::Output>,
 {
-    pub(crate) fn new(path: Path<E>, endpoint: T) -> Self {
-        let path = path.uri_str();
-        let endpoint = Arc::new(endpoint);
-
-        let mut metadata = match path {
-            "*" => Metadata::without_suffix(),
-            path => Metadata::new(path.parse().expect("this is a bug")),
-        };
-        *metadata.allowed_methods_mut() = endpoint.allowed_methods();
-
+    pub(crate) fn new(endpoint: T, extractor: E) -> Self {
         Self {
-            endpoint,
-            metadata,
-            _marker: PhantomData,
+            endpoint: Arc::new(endpoint),
+            extractor,
         }
     }
 }
 
-mod handle {
+mod handler {
     use {
-        super::{PathExtractor, RouteHandler},
+        super::EndpointHandler,
         crate::{
-            endpoint::{ApplyContext, Endpoint},
+            endpoint::Endpoint,
             error::Error,
+            extractor::Extractor,
             future::{Poll, TryFuture},
-            handler::{metadata::Metadata, Handler},
+            handler::Handler,
             input::Input,
         },
-        std::{marker::PhantomData, sync::Arc},
+        std::sync::Arc,
     };
 
-    impl<E, T> Handler for RouteHandler<E, T>
+    impl<E, T> Handler for EndpointHandler<E, T>
     where
-        E: PathExtractor,
+        E: Extractor,
         T: Endpoint<E::Output>,
     {
         type Output = T::Output;
         type Error = Error;
-        type Handle = RouteHandle<E, T>;
+        type Handle = EndpointHandle<E, T>;
 
         fn handle(&self) -> Self::Handle {
-            RouteHandle {
-                state: RouteHandleState::Init(self.endpoint.clone()),
-                _marker: PhantomData,
+            EndpointHandle {
+                state: State::Init(self.endpoint.clone(), self.extractor.extract()),
             }
-        }
-
-        fn metadata(&self) -> Metadata {
-            self.metadata.clone()
         }
     }
 
     #[doc(hidden)]
     #[allow(missing_debug_implementations)]
-    pub struct RouteHandle<E, T>
+    pub struct EndpointHandle<E, T>
     where
-        E: PathExtractor,
+        E: Extractor,
         T: Endpoint<E::Output>,
     {
-        state: RouteHandleState<T, T::Future>,
-        _marker: PhantomData<E>,
+        state: State<E, T>,
     }
 
     #[allow(missing_debug_implementations)]
-    enum RouteHandleState<T, Fut> {
-        Init(Arc<T>),
-        InFlight(Fut),
+    enum State<E, T>
+    where
+        E: Extractor,
+        T: Endpoint<E::Output>,
+    {
+        Init(Arc<T>, E::Extract),
+        InFlight(T::Future),
     }
 
-    impl<E, T> TryFuture for RouteHandle<E, T>
+    impl<E, T> TryFuture for EndpointHandle<E, T>
     where
-        E: PathExtractor,
+        E: Extractor,
         T: Endpoint<E::Output>,
     {
         type Ok = T::Output;
@@ -309,15 +456,12 @@ mod handle {
         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
             loop {
                 self.state = match self.state {
-                    RouteHandleState::Init(ref endpoint) => {
-                        let args = E::extract(input.params.as_ref())?;
-                        RouteHandleState::InFlight(
-                            endpoint
-                                .apply(args, &mut ApplyContext::new(input))
-                                .map_err(|(_args, err)| err)?,
-                        )
+                    State::Init(ref endpoint, ref mut extract) => {
+                        let args =
+                            futures01::try_ready!(extract.poll_ready(input).map_err(Into::into));
+                        State::InFlight(endpoint.apply(args))
                     }
-                    RouteHandleState::InFlight(ref mut in_flight) => {
+                    State::InFlight(ref mut in_flight) => {
                         return in_flight.poll_ready(input).map_err(Into::into);
                     }
                 };
