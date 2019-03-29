@@ -13,7 +13,7 @@ use {
         Request, StatusCode,
     },
     tsukuyomi::{
-        endpoint::builder as endpoint,
+        endpoint,
         test::{self, loc, TestServer},
         App,
     },
@@ -27,12 +27,13 @@ fn test_version_sync() {
 
 #[test]
 fn test_handshake() -> test::Result {
-    let app = App::build(|s| {
-        s.at("/ws", (), {
-            endpoint::get()
-                .extract(tsukuyomi_tungstenite::ws())
-                .call(|ws: Ws| ws.finish(|_| Ok::<(), std::io::Error>(())))
-        })
+    let app = App::build(|mut s| {
+        s.at("/ws")?
+            .get()
+            .extract(tsukuyomi_tungstenite::ws())
+            .to(endpoint::call(|ws: Ws| {
+                ws.finish(|_| Ok::<(), std::io::Error>(()))
+            }))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

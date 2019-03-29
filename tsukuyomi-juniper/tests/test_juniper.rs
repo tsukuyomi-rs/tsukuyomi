@@ -1,10 +1,10 @@
 use {
-    http::Request,
+    http::{Method, Request},
     juniper::{http::tests as http_tests, tests::model::Database, EmptyMutation, RootNode},
     percent_encoding::{define_encode_set, utf8_percent_encode, QUERY_ENCODE_SET},
     std::{cell::RefCell, sync::Arc},
     tsukuyomi::{
-        endpoint::builder as endpoint,
+        endpoint,
         test::{self, TestResponse, TestServer},
         App,
     },
@@ -24,17 +24,19 @@ fn integration_test() -> test::Result {
         EmptyMutation::<Database>::new(),
     ));
 
-    let app = App::build(|s| {
+    let app = App::build(|mut s| {
         let database = database.clone();
-        s.at("/", tsukuyomi_juniper::capture_errors(), {
-            endpoint::allow_only("GET, POST")?
-                .extract(tsukuyomi_juniper::request())
-                .extract(tsukuyomi::extractor::value(schema))
-                .call(move |request: GraphQLRequest, schema: Arc<_>| {
+        s.at("/")?
+            .route(&[Method::GET, Method::POST])
+            .with(tsukuyomi_juniper::capture_errors())
+            .extract(tsukuyomi_juniper::request())
+            .extract(tsukuyomi::extractor::value(schema))
+            .to(endpoint::call(
+                move |request: GraphQLRequest, schema: Arc<_>| {
                     let database = database.clone();
                     request.execute(schema, database)
-                })
-        })
+                },
+            ))
     })?;
 
     let test_server = TestServer::new(app)?;

@@ -2,7 +2,7 @@ use {
     crate::support_tera::{Template, WithTera},
     exitfailure::ExitFailure,
     serde::Serialize,
-    tsukuyomi::{endpoint::builder as endpoint, path, server::Server, App},
+    tsukuyomi::{endpoint, path, server::Server, App},
 };
 
 #[derive(Debug, Serialize)]
@@ -19,10 +19,11 @@ impl Template for Index {
 fn main() -> Result<(), ExitFailure> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    let app = App::build(|s| {
-        s.at(path!("/:name"), WithTera::from(engine), {
-            endpoint::call(|name| Index { name }) //
-        })
+    let app = App::build(|mut scope| {
+        scope
+            .at(path!("/:name"))?
+            .with(WithTera::from(engine))
+            .to(endpoint::call(|name| Index { name })) //
     })?;
 
     let mut server = Server::new(app)?;
@@ -40,7 +41,7 @@ mod support_tera {
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{metadata::Metadata, Handler, ModifyHandler},
+            handler::{Handler, ModifyHandler},
             input::Input,
         },
     };
@@ -92,10 +93,6 @@ mod support_tera {
         type Output = Response<String>;
         type Error = Error;
         type Handle = WithTeraHandle<H::Handle>;
-
-        fn metadata(&self) -> Metadata {
-            self.inner.metadata()
-        }
 
         fn handle(&self) -> Self::Handle {
             WithTeraHandle {

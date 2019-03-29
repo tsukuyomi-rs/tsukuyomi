@@ -1,6 +1,6 @@
 use {
     super::{config::Result, App},
-    crate::endpoint::builder as endpoint,
+    crate::endpoint,
     crate::path,
     matches::assert_matches,
 };
@@ -14,9 +14,8 @@ fn new_empty() -> Result<()> {
 
 #[test]
 fn route_single_method() -> Result<()> {
-    let app: App = App::build(|s| {
-        s.at("/", (), endpoint::reply(""))?;
-        Ok(())
+    let app: App = App::build(|mut scope| {
+        scope.at("/")?.to(endpoint::call(|| "")) //
     })?;
 
     assert_matches!(
@@ -36,15 +35,15 @@ fn route_single_method() -> Result<()> {
 
 #[test]
 fn scope_simple() -> Result<()> {
-    let app: App = App::build(|s| {
-        s.nest("/", (), |s| {
-            s.at("/a", (), endpoint::reply(""))?;
-            s.at("/b", (), endpoint::reply(""))
+    let app: App = App::build(|mut scope| {
+        scope.mount("/")?.done(|mut scope| {
+            scope.at("/a")?.to(endpoint::call(|| "a"))?;
+            scope.at("/b")?.to(endpoint::call(|| "b"))
         })?;
-        s.at("/foo", (), endpoint::reply(""))?;
-        s.nest("/c", (), |s| {
-            s.at("/d", (), endpoint::reply("")) //
-        })
+
+        scope.at("/foo")?.to(endpoint::call(|| "foo"))?;
+
+        scope.mount("/c")?.at("/d")?.to(endpoint::call(|| "c-d")) //
     })?;
 
     assert_matches!(
@@ -69,24 +68,24 @@ fn scope_simple() -> Result<()> {
 
 #[test]
 fn scope_nested() -> Result<()> {
-    let app: App = App::build(|s| {
+    let app: App = App::build(|mut s| {
         // 0
-        s.nest("/", (), |s| {
-            s.at("/foo", (), endpoint::reply(""))?; // /foo
-            s.at("/bar", (), endpoint::reply("")) // /bar
+        s.mount("/")?.done(|mut s| {
+            s.at("/foo")?.to(endpoint::call(|| ""))?; // /foo
+            s.at("/bar")?.to(endpoint::call(|| "")) // /bar
         })?;
 
         // 1
-        s.nest("/baz", (), |s| {
-            s.at("/", (), endpoint::reply(""))?; // /baz
+        s.mount("/baz")?.done(|mut s| {
+            s.at("/")?.to(endpoint::call(|| ""))?; // /baz
 
             // 2
-            s.nest("/", (), |s| {
-                s.at("/foobar", (), endpoint::reply("")) // /baz/foobar
-            })
+            s.mount("/")?
+                .at("/foobar")? //
+                .to(endpoint::call(|| "")) // /baz/foobar
         })?;
 
-        s.at("/hoge", (), endpoint::reply("")) // /hoge
+        s.at("/hoge")?.to(endpoint::call(|| "")) // /hoge
     })?;
 
     assert_matches!(
@@ -121,13 +120,9 @@ fn scope_nested() -> Result<()> {
 
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
-    let res: Result<App> = App::build(|s| {
-        s.at("/path", (), {
-            endpoint::get().call(|| "") //
-        })?;
-        s.at("/path", (), {
-            endpoint::allow_only("POST, PUT")?.call(|| "") //
-        })
+    let res: Result<App> = App::build(|mut s| {
+        s.at("/path")?.get().to(endpoint::call(|| "a"))?; //
+        s.at("/path")?.post().to(endpoint::call(|| "b"))
     });
     assert!(res.is_err());
     Ok(())
@@ -135,15 +130,9 @@ fn failcase_duplicate_uri() -> Result<()> {
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
-    let res: Result<App> = App::build(|s| {
-        s.at("/path", (), {
-            endpoint::call(|| "") //
-        })?;
-        s.nest("/", (), |s| {
-            s.at("/path", (), {
-                endpoint::post().call(|| "") //
-            })
-        })
+    let res: Result<App> = App::build(|mut s| {
+        s.at("/path")?.to(endpoint::call(|| "a"))?; //
+        s.mount("/")?.at("/path")?.post().to(endpoint::call(|| "b")) //
     });
     assert!(res.is_err());
     Ok(())
@@ -154,13 +143,11 @@ fn current_thread() -> Result<()> {
     use super::concurrency::current_thread::CurrentThread;
     let ptr = std::rc::Rc::new(());
 
-    let _app: App<CurrentThread> = App::build(|s| {
-        s.at("/", (), {
-            endpoint::call(move || {
-                let _ptr = ptr.clone();
-                "dummy"
-            })
-        })
+    let _app: App<CurrentThread> = App::build(|mut s| {
+        s.at("/")?.to(endpoint::call(move || {
+            let _ptr = ptr.clone();
+            "dummy"
+        }))
     })?;
 
     Ok(())
@@ -168,18 +155,16 @@ fn current_thread() -> Result<()> {
 
 #[test]
 fn experimental_api() -> Result<()> {
-    let _app: App = App::build(|scope| {
-        scope.at("/", (), {
-            endpoint::reply("hello") //
+    let _app: App = App::build(|mut scope| {
+        scope.at("/")?.to(endpoint::call(|| "hello"))?; //
+
+        scope.mount("/foo")?.done(|mut scope| {
+            scope
+                .at(path!("/:id"))?
+                .to(endpoint::call(|_id: u32| "got id")) //
         })?;
 
-        scope.nest("/foo", (), |scope| {
-            scope.at(path!("/:id"), (), {
-                endpoint::call(|_id: u32| "got id") //
-            })
-        })?;
-
-        scope.default((), endpoint::reply("default")) //
+        scope.fallback(endpoint::call(|| "fallback")) //
     })?;
 
     Ok(())

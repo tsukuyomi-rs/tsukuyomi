@@ -1,10 +1,13 @@
 //! Definition of `Endpoint`.
 
-pub mod builder;
-
 use {
-    crate::{error::Error, future::TryFuture, handler::metadata::AllowedMethods, input::Input},
-    http::{Method, StatusCode},
+    crate::{
+        error::Error,
+        future::TryFuture,
+        generic::{Func, Tuple},
+    },
+    futures01::IntoFuture,
+    std::marker::PhantomData,
 };
 
 /// A trait representing the process to be performed when a route matches.
@@ -13,56 +16,13 @@ pub trait Endpoint<T> {
     type Error: Into<Error>;
     type Future: TryFuture<Ok = Self::Output, Error = Self::Error>;
 
-    /// Determines the `Action` that this endpoint performs based on the request method.
-    ///
-    /// If the endpoint does not accept the incoming request method, it returns an `Err`.
-    fn apply(&self, args: T, cx: &mut ApplyContext<'_, '_>) -> ApplyResult<T, Self>;
-
-    /// Returns a list of HTTP methods that this endpoint accepts.
-    ///
-    /// This method is used for implementation of `Handler::metadata`.
-    fn allowed_methods(&self) -> AllowedMethods;
+    /// Maps the provided arguments into a `TryFuture`.
+    fn apply(&self, args: T) -> Self::Future;
 }
-
-#[derive(Debug)]
-pub struct ApplyContext<'a, 'task: 'a> {
-    input: &'a mut Input<'task>,
-}
-
-impl<'a, 'task> ApplyContext<'a, 'task> {
-    pub(crate) fn new(input: &'a mut Input<'task>) -> Self {
-        Self { input }
-    }
-
-    /// Returns HTTP method of the request.
-    #[inline]
-    pub fn method(&self) -> &Method {
-        self.input.request.method()
-    }
-}
-
-#[derive(Debug)]
-pub struct ApplyError(());
-
-impl ApplyError {
-    #[inline]
-    pub fn method_not_allowed() -> ApplyError {
-        ApplyError(())
-    }
-}
-
-impl From<ApplyError> for Error {
-    fn from(_err: ApplyError) -> Self {
-        StatusCode::METHOD_NOT_ALLOWED.into()
-    }
-}
-
-pub type ApplyResult<T, E> = Result<<E as Endpoint<T>>::Future, (T, ApplyError)>;
 
 /// A function to create an `Endpoint` from the specified components.
 pub fn endpoint<T, R>(
-    apply: impl Fn(T, &mut ApplyContext<'_, '_>) -> Result<R, (T, ApplyError)>,
-    allowed_methods: AllowedMethods,
+    apply: impl Fn(T) -> R,
 ) -> impl Endpoint<T, Output = R::Ok, Error = R::Error, Future = R>
 where
     R: TryFuture,
@@ -70,12 +30,11 @@ where
     #[allow(missing_debug_implementations)]
     struct ApplyFn<F> {
         apply: F,
-        allowed_methods: AllowedMethods,
     }
 
     impl<F, T, R> Endpoint<T> for ApplyFn<F>
     where
-        F: Fn(T, &mut ApplyContext<'_, '_>) -> Result<R, (T, ApplyError)>,
+        F: Fn(T) -> R,
         R: TryFuture,
     {
         type Output = R::Ok;
@@ -83,20 +42,12 @@ where
         type Future = R;
 
         #[inline]
-        fn apply(&self, args: T, cx: &mut ApplyContext<'_, '_>) -> ApplyResult<T, Self> {
-            (self.apply)(args, cx)
-        }
-
-        #[inline]
-        fn allowed_methods(&self) -> AllowedMethods {
-            self.allowed_methods.clone()
+        fn apply(&self, args: T) -> Self::Future {
+            (self.apply)(args)
         }
     }
 
-    ApplyFn {
-        apply,
-        allowed_methods,
-    }
+    ApplyFn { apply }
 }
 
 impl<E, T> Endpoint<T> for std::rc::Rc<E>
@@ -108,13 +59,8 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn apply(&self, args: T, cx: &mut ApplyContext<'_, '_>) -> ApplyResult<T, Self> {
-        (**self).apply(args, cx)
-    }
-
-    #[inline]
-    fn allowed_methods(&self) -> AllowedMethods {
-        (**self).allowed_methods()
+    fn apply(&self, args: T) -> Self::Future {
+        (**self).apply(args)
     }
 }
 
@@ -127,77 +73,123 @@ where
     type Future = E::Future;
 
     #[inline]
-    fn apply(&self, args: T, cx: &mut ApplyContext<'_, '_>) -> ApplyResult<T, Self> {
-        (**self).apply(args, cx)
-    }
-
-    #[inline]
-    fn allowed_methods(&self) -> AllowedMethods {
-        (**self).allowed_methods()
+    fn apply(&self, args: T) -> Self::Future {
+        (**self).apply(args)
     }
 }
 
-mod impl_chain {
+/// A shortcut to `endpoint::any().call(f)`
+#[inline]
+pub fn call<F, T>(f: F) -> Call<F, T>
+where
+    F: Func<T>,
+    T: Tuple,
+{
+    Call {
+        f,
+        _marker: PhantomData,
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub struct Call<F, T>
+where
+    F: Func<T>,
+    T: Tuple,
+{
+    f: F,
+    _marker: PhantomData<fn(T)>,
+}
+
+mod call {
     use {
-        super::{ApplyContext, ApplyResult, Endpoint},
+        super::{Call, Endpoint},
         crate::{
-            error::Error,
-            future::{Poll, TryFuture},
-            handler::metadata::AllowedMethods,
+            future::{Async, Poll, TryFuture},
+            generic::{Func, Tuple},
             input::Input,
-            util::{Chain, Either},
+            util::Never,
         },
     };
 
-    impl<L, R, T> Endpoint<T> for Chain<L, R>
+    impl<F, T> Endpoint<T> for Call<F, T>
     where
-        L: Endpoint<T>,
-        R: Endpoint<T>,
+        F: Func<T>,
+        T: Tuple,
     {
-        type Output = Either<L::Output, R::Output>;
-        type Error = Error;
-        type Future = ChainFuture<L::Future, R::Future>;
+        type Output = F::Out;
+        type Error = Never;
+        type Future = CallFuture<F::Out>;
 
-        #[inline]
-        fn apply(&self, args: T, cx: &mut ApplyContext<'_, '_>) -> ApplyResult<T, Self> {
-            (self.left.apply(args, cx).map(ChainFuture::Left))
-                .or_else(|(args, _)| self.right.apply(args, cx).map(ChainFuture::Right))
-        }
-
-        #[inline]
-        fn allowed_methods(&self) -> AllowedMethods {
-            let left = self.left.allowed_methods();
-            let right = self.right.allowed_methods();
-            left.merge(right)
+        fn apply(&self, args: T) -> Self::Future {
+            CallFuture(Some(self.f.call(args)))
         }
     }
 
-    #[derive(Debug)]
-    pub enum ChainFuture<L, R> {
-        Left(L),
-        Right(R),
+    #[allow(missing_debug_implementations)]
+    pub struct CallFuture<R>(Option<R>);
+
+    impl<R> TryFuture for CallFuture<R> {
+        type Ok = R;
+        type Error = Never;
+
+        fn poll_ready(&mut self, _: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+            Ok(Async::Ready(
+                self.0.take().expect("the future has already been polled."),
+            ))
+        }
     }
+}
 
-    impl<L, R> TryFuture for ChainFuture<L, R>
+/// A shortcut to `endpoint::any().call_async(f)`.
+pub fn call_async<F, T, R>(f: F) -> CallAsync<F, T, R>
+where
+    F: Func<T, Out = R>,
+    T: Tuple,
+    R: IntoFuture,
+    R::Error: Into<Error>,
+{
+    CallAsync {
+        f,
+        _marker: PhantomData,
+    }
+}
+
+#[allow(missing_debug_implementations)]
+pub struct CallAsync<F, T, R>
+where
+    F: Func<T, Out = R>,
+    T: Tuple,
+    R: IntoFuture,
+    R::Error: Into<Error>,
+{
+    f: F,
+    _marker: PhantomData<fn(T) -> R>,
+}
+
+mod call_async {
+    use {
+        super::{CallAsync, Endpoint},
+        crate::{
+            error::Error,
+            generic::{Func, Tuple},
+        },
+        futures01::IntoFuture,
+    };
+
+    impl<F, T, R> Endpoint<T> for CallAsync<F, T, R>
     where
-        L: TryFuture,
-        R: TryFuture,
+        F: Func<T, Out = R> + Clone,
+        T: Tuple,
+        R: IntoFuture,
+        R::Error: Into<Error>,
     {
-        type Ok = Either<L::Ok, R::Ok>;
-        type Error = Error;
+        type Output = R::Item;
+        type Error = R::Error;
+        type Future = crate::future::Compat01<R::Future>;
 
-        #[inline]
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            match self {
-                ChainFuture::Left(l) => l
-                    .poll_ready(input)
-                    .map(|x| x.map(Either::Left))
-                    .map_err(Into::into),
-                ChainFuture::Right(r) => r
-                    .poll_ready(input)
-                    .map(|x| x.map(Either::Right))
-                    .map_err(Into::into),
-            }
+        fn apply(&self, args: T) -> Self::Future {
+            crate::future::Compat01::from(self.f.call(args).into_future())
         }
     }
 }

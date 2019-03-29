@@ -124,7 +124,7 @@ mod renderer {
         tsukuyomi::{
             error::Error,
             future::{Poll, TryFuture},
-            handler::{metadata::Metadata, Handler, ModifyHandler},
+            handler::{Handler, ModifyHandler},
             input::Input,
         },
     };
@@ -156,10 +156,6 @@ mod renderer {
         type Output = Response<String>;
         type Error = Error;
         type Handle = RenderedHandle<H::Handle>;
-
-        fn metadata(&self) -> Metadata {
-            self.inner.metadata()
-        }
 
         fn handle(&self) -> Self::Handle {
             RenderedHandle(self.inner.handle())

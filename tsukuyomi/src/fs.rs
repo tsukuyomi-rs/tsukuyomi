@@ -2,10 +2,8 @@
 
 use {
     crate::{
-        app::concurrency::Concurrency,
         error::Error,
         future::TryFuture,
-        handler::{metadata::Uri, ModifyHandler},
         input::Input,
         output::{Responder, ResponseBody},
     },
@@ -429,164 +427,148 @@ impl Deref for ArcPath {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ServeFile {
-    inner: Arc<ServeFileInner>,
-}
+// #[derive(Debug, Clone)]
+// pub struct ServeFile {
+//     inner: Arc<ServeFileInner>,
+// }
 
-#[derive(Debug)]
-struct ServeFileInner {
-    path: ArcPath,
-    config: Option<OpenConfig>,
-    extract_path: bool,
-    uri: Uri,
-}
+// #[derive(Debug)]
+// struct ServeFileInner {
+//     path: ArcPath,
+//     config: Option<OpenConfig>,
+//     extract_path: bool,
+// }
 
-mod impl_handler_for_serve_file {
-    use {
-        super::{ArcPath, NamedFile, ServeFile},
-        crate::{
-            error::Error,
-            future::TryFuture,
-            handler::{
-                metadata::{AllowedMethods, Metadata},
-                Handler,
-            },
-            input::Input,
-        },
-        futures01::{Async, Poll},
-        http::Method,
-    };
+// mod impl_handler_for_serve_file {
+//     use {
+//         super::{ArcPath, NamedFile, ServeFile},
+//         crate::{endpoint::Endpoint, error::Error, future::TryFuture, input::Input},
+//         futures01::{Async, Poll},
+//     };
 
-    impl Handler for ServeFile {
-        type Output = NamedFile<ArcPath>;
-        type Error = Error;
-        type Handle = Self;
+//     impl Endpoint<()> for ServeFile {
+//         type Output = NamedFile<ArcPath>;
+//         type Error = Error;
+//         type Future = Self;
 
-        fn handle(&self) -> Self::Handle {
-            self.clone()
-        }
+//         fn apply(&self, _: ()) -> Self::Future {
+//             self.clone()
+//         }
+//     }
 
-        fn metadata(&self) -> Metadata {
-            let mut metadata = Metadata::new(self.inner.uri.clone());
-            *metadata.allowed_methods_mut() = AllowedMethods::from(Method::GET);
-            metadata
-        }
-    }
+//     impl TryFuture for ServeFile {
+//         type Ok = NamedFile<ArcPath>;
+//         type Error = Error;
 
-    impl TryFuture for ServeFile {
-        type Ok = NamedFile<ArcPath>;
-        type Error = Error;
+//         fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+//             let path = if self.inner.extract_path {
+//                 let path = input
+//                     .params
+//                     .as_ref()
+//                     .and_then(|params| params.catch_all())
+//                     .ok_or_else(|| crate::error::internal_server_error("missing params"))?;
+//                 self.inner.path.join(path).into()
+//             } else {
+//                 self.inner.path.clone()
+//             };
 
-        fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
-            let path = if self.inner.extract_path {
-                let path = input
-                    .params
-                    .as_ref()
-                    .and_then(|params| params.catch_all())
-                    .ok_or_else(|| crate::error::internal_server_error("missing params"))?;
-                self.inner.path.join(path).into()
-            } else {
-                self.inner.path.clone()
-            };
+//             Ok(Async::Ready(match self.inner.config {
+//                 Some(ref config) => NamedFile::open_with_config(path, config.clone()),
+//                 None => NamedFile::open(path),
+//             }))
+//         }
+//     }
+// }
 
-            Ok(Async::Ready(match self.inner.config {
-                Some(ref config) => NamedFile::open_with_config(path, config.clone()),
-                None => NamedFile::open(path),
-            }))
-        }
-    }
-}
+// /// A configuration type for adding entries in the directory to the route.
+// #[derive(Debug)]
+// pub struct Staticfiles<P> {
+//     root_dir: P,
+//     config: Option<OpenConfig>,
+// }
 
-/// A configuration type for adding entries in the directory to the route.
-#[derive(Debug)]
-pub struct Staticfiles<P> {
-    root_dir: P,
-    config: Option<OpenConfig>,
-}
+// impl<P> Staticfiles<P>
+// where
+//     P: AsRef<Path>,
+// {
+//     /// Create a new `Staticfiles` with the specified directory path.
+//     pub fn new(root_dir: P) -> Self {
+//         Self {
+//             root_dir,
+//             config: None,
+//         }
+//     }
 
-impl<P> Staticfiles<P>
-where
-    P: AsRef<Path>,
-{
-    /// Create a new `Staticfiles` with the specified directory path.
-    pub fn new(root_dir: P) -> Self {
-        Self {
-            root_dir,
-            config: None,
-        }
-    }
+//     /// Sets the value of `OpenConfig` used in handlers.
+//     pub fn open_config(self, config: OpenConfig) -> Self {
+//         Self {
+//             config: Some(config),
+//             ..self
+//         }
+//     }
 
-    /// Sets the value of `OpenConfig` used in handlers.
-    pub fn open_config(self, config: OpenConfig) -> Self {
-        Self {
-            config: Some(config),
-            ..self
-        }
-    }
+//     /// Registers the static file handlers onto the provided scope.
+//     pub fn register<M, C>(
+//         self,
+//         scope: &mut crate::app::config::Scope<'_, M, C>,
+//     ) -> crate::app::Result<()>
+//     where
+//         M: ModifyHandler<RouteHandler<(), ServeFile>>,
+//         M::Handler: Into<C::Handler>,
+//         C: Concurrency,
+//     {
+//         let Self { root_dir, config } = self;
 
-    /// Registers the static file handlers onto the provided scope.
-    pub fn register<M, C>(
-        self,
-        scope: &mut crate::app::config::Scope<'_, M, C>,
-    ) -> crate::app::Result<()>
-    where
-        M: ModifyHandler<ServeFile>,
-        M::Handler: Into<C::Handler>,
-        C: Concurrency,
-    {
-        let Self { root_dir, config } = self;
+//         for entry in std::fs::read_dir(root_dir).map_err(crate::app::config::Error::custom)? {
+//             let entry = entry.map_err(crate::app::config::Error::custom)?;
 
-        for entry in std::fs::read_dir(root_dir).map_err(crate::app::config::Error::custom)? {
-            let entry = entry.map_err(crate::app::config::Error::custom)?;
+//             let name = entry.file_name();
+//             let name = name
+//                 .to_str() //
+//                 .ok_or_else(|| {
+//                     crate::app::config::Error::custom(failure::format_err!(
+//                         "the filename must be UTF-8"
+//                     ))
+//                 })?;
 
-            let name = entry.file_name();
-            let name = name
-                .to_str() //
-                .ok_or_else(|| {
-                    crate::app::config::Error::custom(failure::format_err!(
-                        "the filename must be UTF-8"
-                    ))
-                })?;
+//             let path = entry
+//                 .path()
+//                 .canonicalize()
+//                 .map(|path| ArcPath(Arc::new(path)))
+//                 .map_err(crate::app::config::Error::custom)?;
 
-            let path = entry
-                .path()
-                .canonicalize()
-                .map(|path| ArcPath(Arc::new(path)))
-                .map_err(crate::app::config::Error::custom)?;
+//             let file_type = entry
+//                 .file_type()
+//                 .map_err(crate::app::config::Error::custom)?;
+//             if file_type.is_file() {
+//                 scope.at(format!("/{}", name))?.to(
+//                     Method::GET,
+//                     ServeFile {
+//                         inner: Arc::new(ServeFileInner {
+//                             path,
+//                             config: config.clone(),
+//                             extract_path: false,
+//                         }),
+//                     },
+//                 )?;
+//             } else if file_type.is_dir() {
+//                 scope.at(format!("/{}/*path", name))?.to(
+//                     Method::GET,
+//                     ServeFile {
+//                         inner: Arc::new(ServeFileInner {
+//                             path,
+//                             config: config.clone(),
+//                             extract_path: true,
+//                         }),
+//                     },
+//                 )?;
+//             } else {
+//                 return Err(crate::app::config::Error::custom(failure::format_err!(
+//                     "unexpected file type"
+//                 )));
+//             }
+//         }
 
-            let file_type = entry
-                .file_type()
-                .map_err(crate::app::config::Error::custom)?;
-            if file_type.is_file() {
-                scope.route2(ServeFile {
-                    inner: Arc::new(ServeFileInner {
-                        path,
-                        config: config.clone(),
-                        extract_path: false,
-                        uri: format!("/{}", name)
-                            .parse()
-                            .map_err(crate::app::config::Error::custom)?,
-                    }),
-                })?;
-            } else if file_type.is_dir() {
-                scope.route2(ServeFile {
-                    inner: Arc::new(ServeFileInner {
-                        path,
-                        config: config.clone(),
-                        extract_path: true,
-                        uri: format!("/{}/*path", name)
-                            .parse()
-                            .map_err(crate::app::config::Error::custom)?,
-                    }),
-                })?;
-            } else {
-                return Err(crate::app::config::Error::custom(failure::format_err!(
-                    "unexpected file type"
-                )));
-            }
-        }
-
-        Ok(())
-    }
-}
+//         Ok(())
+//     }
+// }

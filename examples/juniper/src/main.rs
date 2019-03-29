@@ -5,8 +5,9 @@ mod schema;
 
 use {
     crate::context::{Context, Database},
+    http::Method,
     std::sync::{Arc, RwLock},
-    tsukuyomi::{endpoint::builder as endpoint, server::Server, App},
+    tsukuyomi::{endpoint, server::Server, App},
     tsukuyomi_juniper::{capture_errors, GraphQLRequest},
 };
 
@@ -24,26 +25,25 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
         })
     };
 
-    let app = App::build(|s| {
+    let app = App::build(|mut s| {
         // renders the source of GraphiQL.
-        s.at("/", (), {
-            endpoint::get() //
-                .reply(tsukuyomi_juniper::graphiql_source("/graphql"))
-        })?;
-
-        // modifies all errors that this route throws into GraphQL errors.
-        let capture_errors = capture_errors();
+        let source = tsukuyomi_juniper::graphiql_source("/graphql");
+        s.at("/")?
+            .get()
+            .to(endpoint::call(move || source.clone()))?;
 
         // a route which handles GraphQL requests over HTTP.
-        s.at("/graphql", capture_errors, {
-            endpoint::allow_only("GET, POST")?
-                .extract(tsukuyomi_juniper::request()) // <-- parses the incoming GraphQL request.
-                .extract(fetch_graphql_context) // <-- fetches a GraphQL context.
-                .call(move |request: GraphQLRequest, context: Context| {
+        s.at("/graphql")?
+            .route(&[Method::GET, Method::POST])
+            .with(capture_errors()) // modifies all errors that this route throws into GraphQL errors.
+            .extract(tsukuyomi_juniper::request()) // <-- parses the incoming GraphQL request.
+            .extract(fetch_graphql_context) // <-- fetches a GraphQL context.
+            .to(endpoint::call(
+                move |request: GraphQLRequest, context: Context| {
                     // creates a `Responder` that executes a GraphQL request with the specified schema and context.
                     request.execute(schema.clone(), context)
-                })
-        })
+                },
+            ))
     })?;
 
     let mut server = Server::new(app)?;

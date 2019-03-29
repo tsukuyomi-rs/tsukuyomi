@@ -4,7 +4,7 @@ use {
         Request, StatusCode,
     },
     tsukuyomi::{
-        endpoint::builder as endpoint,
+        endpoint,
         test::{self, loc, TestServer},
         App,
     },
@@ -25,10 +25,9 @@ fn empty_routes() -> test::Result {
 
 #[test]
 fn single_route() -> test::Result {
-    let app = App::build(|s| {
-        s.at("/hello", (), {
-            endpoint::call(|| "Tsukuyomi") //
-        })
+    let app = App::build(|mut s| {
+        s.at("/hello")? //
+            .to(endpoint::call(|| "Tsukuyomi")) //
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -48,12 +47,12 @@ fn single_route() -> test::Result {
 
 #[test]
 fn post_body() -> test::Result {
-    let app = App::build(|s| {
-        s.at("/hello", (), {
-            endpoint::post()
-                .extract(tsukuyomi::extractor::body::plain())
-                .call(|body: String| body)
-        })
+    let app = App::build(|mut scope| {
+        scope
+            .at("/hello")?
+            .post()
+            .extract(tsukuyomi::extractor::body::plain())
+            .to(endpoint::call(|body: String| body))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -136,40 +135,38 @@ fn scoped_fallback() -> test::Result {
 
     let marker = Arc::new(Mutex::new(vec![]));
 
-    let app = App::build(|s| {
-        s.default(
-            (),
-            endpoint::call({
+    let app = App::build(|mut s| {
+        s.fallback(endpoint::call({
+            let marker = marker.clone();
+            move || {
+                marker.lock().unwrap().push("F1");
+                "f1"
+            }
+        }))?;
+
+        s.mount("/api/v1/")?.done(|mut s| {
+            s.fallback(endpoint::call({
                 let marker = marker.clone();
                 move || {
-                    marker.lock().unwrap().push("F1");
-                    "f1"
+                    marker.lock().unwrap().push("F2");
+                    "f2"
                 }
-            }),
-        )?;
+            }))?;
 
-        s.nest("/api/v1/", (), |s| {
-            s.default(
-                (),
-                endpoint::call({
-                    let marker = marker.clone();
-                    move || {
-                        marker.lock().unwrap().push("F2");
-                        "f2"
-                    }
-                }),
-            )?;
-            s.at("/posts", (), {
-                endpoint::post() //
-                    .reply("posts")
-            })?;
-            s.nest("/events", (), |s| {
-                s.at("/new", (), {
-                    endpoint::post() //
-                        .reply("new_event")
-                })
-            })
-        })
+            s.at("/posts")? //
+                .post()
+                .to(endpoint::call(|| "posts"))?;
+
+            s.mount("/events")?
+                .at("/new")?
+                .post()
+                .to(endpoint::call(|| "new_event"))?;
+
+            Ok(())
+        })?;
+
+        s.mount("/users")?
+            .done(|mut s| s.at("/new")?.post().to(endpoint::call(|| "new_user")))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
@@ -183,11 +180,15 @@ fn scoped_fallback() -> test::Result {
 
     marker.lock().unwrap().clear();
     client.get("/api/v1/posts");
-    assert!(marker.lock().unwrap().is_empty());
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
 
     marker.lock().unwrap().clear();
     client.get("/api/v1/events/new");
-    assert!(marker.lock().unwrap().is_empty());
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F2"]);
+
+    marker.lock().unwrap().clear();
+    client.get("/users/new");
+    assert_eq!(&**marker.lock().unwrap(), &*vec!["F1"]);
 
     Ok(())
 }

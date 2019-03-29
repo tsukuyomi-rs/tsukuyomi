@@ -1,14 +1,14 @@
 use tsukuyomi::{
-    endpoint::builder as endpoint, //
+    endpoint, //
     server::Server,
     App,
 };
 
 fn main() -> Result<(), exitfailure::ExitFailure> {
-    let app = App::build(|s| {
-        s.at("/", (), {
-            endpoint::reply("Hello, world!\n") //
-        })
+    let app = App::build(|mut scope| {
+        scope
+            .at("/")? //
+            .to(endpoint::call(|| "Hello, world!\n"))
     })?;
 
     let mut server = Server::new(app)?;

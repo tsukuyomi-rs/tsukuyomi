@@ -1,19 +1,32 @@
 use {
-    crate::{error::Error, generic::Tuple, input::param::Params},
+    crate::{
+        error::Error,
+        extractor::Extractor,
+        future::{Poll, TryFuture},
+        generic::Tuple,
+        input::param::Params,
+        input::Input,
+    },
     std::marker::PhantomData,
 };
 
 #[doc(hidden)]
 pub use tsukuyomi_macros::path_impl;
 
-pub trait PathExtractor {
+pub trait Path {
     type Output: Tuple;
 
+    fn as_str(&self) -> &str;
     fn extract(params: Option<&Params<'_>>) -> Result<Self::Output, Error>;
 }
 
-impl PathExtractor for () {
+impl Path for &'static str {
     type Output = ();
+
+    #[inline]
+    fn as_str(&self) -> &str {
+        self
+    }
 
     #[inline]
     fn extract(_: Option<&Params<'_>>) -> Result<Self::Output, Error> {
@@ -21,31 +34,17 @@ impl PathExtractor for () {
     }
 }
 
-pub trait IntoPath {
-    type Output: Tuple;
-    type Extractor: PathExtractor<Output = Self::Output>;
-
-    fn into_path(self) -> Path<Self::Extractor>;
-}
-
-impl IntoPath for &'static str {
+impl Path for String {
     type Output = ();
-    type Extractor = ();
 
-    fn into_path(self) -> Path<Self::Extractor> {
-        Path::new(self)
+    #[inline]
+    fn as_str(&self) -> &str {
+        self.as_str()
     }
-}
 
-impl<T> IntoPath for Path<T>
-where
-    T: PathExtractor,
-{
-    type Output = T::Output;
-    type Extractor = T;
-
-    fn into_path(self) -> Path<Self::Extractor> {
-        self
+    #[inline]
+    fn extract(_: Option<&Params<'_>>) -> Result<Self::Output, Error> {
+        Ok(())
     }
 }
 
@@ -67,7 +66,7 @@ macro_rules! path {
 #[doc(hidden)]
 pub mod internal {
     pub use {
-        super::{Path, PathExtractor},
+        super::Path,
         crate::{
             error::Error,
             input::param::{FromPercentEncoded, Params, PercentEncoded},
@@ -75,25 +74,52 @@ pub mod internal {
     };
 }
 
-#[derive(Debug)]
-pub struct Path<E: PathExtractor = ()> {
-    path: &'static str,
-    _marker: PhantomData<E>,
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct PathExtractor<P: Path + ?Sized> {
+    _marker: PhantomData<P>,
 }
 
-impl<E> Path<E>
+impl<P> PathExtractor<P>
 where
-    E: PathExtractor,
+    P: Path + ?Sized,
 {
-    /// Creates a new `Path` with the specified path and extractor.
-    pub fn new(path: &'static str) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            path,
             _marker: PhantomData,
         }
     }
+}
 
-    pub(crate) fn uri_str(&self) -> &'static str {
-        self.path
+impl<P> Extractor for PathExtractor<P>
+where
+    P: Path + ?Sized,
+{
+    type Output = P::Output;
+    type Error = Error;
+    type Extract = PathExtract<P>;
+
+    fn extract(&self) -> Self::Extract {
+        PathExtract {
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[doc(hidden)]
+#[allow(missing_debug_implementations)]
+pub struct PathExtract<P: Path + ?Sized> {
+    _marker: PhantomData<P>,
+}
+
+impl<P> TryFuture for PathExtract<P>
+where
+    P: Path + ?Sized,
+{
+    type Ok = P::Output;
+    type Error = Error;
+
+    fn poll_ready(&mut self, input: &mut Input<'_>) -> Poll<Self::Ok, Self::Error> {
+        P::extract(input.params.as_ref()).map(Into::into)
     }
 }

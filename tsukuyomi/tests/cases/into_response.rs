@@ -1,7 +1,7 @@
 use {
     http::{header, StatusCode},
     tsukuyomi::{
-        endpoint::builder as endpoint,
+        endpoint,
         test::{self, loc, TestServer},
         App,
     },
@@ -72,9 +72,9 @@ fn test_into_response_preset() -> test::Result {
         }
     }
 
-    let app = App::build(|s| {
-        s.at("/foo", (), endpoint::call(|| Foo("Foo".into())))?;
-        s.at("/bar", (), endpoint::call(|| Bar("Bar")))
+    let app = App::build(|mut s| {
+        s.at("/foo")?.to(endpoint::call(|| Foo("Foo".into())))?;
+        s.at("/bar")?.to(endpoint::call(|| Bar("Bar")))
     })?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

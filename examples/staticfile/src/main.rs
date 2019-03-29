@@ -1,23 +1,19 @@
 use {
     exitfailure::ExitFailure,
-    tsukuyomi::{
-        endpoint::builder as endpoint,
-        fs::{NamedFile, Staticfiles},
-        server::Server,
-        App,
-    },
+    tsukuyomi::{endpoint, fs::NamedFile, server::Server, App},
 };
 
 fn main() -> Result<(), ExitFailure> {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    let app = App::build(|s| {
-        s.at("/", (), {
-            endpoint::get() //
-                .reply(NamedFile::open(manifest_dir.join("static/index.html")))
-        })?;
+    let app = App::build(|mut scope| {
+        scope.at("/")?.get().to(endpoint::call(move || {
+            NamedFile::open(manifest_dir.join("static/index.html"))
+        }))?;
 
-        Staticfiles::new(manifest_dir.join("static")).register(s)
+        //Staticfiles::new(manifest_dir.join("static")).register(s)
+
+        Ok(())
     })?;
 
     let mut server = Server::new(app)?;

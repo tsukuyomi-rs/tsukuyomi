@@ -4,7 +4,7 @@ use {
     tsukuyomi::{
         error::{Error, HttpError}, //
         future::{Async, Poll, TryFuture},
-        handler::{metadata::Metadata, Handler, ModifyHandler},
+        handler::{Handler, ModifyHandler},
         input::Input,
         output::IntoResponse,
         util::Either,
@@ -70,10 +70,6 @@ where
     type Output = Either<Response<String>, H::Output>;
     type Error = Error;
     type Handle = CaptureErrorsHandle<H::Handle>;
-
-    fn metadata(&self) -> Metadata {
-        self.inner.metadata()
-    }
 
     fn handle(&self) -> Self::Handle {
         CaptureErrorsHandle {
