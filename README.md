@@ -22,26 +22,18 @@
 ## Usage
 
 ```rust,no_run
-use {
-    std::net::SocketAddr,
-    tsukuyomi::{
-        App,
-        config::prelude::*,
-        server::Server,
-    },
-};
+use tsukuyomi::{App, server::Server};
+use tsukuyomi::endpoint::builder as endpoint;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let app = App::create(
-        path!("/")
-            .to(endpoint::reply("Hello, world.\n"))
-    )?;
+    let app = App::build(|scope| {
+        scope.at("/", (), endpoint::reply("Hello, world.\n"))
+    })?;
 
     let mut server = Server::new(app)?;
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 4000));
-    println!("Listening on http://{}", addr);
-    server.bind(addr)?;
+    println!("Listening on http://localhost:4000/");
+    server.bind("127.0.0.1:4000")?;
 
     server.run_forever();
     Ok(())

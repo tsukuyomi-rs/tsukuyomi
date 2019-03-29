@@ -526,37 +526,41 @@ where
     }
 }
 
-impl<P> crate::config::IsConfig for Staticfiles<P> where P: AsRef<Path> {}
+impl<P> crate::app::config::IsConfig for Staticfiles<P> where P: AsRef<Path> {}
 
-impl<P, M, C> crate::config::Config<M, C> for Staticfiles<P>
+impl<P, M, C> crate::app::config::Config<M, C> for Staticfiles<P>
 where
     P: AsRef<Path>,
     M: ModifyHandler<ServeFile>,
     M::Handler: Into<C::Handler>,
     C: Concurrency,
 {
-    type Error = crate::config::Error;
+    type Error = crate::app::config::Error;
 
     fn configure(self, scope: &mut crate::app::config::Scope<'_, M, C>) -> crate::app::Result<()> {
         let Self { root_dir, config } = self;
 
-        for entry in std::fs::read_dir(root_dir).map_err(crate::config::Error::custom)? {
-            let entry = entry.map_err(crate::config::Error::custom)?;
+        for entry in std::fs::read_dir(root_dir).map_err(crate::app::config::Error::custom)? {
+            let entry = entry.map_err(crate::app::config::Error::custom)?;
 
             let name = entry.file_name();
             let name = name
                 .to_str() //
                 .ok_or_else(|| {
-                    crate::config::Error::custom(failure::format_err!("the filename must be UTF-8"))
+                    crate::app::config::Error::custom(failure::format_err!(
+                        "the filename must be UTF-8"
+                    ))
                 })?;
 
             let path = entry
                 .path()
                 .canonicalize()
                 .map(|path| ArcPath(Arc::new(path)))
-                .map_err(crate::config::Error::custom)?;
+                .map_err(crate::app::config::Error::custom)?;
 
-            let file_type = entry.file_type().map_err(crate::config::Error::custom)?;
+            let file_type = entry
+                .file_type()
+                .map_err(crate::app::config::Error::custom)?;
             if file_type.is_file() {
                 scope.route2(ServeFile {
                     inner: Arc::new(ServeFileInner {
@@ -565,7 +569,7 @@ where
                         extract_path: false,
                         uri: format!("/{}", name)
                             .parse()
-                            .map_err(crate::config::Error::custom)?,
+                            .map_err(crate::app::config::Error::custom)?,
                     }),
                 })?;
             } else if file_type.is_dir() {
@@ -576,11 +580,11 @@ where
                         extract_path: true,
                         uri: format!("/{}/*path", name)
                             .parse()
-                            .map_err(crate::config::Error::custom)?,
+                            .map_err(crate::app::config::Error::custom)?,
                     }),
                 })?;
             } else {
-                return Err(crate::config::Error::custom(failure::format_err!(
+                return Err(crate::app::config::Error::custom(failure::format_err!(
                     "unexpected file type"
                 )));
             }
