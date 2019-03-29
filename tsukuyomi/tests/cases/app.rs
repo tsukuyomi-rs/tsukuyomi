@@ -1,6 +1,6 @@
 use {
     http::{
-        header::{self, CONTENT_LENGTH, CONTENT_TYPE},
+        header::{CONTENT_LENGTH, CONTENT_TYPE},
         Request, StatusCode,
     },
     tsukuyomi::{
@@ -129,53 +129,6 @@ fn post_body() -> test::Result {
 
 //     Ok(())
 // }
-
-#[test]
-fn default_options() -> test::Result {
-    let default_options = tsukuyomi::modifiers::default_options();
-    let app = App::build(|s| {
-        s.at("/path", default_options, {
-            endpoint::allow_only("GET, POST")? //
-                .call(|| "reply")
-        })
-    })?;
-    let mut server = TestServer::new(app)?;
-    let mut client = server.connect();
-
-    client
-        .get("/path")
-        .assert(loc!(), StatusCode::OK)?
-        .assert(loc!(), test::body::eq("reply"))?;
-
-    client
-        .request(Request::options("/path").body("")?)
-        .assert(loc!(), StatusCode::NO_CONTENT)?
-        .assert(
-            loc!(),
-            test::header::eq(header::ALLOW, "GET, POST, OPTIONS"),
-        )?;
-
-    Ok(())
-}
-
-#[test]
-fn map_output() -> test::Result {
-    let map_output = tsukuyomi::modifiers::map_output(|num: u32| num.to_string());
-    let app = App::build(|s| {
-        s.at("/", map_output, {
-            endpoint::reply(42) //
-        })
-    })?;
-    let mut server = TestServer::new(app)?;
-    let mut client = server.connect();
-
-    client
-        .get("/")
-        .assert(loc!(), StatusCode::OK)?
-        .assert(loc!(), test::body::eq("42"))?;
-
-    Ok(())
-}
 
 #[test]
 fn scoped_fallback() -> test::Result {
