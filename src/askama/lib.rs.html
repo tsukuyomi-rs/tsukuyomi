@@ -1,0 +1,979 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `/home/vsts/.cargo/registry/src/-87071ef65b61d6f2/askama-0.7.2/src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<span id="2">  2</span>
+<span id="3">  3</span>
+<span id="4">  4</span>
+<span id="5">  5</span>
+<span id="6">  6</span>
+<span id="7">  7</span>
+<span id="8">  8</span>
+<span id="9">  9</span>
+<span id="10"> 10</span>
+<span id="11"> 11</span>
+<span id="12"> 12</span>
+<span id="13"> 13</span>
+<span id="14"> 14</span>
+<span id="15"> 15</span>
+<span id="16"> 16</span>
+<span id="17"> 17</span>
+<span id="18"> 18</span>
+<span id="19"> 19</span>
+<span id="20"> 20</span>
+<span id="21"> 21</span>
+<span id="22"> 22</span>
+<span id="23"> 23</span>
+<span id="24"> 24</span>
+<span id="25"> 25</span>
+<span id="26"> 26</span>
+<span id="27"> 27</span>
+<span id="28"> 28</span>
+<span id="29"> 29</span>
+<span id="30"> 30</span>
+<span id="31"> 31</span>
+<span id="32"> 32</span>
+<span id="33"> 33</span>
+<span id="34"> 34</span>
+<span id="35"> 35</span>
+<span id="36"> 36</span>
+<span id="37"> 37</span>
+<span id="38"> 38</span>
+<span id="39"> 39</span>
+<span id="40"> 40</span>
+<span id="41"> 41</span>
+<span id="42"> 42</span>
+<span id="43"> 43</span>
+<span id="44"> 44</span>
+<span id="45"> 45</span>
+<span id="46"> 46</span>
+<span id="47"> 47</span>
+<span id="48"> 48</span>
+<span id="49"> 49</span>
+<span id="50"> 50</span>
+<span id="51"> 51</span>
+<span id="52"> 52</span>
+<span id="53"> 53</span>
+<span id="54"> 54</span>
+<span id="55"> 55</span>
+<span id="56"> 56</span>
+<span id="57"> 57</span>
+<span id="58"> 58</span>
+<span id="59"> 59</span>
+<span id="60"> 60</span>
+<span id="61"> 61</span>
+<span id="62"> 62</span>
+<span id="63"> 63</span>
+<span id="64"> 64</span>
+<span id="65"> 65</span>
+<span id="66"> 66</span>
+<span id="67"> 67</span>
+<span id="68"> 68</span>
+<span id="69"> 69</span>
+<span id="70"> 70</span>
+<span id="71"> 71</span>
+<span id="72"> 72</span>
+<span id="73"> 73</span>
+<span id="74"> 74</span>
+<span id="75"> 75</span>
+<span id="76"> 76</span>
+<span id="77"> 77</span>
+<span id="78"> 78</span>
+<span id="79"> 79</span>
+<span id="80"> 80</span>
+<span id="81"> 81</span>
+<span id="82"> 82</span>
+<span id="83"> 83</span>
+<span id="84"> 84</span>
+<span id="85"> 85</span>
+<span id="86"> 86</span>
+<span id="87"> 87</span>
+<span id="88"> 88</span>
+<span id="89"> 89</span>
+<span id="90"> 90</span>
+<span id="91"> 91</span>
+<span id="92"> 92</span>
+<span id="93"> 93</span>
+<span id="94"> 94</span>
+<span id="95"> 95</span>
+<span id="96"> 96</span>
+<span id="97"> 97</span>
+<span id="98"> 98</span>
+<span id="99"> 99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+<span id="248">248</span>
+<span id="249">249</span>
+<span id="250">250</span>
+<span id="251">251</span>
+<span id="252">252</span>
+<span id="253">253</span>
+<span id="254">254</span>
+<span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
+<span id="296">296</span>
+<span id="297">297</span>
+<span id="298">298</span>
+<span id="299">299</span>
+<span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
+<span id="312">312</span>
+<span id="313">313</span>
+<span id="314">314</span>
+<span id="315">315</span>
+<span id="316">316</span>
+<span id="317">317</span>
+<span id="318">318</span>
+<span id="319">319</span>
+<span id="320">320</span>
+<span id="321">321</span>
+<span id="322">322</span>
+<span id="323">323</span>
+<span id="324">324</span>
+<span id="325">325</span>
+<span id="326">326</span>
+<span id="327">327</span>
+<span id="328">328</span>
+<span id="329">329</span>
+<span id="330">330</span>
+<span id="331">331</span>
+<span id="332">332</span>
+<span id="333">333</span>
+<span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
+<span id="344">344</span>
+<span id="345">345</span>
+<span id="346">346</span>
+<span id="347">347</span>
+<span id="348">348</span>
+<span id="349">349</span>
+<span id="350">350</span>
+<span id="351">351</span>
+<span id="352">352</span>
+<span id="353">353</span>
+<span id="354">354</span>
+<span id="355">355</span>
+<span id="356">356</span>
+<span id="357">357</span>
+<span id="358">358</span>
+<span id="359">359</span>
+<span id="360">360</span>
+<span id="361">361</span>
+<span id="362">362</span>
+<span id="363">363</span>
+<span id="364">364</span>
+<span id="365">365</span>
+<span id="366">366</span>
+<span id="367">367</span>
+<span id="368">368</span>
+<span id="369">369</span>
+<span id="370">370</span>
+<span id="371">371</span>
+<span id="372">372</span>
+<span id="373">373</span>
+<span id="374">374</span>
+<span id="375">375</span>
+<span id="376">376</span>
+<span id="377">377</span>
+<span id="378">378</span>
+<span id="379">379</span>
+<span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
+<span id="384">384</span>
+<span id="385">385</span>
+<span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
+<span id="406">406</span>
+<span id="407">407</span>
+<span id="408">408</span>
+<span id="409">409</span>
+<span id="410">410</span>
+<span id="411">411</span>
+<span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="doccomment">//! Askama implements a type-safe compiler for Jinja-like templates.</span>
+<span class="doccomment">//! It lets you write templates in a Jinja-like syntax,</span>
+<span class="doccomment">//! which are linked to a `struct` defining the template context.</span>
+<span class="doccomment">//! This is done using a custom derive implementation (implemented</span>
+<span class="doccomment">//! in [`askama_derive`](https://crates.io/crates/askama_derive)).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! For feature highlights and a quick start, please review the</span>
+<span class="doccomment">//! [README](https://github.com/djc/askama/blob/master/README.md).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! # Creating Askama templates</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! An Askama template is a `struct` definition which provides the template</span>
+<span class="doccomment">//! context combined with a UTF-8 encoded text file (or inline source, see</span>
+<span class="doccomment">//! below). Askama can be used to generate any kind of text-based format.</span>
+<span class="doccomment">//! The template file&#39;s extension may be used to provide content type hints.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! A template consists of **text contents**, which are passed through as-is,</span>
+<span class="doccomment">//! **expressions**, which get replaced with content while being rendered, and</span>
+<span class="doccomment">//! **tags**, which control the template&#39;s logic.</span>
+<span class="doccomment">//! The template syntax is very similar to [Jinja](http://jinja.pocoo.org/),</span>
+<span class="doccomment">//! as well as Jinja-derivatives like [Twig](http://twig.sensiolabs.org/) or</span>
+<span class="doccomment">//! [Tera](https://github.com/Keats/tera).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## The `template()` attribute</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Askama works by generating one or more trait implementations for any</span>
+<span class="doccomment">//! `struct` type decorated with the `#[derive(Template)]` attribute. The</span>
+<span class="doccomment">//! code generation process takes some options that can be specified through</span>
+<span class="doccomment">//! the `template()` attribute. The following sub-attributes are currently</span>
+<span class="doccomment">//! recognized:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! * `path` (as `path = &quot;foo.html&quot;`): sets the path to the template file. The</span>
+<span class="doccomment">//!   path is interpreted as relative to the configured template directories</span>
+<span class="doccomment">//!   (by default, this is a `templates` directory next to your `Cargo.toml`).</span>
+<span class="doccomment">//!   The file name extension is used to infer an escape mode (see below). In</span>
+<span class="doccomment">//!   web framework integrations, the path&#39;s extension may also be used to</span>
+<span class="doccomment">//!   infer the content type of the resulting response.</span>
+<span class="doccomment">//!   Cannot be used together with `source`.</span>
+<span class="doccomment">//! * `source` (as `source = &quot;{{ foo }}&quot;`): directly sets the template source.</span>
+<span class="doccomment">//!   This can be useful for test cases or short templates. The generated path</span>
+<span class="doccomment">//!   is undefined, which generally makes it impossible to refer to this</span>
+<span class="doccomment">//!   template from other templates. If `source` is specified, `ext` must also</span>
+<span class="doccomment">//!   be specified (see below). Cannot be used together with `path`.</span>
+<span class="doccomment">//! * `ext` (as `ext = &quot;txt&quot;`): lets you specify the content type as a file</span>
+<span class="doccomment">//!   extension. This is used to infer an escape mode (see below), and some</span>
+<span class="doccomment">//!   web framework integrations use it to determine the content type.</span>
+<span class="doccomment">//!   Cannot be used together with `path`.</span>
+<span class="doccomment">//! * `print` (as `print = &quot;code&quot;`): enable debugging by printing nothing</span>
+<span class="doccomment">//!   (`none`), the parsed syntax tree (`ast`), the generated code (`code`)</span>
+<span class="doccomment">//!   or `all` for both. The requested data will be printed to stdout at</span>
+<span class="doccomment">//!   compile time.</span>
+<span class="doccomment">//! * `escape` (as `escape = &quot;none&quot;`): set the escape mode for expression</span>
+<span class="doccomment">//!   output; the currently implemented modes are `none` and `html`. Askama</span>
+<span class="doccomment">//!   infers the escape mode from the template file name (with `path`) or</span>
+<span class="doccomment">//!   specified extension (`ext`): if the extension is `html`, `htm` or `xml`,</span>
+<span class="doccomment">//!   the `html` escape mode is used; otherwise, no implicit escaping is done.</span>
+<span class="doccomment">//!   Setting an escape mode explicitly overrides the inferred value.</span>
+<span class="doccomment">//! * `syntax` (as `syntax = &quot;foo&quot;`): set the syntax name for a parser defined</span>
+<span class="doccomment">//!   in the configuration file. The default syntax , &quot;default&quot;,  is the one</span>
+<span class="doccomment">//!   provided by Askama.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Configuration</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! At compile time, Askama will read optional configuration values from</span>
+<span class="doccomment">//! `askama.toml` in the crate root (the directory where `Cargo.toml` can</span>
+<span class="doccomment">//! be found). Currently, this covers the directories to search for templates,</span>
+<span class="doccomment">//! as well as custom syntax configuration.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! This example file demonstrates the default configuration:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```toml</span>
+<span class="doccomment">//! [general]</span>
+<span class="doccomment">//! # Directories to search for templates, relative to the crate root.</span>
+<span class="doccomment">//! dirs = [&quot;templates&quot;]</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Here is an example that defines two custom syntaxes:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```toml</span>
+<span class="doccomment">//! [general]</span>
+<span class="doccomment">//! default_syntax = &quot;foo&quot;</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! [[syntax]]</span>
+<span class="doccomment">//! name = &quot;foo&quot;</span>
+<span class="doccomment">//! block_start = &quot;%{&quot;</span>
+<span class="doccomment">//! comment_start = &quot;#{&quot;</span>
+<span class="doccomment">//! expr_end = &quot;^^&quot;</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! [[syntax]]</span>
+<span class="doccomment">//! name = &quot;bar&quot;</span>
+<span class="doccomment">//! block_start = &quot;%%&quot;</span>
+<span class="doccomment">//! block_end = &quot;%%&quot;</span>
+<span class="doccomment">//! comment_start = &quot;%#&quot;</span>
+<span class="doccomment">//! expr_start = &quot;%{&quot;</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! A syntax block consists of at least the attribute `name` which uniquely</span>
+<span class="doccomment">//! names this syntax in the project.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The following keys can currently be used to customize template syntax:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! * `block_start`, defaults to `{%`</span>
+<span class="doccomment">//! * `block_end`, defaults to `%}`</span>
+<span class="doccomment">//! * `comment_start`, defaults to `{#`</span>
+<span class="doccomment">//! * `comment_end`, defaults to `#}`</span>
+<span class="doccomment">//! * `expr_start`, defaults to `{{`</span>
+<span class="doccomment">//! * `expr_end`, defaults to `}}`</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Values must be 2 characters long and start delimiters must all start with the same</span>
+<span class="doccomment">//! character. If a key is omitted, the value from the default syntax is used.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Variables</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Top-level template variables are defined by the template&#39;s context type.</span>
+<span class="doccomment">//! You can use a dot (`.`) to access variable&#39;s attributes or methods.</span>
+<span class="doccomment">//! Reading from variables is subject to the usual borrowing policies.</span>
+<span class="doccomment">//! For example, `{{ name }}` will get the ``name`` field from the template</span>
+<span class="doccomment">//! context,</span>
+<span class="doccomment">//! while `{{ user.name }}` will get the ``name`` field of the ``user``</span>
+<span class="doccomment">//! field from the template context.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Filters</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Values such as those obtained from variables can be post-processed</span>
+<span class="doccomment">//! using **filters**.</span>
+<span class="doccomment">//! Filters are applied to values using the pipe symbol (`|`) and may</span>
+<span class="doccomment">//! have optional extra arguments in parentheses.</span>
+<span class="doccomment">//! Filters can be chained, in which case the output from one filter</span>
+<span class="doccomment">//! is passed to the next.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! For example, `{{ &quot;{:?}&quot;|format(name|escape) }}` will escape HTML</span>
+<span class="doccomment">//! characters from the value obtained by accessing the `name` field,</span>
+<span class="doccomment">//! and print the resulting string as a Rust literal.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The built-in filters are documented as part of the</span>
+<span class="doccomment">//! [filters module documentation](filters/index.html).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! To define your own filters, simply have a module named `filters` in</span>
+<span class="doccomment">//! scope of the context deriving a `Template` `impl`. Any filter names</span>
+<span class="doccomment">//! that are not part of the built-in filters will be referenced through</span>
+<span class="doccomment">//! the `filters::` prefix.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Whitespace control</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Askama considers all tabs, spaces, newlines and carriage returns to be</span>
+<span class="doccomment">//! whitespace. By default, it preserves all whitespace in template code,</span>
+<span class="doccomment">//! except that a single trailing newline character is suppressed.</span>
+<span class="doccomment">//! However, whitespace before and after expression and block delimiters</span>
+<span class="doccomment">//! can be suppressed by writing a minus sign directly following a</span>
+<span class="doccomment">//! start delimiter or leading into an end delimiter.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Here is an example:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! {% if foo %}</span>
+<span class="doccomment">//!   {{- bar -}}</span>
+<span class="doccomment">//! {% else if -%}</span>
+<span class="doccomment">//!   nothing</span>
+<span class="doccomment">//! {%- endif %}</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! This discards all whitespace inside the if/else block. If a literal</span>
+<span class="doccomment">//! (any part of the template not surrounded by `{% %}` or `{{ }}`)</span>
+<span class="doccomment">//! includes only whitespace, whitespace suppression on either side will</span>
+<span class="doccomment">//! completely suppress that literal content.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Template inheritance</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Template inheritance allows you to build a base template with common</span>
+<span class="doccomment">//! elements that can be shared by all inheriting templates.</span>
+<span class="doccomment">//! A base template defines **blocks** that child templates can override.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ### Base template</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! &lt;!DOCTYPE html&gt;</span>
+<span class="doccomment">//! &lt;html lang=&quot;en&quot;&gt;</span>
+<span class="doccomment">//!   &lt;head&gt;</span>
+<span class="doccomment">//!     &lt;title&gt;{% block title %}{{ title }} - My Site{% endblock %}&lt;/title&gt;</span>
+<span class="doccomment">//!     {% block head %}{% endblock %}</span>
+<span class="doccomment">//!   &lt;/head&gt;</span>
+<span class="doccomment">//!   &lt;body&gt;</span>
+<span class="doccomment">//!     &lt;div id=&quot;content&quot;&gt;</span>
+<span class="doccomment">//!       {% block content %}{% endblock %}</span>
+<span class="doccomment">//!     &lt;/div&gt;</span>
+<span class="doccomment">//!   &lt;/body&gt;</span>
+<span class="doccomment">//! &lt;/html&gt;</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The `block` tags define three blocks that can be filled in by child</span>
+<span class="doccomment">//! templates. The base template defines a default version of the block.</span>
+<span class="doccomment">//! A base template must define one or more blocks in order to enable</span>
+<span class="doccomment">//! inheritance. Blocks can only be specified at the top level of a template</span>
+<span class="doccomment">//! or inside other blocks, not inside `if`/`else` branches or in `for`-loop</span>
+<span class="doccomment">//! bodies.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ### Child template</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Here&#39;s an example child template:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! {% extends &quot;base.html&quot; %}</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! {% block title %}Index{% endblock %}</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! {% block head %}</span>
+<span class="doccomment">//!   &lt;style&gt;</span>
+<span class="doccomment">//!   &lt;/style&gt;</span>
+<span class="doccomment">//! {% endblock %}</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! {% block content %}</span>
+<span class="doccomment">//!   &lt;h1&gt;Index&lt;/h1&gt;</span>
+<span class="doccomment">//!   &lt;p&gt;Hello, world!&lt;/p&gt;</span>
+<span class="doccomment">//! {% endblock %}</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The `extends` tag tells the code generator that this template inherits</span>
+<span class="doccomment">//! from another template. It will search for the base template relative to</span>
+<span class="doccomment">//! itself before looking relative to the template base directory. It will</span>
+<span class="doccomment">//! render the top-level content from the base template, and substitute</span>
+<span class="doccomment">//! blocks from the base template with those from the child template. Inside</span>
+<span class="doccomment">//! a block in a child template, the `super()` macro can be called to render</span>
+<span class="doccomment">//! the parent block&#39;s contents.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## HTML escaping</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Askama by default escapes variables if it thinks it is rendering HTML</span>
+<span class="doccomment">//! content. It infers the escaping context from the extension of template</span>
+<span class="doccomment">//! filenames, escaping by default if the extension is one of `html`, `htm`,</span>
+<span class="doccomment">//! or `xml`. When specifying a template as `source` in an attribute, the</span>
+<span class="doccomment">//! `ext` attribute parameter must be used to specify a type. Additionally,</span>
+<span class="doccomment">//! you can specify an escape mode explicitly for your template by setting</span>
+<span class="doccomment">//! the `escape` attribute parameter value (to `none` or `html`).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Askama escapes `&lt;`, `&gt;`, `&amp;`, `&quot;`, `&#39;`, `\` and `/`, according to the</span>
+<span class="doccomment">//! [OWASP escaping recommendations][owasp]. Use the `safe` filter to</span>
+<span class="doccomment">//! prevent escaping for a single expression, or the `escape` (or `e`)</span>
+<span class="doccomment">//! filter to escape a single expression in an unescaped context.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! [owasp]: https://www.owasp.org/index.php/XSS_(Cross_Site_Scripting)_Prevention_Cheat_Sheet#RULE_.231_-_HTML_Escape_Before_Inserting_Untrusted_Data_into_HTML_Element_Content</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Control structures</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ### For</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Loop over each item in an iterator. For example:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! &lt;h1&gt;Users&lt;/h1&gt;</span>
+<span class="doccomment">//! &lt;ul&gt;</span>
+<span class="doccomment">//! {% for user in users %}</span>
+<span class="doccomment">//!   &lt;li&gt;{{ user.name|e }}&lt;/li&gt;</span>
+<span class="doccomment">//! {% endfor %}</span>
+<span class="doccomment">//! &lt;/ul&gt;</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Inside for-loop blocks, some useful variables are accessible:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! * *loop.index*: current loop iteration (starting from 1)</span>
+<span class="doccomment">//! * *loop.index0*: current loop iteration (starting from 0)</span>
+<span class="doccomment">//! * *loop.first*: whether this is the first iteration of the loop</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ### If</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The *if* statement is used as you might expect:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! {% if users.len() == 0 %}</span>
+<span class="doccomment">//!   No users</span>
+<span class="doccomment">//! {% else if users.len() == 1 %}</span>
+<span class="doccomment">//!   1 user</span>
+<span class="doccomment">//! {% else %}</span>
+<span class="doccomment">//!   {{ users.len() }} users</span>
+<span class="doccomment">//! {% endif %}</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ### Match</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! In order to deal with Rust `enum`s in a type-safe way, templates support</span>
+<span class="doccomment">//! match blocks from version 0.6. Here is a simple example showing how to</span>
+<span class="doccomment">//! expand an `Option`:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! {% match item %}</span>
+<span class="doccomment">//!   {% when Some with (&quot;foo&quot;) %}</span>
+<span class="doccomment">//!     Found literal foo</span>
+<span class="doccomment">//!   {% when Some with (val) %}</span>
+<span class="doccomment">//!     Found {{ val }}</span>
+<span class="doccomment">//!   {% when None %}</span>
+<span class="doccomment">//! {% endmatch %}</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! That is, a `match` block can optionally contain some whitespace (but</span>
+<span class="doccomment">//! no other literal content), followed by a number of `when` blocks and</span>
+<span class="doccomment">//! and an optional `else` block. Each `when` block must name a list of</span>
+<span class="doccomment">//! matches (`(val)`), optionally introduced with a variant name. The</span>
+<span class="doccomment">//! `else` block is equivalent to matching on `_` (matching anything).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ### Include</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The *include* statement lets you split large or repetitive blocks into</span>
+<span class="doccomment">//! separate template files. Included templates get full access to the context</span>
+<span class="doccomment">//! in which they&#39;re used, including local variables like those from loops:</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! {% for i in iter %}</span>
+<span class="doccomment">//!   {% include &quot;item.html&quot; %}</span>
+<span class="doccomment">//! {% endfor %}</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ```text</span>
+<span class="doccomment">//! * Item: {{ i }}</span>
+<span class="doccomment">//! ```</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! The path to include must be a string literal, so that it is known at</span>
+<span class="doccomment">//! compile time. Askama will try to find the specified template relative</span>
+<span class="doccomment">//! to the including template&#39;s path before falling back to the absolute</span>
+<span class="doccomment">//! template path. Use `include` within the branches of an `if`/`else`</span>
+<span class="doccomment">//! block to use includes more dynamically.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Expressions</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Askama supports string literals (`&quot;foo&quot;`) and integer literals (`1`).</span>
+<span class="doccomment">//! It supports almost all binary operators that Rust supports,</span>
+<span class="doccomment">//! including arithmetic, comparison and logic operators.</span>
+<span class="doccomment">//! The parser applies the same precedence order as the Rust compiler.</span>
+<span class="doccomment">//! Expressions can be grouped using parentheses.</span>
+<span class="doccomment">//! The HTML special characters `&amp;`, `&lt;` and `&gt;` will be replaced with their</span>
+<span class="doccomment">//! character entities unless the `escape` mode is disabled for a template.</span>
+<span class="doccomment">//! Methods can be called on variables that are in scope, including `self`.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! **Warning**: if the result of an expression (a `{{ }}` block) is</span>
+<span class="doccomment">//! equivalent to `self`, this can result in a stack overflow from infinite</span>
+<span class="doccomment">//! recursion. This is because the `Display` implementation for that expression</span>
+<span class="doccomment">//! will in turn evaluate the expression and yield `self` again.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Comments</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Askama supports block comments delimited by `{#` and `#}`.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! # Optional functionality</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Rocket integration</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Enabling the `with-rocket` feature appends an implementation of Rocket&#39;s</span>
+<span class="doccomment">//! `Responder` trait for each template type. This makes it easy to trivially</span>
+<span class="doccomment">//! return a value of that type in a Rocket handler. See</span>
+<span class="doccomment">//! [the example](https://github.com/djc/askama/blob/master/testing/tests/rocket.rs)</span>
+<span class="doccomment">//! from the Askama test suite for more on how to integrate.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! In case a run-time error occurs during templating, a `500 Internal Server</span>
+<span class="doccomment">//! Error` `Status` value will be returned, so that this can be further</span>
+<span class="doccomment">//! handled by your error catcher.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Iron integration</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Enabling the `with-iron` feature appends an implementation of Iron&#39;s</span>
+<span class="doccomment">//! `Modifier&lt;Response&gt;` trait for each template type. This makes it easy to</span>
+<span class="doccomment">//! trivially return a value of that type in an Iron handler. See</span>
+<span class="doccomment">//! [the example](https://github.com/djc/askama/blob/master/testing/tests/iron.rs)</span>
+<span class="doccomment">//! from the Askama test suite for more on how to integrate.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Note that Askama&#39;s generated `Modifier&lt;Response&gt;` implementation currently</span>
+<span class="doccomment">//! unwraps any run-time errors from the template. If you have a better</span>
+<span class="doccomment">//! suggestion, please [file an issue](https://github.com/djc/askama/issues/new).</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## Actix-web integration</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Enabling the `with-actix-web` feature appends an implementation of Actix-web&#39;s</span>
+<span class="doccomment">//! `Responder` trait for each template type. This makes it easy to return a value of</span>
+<span class="doccomment">//! that type in an Actix-web handler.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! ## The `json` filter</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Enabling the `serde-json` filter will enable the use of the `json` filter.</span>
+<span class="doccomment">//! This will output formatted JSON for any value that implements the required</span>
+<span class="doccomment">//! `Serialize` trait.</span>
+
+<span class="attribute">#![<span class="ident">allow</span>(<span class="ident">unused_imports</span>)]</span>
+<span class="attribute">#[<span class="ident">macro_use</span>]</span>
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">askama_derive</span>;
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">askama_shared</span> <span class="kw">as</span> <span class="ident">shared</span>;
+
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">fs</span>::{<span class="self">self</span>, <span class="ident">DirEntry</span>};
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">io</span>;
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">path</span>::<span class="ident">Path</span>;
+
+<span class="doccomment">/// Main `Template` trait; implementations are generally derived</span>
+<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">Template</span> {
+    <span class="doccomment">/// Helper method which allocates a new `String` and renders into it</span>
+    <span class="kw">fn</span> <span class="ident">render</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">buf</span> <span class="op">=</span> <span class="ident">String</span>::<span class="ident">new</span>();
+        <span class="self">self</span>.<span class="ident">render_into</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">buf</span>)<span class="question-mark">?</span>;
+        <span class="prelude-val">Ok</span>(<span class="ident">buf</span>)
+    }
+    <span class="doccomment">/// Renders the template to the given `writer` buffer</span>
+    <span class="kw">fn</span> <span class="ident">render_into</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">writer</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">std</span>::<span class="ident">fmt</span>::<span class="ident">Write</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span>;
+    <span class="doccomment">/// Helper method to inspect the template&#39;s extension</span>
+    <span class="kw">fn</span> <span class="ident">extension</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">str</span><span class="op">&gt;</span>;
+}
+
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">askama_derive</span>::<span class="kw-2">*</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">shared</span>::<span class="ident">filters</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">shared</span>::{<span class="ident">read_config_file</span>, <span class="ident">Error</span>, <span class="ident">MarkupDisplay</span>, <span class="prelude-ty">Result</span>};
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;with-iron&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">iron</span> {
+    <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">iron</span>;
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::<span class="ident">iron</span>::<span class="ident">headers</span>::<span class="ident">ContentType</span>;
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::<span class="ident">iron</span>::<span class="ident">modifier</span>::<span class="ident">Modifier</span>;
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::<span class="ident">iron</span>::<span class="ident">response</span>::<span class="ident">Response</span>;
+}
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;with-rocket&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">rocket</span> {
+    <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">rocket</span>;
+
+    <span class="kw">use</span> <span class="self">self</span>::<span class="ident">rocket</span>::<span class="ident">http</span>::{<span class="ident">ContentType</span>, <span class="ident">Status</span>};
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::<span class="ident">rocket</span>::<span class="ident">request</span>::<span class="ident">Request</span>;
+    <span class="kw">use</span> <span class="self">self</span>::<span class="ident">rocket</span>::<span class="ident">response</span>::<span class="ident">Response</span>;
+    <span class="kw">use</span> <span class="ident">std</span>::<span class="ident">io</span>::<span class="ident">Cursor</span>;
+
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::<span class="ident">rocket</span>::<span class="ident">response</span>::{<span class="ident">Responder</span>, <span class="prelude-ty">Result</span>};
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">respond</span>(<span class="ident">t</span>: <span class="kw-2">&amp;</span><span class="kw">super</span>::<span class="ident">Template</span>, <span class="ident">ext</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="lifetime">&#39;static</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">rsp</span> <span class="op">=</span> <span class="ident">t</span>.<span class="ident">render</span>().<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Status</span>::<span class="ident">InternalServerError</span>)<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">ctype</span> <span class="op">=</span> <span class="ident">ContentType</span>::<span class="ident">from_extension</span>(<span class="ident">ext</span>).<span class="ident">ok_or</span>(<span class="ident">Status</span>::<span class="ident">InternalServerError</span>)<span class="question-mark">?</span>;
+        <span class="ident">Response</span>::<span class="ident">build</span>()
+            .<span class="ident">header</span>(<span class="ident">ctype</span>)
+            .<span class="ident">sized_body</span>(<span class="ident">Cursor</span>::<span class="ident">new</span>(<span class="ident">rsp</span>))
+            .<span class="ident">ok</span>()
+    }
+}
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">feature</span> <span class="op">=</span> <span class="string">&quot;with-actix-web&quot;</span>)]</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">actix_web</span> {
+    <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">actix_web</span>;
+    <span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">mime_guess</span>;
+
+    <span class="comment">// actix_web technically has this as a pub fn in later versions, fs::file_extension_to_mime.</span>
+    <span class="comment">// Older versions that don&#39;t have it exposed are easier this way. If ext is empty or no</span>
+    <span class="comment">// associated type was found, then this returns `application/octet-stream`, in line with how</span>
+    <span class="comment">// actix_web handles it in newer releases.</span>
+    <span class="kw">pub</span> <span class="kw">use</span> <span class="self">self</span>::<span class="ident">actix_web</span>::{
+        <span class="ident">error</span>::<span class="ident">ErrorInternalServerError</span>, <span class="ident">Error</span>, <span class="ident">HttpRequest</span>, <span class="ident">HttpResponse</span>, <span class="ident">Responder</span>,
+    };
+    <span class="kw">use</span> <span class="self">self</span>::<span class="ident">mime_guess</span>::<span class="ident">get_mime_type</span>;
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">respond</span>(<span class="ident">t</span>: <span class="kw-2">&amp;</span><span class="kw">super</span>::<span class="ident">Template</span>, <span class="ident">ext</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">HttpResponse</span>, <span class="ident">Error</span><span class="op">&gt;</span> {
+        <span class="kw">let</span> <span class="ident">rsp</span> <span class="op">=</span> <span class="ident">t</span>
+            .<span class="ident">render</span>()
+            .<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">ErrorInternalServerError</span>(<span class="string">&quot;Template parsing error&quot;</span>))<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">ctype</span> <span class="op">=</span> <span class="ident">get_mime_type</span>(<span class="ident">ext</span>).<span class="ident">to_string</span>();
+        <span class="prelude-val">Ok</span>(<span class="ident">HttpResponse</span>::<span class="prelude-val">Ok</span>().<span class="ident">content_type</span>(<span class="ident">ctype</span>.<span class="ident">as_str</span>()).<span class="ident">body</span>(<span class="ident">rsp</span>))
+    }
+}
+
+<span class="kw">fn</span> <span class="ident">visit_dirs</span>(<span class="ident">dir</span>: <span class="kw-2">&amp;</span><span class="ident">Path</span>, <span class="ident">cb</span>: <span class="kw-2">&amp;</span><span class="ident">Fn</span>(<span class="kw-2">&amp;</span><span class="ident">DirEntry</span>)) <span class="op">-&gt;</span> <span class="ident">io</span>::<span class="prelude-ty">Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="kw">if</span> <span class="ident">dir</span>.<span class="ident">is_dir</span>() {
+        <span class="kw">for</span> <span class="ident">entry</span> <span class="kw">in</span> <span class="ident">fs</span>::<span class="ident">read_dir</span>(<span class="ident">dir</span>)<span class="question-mark">?</span> {
+            <span class="kw">let</span> <span class="ident">entry</span> <span class="op">=</span> <span class="ident">entry</span><span class="question-mark">?</span>;
+            <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span> <span class="ident">entry</span>.<span class="ident">path</span>();
+            <span class="kw">if</span> <span class="ident">path</span>.<span class="ident">is_dir</span>() {
+                <span class="ident">visit_dirs</span>(<span class="kw-2">&amp;</span><span class="ident">path</span>, <span class="ident">cb</span>)<span class="question-mark">?</span>;
+            } <span class="kw">else</span> {
+                <span class="ident">cb</span>(<span class="kw-2">&amp;</span><span class="ident">entry</span>);
+            }
+        }
+    }
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="doccomment">/// Build script helper to rebuild crates if contained templates have changed</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// Iterates over all files in the template directories and writes a</span>
+<span class="doccomment">/// `cargo:rerun-if-changed=` line for each of them to stdout.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// This helper method can be used in build scripts (`build.rs`) in crates</span>
+<span class="doccomment">/// that have templates, to make sure the crate gets rebuilt when template</span>
+<span class="doccomment">/// source code changes.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">rerun_if_templates_changed</span>() {
+    <span class="kw">let</span> <span class="ident">file</span> <span class="op">=</span> <span class="ident">read_config_file</span>();
+    <span class="kw">for</span> <span class="ident">template_dir</span> <span class="kw">in</span> <span class="kw-2">&amp;</span><span class="ident">shared</span>::<span class="ident">Config</span>::<span class="ident">new</span>(<span class="kw-2">&amp;</span><span class="ident">file</span>).<span class="ident">dirs</span> {
+        <span class="ident">visit_dirs</span>(<span class="ident">template_dir</span>, <span class="kw-2">&amp;</span><span class="op">|</span><span class="ident">e</span>: <span class="kw-2">&amp;</span><span class="ident">DirEntry</span><span class="op">|</span> {
+            <span class="macro">println</span><span class="macro">!</span>(<span class="string">&quot;cargo:rerun-if-changed={}&quot;</span>, <span class="ident">e</span>.<span class="ident">path</span>().<span class="ident">to_str</span>().<span class="ident">unwrap</span>());
+        }).<span class="ident">unwrap</span>();
+    }
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><aside id="help" class="hidden"><div><h1 class="hidden">Help</h1><div class="shortcuts"><h2>Keyboard Shortcuts</h2><dl><dt><kbd>?</kbd></dt><dd>Show this help dialog</dd><dt><kbd>S</kbd></dt><dd>Focus the search field</dd><dt><kbd>↑</kbd></dt><dd>Move up in search results</dd><dt><kbd>↓</kbd></dt><dd>Move down in search results</dd><dt><kbd>↹</kbd></dt><dd>Switch tab</dd><dt><kbd>&#9166;</kbd></dt><dd>Go to active search result</dd><dt><kbd>+</kbd></dt><dd>Expand all sections</dd><dt><kbd>-</kbd></dt><dd>Collapse all sections</dd></dl></div><div class="infos"><h2>Search Tricks</h2><p>Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to restrict the search to a given type.</p><p>Accepted types are: <code>fn</code>, <code>mod</code>, <code>struct</code>, <code>enum</code>, <code>trait</code>, <code>type</code>, <code>macro</code>, and <code>const</code>.</p><p>Search functions by type signature (e.g., <code>vec -> usize</code> or <code>* -> vec</code>)</p><p>Search multiple things at once by splitting your query with comma (e.g., <code>str,u8</code> or <code>String,struct:Vec,test</code>)</p></div></div></aside><script>window.rootPath = "../../";window.currentCrate = "askama";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

@@ -1,0 +1,10 @@
+(function() {var implementors = {};
+implementors["tsukuyomi_juniper"] = [{text:"impl&lt;T, CtxT, S&gt; <a class=\"trait\" href=\"tsukuyomi/output/trait.Responder.html\" title=\"trait tsukuyomi::output::Responder\">Responder</a> for <a class=\"struct\" href=\"tsukuyomi_juniper/struct.GraphQLResponse.html\" title=\"struct tsukuyomi_juniper::GraphQLResponse\">GraphQLResponse</a>&lt;T, CtxT, S&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;T: <a class=\"trait\" href=\"tsukuyomi_juniper/trait.Schema.html\" title=\"trait tsukuyomi_juniper::Schema\">Schema</a>&lt;S&gt; + <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Send.html\" title=\"trait core::marker::Send\">Send</a> + 'static,<br>&nbsp;&nbsp;&nbsp;&nbsp;CtxT: <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/convert/trait.AsRef.html\" title=\"trait core::convert::AsRef\">AsRef</a>&lt;T::<a class=\"type\" href=\"tsukuyomi_juniper/trait.Schema.html#associatedtype.Context\" title=\"type tsukuyomi_juniper::Schema::Context\">Context</a>&gt; + <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Send.html\" title=\"trait core::marker::Send\">Send</a> + 'static,<br>&nbsp;&nbsp;&nbsp;&nbsp;S: <a class=\"trait\" href=\"juniper/value/scalar/trait.ScalarValue.html\" title=\"trait juniper::value::scalar::ScalarValue\">ScalarValue</a> + <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/marker/trait.Send.html\" title=\"trait core::marker::Send\">Send</a> + 'static,<br>&nbsp;&nbsp;&nbsp;&nbsp;<a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/std/primitive.reference.html\">&amp;'a </a>S: <a class=\"trait\" href=\"juniper/value/scalar/trait.ScalarRefValue.html\" title=\"trait juniper::value::scalar::ScalarRefValue\">ScalarRefValue</a>&lt;'a&gt;,&nbsp;</span>",synthetic:false,types:["tsukuyomi_juniper::request::GraphQLResponse"]},];
+
+            if (window.register_implementors) {
+                window.register_implementors(implementors);
+            } else {
+                window.pending_implementors = implementors;
+            }
+        
+})()

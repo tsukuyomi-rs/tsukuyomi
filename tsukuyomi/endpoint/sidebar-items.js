@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["call","A shortcut to `endpoint::any().call(f)`"],["call_async","A shortcut to `endpoint::any().call_async(f)`."],["endpoint","A function to create an `Endpoint` from the specified components."]],"struct":[["Call",""],["CallAsync",""]],"trait":[["Endpoint","A trait representing the process to be performed when a route matches."]]});

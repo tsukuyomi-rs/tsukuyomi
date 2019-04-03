@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["NeverUpgrade",""],["Upgraded","A proxy for accessing an upgraded I/O from `Upgrade`."]],"trait":[["Upgrade","A trait that abstracts asynchronous tasks to be ran after upgrading the protocol."]],"type":[["Error",""]]});

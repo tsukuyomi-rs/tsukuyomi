@@ -1,0 +1,10 @@
+var ALIASES = {};
+ALIASES["askama"] = {};
+ALIASES["juniper"] = {};
+ALIASES["tsukuyomi"] = {};
+ALIASES["tsukuyomi_askama"] = {};
+ALIASES["tsukuyomi_cors"] = {};
+ALIASES["tsukuyomi_juniper"] = {};
+ALIASES["tsukuyomi_macros"] = {};
+ALIASES["tsukuyomi_tungstenite"] = {};
+ALIASES["tungstenite"] = {};

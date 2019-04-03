@@ -1,0 +1,175 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `ScalarValue` trait in crate `juniper`."><meta name="keywords" content="rust, rustlang, rust-lang, ScalarValue"><title>juniper::ScalarValue - Rust</title><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../dark.css"><link rel="stylesheet" type="text/css" href="../light.css" id="themeStyle"><script src="../storage.js"></script><noscript><link rel="stylesheet" href="../noscript.css"></noscript><style type="text/css">#crate-search{background-image:url("../down-arrow.svg");}</style></head><body class="rustdoc trait"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><p class='location'>Trait ScalarValue</p><div class="sidebar-elems"><div class="block items"><a class="sidebar-title" href="#associated-types">Associated Types</a><div class="sidebar-links"><a href="#associatedtype.Visitor">Visitor</a></div><a class="sidebar-title" href="#required-methods">Required Methods</a><div class="sidebar-links"><a href="#tymethod.as_int">as_int</a><a href="#tymethod.as_string">as_string</a><a href="#tymethod.as_float">as_float</a><a href="#tymethod.as_boolean">as_boolean</a></div><a class="sidebar-title" href="#provided-methods">Provided Methods</a><div class="sidebar-links"><a href="#method.is_type">is_type</a></div><a class="sidebar-title" href="#implementors">Implementors</a></div><p class='location'><a href='index.html'>juniper</a></p><script>window.sidebarCurrent = {name: 'ScalarValue', ty: 'trait', relpath: ''};</script><script defer src="sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../settings.html"><img src="../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class='fqn'><span class='out-of-band'><span id='render-detail'><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class='inner'>&#x2212;</span>]</a></span><a class='srclink' href='../src/juniper/value/scalar.rs.html#160-223' title='goto source code'>[src]</a></span><span class='in-band'>Trait <a href='index.html'>juniper</a>::<wbr><a class="trait" href=''>ScalarValue</a></span></h1><div class="docblock type-decl hidden-by-usual-hider"><pre class='rust trait'>pub trait ScalarValue: <a class="trait" href="https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html" title="trait core::fmt::Debug">Debug</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html" title="trait core::fmt::Display">Display</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html" title="trait core::cmp::PartialEq">PartialEq</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/clone/trait.Clone.html" title="trait core::clone::Clone">Clone</a> + <a class="trait" href="https://docs.rs/serde/1.0.89/serde/ser/trait.Serialize.html" title="trait serde::ser::Serialize">Serialize</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From">From</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From">From</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From">From</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.i32.html">i32</a>&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From">From</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a>&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.i32.html">i32</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;&gt; {
+    type <a href='#associatedtype.Visitor' class="type">Visitor</a>: for&lt;'de&gt; <a class="trait" href="https://docs.rs/serde/1.0.89/serde/de/trait.Visitor.html" title="trait serde::de::Visitor">Visitor</a>&lt;'de, Value = Self&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html" title="trait core::default::Default">Default</a>;
+    fn <a href='#tymethod.as_int' class='fnname'>as_int</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.i32.html">i32</a>&gt;;
+<div class='item-spacer'></div>    fn <a href='#tymethod.as_string' class='fnname'>as_string</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;;
+<div class='item-spacer'></div>    fn <a href='#tymethod.as_float' class='fnname'>as_float</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a>&gt;;
+<div class='item-spacer'></div>    fn <a href='#tymethod.as_boolean' class='fnname'>as_boolean</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>&gt;;
+
+    fn <a href='#method.is_type' class='fnname'>is_type</a>&lt;'a, T&gt;(&amp;'a self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a><br>&nbsp;&nbsp;&nbsp; <span class="where">where<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;T: 'a,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;'a </a>Self: <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;'a </a>T&gt;&gt;</span>,
+    { ... }
+}</pre></div><div class='docblock'><p>A trait marking a type that could be used as internal representation of
+scalar values in juniper</p>
+<p>The main objective of this abstraction is to allow other libraries to
+replace the default representation with something that better fits thei
+needs.
+There is a custom derive (<code>#[derive(ScalarValue)]</code>) available that implements
+most of the required traits automatically for a enum representing a scalar value.
+This derives needs a additional annotation of the form
+<code>#[juniper(visitor = &quot;VisitorType&quot;)]</code> to specify a type that implements
+<code>serde::de::Visitor</code> and that is used to deserialize the value.</p>
+<h1 id="implementing-a-new-scalar-value-representation" class="section-header"><a href="#implementing-a-new-scalar-value-representation">Implementing a new scalar value representation</a></h1>
+<p>The preferred way to define a new scalar value representation is
+defining a enum containing a variant for each type that needs to be represented
+at the lowest level.
+The following example introduces an new variant that is able to store 64 bit integers.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered">
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">ScalarValue</span>)]</span>
+<span class="kw">enum</span> <span class="ident">MyScalarValue</span> {
+    <span class="ident">Int</span>(<span class="ident">i32</span>),
+    <span class="ident">Long</span>(<span class="ident">i64</span>),
+    <span class="ident">Float</span>(<span class="ident">f64</span>),
+    <span class="ident">String</span>(<span class="ident">String</span>),
+    <span class="ident">Boolean</span>(<span class="ident">bool</span>),
+}
+
+<span class="kw">impl</span> <span class="ident">ScalarValue</span> <span class="kw">for</span> <span class="ident">MyScalarValue</span> {
+    <span class="kw">type</span> <span class="ident">Visitor</span> <span class="op">=</span> <span class="ident">MyScalarValueVisitor</span>;
+
+     <span class="kw">fn</span> <span class="ident">as_int</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">i32</span><span class="op">&gt;</span> {
+       <span class="kw">match</span> <span class="kw-2">*</span><span class="self">self</span> {
+           <span class="ident">MyScalarValue</span>::<span class="ident">Int</span>(<span class="kw-2">ref</span> <span class="ident">i</span>) <span class="op">=&gt;</span> <span class="prelude-val">Some</span>(<span class="kw-2">*</span><span class="ident">i</span>),
+           <span class="kw">_</span> <span class="op">=&gt;</span> <span class="prelude-val">None</span>,
+       }
+   }
+
+   <span class="kw">fn</span> <span class="ident">as_string</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+       <span class="kw">match</span> <span class="kw-2">*</span><span class="self">self</span> {
+           <span class="ident">MyScalarValue</span>::<span class="ident">String</span>(<span class="kw-2">ref</span> <span class="ident">s</span>) <span class="op">=&gt;</span> <span class="prelude-val">Some</span>(<span class="ident">s</span>.<span class="ident">clone</span>()),
+           <span class="kw">_</span> <span class="op">=&gt;</span> <span class="prelude-val">None</span>,
+       }
+   }
+
+   <span class="kw">fn</span> <span class="ident">as_float</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span> {
+       <span class="kw">match</span> <span class="kw-2">*</span><span class="self">self</span> {
+           <span class="ident">MyScalarValue</span>::<span class="ident">Int</span>(<span class="kw-2">ref</span> <span class="ident">i</span>) <span class="op">=&gt;</span> <span class="prelude-val">Some</span>(<span class="kw-2">*</span><span class="ident">i</span> <span class="kw">as</span> <span class="ident">f64</span>),
+           <span class="ident">MyScalarValue</span>::<span class="ident">Float</span>(<span class="kw-2">ref</span> <span class="ident">f</span>) <span class="op">=&gt;</span> <span class="prelude-val">Some</span>(<span class="kw-2">*</span><span class="ident">f</span>),
+           <span class="kw">_</span> <span class="op">=&gt;</span> <span class="prelude-val">None</span>,
+       }
+   }
+
+   <span class="kw">fn</span> <span class="ident">as_boolean</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span> {
+       <span class="kw">match</span> <span class="kw-2">*</span><span class="self">self</span> {
+           <span class="ident">MyScalarValue</span>::<span class="ident">Boolean</span>(<span class="kw-2">ref</span> <span class="ident">b</span>) <span class="op">=&gt;</span> <span class="prelude-val">Some</span>(<span class="kw-2">*</span><span class="ident">b</span>),
+           <span class="kw">_</span> <span class="op">=&gt;</span> <span class="prelude-val">None</span>,
+       }
+   }
+}
+
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Default</span>)]</span>
+<span class="kw">struct</span> <span class="ident">MyScalarValueVisitor</span>;
+
+<span class="kw">impl</span><span class="op">&lt;</span><span class="lifetime">&#39;de</span><span class="op">&gt;</span> <span class="ident">de</span>::<span class="ident">Visitor</span><span class="op">&lt;</span><span class="lifetime">&#39;de</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">MyScalarValueVisitor</span> {
+    <span class="kw">type</span> <span class="ident">Value</span> <span class="op">=</span> <span class="ident">MyScalarValue</span>;
+
+    <span class="kw">fn</span> <span class="ident">expecting</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">formatter</span>: <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">fmt</span>::<span class="ident">Formatter</span>) <span class="op">-&gt;</span> <span class="ident">fmt</span>::<span class="prelude-ty">Result</span> {
+        <span class="ident">formatter</span>.<span class="ident">write_str</span>(<span class="string">&quot;a valid input value&quot;</span>)
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_bool</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">bool</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span> {
+        <span class="prelude-val">Ok</span>(<span class="ident">MyScalarValue</span>::<span class="ident">Boolean</span>(<span class="ident">value</span>))
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_i32</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">i32</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span>
+    <span class="kw">where</span>
+        <span class="ident">E</span>: <span class="ident">de</span>::<span class="ident">Error</span>,
+    {
+        <span class="prelude-val">Ok</span>(<span class="ident">MyScalarValue</span>::<span class="ident">Int</span>(<span class="ident">value</span>))
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_i64</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">i64</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span>
+    <span class="kw">where</span>
+        <span class="ident">E</span>: <span class="ident">de</span>::<span class="ident">Error</span>,
+    {
+        <span class="kw">if</span> <span class="ident">value</span> <span class="op">&lt;=</span> <span class="ident">i32</span>::<span class="ident">max_value</span>() <span class="kw">as</span> <span class="ident">i64</span> {
+            <span class="self">self</span>.<span class="ident">visit_i32</span>(<span class="ident">value</span> <span class="kw">as</span> <span class="ident">i32</span>)
+        } <span class="kw">else</span> {
+            <span class="prelude-val">Ok</span>(<span class="ident">MyScalarValue</span>::<span class="ident">Long</span>(<span class="ident">value</span>))
+        }
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_u32</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">u32</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span>
+    <span class="kw">where</span>
+        <span class="ident">E</span>: <span class="ident">de</span>::<span class="ident">Error</span>,
+    {
+        <span class="kw">if</span> <span class="ident">value</span> <span class="op">&lt;=</span> <span class="ident">i32</span>::<span class="ident">max_value</span>() <span class="kw">as</span> <span class="ident">u32</span> {
+            <span class="self">self</span>.<span class="ident">visit_i32</span>(<span class="ident">value</span> <span class="kw">as</span> <span class="ident">i32</span>)
+        } <span class="kw">else</span> {
+            <span class="self">self</span>.<span class="ident">visit_u64</span>(<span class="ident">value</span> <span class="kw">as</span> <span class="ident">u64</span>)
+        }
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_u64</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">u64</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span>
+    <span class="kw">where</span>
+        <span class="ident">E</span>: <span class="ident">de</span>::<span class="ident">Error</span>,
+    {
+        <span class="kw">if</span> <span class="ident">value</span> <span class="op">&lt;=</span> <span class="ident">i64</span>::<span class="ident">max_value</span>() <span class="kw">as</span> <span class="ident">u64</span> {
+            <span class="self">self</span>.<span class="ident">visit_i64</span>(<span class="ident">value</span> <span class="kw">as</span> <span class="ident">i64</span>)
+        } <span class="kw">else</span> {
+            <span class="comment">// Browser&#39;s JSON.stringify serialize all numbers having no</span>
+            <span class="comment">// fractional part as integers (no decimal point), so we</span>
+            <span class="comment">// must parse large integers as floating point otherwise</span>
+            <span class="comment">// we would error on transferring large floating point</span>
+            <span class="comment">// numbers.</span>
+            <span class="prelude-val">Ok</span>(<span class="ident">MyScalarValue</span>::<span class="ident">Float</span>(<span class="ident">value</span> <span class="kw">as</span> <span class="ident">f64</span>))
+        }
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_f64</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">f64</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span> {
+        <span class="prelude-val">Ok</span>(<span class="ident">MyScalarValue</span>::<span class="ident">Float</span>(<span class="ident">value</span>))
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_str</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span>
+    <span class="kw">where</span>
+        <span class="ident">E</span>: <span class="ident">de</span>::<span class="ident">Error</span>,
+    {
+        <span class="self">self</span>.<span class="ident">visit_string</span>(<span class="ident">value</span>.<span class="ident">into</span>())
+    }
+
+    <span class="kw">fn</span> <span class="ident">visit_string</span><span class="op">&lt;</span><span class="ident">E</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">value</span>: <span class="ident">String</span>) <span class="op">-&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">MyScalarValue</span>, <span class="ident">E</span><span class="op">&gt;</span> {
+        <span class="prelude-val">Ok</span>(<span class="ident">MyScalarValue</span>::<span class="ident">String</span>(<span class="ident">value</span>))
+    }
+}
+</pre></div>
+</div>
+            <h2 id='associated-types' class='small-section-header'>Associated Types<a href='#associated-types' class='anchor'></a></h2><div class='methods'><h3 id='associatedtype.Visitor' class='method'><code id='Visitor.t'>type <a href='#associatedtype.Visitor' class="type">Visitor</a>: for&lt;'de&gt; <a class="trait" href="https://docs.rs/serde/1.0.89/serde/de/trait.Visitor.html" title="trait serde::de::Visitor">Visitor</a>&lt;'de, Value = Self&gt; + <a class="trait" href="https://doc.rust-lang.org/nightly/core/default/trait.Default.html" title="trait core::default::Default">Default</a></code></h3><div class='docblock'><p>Serde visitor used to deserialize this scalar value</p>
+</div></div><span class='loading-content'>Loading content...</span>
+            <h2 id='required-methods' class='small-section-header'>Required methods<a href='#required-methods' class='anchor'></a></h2><div class='methods'><h3 id='tymethod.as_int' class='method'><code id='as_int.v'>fn <a href='#tymethod.as_int' class='fnname'>as_int</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.i32.html">i32</a>&gt;</code></h3><div class='docblock'><p>Convert the given scalar value into an integer value</p>
+<p>This function is used for implementing <code>GraphQLType</code> for <code>i32</code> for all
+scalar values. Implementations should convert all supported integer
+types with 32 bit or less to an integer if requested.</p>
+</div><h3 id='tymethod.as_string' class='method'><code id='as_string.v'>fn <a href='#tymethod.as_string' class='fnname'>as_string</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;</code></h3><div class='docblock'><p>Convert the given scalar value into a string value</p>
+<p>This function is used for implementing <code>GraphQLType</code> for <code>String</code> for all
+scalar values</p>
+</div><h3 id='tymethod.as_float' class='method'><code id='as_float.v'>fn <a href='#tymethod.as_float' class='fnname'>as_float</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a>&gt;</code></h3><div class='docblock'><p>Convert the given scalar value into a float value</p>
+<p>This function is used for implementing <code>GraphQLType</code> for <code>f64</code> for all
+scalar values. Implementations should convert all supported integer
+types with 64 bit or less and all floating point values with 64 bit or
+less to a float if requested.</p>
+</div><h3 id='tymethod.as_boolean' class='method'><code id='as_boolean.v'>fn <a href='#tymethod.as_boolean' class='fnname'>as_boolean</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>&gt;</code></h3><div class='docblock'><p>Convert the given scalar value into a boolean value</p>
+<p>This function is used for implementing <code>GraphQLType</code> for <code>bool</code> for all
+scalar values.</p>
+</div></div><span class='loading-content'>Loading content...</span>
+            <h2 id='provided-methods' class='small-section-header'>Provided methods<a href='#provided-methods' class='anchor'></a></h2><div class='methods'><h3 id='method.is_type' class='method'><code id='is_type.v'>fn <a href='#method.is_type' class='fnname'>is_type</a>&lt;'a, T&gt;(&amp;'a self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a> <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;T: 'a,<br>&nbsp;&nbsp;&nbsp;&nbsp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;'a </a>Self: <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;'a </a>T&gt;&gt;,&nbsp;</span></code></h3><div class='docblock'><p>Checks if the current value contains the a value of the current type</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered">
+
+<span class="kw">let</span> <span class="ident">value</span> <span class="op">=</span> <span class="ident">DefaultScalarValue</span>::<span class="ident">Int</span>(<span class="number">42</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">value</span>.<span class="ident">is_type</span>::<span class="op">&lt;</span><span class="ident">i32</span><span class="op">&gt;</span>(), <span class="bool-val">true</span>);
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">value</span>.<span class="ident">is_type</span>::<span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span>(), <span class="bool-val">false</span>);
+</pre></div>
+</div></div><span class='loading-content'>Loading content...</span>
+            <h2 id='implementors' class='small-section-header'>Implementors<a href='#implementors' class='anchor'></a></h2><div class='item-list' id='implementors-list'><h3 id='impl-ScalarValue' class='impl'><code class='in-band'>impl ScalarValue for <a class="enum" href="../juniper/enum.DefaultScalarValue.html" title="enum juniper::DefaultScalarValue">DefaultScalarValue</a></code><a href='#impl-ScalarValue' class='anchor'></a><a class='srclink' href='../src/juniper/value/scalar.rs.html#263-294' title='goto source code'>[src]</a></h3><div class='impl-items'><h4 id='associatedtype.Visitor-1' class="type"><code id='Visitor.t-1'>type <a href='#associatedtype.Visitor-1' class="type">Visitor</a> = DefaultScalarValueVisitor</code></h4><h4 id='method.as_int' class="method hidden"><code id='as_int.v-1'>fn <a href='#method.as_int' class='fnname'>as_int</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.i32.html">i32</a>&gt;</code><a class='srclink' href='../src/juniper/value/scalar.rs.html#266-271' title='goto source code'>[src]</a></h4><h4 id='method.as_string' class="method hidden"><code id='as_string.v-1'>fn <a href='#method.as_string' class='fnname'>as_string</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;</code><a class='srclink' href='../src/juniper/value/scalar.rs.html#273-278' title='goto source code'>[src]</a></h4><h4 id='method.as_float' class="method hidden"><code id='as_float.v-1'>fn <a href='#method.as_float' class='fnname'>as_float</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.f64.html">f64</a>&gt;</code><a class='srclink' href='../src/juniper/value/scalar.rs.html#280-286' title='goto source code'>[src]</a></h4><h4 id='method.as_boolean' class="method hidden"><code id='as_boolean.v-1'>fn <a href='#method.as_boolean' class='fnname'>as_boolean</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>&gt;</code><a class='srclink' href='../src/juniper/value/scalar.rs.html#288-293' title='goto source code'>[src]</a></h4><h4 id='method.is_type-1' class="method"><code id='is_type.v-1'>fn <a href='../juniper/trait.ScalarValue.html#method.is_type' class='fnname'>is_type</a>&lt;'a, T&gt;(&amp;'a self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a> <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;T: 'a,<br>&nbsp;&nbsp;&nbsp;&nbsp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;'a </a>Self: <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.Into.html" title="trait core::convert::Into">Into</a>&lt;<a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.reference.html">&amp;'a </a>T&gt;&gt;,&nbsp;</span></code><a class='srclink' href='../src/juniper/value/scalar.rs.html#189-195' title='goto source code'>[src]</a></h4></div></div><span class='loading-content'>Loading content...</span><script type="text/javascript">window.inlined_types=new Set([]);</script><script type="text/javascript" async
+                         src="../implementors/juniper/trait.ScalarValue.js">
+                 </script></section><section id="search" class="content hidden"></section><section class="footer"></section><aside id="help" class="hidden"><div><h1 class="hidden">Help</h1><div class="shortcuts"><h2>Keyboard Shortcuts</h2><dl><dt><kbd>?</kbd></dt><dd>Show this help dialog</dd><dt><kbd>S</kbd></dt><dd>Focus the search field</dd><dt><kbd>↑</kbd></dt><dd>Move up in search results</dd><dt><kbd>↓</kbd></dt><dd>Move down in search results</dd><dt><kbd>↹</kbd></dt><dd>Switch tab</dd><dt><kbd>&#9166;</kbd></dt><dd>Go to active search result</dd><dt><kbd>+</kbd></dt><dd>Expand all sections</dd><dt><kbd>-</kbd></dt><dd>Collapse all sections</dd></dl></div><div class="infos"><h2>Search Tricks</h2><p>Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to restrict the search to a given type.</p><p>Accepted types are: <code>fn</code>, <code>mod</code>, <code>struct</code>, <code>enum</code>, <code>trait</code>, <code>type</code>, <code>macro</code>, and <code>const</code>.</p><p>Search functions by type signature (e.g., <code>vec -> usize</code> or <code>* -> vec</code>)</p><p>Search multiple things at once by splitting your query with comma (e.g., <code>str,u8</code> or <code>String,struct:Vec,test</code>)</p></div></div></aside><script>window.rootPath = "../";window.currentCrate = "juniper";</script><script src="../aliases.js"></script><script src="../main.js"></script><script defer src="../search-index.js"></script></body></html>

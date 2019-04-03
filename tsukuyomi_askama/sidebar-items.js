@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["renderer","Creates a `ModifyHandler` that renders the outputs of handlers as Askama template."]],"struct":[["Askama","An implementor of `Preset` for deriving the implementation of `IntoResponse` to Askama templates."],["Renderer",""]]});

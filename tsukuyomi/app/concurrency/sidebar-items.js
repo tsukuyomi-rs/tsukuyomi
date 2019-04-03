@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["current_thread",""]],"struct":[["BoxedHandler",""],["DefaultConcurrency","A `Conccurency` used in `App` by default."]],"trait":[["Concurrency","A trait to specify the concurrency of trait objects inside of `AppBase`."]]});

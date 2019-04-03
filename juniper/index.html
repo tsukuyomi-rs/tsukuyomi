@@ -1,0 +1,110 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `juniper` crate."><meta name="keywords" content="rust, rustlang, rust-lang, juniper"><title>juniper - Rust</title><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../dark.css"><link rel="stylesheet" type="text/css" href="../light.css" id="themeStyle"><script src="../storage.js"></script><noscript><link rel="stylesheet" href="../noscript.css"></noscript><style type="text/css">#crate-search{background-image:url("../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><p class='location'>Crate juniper</p><div class="sidebar-elems"><a id='all-types' href='all.html'><p>See all juniper's items</p></a><div class="block items"><ul><li><a href="#reexports">Re-exports</a></li><li><a href="#modules">Modules</a></li><li><a href="#macros">Macros</a></li><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#traits">Traits</a></li><li><a href="#functions">Functions</a></li><li><a href="#types">Type Definitions</a></li></ul></div><p class='location'></p><script>window.sidebarCurrent = {name: 'juniper', ty: 'mod', relpath: '../'};</script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../settings.html"><img src="../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class='fqn'><span class='out-of-band'><span id='render-detail'><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class='inner'>&#x2212;</span>]</a></span><a class='srclink' href='../src/juniper/lib.rs.html#1-226' title='goto source code'>[src]</a></span><span class='in-band'>Crate <a class="mod" href=''>juniper</a></span></h1><div class='docblock'><h1 id="graphql" class="section-header"><a href="#graphql">GraphQL</a></h1>
+<p><a href="http://graphql.org">GraphQL</a> is a data query language developed by Facebook intended to
+serve mobile and web application frontends.</p>
+<p><em>Juniper</em> makes it possible to write GraphQL servers in Rust that are
+type-safe and blazingly fast. We also try to make declaring and resolving
+GraphQL schemas as convenient as possible as Rust will allow.</p>
+<p>Juniper does not include a web server - instead it provides building blocks to
+make integration with existing servers straightforward. It optionally provides a
+pre-built integration for the <a href="http://ironframework.io">Iron</a> and <a href="https://rocket.rs">Rocket</a> frameworks, including
+embedded <a href="https://github.com/graphql/graphiql">Graphiql</a> for easy debugging.</p>
+<ul>
+<li><a href="https://crates.io/crates/juniper">Cargo crate</a></li>
+<li><a href="https://docs.rs/juniper">API Reference</a></li>
+<li><a href="https://graphql-rust.github.io/">Book</a>: Guides and Examples</li>
+</ul>
+<h2 id="getting-started" class="section-header"><a href="#getting-started">Getting Started</a></h2>
+<p>The best place to get started is the <a href="https://graphql-rust.github.io/">Juniper Book</a>, which contains
+guides with plenty of examples, covering all features of Juniper.</p>
+<p>To get started quickly and get a feel for Juniper, check out the
+<a href="https://graphql-rust.github.io/quickstart.html">Quickstart</a> section.</p>
+<p>For specific information about macros, types and the Juniper api, the
+<a href="https://docs.rs/juniper">API Reference</a> is the best place to look.</p>
+<p>You can also check out <a href="https://github.com/graphql-rust/juniper/blob/master/juniper/src/tests/schema.rs">src/tests/schema.rs</a> to see a complex
+schema including polymorphism with traits and interfaces.
+For an example of web framework integration,
+see the <a href="https://github.com/graphql-rust/juniper/tree/master/juniper_rocket/examples">rocket</a> and <a href="https://github.com/graphql-rust/juniper/tree/master/juniper_iron/examples">iron</a> examples folders.</p>
+<h2 id="features" class="section-header"><a href="#features">Features</a></h2>
+<p>Juniper supports the full GraphQL query language according to the
+<a href="http://facebook.github.io/graphql">specification</a>, including interfaces, unions, schema
+introspection, and validations.
+It does not, however, support the schema language.</p>
+<p>As an exception to other GraphQL libraries for other languages, Juniper builds
+non-null types by default. A field of type <code>Vec&lt;Episode&gt;</code> will be converted into
+<code>[Episode!]!</code>. The corresponding Rust type for e.g. <code>[Episode]</code> would be
+<code>Option&lt;Vec&lt;Option&lt;Episode&gt;&gt;&gt;</code>.</p>
+<h2 id="integrations" class="section-header"><a href="#integrations">Integrations</a></h2><h3 id="data-types" class="section-header"><a href="#data-types">Data types</a></h3>
+<p>Juniper has automatic integration with some very common Rust crates to make
+building schemas a breeze. The types from these crates will be usable in
+your Schemas automatically.</p>
+<ul>
+<li><a href="https://crates.io/crates/uuid">uuid</a></li>
+<li><a href="https://crates.io/crates/url">url</a></li>
+<li><a href="https://crates.io/crates/chrono">chrono</a></li>
+</ul>
+<h3 id="web-frameworks" class="section-header"><a href="#web-frameworks">Web Frameworks</a></h3>
+<ul>
+<li><a href="https://rocket.rs">rocket</a></li>
+<li><a href="http://ironframework.io">iron</a></li>
+</ul>
+<h2 id="api-stability" class="section-header"><a href="#api-stability">API Stability</a></h2>
+<p>Juniper has not reached 1.0 yet, thus some API instability should be expected.</p>
+</div><h2 id='reexports' class='section-header'><a href="#reexports">Re-exports</a></h2>
+<table><tr><td><code>pub use http::<a class="mod" href="../juniper/http/graphiql/index.html" title="mod juniper::http::graphiql">graphiql</a>;</code></td></tr></table><h2 id='modules' class='section-header'><a href="#modules">Modules</a></h2>
+<table><tr class='module-item'><td><a class="mod" href="http/index.html" title='juniper::http mod'>http</a></td><td class='docblock-short'><p>Utilities for building HTTP endpoints in a library-agnostic manner</p>
+</td></tr><tr class='module-item'><td><a class="mod" href="integrations/index.html" title='juniper::integrations mod'>integrations</a></td><td class='docblock-short'><p>Provides GraphQLType implementations for some external types</p>
+</td></tr><tr class='module-item'><td><a class="mod" href="meta/index.html" title='juniper::meta mod'>meta</a></td><td class='docblock-short'><p>Types used to describe a <code>GraphQL</code> schema</p>
+</td></tr><tr class='module-item'><td><a class="mod" href="parser/index.html" title='juniper::parser mod'>parser</a></td><td class='docblock-short'><p>Query parser and language utilities</p>
+</td></tr></table><h2 id='macros' class='section-header'><a href="#macros">Macros</a></h2>
+<table><tr class='module-item'><td><a class="macro" href="macro.graphql_interface.html" title='juniper::graphql_interface macro'>graphql_interface</a></td><td class='docblock-short'><p>Expose GraphQL interfaces</p>
+</td></tr><tr class='module-item'><td><a class="macro" href="macro.graphql_object.html" title='juniper::graphql_object macro'>graphql_object</a></td><td class='docblock-short'><p>Expose GraphQL objects</p>
+</td></tr><tr class='module-item'><td><a class="macro" href="macro.graphql_scalar.html" title='juniper::graphql_scalar macro'>graphql_scalar</a></td><td class='docblock-short'><p>Expose GraphQL scalars</p>
+</td></tr><tr class='module-item'><td><a class="macro" href="macro.graphql_union.html" title='juniper::graphql_union macro'>graphql_union</a></td><td class='docblock-short'><p>Expose GraphQL unions</p>
+</td></tr><tr class='module-item'><td><a class="macro" href="macro.graphql_value.html" title='juniper::graphql_value macro'>graphql_value</a></td><td class='docblock-short'><p>Construct JSON-like values by using JSON syntax</p>
+</td></tr></table><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table><tr class='module-item'><td><a class="struct" href="struct.Arguments.html" title='juniper::Arguments struct'>Arguments</a></td><td class='docblock-short'><p>Field argument container</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.EmptyMutation.html" title='juniper::EmptyMutation struct'>EmptyMutation</a></td><td class='docblock-short'><p>Utility type to define read-only schemas</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.ExecutionError.html" title='juniper::ExecutionError struct'>ExecutionError</a></td><td class='docblock-short'><p>Error type for errors that occur during query execution</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Executor.html" title='juniper::Executor struct'>Executor</a></td><td class='docblock-short'><p>Query execution engine</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.FieldError.html" title='juniper::FieldError struct'>FieldError</a></td><td class='docblock-short'><p>Error type for errors that occur during field resolution</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.ID.html" title='juniper::ID struct'>ID</a></td><td class='docblock-short'><p>An ID as defined by the GraphQL specification</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.LookAheadArgument.html" title='juniper::LookAheadArgument struct'>LookAheadArgument</a></td><td class='docblock-short'><p>An argument passed into the query</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.LookAheadSelection.html" title='juniper::LookAheadSelection struct'>LookAheadSelection</a></td><td class='docblock-short'><p>A selection performed by a query</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Object.html" title='juniper::Object struct'>Object</a></td><td class='docblock-short'><p>A Object value</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.Registry.html" title='juniper::Registry struct'>Registry</a></td><td class='docblock-short'><p>A type registry used to build schemas</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.RootNode.html" title='juniper::RootNode struct'>RootNode</a></td><td class='docblock-short'><p>Root query node of a schema</p>
+</td></tr><tr class='module-item'><td><a class="struct" href="struct.RuleError.html" title='juniper::RuleError struct'>RuleError</a></td><td class='docblock-short'><p>Query validation error</p>
+</td></tr></table><h2 id='enums' class='section-header'><a href="#enums">Enums</a></h2>
+<table><tr class='module-item'><td><a class="enum" href="enum.Applies.html" title='juniper::Applies enum'>Applies</a></td><td class='docblock-short'><p>An enum that describes if a field is available in all types of the interface
+or only in a certain subtype</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.DefaultScalarValue.html" title='juniper::DefaultScalarValue enum'>DefaultScalarValue</a></td><td class='docblock-short'><p>The default scalar value representation in juniper</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.GraphQLError.html" title='juniper::GraphQLError enum'>GraphQLError</a></td><td class='docblock-short'><p>An error that prevented query execution</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.InputValue.html" title='juniper::InputValue enum'>InputValue</a></td><td class='docblock-short'><p>A JSON-like value that can be passed into the query execution, either
+out-of-band, or in-band as default variable values. These are <em>not</em> constant
+and might contain variables.</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.LookAheadValue.html" title='juniper::LookAheadValue enum'>LookAheadValue</a></td><td class='docblock-short'><p>A JSON-like value that can is used as argument in the query execution</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.Selection.html" title='juniper::Selection enum'>Selection</a></td><td class='docblock-short'><p>Entry in a GraphQL selection set</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.Type.html" title='juniper::Type enum'>Type</a></td><td class='docblock-short'><p>A type literal in the syntax tree</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.TypeKind.html" title='juniper::TypeKind enum'>TypeKind</a></td><td class='docblock-short'><p>GraphQL type kind</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.Value.html" title='juniper::Value enum'>Value</a></td><td class='docblock-short'><p>Serializable value returned from query and field execution.</p>
+</td></tr></table><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table><tr class='module-item'><td><a class="trait" href="trait.Context.html" title='juniper::Context trait'>Context</a></td><td class='docblock-short'><p>Marker trait for types that can act as context objects for <code>GraphQL</code> types.</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.FromContext.html" title='juniper::FromContext trait'>FromContext</a></td><td class='docblock-short'><p>Conversion trait for context types</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.FromInputValue.html" title='juniper::FromInputValue trait'>FromInputValue</a></td><td class='docblock-short'><p>Parse an unstructured input value into a Rust data type.</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.GraphQLType.html" title='juniper::GraphQLType trait'>GraphQLType</a></td><td class='docblock-short'><p>Primary trait used to expose Rust types in a GraphQL schema</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.IntoFieldError.html" title='juniper::IntoFieldError trait'>IntoFieldError</a></td><td class='docblock-short'><p>Custom error handling trait to enable Error types other than <code>FieldError</code> to be specified
+as return value.</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.LookAheadMethods.html" title='juniper::LookAheadMethods trait'>LookAheadMethods</a></td><td class='docblock-short'><p>A set of common methods for <code>ConcreteLookAheadSelection</code> and <code>LookAheadSelection</code></p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.ParseScalarValue.html" title='juniper::ParseScalarValue trait'>ParseScalarValue</a></td><td class='docblock-short'><p>A trait used to convert a <code>ScalarToken</code> into a certain scalar value type</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.ScalarRefValue.html" title='juniper::ScalarRefValue trait'>ScalarRefValue</a></td><td class='docblock-short'><p>A marker trait extending the <a href="../trait.ScalarValue.html"><code>ScalarValue</code></a> trait</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.ScalarValue.html" title='juniper::ScalarValue trait'>ScalarValue</a></td><td class='docblock-short'><p>A trait marking a type that could be used as internal representation of
+scalar values in juniper</p>
+</td></tr><tr class='module-item'><td><a class="trait" href="trait.ToInputValue.html" title='juniper::ToInputValue trait'>ToInputValue</a></td><td class='docblock-short'><p>Losslessly clones a Rust data type into an InputValue.</p>
+</td></tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table><tr class='module-item'><td><a class="fn" href="fn.execute.html" title='juniper::execute fn'>execute</a></td><td class='docblock-short'><p>Execute a query in a provided schema</p>
+</td></tr></table><h2 id='types' class='section-header'><a href="#types">Type Definitions</a></h2>
+<table><tr class='module-item'><td><a class="type" href="type.ExecutionResult.html" title='juniper::ExecutionResult type'>ExecutionResult</a></td><td class='docblock-short'><p>The result of resolving an unspecified field</p>
+</td></tr><tr class='module-item'><td><a class="type" href="type.FieldResult.html" title='juniper::FieldResult type'>FieldResult</a></td><td class='docblock-short'><p>The result of resolving the value of a field of type <code>T</code></p>
+</td></tr><tr class='module-item'><td><a class="type" href="type.ParseScalarResult.html" title='juniper::ParseScalarResult type'>ParseScalarResult</a></td><td class='docblock-short'><p>The result of converting a string into a scalar value</p>
+</td></tr><tr class='module-item'><td><a class="type" href="type.Variables.html" title='juniper::Variables type'>Variables</a></td><td class='docblock-short'><p>The map of variables used for substitution during query execution</p>
+</td></tr></table></section><section id="search" class="content hidden"></section><section class="footer"></section><aside id="help" class="hidden"><div><h1 class="hidden">Help</h1><div class="shortcuts"><h2>Keyboard Shortcuts</h2><dl><dt><kbd>?</kbd></dt><dd>Show this help dialog</dd><dt><kbd>S</kbd></dt><dd>Focus the search field</dd><dt><kbd>↑</kbd></dt><dd>Move up in search results</dd><dt><kbd>↓</kbd></dt><dd>Move down in search results</dd><dt><kbd>↹</kbd></dt><dd>Switch tab</dd><dt><kbd>&#9166;</kbd></dt><dd>Go to active search result</dd><dt><kbd>+</kbd></dt><dd>Expand all sections</dd><dt><kbd>-</kbd></dt><dd>Collapse all sections</dd></dl></div><div class="infos"><h2>Search Tricks</h2><p>Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to restrict the search to a given type.</p><p>Accepted types are: <code>fn</code>, <code>mod</code>, <code>struct</code>, <code>enum</code>, <code>trait</code>, <code>type</code>, <code>macro</code>, and <code>const</code>.</p><p>Search functions by type signature (e.g., <code>vec -> usize</code> or <code>* -> vec</code>)</p><p>Search multiple things at once by splitting your query with comma (e.g., <code>str,u8</code> or <code>String,struct:Vec,test</code>)</p></div></div></aside><script>window.rootPath = "../";window.currentCrate = "juniper";</script><script src="../aliases.js"></script><script src="../main.js"></script><script defer src="../search-index.js"></script></body></html>

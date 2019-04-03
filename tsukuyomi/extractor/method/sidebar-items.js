@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["connect",""],["delete",""],["equals","Creates an `Extractor` that checks if the request method is equal to `method`."],["get",""],["get_or_head",""],["head",""],["options",""],["patch",""],["post",""],["put",""],["trace",""]]});

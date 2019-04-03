@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BoxedHandler",""],["CurrentThread","The implementor of `Concurrency` which means that `App` is not thread safe."]]});

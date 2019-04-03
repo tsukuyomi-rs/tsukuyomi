@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Fallible",""],["Map",""],["MapErr",""],["Optional",""],["Or",""]],"trait":[["ExtractorExt","A set of extension methods for composing/formatting `Extractor`s."]]});

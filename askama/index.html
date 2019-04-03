@@ -1,0 +1,303 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `askama` crate."><meta name="keywords" content="rust, rustlang, rust-lang, askama"><title>askama - Rust</title><link rel="stylesheet" type="text/css" href="../normalize.css"><link rel="stylesheet" type="text/css" href="../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../dark.css"><link rel="stylesheet" type="text/css" href="../light.css" id="themeStyle"><script src="../storage.js"></script><noscript><link rel="stylesheet" href="../noscript.css"></noscript><style type="text/css">#crate-search{background-image:url("../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><p class='location'>Crate askama</p><div class="sidebar-elems"><a id='all-types' href='all.html'><p>See all askama's items</p></a><div class="block items"><ul><li><a href="#modules">Modules</a></li><li><a href="#enums">Enums</a></li><li><a href="#traits">Traits</a></li><li><a href="#functions">Functions</a></li><li><a href="#types">Type Definitions</a></li></ul></div><p class='location'></p><script>window.sidebarCurrent = {name: 'askama', ty: 'mod', relpath: '../'};</script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../theme.js"></script><nav class="sub"><form class="search-form js-only"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../settings.html"><img src="../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class='fqn'><span class='out-of-band'><span id='render-detail'><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class='inner'>&#x2212;</span>]</a></span><a class='srclink' href='../src/askama/lib.rs.html#1-488' title='goto source code'>[src]</a></span><span class='in-band'>Crate <a class="mod" href=''>askama</a></span></h1><div class='docblock'><p>Askama implements a type-safe compiler for Jinja-like templates.
+It lets you write templates in a Jinja-like syntax,
+which are linked to a <code>struct</code> defining the template context.
+This is done using a custom derive implementation (implemented
+in <a href="https://crates.io/crates/askama_derive"><code>askama_derive</code></a>).</p>
+<p>For feature highlights and a quick start, please review the
+<a href="https://github.com/djc/askama/blob/master/README.md">README</a>.</p>
+<h1 id="creating-askama-templates" class="section-header"><a href="#creating-askama-templates">Creating Askama templates</a></h1>
+<p>An Askama template is a <code>struct</code> definition which provides the template
+context combined with a UTF-8 encoded text file (or inline source, see
+below). Askama can be used to generate any kind of text-based format.
+The template file's extension may be used to provide content type hints.</p>
+<p>A template consists of <strong>text contents</strong>, which are passed through as-is,
+<strong>expressions</strong>, which get replaced with content while being rendered, and
+<strong>tags</strong>, which control the template's logic.
+The template syntax is very similar to <a href="http://jinja.pocoo.org/">Jinja</a>,
+as well as Jinja-derivatives like <a href="http://twig.sensiolabs.org/">Twig</a> or
+<a href="https://github.com/Keats/tera">Tera</a>.</p>
+<h2 id="the-template-attribute" class="section-header"><a href="#the-template-attribute">The <code>template()</code> attribute</a></h2>
+<p>Askama works by generating one or more trait implementations for any
+<code>struct</code> type decorated with the <code>#[derive(Template)]</code> attribute. The
+code generation process takes some options that can be specified through
+the <code>template()</code> attribute. The following sub-attributes are currently
+recognized:</p>
+<ul>
+<li><code>path</code> (as <code>path = &quot;foo.html&quot;</code>): sets the path to the template file. The
+path is interpreted as relative to the configured template directories
+(by default, this is a <code>templates</code> directory next to your <code>Cargo.toml</code>).
+The file name extension is used to infer an escape mode (see below). In
+web framework integrations, the path's extension may also be used to
+infer the content type of the resulting response.
+Cannot be used together with <code>source</code>.</li>
+<li><code>source</code> (as <code>source = &quot;{{ foo }}&quot;</code>): directly sets the template source.
+This can be useful for test cases or short templates. The generated path
+is undefined, which generally makes it impossible to refer to this
+template from other templates. If <code>source</code> is specified, <code>ext</code> must also
+be specified (see below). Cannot be used together with <code>path</code>.</li>
+<li><code>ext</code> (as <code>ext = &quot;txt&quot;</code>): lets you specify the content type as a file
+extension. This is used to infer an escape mode (see below), and some
+web framework integrations use it to determine the content type.
+Cannot be used together with <code>path</code>.</li>
+<li><code>print</code> (as <code>print = &quot;code&quot;</code>): enable debugging by printing nothing
+(<code>none</code>), the parsed syntax tree (<code>ast</code>), the generated code (<code>code</code>)
+or <code>all</code> for both. The requested data will be printed to stdout at
+compile time.</li>
+<li><code>escape</code> (as <code>escape = &quot;none&quot;</code>): set the escape mode for expression
+output; the currently implemented modes are <code>none</code> and <code>html</code>. Askama
+infers the escape mode from the template file name (with <code>path</code>) or
+specified extension (<code>ext</code>): if the extension is <code>html</code>, <code>htm</code> or <code>xml</code>,
+the <code>html</code> escape mode is used; otherwise, no implicit escaping is done.
+Setting an escape mode explicitly overrides the inferred value.</li>
+<li><code>syntax</code> (as <code>syntax = &quot;foo&quot;</code>): set the syntax name for a parser defined
+in the configuration file. The default syntax , &quot;default&quot;,  is the one
+provided by Askama.</li>
+</ul>
+<h2 id="configuration" class="section-header"><a href="#configuration">Configuration</a></h2>
+<p>At compile time, Askama will read optional configuration values from
+<code>askama.toml</code> in the crate root (the directory where <code>Cargo.toml</code> can
+be found). Currently, this covers the directories to search for templates,
+as well as custom syntax configuration.</p>
+<p>This example file demonstrates the default configuration:</p>
+<pre><code class="language-toml">[general]
+# Directories to search for templates, relative to the crate root.
+dirs = [&quot;templates&quot;]
+</code></pre>
+<p>Here is an example that defines two custom syntaxes:</p>
+<pre><code class="language-toml">[general]
+default_syntax = &quot;foo&quot;
+
+[[syntax]]
+name = &quot;foo&quot;
+block_start = &quot;%{&quot;
+comment_start = &quot;#{&quot;
+expr_end = &quot;^^&quot;
+
+[[syntax]]
+name = &quot;bar&quot;
+block_start = &quot;%%&quot;
+block_end = &quot;%%&quot;
+comment_start = &quot;%#&quot;
+expr_start = &quot;%{&quot;
+</code></pre>
+<p>A syntax block consists of at least the attribute <code>name</code> which uniquely
+names this syntax in the project.</p>
+<p>The following keys can currently be used to customize template syntax:</p>
+<ul>
+<li><code>block_start</code>, defaults to <code>{%</code></li>
+<li><code>block_end</code>, defaults to <code>%}</code></li>
+<li><code>comment_start</code>, defaults to <code>{#</code></li>
+<li><code>comment_end</code>, defaults to <code>#}</code></li>
+<li><code>expr_start</code>, defaults to <code>{{</code></li>
+<li><code>expr_end</code>, defaults to <code>}}</code></li>
+</ul>
+<p>Values must be 2 characters long and start delimiters must all start with the same
+character. If a key is omitted, the value from the default syntax is used.</p>
+<h2 id="variables" class="section-header"><a href="#variables">Variables</a></h2>
+<p>Top-level template variables are defined by the template's context type.
+You can use a dot (<code>.</code>) to access variable's attributes or methods.
+Reading from variables is subject to the usual borrowing policies.
+For example, <code>{{ name }}</code> will get the <code>name</code> field from the template
+context,
+while <code>{{ user.name }}</code> will get the <code>name</code> field of the <code>user</code>
+field from the template context.</p>
+<h2 id="filters" class="section-header"><a href="#filters">Filters</a></h2>
+<p>Values such as those obtained from variables can be post-processed
+using <strong>filters</strong>.
+Filters are applied to values using the pipe symbol (<code>|</code>) and may
+have optional extra arguments in parentheses.
+Filters can be chained, in which case the output from one filter
+is passed to the next.</p>
+<p>For example, <code>{{ &quot;{:?}&quot;|format(name|escape) }}</code> will escape HTML
+characters from the value obtained by accessing the <code>name</code> field,
+and print the resulting string as a Rust literal.</p>
+<p>The built-in filters are documented as part of the
+<a href="filters/index.html">filters module documentation</a>.</p>
+<p>To define your own filters, simply have a module named <code>filters</code> in
+scope of the context deriving a <code>Template</code> <code>impl</code>. Any filter names
+that are not part of the built-in filters will be referenced through
+the <code>filters::</code> prefix.</p>
+<h2 id="whitespace-control" class="section-header"><a href="#whitespace-control">Whitespace control</a></h2>
+<p>Askama considers all tabs, spaces, newlines and carriage returns to be
+whitespace. By default, it preserves all whitespace in template code,
+except that a single trailing newline character is suppressed.
+However, whitespace before and after expression and block delimiters
+can be suppressed by writing a minus sign directly following a
+start delimiter or leading into an end delimiter.</p>
+<p>Here is an example:</p>
+<pre><code class="language-text">{% if foo %}
+  {{- bar -}}
+{% else if -%}
+  nothing
+{%- endif %}
+</code></pre>
+<p>This discards all whitespace inside the if/else block. If a literal
+(any part of the template not surrounded by <code>{% %}</code> or <code>{{ }}</code>)
+includes only whitespace, whitespace suppression on either side will
+completely suppress that literal content.</p>
+<h2 id="template-inheritance" class="section-header"><a href="#template-inheritance">Template inheritance</a></h2>
+<p>Template inheritance allows you to build a base template with common
+elements that can be shared by all inheriting templates.
+A base template defines <strong>blocks</strong> that child templates can override.</p>
+<h3 id="base-template" class="section-header"><a href="#base-template">Base template</a></h3>
+<pre><code class="language-text">&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+  &lt;head&gt;
+    &lt;title&gt;{% block title %}{{ title }} - My Site{% endblock %}&lt;/title&gt;
+    {% block head %}{% endblock %}
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;div id=&quot;content&quot;&gt;
+      {% block content %}{% endblock %}
+    &lt;/div&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<p>The <code>block</code> tags define three blocks that can be filled in by child
+templates. The base template defines a default version of the block.
+A base template must define one or more blocks in order to enable
+inheritance. Blocks can only be specified at the top level of a template
+or inside other blocks, not inside <code>if</code>/<code>else</code> branches or in <code>for</code>-loop
+bodies.</p>
+<h3 id="child-template" class="section-header"><a href="#child-template">Child template</a></h3>
+<p>Here's an example child template:</p>
+<pre><code class="language-text">{% extends &quot;base.html&quot; %}
+
+{% block title %}Index{% endblock %}
+
+{% block head %}
+  &lt;style&gt;
+  &lt;/style&gt;
+{% endblock %}
+
+{% block content %}
+  &lt;h1&gt;Index&lt;/h1&gt;
+  &lt;p&gt;Hello, world!&lt;/p&gt;
+{% endblock %}
+</code></pre>
+<p>The <code>extends</code> tag tells the code generator that this template inherits
+from another template. It will search for the base template relative to
+itself before looking relative to the template base directory. It will
+render the top-level content from the base template, and substitute
+blocks from the base template with those from the child template. Inside
+a block in a child template, the <code>super()</code> macro can be called to render
+the parent block's contents.</p>
+<h2 id="html-escaping" class="section-header"><a href="#html-escaping">HTML escaping</a></h2>
+<p>Askama by default escapes variables if it thinks it is rendering HTML
+content. It infers the escaping context from the extension of template
+filenames, escaping by default if the extension is one of <code>html</code>, <code>htm</code>,
+or <code>xml</code>. When specifying a template as <code>source</code> in an attribute, the
+<code>ext</code> attribute parameter must be used to specify a type. Additionally,
+you can specify an escape mode explicitly for your template by setting
+the <code>escape</code> attribute parameter value (to <code>none</code> or <code>html</code>).</p>
+<p>Askama escapes <code>&lt;</code>, <code>&gt;</code>, <code>&amp;</code>, <code>&quot;</code>, <code>'</code>, <code>\</code> and <code>/</code>, according to the
+<a href="https://www.owasp.org/index.php/XSS_(Cross_Site_Scripting)_Prevention_Cheat_Sheet#RULE_.231_-_HTML_Escape_Before_Inserting_Untrusted_Data_into_HTML_Element_Content">OWASP escaping recommendations</a>. Use the <code>safe</code> filter to
+prevent escaping for a single expression, or the <code>escape</code> (or <code>e</code>)
+filter to escape a single expression in an unescaped context.</p>
+<h2 id="control-structures" class="section-header"><a href="#control-structures">Control structures</a></h2><h3 id="for" class="section-header"><a href="#for">For</a></h3>
+<p>Loop over each item in an iterator. For example:</p>
+<pre><code class="language-text">&lt;h1&gt;Users&lt;/h1&gt;
+&lt;ul&gt;
+{% for user in users %}
+  &lt;li&gt;{{ user.name|e }}&lt;/li&gt;
+{% endfor %}
+&lt;/ul&gt;
+</code></pre>
+<p>Inside for-loop blocks, some useful variables are accessible:</p>
+<ul>
+<li><em>loop.index</em>: current loop iteration (starting from 1)</li>
+<li><em>loop.index0</em>: current loop iteration (starting from 0)</li>
+<li><em>loop.first</em>: whether this is the first iteration of the loop</li>
+</ul>
+<h3 id="if" class="section-header"><a href="#if">If</a></h3>
+<p>The <em>if</em> statement is used as you might expect:</p>
+<pre><code class="language-text">{% if users.len() == 0 %}
+  No users
+{% else if users.len() == 1 %}
+  1 user
+{% else %}
+  {{ users.len() }} users
+{% endif %}
+</code></pre>
+<h3 id="match" class="section-header"><a href="#match">Match</a></h3>
+<p>In order to deal with Rust <code>enum</code>s in a type-safe way, templates support
+match blocks from version 0.6. Here is a simple example showing how to
+expand an <code>Option</code>:</p>
+<pre><code class="language-text">{% match item %}
+  {% when Some with (&quot;foo&quot;) %}
+    Found literal foo
+  {% when Some with (val) %}
+    Found {{ val }}
+  {% when None %}
+{% endmatch %}
+</code></pre>
+<p>That is, a <code>match</code> block can optionally contain some whitespace (but
+no other literal content), followed by a number of <code>when</code> blocks and
+and an optional <code>else</code> block. Each <code>when</code> block must name a list of
+matches (<code>(val)</code>), optionally introduced with a variant name. The
+<code>else</code> block is equivalent to matching on <code>_</code> (matching anything).</p>
+<h3 id="include" class="section-header"><a href="#include">Include</a></h3>
+<p>The <em>include</em> statement lets you split large or repetitive blocks into
+separate template files. Included templates get full access to the context
+in which they're used, including local variables like those from loops:</p>
+<pre><code class="language-text">{% for i in iter %}
+  {% include &quot;item.html&quot; %}
+{% endfor %}
+</code></pre>
+<pre><code class="language-text">* Item: {{ i }}
+</code></pre>
+<p>The path to include must be a string literal, so that it is known at
+compile time. Askama will try to find the specified template relative
+to the including template's path before falling back to the absolute
+template path. Use <code>include</code> within the branches of an <code>if</code>/<code>else</code>
+block to use includes more dynamically.</p>
+<h2 id="expressions" class="section-header"><a href="#expressions">Expressions</a></h2>
+<p>Askama supports string literals (<code>&quot;foo&quot;</code>) and integer literals (<code>1</code>).
+It supports almost all binary operators that Rust supports,
+including arithmetic, comparison and logic operators.
+The parser applies the same precedence order as the Rust compiler.
+Expressions can be grouped using parentheses.
+The HTML special characters <code>&amp;</code>, <code>&lt;</code> and <code>&gt;</code> will be replaced with their
+character entities unless the <code>escape</code> mode is disabled for a template.
+Methods can be called on variables that are in scope, including <code>self</code>.</p>
+<p><strong>Warning</strong>: if the result of an expression (a <code>{{ }}</code> block) is
+equivalent to <code>self</code>, this can result in a stack overflow from infinite
+recursion. This is because the <code>Display</code> implementation for that expression
+will in turn evaluate the expression and yield <code>self</code> again.</p>
+<h2 id="comments" class="section-header"><a href="#comments">Comments</a></h2>
+<p>Askama supports block comments delimited by <code>{#</code> and <code>#}</code>.</p>
+<h1 id="optional-functionality" class="section-header"><a href="#optional-functionality">Optional functionality</a></h1><h2 id="rocket-integration" class="section-header"><a href="#rocket-integration">Rocket integration</a></h2>
+<p>Enabling the <code>with-rocket</code> feature appends an implementation of Rocket's
+<code>Responder</code> trait for each template type. This makes it easy to trivially
+return a value of that type in a Rocket handler. See
+<a href="https://github.com/djc/askama/blob/master/testing/tests/rocket.rs">the example</a>
+from the Askama test suite for more on how to integrate.</p>
+<p>In case a run-time error occurs during templating, a <code>500 Internal Server Error</code> <code>Status</code> value will be returned, so that this can be further
+handled by your error catcher.</p>
+<h2 id="iron-integration" class="section-header"><a href="#iron-integration">Iron integration</a></h2>
+<p>Enabling the <code>with-iron</code> feature appends an implementation of Iron's
+<code>Modifier&lt;Response&gt;</code> trait for each template type. This makes it easy to
+trivially return a value of that type in an Iron handler. See
+<a href="https://github.com/djc/askama/blob/master/testing/tests/iron.rs">the example</a>
+from the Askama test suite for more on how to integrate.</p>
+<p>Note that Askama's generated <code>Modifier&lt;Response&gt;</code> implementation currently
+unwraps any run-time errors from the template. If you have a better
+suggestion, please <a href="https://github.com/djc/askama/issues/new">file an issue</a>.</p>
+<h2 id="actix-web-integration" class="section-header"><a href="#actix-web-integration">Actix-web integration</a></h2>
+<p>Enabling the <code>with-actix-web</code> feature appends an implementation of Actix-web's
+<code>Responder</code> trait for each template type. This makes it easy to return a value of
+that type in an Actix-web handler.</p>
+<h2 id="the-json-filter" class="section-header"><a href="#the-json-filter">The <code>json</code> filter</a></h2>
+<p>Enabling the <code>serde-json</code> filter will enable the use of the <code>json</code> filter.
+This will output formatted JSON for any value that implements the required
+<code>Serialize</code> trait.</p>
+</div><h2 id='modules' class='section-header'><a href="#modules">Modules</a></h2>
+<table><tr class='module-item'><td><a class="mod" href="filters/index.html" title='askama::filters mod'>filters</a></td><td class='docblock-short'><p>Module for built-in filter functions</p>
+</td></tr></table><h2 id='enums' class='section-header'><a href="#enums">Enums</a></h2>
+<table><tr class='module-item'><td><a class="enum" href="enum.Error.html" title='askama::Error enum'>Error</a></td><td class='docblock-short'><p>askama error type</p>
+</td></tr><tr class='module-item'><td><a class="enum" href="enum.MarkupDisplay.html" title='askama::MarkupDisplay enum'>MarkupDisplay</a></td><td class='docblock-short'></td></tr></table><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table><tr class='module-item'><td><a class="trait" href="trait.Template.html" title='askama::Template trait'>Template</a></td><td class='docblock-short'><p>Main <code>Template</code> trait; implementations are generally derived</p>
+</td></tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table><tr class='module-item'><td><a class="fn" href="fn.read_config_file.html" title='askama::read_config_file fn'>read_config_file</a></td><td class='docblock-short'></td></tr><tr class='module-item'><td><a class="fn" href="fn.rerun_if_templates_changed.html" title='askama::rerun_if_templates_changed fn'>rerun_if_templates_changed</a></td><td class='docblock-short'><p>Build script helper to rebuild crates if contained templates have changed</p>
+</td></tr></table><h2 id='types' class='section-header'><a href="#types">Type Definitions</a></h2>
+<table><tr class='module-item'><td><a class="type" href="type.Result.html" title='askama::Result type'>Result</a></td><td class='docblock-short'></td></tr></table></section><section id="search" class="content hidden"></section><section class="footer"></section><aside id="help" class="hidden"><div><h1 class="hidden">Help</h1><div class="shortcuts"><h2>Keyboard Shortcuts</h2><dl><dt><kbd>?</kbd></dt><dd>Show this help dialog</dd><dt><kbd>S</kbd></dt><dd>Focus the search field</dd><dt><kbd>↑</kbd></dt><dd>Move up in search results</dd><dt><kbd>↓</kbd></dt><dd>Move down in search results</dd><dt><kbd>↹</kbd></dt><dd>Switch tab</dd><dt><kbd>&#9166;</kbd></dt><dd>Go to active search result</dd><dt><kbd>+</kbd></dt><dd>Expand all sections</dd><dt><kbd>-</kbd></dt><dd>Collapse all sections</dd></dl></div><div class="infos"><h2>Search Tricks</h2><p>Prefix searches with a type followed by a colon (e.g., <code>fn:</code>) to restrict the search to a given type.</p><p>Accepted types are: <code>fn</code>, <code>mod</code>, <code>struct</code>, <code>enum</code>, <code>trait</code>, <code>type</code>, <code>macro</code>, and <code>const</code>.</p><p>Search functions by type signature (e.g., <code>vec -> usize</code> or <code>* -> vec</code>)</p><p>Search multiple things at once by splitting your query with comma (e.g., <code>str,u8</code> or <code>String,struct:Vec,test</code>)</p></div></div></aside><script>window.rootPath = "../";window.currentCrate = "askama";</script><script src="../aliases.js"></script><script src="../main.js"></script><script defer src="../search-index.js"></script></body></html>

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["CORSErrorKind",""]],"struct":[["Builder","A builder of `CORS`."],["CORS","The main type for providing the CORS filtering."],["CORSError",""]]});

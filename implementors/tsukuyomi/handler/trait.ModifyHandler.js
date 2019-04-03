@@ -1,0 +1,12 @@
+(function() {var implementors = {};
+implementors["tsukuyomi_askama"] = [{text:"impl&lt;H&gt; <a class=\"trait\" href=\"tsukuyomi/handler/trait.ModifyHandler.html\" title=\"trait tsukuyomi::handler::ModifyHandler\">ModifyHandler</a>&lt;H&gt; for <a class=\"struct\" href=\"tsukuyomi_askama/struct.Renderer.html\" title=\"struct tsukuyomi_askama::Renderer\">Renderer</a> <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;H: <a class=\"trait\" href=\"tsukuyomi/handler/trait.Handler.html\" title=\"trait tsukuyomi::handler::Handler\">Handler</a>,<br>&nbsp;&nbsp;&nbsp;&nbsp;H::<a class=\"type\" href=\"tsukuyomi/handler/trait.Handler.html#associatedtype.Output\" title=\"type tsukuyomi::handler::Handler::Output\">Output</a>: <a class=\"trait\" href=\"askama/trait.Template.html\" title=\"trait askama::Template\">Template</a>,&nbsp;</span>",synthetic:false,types:["tsukuyomi_askama::Renderer"]},];
+implementors["tsukuyomi_cors"] = [{text:"impl&lt;H&gt; <a class=\"trait\" href=\"tsukuyomi/handler/trait.ModifyHandler.html\" title=\"trait tsukuyomi::handler::ModifyHandler\">ModifyHandler</a>&lt;H&gt; for <a class=\"struct\" href=\"tsukuyomi_cors/struct.CORS.html\" title=\"struct tsukuyomi_cors::CORS\">CORS</a> <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;H: <a class=\"trait\" href=\"tsukuyomi/handler/trait.Handler.html\" title=\"trait tsukuyomi::handler::Handler\">Handler</a>,<br>&nbsp;&nbsp;&nbsp;&nbsp;H::<a class=\"type\" href=\"tsukuyomi/handler/trait.Handler.html#associatedtype.Output\" title=\"type tsukuyomi::handler::Handler::Output\">Output</a>: 'static,&nbsp;</span>",synthetic:false,types:["tsukuyomi_cors::CORS"]},];
+implementors["tsukuyomi_juniper"] = [{text:"impl&lt;H&gt; <a class=\"trait\" href=\"tsukuyomi/handler/trait.ModifyHandler.html\" title=\"trait tsukuyomi::handler::ModifyHandler\">ModifyHandler</a>&lt;H&gt; for <a class=\"struct\" href=\"tsukuyomi_juniper/struct.CaptureErrors.html\" title=\"struct tsukuyomi_juniper::CaptureErrors\">CaptureErrors</a> <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;H: <a class=\"trait\" href=\"tsukuyomi/handler/trait.Handler.html\" title=\"trait tsukuyomi::handler::Handler\">Handler</a>,&nbsp;</span>",synthetic:false,types:["tsukuyomi_juniper::error::CaptureErrors"]},];
+
+            if (window.register_implementors) {
+                window.register_implementors(implementors);
+            } else {
+                window.pending_implementors = implementors;
+            }
+        
+})()

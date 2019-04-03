@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["MaybeDone",""]],"fn":[["oneshot",""],["poll_fn",""]],"struct":[["Compat01","A wrapper struct that provides the implementation of `TryFuture` for implementors of futures 0.1 `Future`."]],"trait":[["Futures01CompatExt",""],["TryFuture","A trait that abstracts the general asynchronous tasks within the framework."]]});
