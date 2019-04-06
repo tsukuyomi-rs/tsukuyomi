@@ -89,31 +89,33 @@ fn main() -> failure::Fallible<()> {
         .map(tsukuyomi::output::json)
     };
 
-    let app = App::build(|mut scope| {
-        scope.mount("/api/v1/posts")?.done(|mut scope| {
-            scope.at("/")?.done(|mut resource| {
-                resource
+    let app = App::builder()
+        .root(|mut scope| {
+            scope.mount("/api/v1/posts")?.done(|mut scope| {
+                scope.at("/")?.done(|mut resource| {
+                    resource
+                        .get()
+                        .extract(db_conn.clone())
+                        .extract(extractor::query().optional())
+                        .to(endpoint::call_async(list_posts))?;
+
+                    resource
+                        .post()
+                        .extract(db_conn.clone())
+                        .extract(extractor::body::json())
+                        .to(endpoint::call_async(create_post))
+                })?;
+
+                scope
+                    .at(path!("/:id"))?
                     .get()
-                    .extract(db_conn.clone())
-                    .extract(extractor::query().optional())
-                    .to(endpoint::call_async(list_posts))?;
+                    .extract(db_conn)
+                    .to(endpoint::call_async(fetch_post))?;
 
-                resource
-                    .post()
-                    .extract(db_conn.clone())
-                    .extract(extractor::body::json())
-                    .to(endpoint::call_async(create_post))
-            })?;
-
-            scope
-                .at(path!("/:id"))?
-                .get()
-                .extract(db_conn)
-                .to(endpoint::call_async(fetch_post))?;
-
-            Ok(())
-        })
-    })?;
+                Ok(())
+            })
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

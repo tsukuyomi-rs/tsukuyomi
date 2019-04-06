@@ -27,24 +27,26 @@ fn main() -> Result<(), ExitFailure> {
         .max_age(std::time::Duration::from_secs(3600))
         .build();
 
-    let app = App::build(|mut s| {
-        s.fallback(cors.clone())?;
-        s.with(cors).done(|mut s| {
-            s.at("/user/info")?
-                .post()
-                .extract(extractor::body::json())
-                .to(endpoint::call_async(
-                    |info: UserInfo| -> tsukuyomi::Result<_> {
-                        if info.password != info.confirm_password {
-                            return Err(tsukuyomi::error::bad_request(
-                                "the field confirm_password is not matched to password.",
-                            ));
-                        }
-                        Ok(info)
-                    },
-                ))
-        })
-    })?;
+    let app = App::builder()
+        .root(|mut scope| {
+            scope.fallback(cors.clone())?;
+            scope.with(cors).done(|mut s| {
+                s.at("/user/info")?
+                    .post()
+                    .extract(extractor::body::json())
+                    .to(endpoint::call_async(
+                        |info: UserInfo| -> tsukuyomi::Result<_> {
+                            if info.password != info.confirm_password {
+                                return Err(tsukuyomi::error::bad_request(
+                                    "the field confirm_password is not matched to password.",
+                                ));
+                            }
+                            Ok(info)
+                        },
+                    ))
+            })
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

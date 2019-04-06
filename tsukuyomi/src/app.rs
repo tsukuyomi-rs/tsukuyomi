@@ -1,9 +1,10 @@
 //! Components for constructing HTTP applications.
 
+pub mod builder;
 pub mod concurrency;
-pub mod config;
 pub mod path;
 
+mod error;
 mod recognizer;
 mod scope;
 mod service;
@@ -13,7 +14,8 @@ mod tests;
 
 pub(crate) use self::recognizer::Captures;
 pub use self::{
-    config::{Error, Result},
+    builder::Builder,
+    error::{Error, Result},
     service::{AppBody, AppService},
 };
 
@@ -48,6 +50,10 @@ impl<C: Concurrency> Clone for App<C> {
 }
 
 impl<C: Concurrency> App<C> {
+    pub fn builder() -> Builder<C> {
+        Builder::new()
+    }
+
     /// Creates a new instance of `AppService` associated with this `App`.
     pub fn new_service(&self) -> AppService<C> {
         AppService::new(self.inner.clone())

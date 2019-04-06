@@ -17,20 +17,22 @@ struct User {
 }
 
 fn main() -> Result<(), ExitFailure> {
-    let app = App::build(|mut scope| {
-        scope.at("/")?.done(|mut resource| {
-            resource.get().to({
-                endpoint::call(|| User {
-                    name: "Sakura Kinomoto".into(),
-                    age: 13,
-                })
-            })?;
-            resource
-                .post()
-                .extract(extractor::body::json())
-                .to(endpoint::call(|user: User| user))
-        })
-    })?;
+    let app = App::builder()
+        .root(|mut scope| {
+            scope.at("/")?.done(|mut resource| {
+                resource.get().to({
+                    endpoint::call(|| User {
+                        name: "Sakura Kinomoto".into(),
+                        age: 13,
+                    })
+                })?;
+                resource
+                    .post()
+                    .extract(extractor::body::json())
+                    .to(endpoint::call(|user: User| user))
+            })
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

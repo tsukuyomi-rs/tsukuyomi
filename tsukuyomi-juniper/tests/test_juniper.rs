@@ -24,20 +24,22 @@ fn integration_test() -> test::Result {
         EmptyMutation::<Database>::new(),
     ));
 
-    let app = App::build(|mut s| {
-        let database = database.clone();
-        s.at("/")?
-            .route(&[Method::GET, Method::POST])
-            .with(tsukuyomi_juniper::capture_errors())
-            .extract(tsukuyomi_juniper::request())
-            .extract(tsukuyomi::extractor::value(schema))
-            .to(endpoint::call(
-                move |request: GraphQLRequest, schema: Arc<_>| {
-                    let database = database.clone();
-                    request.execute(schema, database)
-                },
-            ))
-    })?;
+    let app = App::builder()
+        .root(|mut s| {
+            let database = database.clone();
+            s.at("/")?
+                .route(&[Method::GET, Method::POST])
+                .with(tsukuyomi_juniper::capture_errors())
+                .extract(tsukuyomi_juniper::request())
+                .extract(tsukuyomi::extractor::value(schema))
+                .to(endpoint::call(
+                    move |request: GraphQLRequest, schema: Arc<_>| {
+                        let database = database.clone();
+                        request.execute(schema, database)
+                    },
+                ))
+        })?
+        .build()?;
 
     let test_server = TestServer::new(app)?;
 

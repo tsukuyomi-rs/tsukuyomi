@@ -27,14 +27,16 @@ fn test_version_sync() {
 
 #[test]
 fn test_handshake() -> test::Result {
-    let app = App::build(|mut s| {
-        s.at("/ws")?
-            .get()
-            .extract(tsukuyomi_tungstenite::ws())
-            .to(endpoint::call(|ws: Ws| {
-                ws.finish(|_| Ok::<(), std::io::Error>(()))
-            }))
-    })?;
+    let app = App::builder()
+        .root(|mut s| {
+            s.at("/ws")?
+                .get()
+                .extract(tsukuyomi_tungstenite::ws())
+                .to(endpoint::call(|ws: Ws| {
+                    ws.finish(|_| Ok::<(), std::io::Error>(()))
+                }))
+        })?
+        .build()?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 

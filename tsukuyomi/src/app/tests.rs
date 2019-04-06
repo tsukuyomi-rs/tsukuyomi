@@ -1,5 +1,5 @@
 use {
-    super::{config::Result, App},
+    super::{App, Builder, Result},
     crate::endpoint,
     crate::path,
     matches::assert_matches,
@@ -7,16 +7,19 @@ use {
 
 #[test]
 fn new_empty() -> Result<()> {
-    let app: App = App::build(|_s| Ok(()))?;
+    let app: App = App::builder().build()?;
     assert_matches!(app.inner.find_resource("/", &mut None), Err(..));
     Ok(())
 }
 
 #[test]
 fn route_single_method() -> Result<()> {
-    let app: App = App::build(|mut scope| {
-        scope.at("/")?.to(endpoint::call(|| "")) //
-    })?;
+    let app: App = App::builder()
+        .root(|mut scope| {
+            scope.at("/")?.to(endpoint::call(|| ""))?;
+            Ok(())
+        })?
+        .build()?;
 
     assert_matches!(
         app.inner.find_resource("/", &mut None),
@@ -35,16 +38,18 @@ fn route_single_method() -> Result<()> {
 
 #[test]
 fn scope_simple() -> Result<()> {
-    let app: App = App::build(|mut scope| {
-        scope.mount("/")?.done(|mut scope| {
-            scope.at("/a")?.to(endpoint::call(|| "a"))?;
-            scope.at("/b")?.to(endpoint::call(|| "b"))
-        })?;
+    let app: App = App::builder()
+        .root(|mut scope| {
+            scope.mount("/")?.done(|mut scope| {
+                scope.at("/a")?.to(endpoint::call(|| "a"))?;
+                scope.at("/b")?.to(endpoint::call(|| "b"))
+            })?;
 
-        scope.at("/foo")?.to(endpoint::call(|| "foo"))?;
+            scope.at("/foo")?.to(endpoint::call(|| "foo"))?;
 
-        scope.mount("/c")?.at("/d")?.to(endpoint::call(|| "c-d")) //
-    })?;
+            scope.mount("/c")?.at("/d")?.to(endpoint::call(|| "c-d")) //
+        })?
+        .build()?;
 
     assert_matches!(
         app.inner.find_resource("/a", &mut None),
@@ -68,25 +73,27 @@ fn scope_simple() -> Result<()> {
 
 #[test]
 fn scope_nested() -> Result<()> {
-    let app: App = App::build(|mut s| {
-        // 0
-        s.mount("/")?.done(|mut s| {
-            s.at("/foo")?.to(endpoint::call(|| ""))?; // /foo
-            s.at("/bar")?.to(endpoint::call(|| "")) // /bar
-        })?;
+    let app: App = App::builder()
+        .root(|mut s| {
+            // 0
+            s.mount("/")?.done(|mut s| {
+                s.at("/foo")?.to(endpoint::call(|| ""))?; // /foo
+                s.at("/bar")?.to(endpoint::call(|| "")) // /bar
+            })?;
 
-        // 1
-        s.mount("/baz")?.done(|mut s| {
-            s.at("/")?.to(endpoint::call(|| ""))?; // /baz
+            // 1
+            s.mount("/baz")?.done(|mut s| {
+                s.at("/")?.to(endpoint::call(|| ""))?; // /baz
 
-            // 2
-            s.mount("/")?
-                .at("/foobar")? //
-                .to(endpoint::call(|| "")) // /baz/foobar
-        })?;
+                // 2
+                s.mount("/")?
+                    .at("/foobar")? //
+                    .to(endpoint::call(|| "")) // /baz/foobar
+            })?;
 
-        s.at("/hoge")?.to(endpoint::call(|| "")) // /hoge
-    })?;
+            s.at("/hoge")?.to(endpoint::call(|| "")) // /hoge
+        })?
+        .build()?;
 
     assert_matches!(
         app.inner.find_resource("/foo", &mut None),
@@ -120,20 +127,22 @@ fn scope_nested() -> Result<()> {
 
 #[test]
 fn failcase_duplicate_uri() -> Result<()> {
-    let res: Result<App> = App::build(|mut s| {
-        s.at("/path")?.get().to(endpoint::call(|| "a"))?; //
-        s.at("/path")?.post().to(endpoint::call(|| "b"))
-    });
+    let res: Result<Builder> = App::builder() //
+        .root(|mut s| {
+            s.at("/path")?.get().to(endpoint::call(|| "a"))?; //
+            s.at("/path")?.post().to(endpoint::call(|| "b"))
+        });
     assert!(res.is_err());
     Ok(())
 }
 
 #[test]
 fn failcase_different_scope_at_the_same_uri() -> Result<()> {
-    let res: Result<App> = App::build(|mut s| {
-        s.at("/path")?.to(endpoint::call(|| "a"))?; //
-        s.mount("/")?.at("/path")?.post().to(endpoint::call(|| "b")) //
-    });
+    let res: Result<Builder> = App::builder() //
+        .root(|mut s| {
+            s.at("/path")?.to(endpoint::call(|| "a"))?; //
+            s.mount("/")?.at("/path")?.post().to(endpoint::call(|| "b")) //
+        });
     assert!(res.is_err());
     Ok(())
 }
@@ -143,29 +152,33 @@ fn current_thread() -> Result<()> {
     use super::concurrency::current_thread::CurrentThread;
     let ptr = std::rc::Rc::new(());
 
-    let _app: App<CurrentThread> = App::build(|mut s| {
-        s.at("/")?.to(endpoint::call(move || {
-            let _ptr = ptr.clone();
-            "dummy"
-        }))
-    })?;
+    let _app: App<CurrentThread> = App::builder()
+        .root(|mut s| {
+            s.at("/")?.to(endpoint::call(move || {
+                let _ptr = ptr.clone();
+                "dummy"
+            }))
+        })?
+        .build()?;
 
     Ok(())
 }
 
 #[test]
 fn experimental_api() -> Result<()> {
-    let _app: App = App::build(|mut scope| {
-        scope.at("/")?.to(endpoint::call(|| "hello"))?; //
+    let _app: App = App::builder()
+        .root(|mut scope| {
+            scope.at("/")?.to(endpoint::call(|| "hello"))?; //
 
-        scope.mount("/foo")?.done(|mut scope| {
-            scope
-                .at(path!("/:id"))?
-                .to(endpoint::call(|_id: u32| "got id")) //
-        })?;
+            scope.mount("/foo")?.done(|mut scope| {
+                scope
+                    .at(path!("/:id"))?
+                    .to(endpoint::call(|_id: u32| "got id")) //
+            })?;
 
-        scope.fallback(endpoint::call(|| "fallback")) //
-    })?;
+            scope.fallback(endpoint::call(|| "fallback")) //
+        })?
+        .build()?;
 
     Ok(())
 }

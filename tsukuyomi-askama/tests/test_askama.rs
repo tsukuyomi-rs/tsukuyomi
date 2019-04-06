@@ -22,11 +22,13 @@ fn test_template_derivation() -> test::Result {
         name: &'static str,
     }
 
-    let app = App::build(|mut s| {
-        s.at("/")?
-            .get()
-            .to(endpoint::call(|| Index { name: "Alice" }))
-    })?;
+    let app = App::builder()
+        .root(|mut s| {
+            s.at("/")?
+                .get()
+                .to(endpoint::call(|| Index { name: "Alice" }))
+        })?
+        .build()?;
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();
 
@@ -47,12 +49,14 @@ fn test_template_with_modifier() -> test::Result {
         name: &'static str,
     }
 
-    let app = App::build(|mut s| {
-        s.at("/")?
-            .get()
-            .with(tsukuyomi_askama::renderer())
-            .to(endpoint::call(|| Index { name: "Alice" }))
-    })?;
+    let app = App::builder()
+        .root(|mut s| {
+            s.at("/")?
+                .get()
+                .with(tsukuyomi_askama::renderer())
+                .to(endpoint::call(|| Index { name: "Alice" }))
+        })?
+        .build()?;
 
     let mut server = TestServer::new(app)?;
     let mut client = server.connect();

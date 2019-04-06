@@ -26,9 +26,12 @@ use tsukuyomi::{App, server::Server};
 use tsukuyomi::endpoint;
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let app = App::build(|mut scope| {
-        scope.at("/")?.to(endpoint::call(|| "Hello, world.\n"))
-    })?;
+    let app = App::builder()
+        .root(|mut scope| {
+            scope.at("/")?
+                .to(endpoint::call(|| "Hello, world.\n"))
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
 

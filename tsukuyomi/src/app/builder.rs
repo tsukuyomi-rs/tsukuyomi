@@ -1,118 +1,99 @@
 use {
     super::{
         concurrency::{Concurrency, DefaultConcurrency},
+        error::{Error, Result},
         path::{Path, PathExtractor},
         recognizer::Recognizer,
         scope::{ScopeId, Scopes},
         App, AppInner, ResourceData, RouteData, ScopeData, Uri,
     },
     crate::{
-        endpoint::Endpoint,
-        extractor::Extractor,
-        generic::Combine,
-        handler::ModifyHandler,
-        util::{Chain, Never},
+        endpoint::Endpoint, extractor::Extractor, generic::Combine, handler::ModifyHandler,
+        util::Chain,
     },
     http::Method,
     indexmap::map::{Entry, IndexMap},
-    std::{error, fmt, marker::PhantomData, rc::Rc, sync::Arc},
+    std::{marker::PhantomData, rc::Rc, sync::Arc},
 };
 
-/// A type alias of `Result<T, E>` whose error type is restricted to `AppError`.
-pub type Result<T> = std::result::Result<T, Error>;
-
-/// An error type which will be thrown from `AppBuilder`.
 #[derive(Debug)]
-pub struct Error {
-    cause: failure::Compat<failure::Error>,
+pub struct Builder<C: Concurrency = DefaultConcurrency> {
+    app: AppInner<C>,
+    _anchor: PhantomData<Rc<()>>,
 }
 
-impl From<Never> for Error {
-    fn from(never: Never) -> Self {
-        match never {}
-    }
-}
-
-impl Error {
-    pub fn custom<E>(cause: E) -> Self
-    where
-        E: Into<failure::Error>,
-    {
-        Self {
-            cause: cause.into().compat(),
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.cause.fmt(f)
-    }
-}
-
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        Some(&self.cause)
-    }
-}
-
-impl<C> App<C>
+impl<C> Builder<C>
 where
     C: Concurrency,
 {
-    /// Construct an `App` using the provided function.
-    pub fn build<F>(f: F) -> Result<Self>
+    /// Creates a new `Builder`.
+    pub fn new() -> Self {
+        Self {
+            app: AppInner {
+                recognizer: Recognizer::default(),
+                scopes: Scopes::new(ScopeData {
+                    prefix: Uri::root(),
+                    fallback: None,
+                }),
+            },
+            _anchor: PhantomData,
+        }
+    }
+
+    /// Configures the root scope using the specified function.
+    pub fn root<F>(mut self, f: F) -> Result<Self>
     where
         F: FnOnce(Scope<'_, (), C>) -> Result<()>,
     {
-        let mut app = AppInner {
-            recognizer: Recognizer::default(),
-            scopes: Scopes::new(ScopeData {
-                prefix: Uri::root(),
-                fallback: None,
-            }),
-        };
-
         f(Scope {
-            app: &mut app,
+            app: &mut self,
             scope_id: ScopeId::root(),
             modifier: (),
-            _marker: PhantomData,
         })?;
+        Ok(self)
+    }
 
-        Ok(Self {
-            inner: Arc::new(app),
+    fn new_scope<P: AsRef<str>, M>(
+        &mut self,
+        prefix: P,
+        scope_id: ScopeId,
+        modifier: M,
+    ) -> Result<Scope<'_, M, C>> {
+        let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
+
+        let scope_id = self
+            .app
+            .scopes
+            .add_node(scope_id, {
+                let parent = &self.app.scopes[scope_id].data;
+                ScopeData {
+                    prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
+                    fallback: None,
+                }
+            })
+            .map_err(Error::custom)?;
+
+        Ok(Scope {
+            app: self,
+            scope_id,
+            modifier,
         })
     }
-}
 
-/// A type representing the "scope" in Web application.
-#[derive(Debug)]
-pub struct Scope<'a, M, C: Concurrency = DefaultConcurrency> {
-    app: &'a mut AppInner<C>,
-    modifier: M,
-    scope_id: ScopeId,
-    _marker: PhantomData<Rc<()>>,
-}
-
-/// The experimental API for the next version.
-impl<'a, M, C> Scope<'a, M, C>
-where
-    C: Concurrency,
-{
-    /// Creates a resource that has the provided path.
-    pub fn at<P>(&mut self, path: P) -> Result<Resource<'_, P, &M, C>>
-    where
-        P: Path,
-    {
+    fn new_resource<P: Path, M>(
+        &mut self,
+        path: P,
+        scope_id: ScopeId,
+        modifier: M,
+    ) -> Result<Resource<'_, P, M, C>> {
         let uri: Uri = path.as_str().parse().map_err(Error::custom)?;
-        let uri = self.app.scopes[self.scope_id]
+        let uri = self.app.scopes[scope_id]
             .data
             .prefix
             .join(&uri)
             .map_err(Error::custom)?;
 
-        let scope = &self.app.scopes[self.scope_id];
+        let scope = &self.app.scopes[scope_id];
 
         let resource = self
             .app
@@ -137,9 +118,42 @@ where
 
         Ok(Resource {
             resource: Arc::get_mut(resource).expect("the instance has already been shared"),
-            modifier: &self.modifier,
+            modifier,
             path,
         })
+    }
+
+    fn set_fallback(&mut self, scope_id: ScopeId, handler: C::Handler) {
+        self.app.scopes[scope_id].data.fallback = Some(handler);
+    }
+
+    /// Construct an `App` using the current configuration.
+    pub fn build(self) -> Result<App<C>> {
+        Ok(App {
+            inner: Arc::new(self.app),
+        })
+    }
+}
+
+/// A type representing the "scope" in Web application.
+#[derive(Debug)]
+pub struct Scope<'a, M, C: Concurrency = DefaultConcurrency> {
+    app: &'a mut Builder<C>,
+    scope_id: ScopeId,
+    modifier: M,
+}
+
+/// The experimental API for the next version.
+impl<'a, M, C> Scope<'a, M, C>
+where
+    C: Concurrency,
+{
+    /// Creates a resource that has the provided path.
+    pub fn at<P>(&mut self, path: P) -> Result<Resource<'_, P, &M, C>>
+    where
+        P: Path,
+    {
+        self.app.new_resource(path, self.scope_id, &self.modifier)
     }
 
     /// Registers the scope-level fallback handler onto the current scope.
@@ -154,7 +168,7 @@ where
     {
         let handler = EndpointHandler::new(endpoint, ());
         let handler = self.modifier.modify(handler);
-        self.app.scopes[self.scope_id].data.fallback = Some(handler.into());
+        self.app.set_fallback(self.scope_id, handler.into());
         Ok(())
     }
 
@@ -163,26 +177,7 @@ where
     where
         P: AsRef<str>,
     {
-        let prefix: Uri = prefix.as_ref().parse().map_err(Error::custom)?;
-
-        let scope_id = self
-            .app
-            .scopes
-            .add_node(self.scope_id, {
-                let parent = &self.app.scopes[self.scope_id].data;
-                ScopeData {
-                    prefix: parent.prefix.join(&prefix).map_err(Error::custom)?,
-                    fallback: None,
-                }
-            })
-            .map_err(Error::custom)?;
-
-        Ok(Scope {
-            app: &mut *self.app,
-            scope_id,
-            modifier: &self.modifier,
-            _marker: PhantomData,
-        })
+        self.app.new_scope(prefix, self.scope_id, &self.modifier)
     }
 
     /// Adds the provided `ModifyHandler` to the stack and executes a configuration.
@@ -193,7 +188,6 @@ where
             app: &mut *self.app,
             scope_id: self.scope_id,
             modifier: Chain::new(modifier, &self.modifier),
-            _marker: PhantomData,
         }
     }
 

@@ -19,12 +19,14 @@ impl Template for Index {
 fn main() -> Result<(), ExitFailure> {
     let engine = tera::compile_templates!(concat!(env!("CARGO_MANIFEST_DIR"), "/templates/**/*"));
 
-    let app = App::build(|mut scope| {
-        scope
-            .at(path!("/:name"))?
-            .with(WithTera::from(engine))
-            .to(endpoint::call(|name| Index { name })) //
-    })?;
+    let app = App::builder()
+        .root(|mut scope| {
+            scope
+                .at(path!("/:name"))?
+                .with(WithTera::from(engine))
+                .to(endpoint::call(|name| Index { name })) //
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;

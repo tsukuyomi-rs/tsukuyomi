@@ -6,13 +6,15 @@ fn main() -> Result<(), exitfailure::ExitFailure> {
 
     let log = logging::log("request_logging");
 
-    let app = App::build(|mut scope| {
-        scope.with(&log).done(|mut scope| {
-            scope.at("/")?.get().to(endpoint::call(|| "Hello."))?;
+    let app = App::builder()
+        .root(|mut scope| {
+            scope.with(&log).done(|mut scope| {
+                scope.at("/")?.get().to(endpoint::call(|| "Hello."))?;
 
-            scope.fallback(endpoint::call(|| StatusCode::NOT_FOUND))
-        })
-    })?;
+                scope.fallback(endpoint::call(|| StatusCode::NOT_FOUND))
+            })
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
     log::info!("Listening on http://127.0.0.1:4000");

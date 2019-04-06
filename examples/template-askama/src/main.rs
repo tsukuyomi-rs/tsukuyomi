@@ -12,11 +12,13 @@ struct Index {
 }
 
 fn main() -> Result<(), ExitFailure> {
-    let app = App::build(|mut scope| {
-        scope
-            .at(path!("/:name"))?
-            .to(endpoint::call(|name| Index { name })) //
-    })?;
+    let app = App::builder()
+        .root(|mut scope| {
+            scope
+                .at(path!("/:name"))?
+                .to(endpoint::call(|name| Index { name })) //
+        })?
+        .build()?;
 
     let mut server = Server::new(app)?;
     server.bind("127.0.0.1:4000")?;
