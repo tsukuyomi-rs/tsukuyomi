@@ -76,7 +76,7 @@ Tsukuyomi is licensed under either of [MIT license](LICENSE-MIT) or [Apache Lice
 [rust-version-badge]: https://img.shields.io/badge/rustc-1.31.0+-yellow.svg
 [gitter-badge]: https://badges.gitter.im/ubnt-intrepid/tsukuyomi.svg
 [azure-pipelines-badge]: https://dev.azure.com/tsukuyomi-rs/tsukuyomi-rs/_apis/build/status/tsukuyomi-rs.tsukuyomi
-[codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/master/graph/badge.svg
+[codecov-badge]: https://codecov.io/gh/tsukuyomi-rs/tsukuyomi/branch/0.5/graph/badge.svg
 
 [`askama`]: https://github.com/djc/askama
 [`juniper`]: https://github.com/graphql-rust/juniper
