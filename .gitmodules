@@ -1,3 +1,0 @@
-[submodule ".registry-index"]
-	path = .registry-index
-	url = https://github.com/tsukuyomi-rs/registry-index.git
